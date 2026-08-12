@@ -201,3 +201,6 @@ docs/HANDOFF.md
 website/node_modules/
 website/.vitepress/dist/
 website/.vitepress/cache/
+
+# BenchmarkDotNet output
+BenchmarkDotNet.Artifacts/
