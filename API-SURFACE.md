@@ -32,7 +32,7 @@ names in plan §5 collide with `System.ComponentModel.DataAnnotations`: `Require
 namespaces gets `error CS0104: 'Required' is an ambiguous reference` — verified, §14.4. Keeping
 constraints out of `ValidationModules` means the ambiguity is only reachable by a file that
 explicitly asks for both, and DI/service code never trips it. See §11 (`VM0010`) for the diagnostic that
-catches it and §17 for the DataAnnotations on-ramp that would remove the need to import both at all.
+catches it and §18 for the DataAnnotations front-end, which removes the need to import both at all.
 
 ---
 
@@ -419,6 +419,12 @@ public sealed class GenerateValidatorAttribute : Attribute {
     public Type[]? Profiles { get; init; }
 }
 ```
+
+### Declaring constraints without these attributes
+
+`System.ComponentModel.DataAnnotations` constraints are compiled too, so a model already
+annotated for EF Core or Swashbuckle needs no edits. §18 has the mapping and the two places the
+semantics deliberately differ.
 
 ### Positional records
 
@@ -807,7 +813,7 @@ as one diagnostic is declared (plan §13).
 | VM0007 | Warning | `[ValidateNested]` on a type with no rules and no `[GenerateValidator]` |
 | VM0008 | Error | `Min` exceeds `Max` |
 | VM0009 | Error | constraint on a property with no accessible getter |
-| VM0010 | Warning | a DataAnnotations constraint is present and is not being compiled — §17 |
+| VM0010 | Warning | a DataAnnotations constraint was skipped because the front-end is off — §18.1 |
 | VM0011 | Error | profile argument does not implement `IValidationProfile` |
 | VM0012 | Error | `FromProfile`/`UntilProfile` names a profile not on a chain |
 | VM0013 | Warning | `UntilProfile` precedes `FromProfile` — rule never applies |
@@ -914,6 +920,23 @@ Compiled against net8.0, and net9.0/net10.0 where the answer could differ by TFM
 | 14.14 | `PublishAot` of a console app exercising the whole surface | published, 0 IL warnings |
 | 14.15 | 20 rounds x 500 concurrent branches, released together, paths compared exactly | all exact |
 | 14.16 | allocation per clean pass, reused collector, 1 nested object + 50 elements | **0 bytes** |
+| 14.17 | `[RegularExpression("[A-Z]{3}")]` against `"xABCx"` | **rejected** — DA anchors |
+| 14.18 | `[Required]` against `""` and `"   "` | both **fail** — DA trims |
+| 14.19 | `[Required]` against `0` and an empty `List<int>` | both **pass** |
+| 14.20 | `[Range(0, 10)]` against the string `"5"` | **passes** — DA converts at runtime |
+| 14.21 | `[MinLength(2)]` against `int[1]`; `[StringLength(3)]` against `null` | fails; **passes** |
+| 14.22 | `[EmailAddress]` against `"a@b"` | **passes** — DA is lenient |
+| 14.23 | emission shape, success path, 12 constraints (BenchmarkDotNet) | AOT 19.9 / 19.9 / 20.2 ns |
+| 14.24 | emission shape, success path, JIT | 10.3 / 10.0 / **16.2** ns |
+| 14.25 | message composition, per error | **56 bytes**; 0 for an emitted literal |
+
+14.17 through 14.22 are the DataAnnotations semantics §18 is specified against — read from the
+runtime attributes rather than from the documentation, because two of them (anchoring, and `[Range]`
+converting strings) are the kind of behaviour that is easier to reproduce by accident than to
+discover by reading. 14.23 through 14.25 are the emission-shape measurements behind §9 and the
+`ctx.Add*` helpers; the benchmark that produced them is at `benchmarks/ValidationModules.Benchmarks`
+and the three shapes are, in order: message inlined, message composed on failure, predicate and
+message both in the runtime.
 
 14.13 through 14.15 are the ones that matter. Every signature in this document was compiled
 together under the same csproj posture `DependencyModules.Runtime.csproj` uses, published with
@@ -1069,8 +1092,169 @@ Named so they are decisions rather than oversights.
   retains the validated graph past the pass. Documented as dropped.
 - **Localised messages / `MessageResource`.** `Message` takes a literal today. Resource lookup wants
   a story about which assembly owns the resource and how AOT sees it; not in v1.
-- **DataAnnotations as a compiled front-end.** Recognising
-  `System.ComponentModel.DataAnnotations` constraints under an MSBuild opt-in would give existing
-  models validators for free and remove the namespace collision entirely, since nothing would need
-  importing. Stage 2 at the earliest; `VM0010` exists so that until then the situation is visible
-  rather than silent.
+
+---
+
+## 18. DataAnnotations front-end
+
+`System.ComponentModel.DataAnnotations` constraints are **compiled**, not invoked. The generator
+reads the attribute's arguments at build time and emits the same straight-line code it emits for a
+native constraint. No `ValidationAttribute` instance exists at runtime, nothing calls `IsValid`, and
+`Validator.TryValidateObject` — which walks properties through `TypeDescriptor` — is never on any
+path.
+
+Structurally this costs almost nothing. Plan §7.4 already splits the generator into front-ends
+feeding one IR:
+
+```
+AttributeFrontEnd        ValidationModules.Constraints  ─┐
+DataAnnotationsFrontEnd  System.ComponentModel.DataAnnotations ─┼─→ ValidatedTypeModel → ValidatorEmitter
+OpenApiFrontEnd          spec files, inside Hardened     ─┘
+```
+
+DataAnnotations is a third reader into `ValidatedTypeModel`. Profiles, aliasing, nesting,
+registration and the emitter are untouched, and a DataAnnotations-declared rule is indistinguishable
+from a native one downstream — same code, same field path, same message.
+
+The payoff is that models already annotated for EF Core, ASP.NET model binding or Swashbuckle get
+AOT-clean validators without being edited. It also dissolves the namespace collision in §1: if you
+are not importing `ValidationModules.Constraints`, nothing is ambiguous.
+
+### 18.1 Opting out
+
+```xml
+<PropertyGroup>
+    <ValidationModules_DataAnnotations>Compile</ValidationModules_DataAnnotations>
+</PropertyGroup>
+```
+
+`Compile` (default) | `Ignore`.
+
+Default-on is the deliberate choice. This only ever applies to a type the generator is already
+producing a validator for, so DataAnnotations attributes on an EF entity nobody validates are never
+looked at. For a type that *is* validated, a `[StringLength(100)]` sitting on it is a declaration of
+intent, and silently ignoring it is the worse failure. `Ignore` exists for a codebase whose
+DataAnnotations attributes mean something other than validation; setting it turns every skipped
+constraint into `VM0010` so the situation is visible rather than silent.
+
+### 18.2 The mapping
+
+| DataAnnotations | IR constraint | Notes |
+|---|---|---|
+| `[Required]` | `Required` | DA trims before testing, so whitespace-only fails — the same rule §12 Q5 already settled for the native attribute |
+| `[Required(AllowEmptyStrings = true)]` | `Required { AllowEmptyStrings = true }` | null check only |
+| `[StringLength(max)]`, `.MinimumLength` | `StringLength` | null **passes** — length rules skip null |
+| `[Length(min, max)]` | `StringLength` or `ItemCount` | by member type; .NET 8+ |
+| `[MinLength(n)]` / `[MaxLength(n)]` | `StringLength` or `ItemCount` | by member type — both apply to strings *and* collections in DA |
+| `[Range(min, max)]` | `Range` | `MinimumIsExclusive` / `MaximumIsExclusive` map onto `ExclusiveMin` / `ExclusiveMax` |
+| `[RegularExpression(p)]` | `Pattern { Anchored = true }` | **not** the same as the native `[Pattern]` — see §18.3 |
+| `[AllowedValues(...)]` | `AllowedValues` | .NET 8+ |
+| `[DeniedValues(...)]` | `AllowedValues { Negated = true }` | .NET 8+ |
+| `[Display(Name = "x")]` | field name override | ranks with `[JsonPropertyName]` in §8's precedence |
+| `ErrorMessage = "..."` | `Message` override | the emitter falls back to a literal `ctx.Add`, as it does for a native `Message` |
+| `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]` | — | `VM0063`, see §18.5 |
+| `[Compare]`, `[CustomValidation]` | — | `VM0061`, `VM0062` |
+| `IValidatableObject` | — | `VM0067` |
+| any other `ValidationAttribute` subclass | — | `VM0060` |
+
+### 18.3 `[RegularExpression]` is anchored and `[Pattern]` is not
+
+The one divergence that would otherwise pass review. DataAnnotations requires the pattern to match
+the **whole** value: `RegularExpressionAttribute` matches and then checks `match.Index == 0 &&
+match.Length == value.Length`. Verified in §14.17 — `[A-Z]{3}` rejects `"xABCx"`.
+
+The native `[Pattern]` is unanchored, and that is correct for it: JSON Schema and OpenAPI `pattern`
+are unanchored, and Hardened's spec front-end depends on that reading. Both behaviours are right for
+their own source.
+
+So they are **two IR states, not one**. The IR's `Pattern` constraint carries `Anchored`, and the
+emitter wraps the expression when it is set:
+
+```csharp
+// from [Pattern("[A-Z]{3}")]                → unanchored
+[GeneratedRegex("[A-Z]{3}")]
+private static partial Regex SkuPattern();
+
+// from [RegularExpression("[A-Z]{3}")]      → anchored
+[GeneratedRegex(@"\A(?:[A-Z]{3})\z")]
+private static partial Regex SkuPattern();
+```
+
+`\A` and `\z` rather than `^` and `$`, and a non-capturing group rather than bare concatenation.
+Both matter: `$` matches before a trailing newline even without `RegexOptions.Multiline`, so
+`^[A-Z]{3}$` accepts `"ABC\n"`; and a top-level alternation in the user's pattern — `a|b` — would
+bind wrongly without the group.
+
+That newline hole exists for anyone hand-writing `^…$` in a native `[Pattern]` too, so
+`PatternAttribute` gains the same switch:
+
+```csharp
+public sealed class PatternAttribute : ValidationConstraintAttribute {
+    /// <summary>
+    /// Require the whole value to match, via \A(?:…)\z. Off by default, matching JSON Schema and
+    /// OpenAPI. Prefer this to writing ^…$, which still admits a trailing newline.
+    /// </summary>
+    public bool Anchored { get; init; }
+}
+```
+
+### 18.4 Deliberate divergences
+
+Compiling an attribute means reproducing its semantics, and two of DataAnnotations' are not worth
+reproducing. Both are documented rather than silently different.
+
+**`[Range]` does not parse strings.** DA converts at runtime, so `[Range(0, 10)]` accepts the string
+`"5"` (§14.20). That behaviour exists because DA validates late-bound `object` values; we have the
+member's type at build time. A `[Range]` on a member with no ordering is `VM0003`, and one whose
+bounds do not parse as the member's type is `VM0065` — both build errors rather than a runtime
+conversion.
+
+**`[Required]` on non-strings keeps DA's semantics.** It passes on `0` and on an empty collection
+(§14.19). That surprises people, but it is what compatibility means, and `[ItemCount(min: 1)]` is
+the constraint that expresses "not empty".
+
+### 18.5 What is not compiled
+
+A custom `ValidationAttribute` subclass carries arbitrary C# in a method body. The only way to honour
+it is to invoke it, which is the thing this front-end exists to avoid — so there is no
+inheritance-based extensibility here, and that is a limitation rather than an oversight. `VM0060`
+names the specific attribute and the specific property, so it is visible at the build that
+introduced it. The migration path is a native constraint, or `IAsyncValidatorFor<T>` for anything
+genuinely custom.
+
+The format validators — `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]` — are a closed set and
+*could* be compiled, by baking in the expression each one uses. They are diagnosed instead
+(`VM0063`, pointing at `[Pattern]`). Reproducing them means committing to bug-compatibility with
+implementations that are lenient in ways nobody wants: DA's `EmailAddressAttribute` accepts `"a@b"`
+(§14.22). A user who wants email validation is better served by a pattern whose behaviour is written
+down in their own source than by inheriting ours.
+
+### 18.6 Mixing with native constraints, and profiles
+
+Both sets can sit on one type, and on one property. They **union**, the same rule overlays follow
+(§6.4). Contradictory bounds for one property are `VM0066`.
+
+DataAnnotations attributes have nowhere to put `FromProfile`, `UntilProfile` or `Profiles`, so every
+constraint they contribute is unattributed — which by rule 1 of §6.2 means it applies in every
+profile, including the default. That is the consistent reading rather than a special case: a
+DataAnnotations-only model gets exactly one validator, and native attributes are what you reach for
+on the properties that need to vary by profile.
+
+### 18.7 Diagnostics
+
+Added to the table in §11:
+
+| ID | Severity | |
+|---|---|---|
+| VM0060 | Warning | custom `ValidationAttribute` subclass — cannot be compiled, not applied |
+| VM0061 | Warning | `[Compare]` — cross-field, not expressible as a per-property constraint |
+| VM0062 | Warning | `[CustomValidation]` — dispatches reflectively, not applied |
+| VM0063 | Warning | `[EmailAddress]`/`[Phone]`/`[Url]`/`[CreditCard]` — not applied; use `[Pattern]` |
+| VM0064 | Error | `[MinLength]`/`[MaxLength]` on a member that is neither a string nor a collection |
+| VM0065 | Error | `[Range]` bounds do not parse as the member's type |
+| VM0066 | Warning | a DataAnnotations and a native constraint conflict on one property |
+| VM0067 | Warning | type implements `IValidatableObject` — not compiled |
+
+Warnings rather than errors throughout, except where the attribute is simply wrong for the member.
+A build should not break because a model picked up `[EmailAddress]` for some other consumer's
+benefit; it should tell you the constraint is not being enforced.
