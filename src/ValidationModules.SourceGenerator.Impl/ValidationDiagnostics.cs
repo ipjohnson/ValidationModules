@@ -56,6 +56,23 @@ public static class ValidationDiagnostics {
         "Patterns compile through [GeneratedRegex]; RegexOptions.Compiled on '{0}' is ignored",
         DiagnosticSeverity.Warning);
 
+    /// <summary>
+    /// Declared with a fixed default severity so release tracking can discover it; the effective
+    /// severity is overridden per site from the resolved policy, because the same situation is a
+    /// build error for an AOT-facing project and unremarkable for a JIT one.
+    /// </summary>
+    public static readonly DiagnosticDescriptor InlinePatternUnderAot = Descriptor(
+        "VM0017", "Inline pattern roots the regex engine",
+        "The pattern on '{0}' is built from a string at run time, which roots the regex parser and " +
+        "interpreter and adds roughly 1.1 MB to an AOT-published binary. Declare it as a " +
+        "[GeneratedRegex] and point at it: [Pattern(typeof({1}Patterns), nameof({1}Patterns.{0}))]. " +
+        "Set ValidationModules_PatternPolicy to Allow to keep the inline form",
+        DiagnosticSeverity.Warning);
+
+    public static readonly DiagnosticDescriptor RegexMemberUnusable = Descriptor(
+        "VM0018", "Referenced regex member is unusable",
+        "'{0}.{1}' {2}, so the pattern on '{3}' cannot be emitted", DiagnosticSeverity.Error);
+
     public static readonly DiagnosticDescriptor RecordParameterMissingPropertyTarget = Descriptor(
         "VM0051", "Constraint on a record parameter has no effect",
         "'{0}' is on a record parameter without the property: target, so it lands on the parameter and is never evaluated. Write [property: {0}]",

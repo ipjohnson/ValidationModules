@@ -34,8 +34,12 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             provider.GlobalOptions.TryGetValue("build_property.ValidationModules_Registration", out var registration);
             provider.GlobalOptions.TryGetValue("build_property.ValidationModules_FieldNaming", out var naming);
             provider.GlobalOptions.TryGetValue("build_property.ValidationModules_DataAnnotations", out var dataAnnotations);
+            provider.GlobalOptions.TryGetValue("build_property.ValidationModules_PatternPolicy", out var patternPolicy);
+            provider.GlobalOptions.TryGetValue("build_property.PublishAot", out var publishAot);
+            provider.GlobalOptions.TryGetValue("build_property.IsAotCompatible", out var aotCompatible);
 
-            return new GeneratorOptions(registration, naming, dataAnnotations);
+            return new GeneratorOptions(registration, naming, dataAnnotations, patternPolicy,
+                IsTrue(publishAot) || IsTrue(aotCompatible));
         });
 
         // Probed once. An IncrementalValueProvider<bool> so downstream stages invalidate only when
@@ -98,7 +102,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
     }
 
     private static ModelResult BuildModel(INamedTypeSymbol symbol, GeneratorOptions options) {
-        var frontEnd = new AttributeFrontEnd(options.CompileDataAnnotations, options.FieldNamer);
+        var frontEnd = new AttributeFrontEnd(options.CompileDataAnnotations, options.FieldNamer, options.ResolvedPatternPolicy);
         var model = frontEnd.Build(symbol, static type => $"{type.Name}Validator");
 
         return new ModelResult(model, frontEnd.Diagnostics.ToImmutableArray());
@@ -106,7 +110,24 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
 
     private sealed record ModelResult(ValidatedTypeModel? Model, ImmutableArray<Diagnostic> Diagnostics);
 
-    private sealed record GeneratorOptions(string? Registration, string? Naming, string? DataAnnotations) {
+    private static bool IsTrue(string? value) => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+
+    private sealed record GeneratorOptions(
+        string? Registration, string? Naming, string? DataAnnotations, string? PatternPolicySetting, bool IsAotFacing) {
+
+        /// <summary>
+        /// Auto gates on the project's own AOT posture rather than on PublishAot alone. PublishAot
+        /// is only ever true in the executable, so a class library holding the models would never
+        /// see it - IsAotCompatible is what a library sets when it means to be publishable, and
+        /// catching that is the difference between the diagnostic landing on the library's build
+        /// and landing on somebody else's publish.
+        /// </summary>
+        public PatternPolicy ResolvedPatternPolicy => PatternPolicySetting switch {
+            "Error" => PatternPolicy.Error,
+            "Warn" => PatternPolicy.Warn,
+            "Allow" => PatternPolicy.Allow,
+            _ => IsAotFacing ? PatternPolicy.Error : PatternPolicy.Allow,
+        };
 
         public bool CompileDataAnnotations =>
             !string.Equals(DataAnnotations, "Ignore", StringComparison.OrdinalIgnoreCase);

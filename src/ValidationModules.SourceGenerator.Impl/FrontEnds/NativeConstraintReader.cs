@@ -41,8 +41,15 @@ public static class NativeConstraintReader {
             }
 
             case "PatternAttribute": {
-                if (attribute.ConstructorArguments.Length != 1 ||
-                    attribute.ConstructorArguments[0].Value is not string pattern) {
+                var args = attribute.ConstructorArguments;
+
+                // The reference form. The member is resolved and checked in the front end, which
+                // has the symbols; here it is only carried through.
+                if (args.Length == 2 && args[0].Value is INamedTypeSymbol && args[1].Value is string) {
+                    return common with { Kind = ConstraintKind.Pattern };
+                }
+
+                if (args.Length != 1 || args[0].Value is not string pattern) {
                     return null;
                 }
 

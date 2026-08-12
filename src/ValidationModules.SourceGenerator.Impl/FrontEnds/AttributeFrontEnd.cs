@@ -18,10 +18,12 @@ public sealed class AttributeFrontEnd {
     private readonly List<Diagnostic> _diagnostics = new();
     private readonly bool _compileDataAnnotations;
     private readonly Func<string, string> _fieldNamer;
+    private readonly PatternPolicy _patternPolicy;
 
-    public AttributeFrontEnd(bool compileDataAnnotations, Func<string, string> fieldNamer) {
+    public AttributeFrontEnd(bool compileDataAnnotations, Func<string, string> fieldNamer, PatternPolicy patternPolicy) {
         _compileDataAnnotations = compileDataAnnotations;
         _fieldNamer = fieldNamer;
+        _patternPolicy = patternPolicy;
     }
 
     public IReadOnlyList<Diagnostic> Diagnostics => _diagnostics;
@@ -173,8 +175,8 @@ public sealed class AttributeFrontEnd {
                 Report(ValidationDiagnostics.MinExceedsMax, property, property.Name);
             }
 
-            if (constraint.Kind == ConstraintKind.Pattern && constraint.Pattern is { } pattern &&
-                !TypeFacts.IsValidRegex(pattern, out var error)) {
+            if (constraint.Kind == ConstraintKind.Pattern && constraint.RegexAccessor is null &&
+                constraint.Pattern is { } pattern && !TypeFacts.IsValidRegex(pattern, out var error)) {
                 Report(ValidationDiagnostics.InvalidPattern, property, property.Name, error);
             }
 
@@ -199,6 +201,11 @@ public sealed class AttributeFrontEnd {
 
             if (ns == KnownTypes.ConstraintsNamespace) {
                 var native = NativeConstraintReader.Read(attribute, attributeClass.Name);
+
+                if (native is { Kind: ConstraintKind.Pattern }) {
+                    native = ResolvePattern(native, attribute, property);
+                }
+
                 if (native is not null) {
                     constraints.Add(native);
                 }
@@ -237,6 +244,69 @@ public sealed class AttributeFrontEnd {
 
         return constraints;
     }
+
+    /// <summary>
+    /// Resolves the reference form's member, or applies the policy to the inline form.
+    /// </summary>
+    private ConstraintModel? ResolvePattern(ConstraintModel constraint, AttributeData attribute, IPropertySymbol property) {
+        var args = attribute.ConstructorArguments;
+
+        if (args.Length == 2 && args[0].Value is INamedTypeSymbol provider && args[1].Value is string memberName) {
+            var member = provider.GetMembers(memberName).FirstOrDefault();
+
+            string? problem = member switch {
+                null => "does not exist",
+                IMethodSymbol { IsStatic: false } or IPropertySymbol { IsStatic: false } or IFieldSymbol { IsStatic: false }
+                    => "is not static",
+                IMethodSymbol { Parameters.Length: > 0 } => "takes parameters",
+                IMethodSymbol method when !IsRegex(method.ReturnType) => "does not return Regex",
+                IPropertySymbol prop when !IsRegex(prop.Type) => "does not return Regex",
+                IFieldSymbol field when !IsRegex(field.Type) => "is not a Regex",
+                IMethodSymbol or IPropertySymbol or IFieldSymbol => null,
+                _ => "is not a method, property or field",
+            };
+
+            if (member is not null && problem is null &&
+                member.DeclaredAccessibility is Accessibility.Private or Accessibility.ProtectedAndInternal) {
+                problem = "is not accessible";
+            }
+
+            if (problem is not null) {
+                _diagnostics.Add(Diagnostic.Create(
+                    ValidationDiagnostics.RegexMemberUnusable, Location(property),
+                    provider.ToDisplayString(), memberName, problem, property.Name));
+
+                return null;
+            }
+
+            var qualified = provider.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            var accessor = member is IMethodSymbol ? $"{qualified}.{memberName}()" : $"{qualified}.{memberName}";
+
+            return constraint with { RegexAccessor = accessor };
+        }
+
+        // Inline form. Correct and AOT-clean, but it roots the regex parser and interpreter, which
+        // is +1.16 MB on a published AOT binary. The policy decides whether that is acceptable here.
+        if (_patternPolicy is PatternPolicy.Error or PatternPolicy.Warn) {
+            var severity = _patternPolicy == PatternPolicy.Error
+                ? DiagnosticSeverity.Error
+                : DiagnosticSeverity.Warning;
+
+            _diagnostics.Add(Diagnostic.Create(
+                ValidationDiagnostics.InlinePatternUnderAot, Location(property), severity,
+                additionalLocations: null, properties: null,
+                property.Name, property.ContainingType.Name));
+
+            if (_patternPolicy == PatternPolicy.Error) {
+                return null;
+            }
+        }
+
+        return constraint;
+    }
+
+    private static bool IsRegex(ITypeSymbol type) =>
+        type.ToDisplayString() == "System.Text.RegularExpressions.Regex";
 
     private string FieldNameFor(IPropertySymbol property) {
         foreach (var attribute in property.GetAttributes()) {

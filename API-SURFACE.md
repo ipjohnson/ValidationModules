@@ -411,10 +411,16 @@ public sealed class RangeAttribute : ValidationConstraintAttribute {
 }
 
 public sealed class PatternAttribute : ValidationConstraintAttribute {
+    /// <summary>Inline. Rejected in an AOT-facing project — see §18.8.</summary>
     public PatternAttribute(string pattern);
-    public string Pattern { get; }
+
+    /// <summary>Reference a [GeneratedRegex] the consumer declared. Always accepted.</summary>
+    public PatternAttribute(Type regexProvider, string regexMember);
+
+    public string? Pattern { get; }
+    public Type? RegexProvider { get; }
+    public string? RegexMember { get; }
     public RegexOptions Options { get; init; }
-    /// <summary>Flows to [GeneratedRegex]. Zero means no timeout.</summary>
     public int MatchTimeoutMilliseconds { get; init; }
 }
 
@@ -996,6 +1002,8 @@ Compiled against net8.0, and net9.0/net10.0 where the answer could differ by TFM
 | 14.27 | `[GeneratedRegex]` emitted **by a source generator** | **CS8795** — never implemented |
 | 14.28 | the identical `[GeneratedRegex]` declaration hand-written in the same project | compiles |
 | 14.29 | `foreach` over an `IReadOnlyList<T>` property in a generated validator | 40 bytes/pass — boxed enumerator |
+| 14.30 | AOT binary: no pattern / `new Regex(string)` / `[GeneratedRegex]` | 1.10 / **2.26** / 1.12 MB |
+| 14.31 | pattern match, AOT: specialized / `[GeneratedRegex]` / interpreted / `Compiled` | 1.3 / 14.3 / 38.8 / **38.7** ns |
 
 14.17 through 14.22 are the DataAnnotations semantics §18 is specified against — read from the
 runtime attributes rather than from the documentation, because two of them (anchoring, and `[Range]`
@@ -1317,6 +1325,62 @@ constraint they contribute is unattributed — which by rule 1 of §6.2 means it
 profile, including the default. That is the consistent reading rather than a special case: a
 DataAnnotations-only model gets exactly one validator, and native attributes are what you reach for
 on the properties that need to vary by profile.
+
+### 18.8 Patterns and Native AOT
+
+Plan §2 mandates `[GeneratedRegex]`. It is unavailable to a source generator — generators cannot see
+each other's output, so a partial method we declare is never implemented and the consumer's build
+fails with CS8795 (§14.27, and §14.28 shows the identical declaration hand-written compiles). The
+plan's §7.2 note about generators not seeing each other applies to *every* generator, not only
+DependencyModules'.
+
+The alternative, a `static readonly Regex` built once, is correct and publishes AOT-clean — zero IL
+warnings. What it costs is size, and the number is the whole reason this section exists:
+
+| | IL warnings | AOT binary | cost of one pattern |
+|---|---|---|---|
+| no pattern | 0 | 1.10 MB | — |
+| `static readonly Regex` from a string | 0 | 2.26 MB | **+1.16 MB** |
+| `[GeneratedRegex]` | 0 | 1.12 MB | +16 KB |
+
+Constructing a `Regex` from a pattern string roots the parser and the interpreter, so the whole
+engine survives trimming. `[GeneratedRegex]` compiles the pattern to code and the engine trims away.
+A 70× difference, on the runtime whose users chose it partly for size.
+
+So the inline form is **rejected in an AOT-facing project**, and the reference form points at a
+`[GeneratedRegex]` the consumer declares. Their declaration is in the original compilation, so the
+regex generator implements it and the generated validator calls it:
+
+```csharp
+public static partial class PetPatterns {
+    [GeneratedRegex("^[A-Z]{3}$")] public static partial Regex Sku();
+}
+
+[Pattern(typeof(PetPatterns), nameof(PetPatterns.Sku))]
+public string? Sku { get; init; }
+```
+
+The member is resolved at generation time — it must exist, be static, take no parameters, be
+accessible, and return `Regex` — so a typo is `VM0018` rather than something discovered later.
+
+`ValidationModules_PatternPolicy` = `Auto` (default) `| Error | Warn | Allow`. `Auto` rejects the
+inline form when `PublishAot` **or** `IsAotCompatible` is set. Gating on `IsAotCompatible` too is
+deliberate: `PublishAot` is only ever true in the executable, so a class library holding the models
+would never see it, and the failure would land on someone else's publish instead of its own build.
+A library shipping to AOT consumers should set `Error` outright.
+
+**The limit of this.** It is transitive-blind. A library that compiled an inline pattern into itself
+ships an interpreted `Regex`; when an application AOT-publishes, our generator never runs there and
+nothing fires — the 1.1 MB lands anyway. Nothing short of an analyzer inspecting references can
+catch that, which is why the reference form is documented as the default rather than as an escape
+hatch.
+
+| ID | Severity | |
+|---|---|---|
+| VM0017 | Error under `Auto` + AOT; otherwise as configured | inline pattern roots the regex engine |
+| VM0018 | Error | referenced regex member is missing, not static, inaccessible, parameterised, or not a `Regex` |
+
+---
 
 ### 18.7 Diagnostics
 

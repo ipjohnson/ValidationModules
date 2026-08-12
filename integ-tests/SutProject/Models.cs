@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using ValidationModules.Constraints;
 
 namespace SutProject;
@@ -11,6 +12,13 @@ public sealed record Pet {
 
     [Pattern("^[A-Z]{3}$")]
     public string? Sku { get; init; }
+
+    /// <summary>
+    /// The reference form. The [GeneratedRegex] has to live in consumer source, because source
+    /// generators cannot see each other's output - so ours can call it, but could never write it.
+    /// </summary>
+    [Pattern(typeof(PetPatterns), nameof(PetPatterns.Slug))]
+    public string? Slug { get; init; }
 
     [Range(0, 30)]
     public int Age { get; init; }
@@ -48,4 +56,10 @@ public sealed record Reading {
     [Required]
     [Range(0.0, 1.0, ExclusiveMax = true)]
     public double? Ratio { get; init; }
+}
+
+/// <summary>Consumer-declared patterns, implemented by the regex source generator.</summary>
+public static partial class PetPatterns {
+    [GeneratedRegex("^[a-z0-9-]+$")]
+    public static partial Regex Slug();
 }

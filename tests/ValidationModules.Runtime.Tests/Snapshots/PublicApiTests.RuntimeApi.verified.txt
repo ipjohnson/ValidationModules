@@ -30,9 +30,12 @@ namespace ValidationModules.Constraints
     public sealed class PatternAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
     {
         public PatternAttribute(string pattern) { }
+        public PatternAttribute(System.Type regexProvider, string regexMember) { }
         public int MatchTimeoutMilliseconds { get; init; }
         public System.Text.RegularExpressions.RegexOptions Options { get; init; }
-        public string Pattern { get; }
+        public string? Pattern { get; }
+        public string? RegexMember { get; }
+        public System.Type? RegexProvider { get; }
     }
     public sealed class RangeAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
     {

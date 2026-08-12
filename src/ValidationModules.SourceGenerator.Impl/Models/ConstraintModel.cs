@@ -33,7 +33,12 @@ public enum ConstraintKind {
 /// [Pattern] does not, because JSON Schema and OpenAPI patterns are unanchored. Two states rather
 /// than two kinds - see API-SURFACE.md §18.3.
 /// </param>
-/// <param name="RegexOptions">Pattern only: flows to [GeneratedRegex].</param>
+/// <param name="RegexOptions">Pattern only: flows to the emitted Regex.</param>
+/// <param name="RegexAccessor">
+/// Pattern only. The already-resolved expression that yields the Regex in the reference form -
+/// "global::My.Patterns.Sku()" for a method, without parentheses for a property or field. Null
+/// means the inline form, where the emitter declares the Regex itself.
+/// </param>
 /// <param name="Values">AllowedValues only: the permitted set, already rendered as C# literals.</param>
 /// <param name="Negated">AllowedValues only: set by DataAnnotations' [DeniedValues].</param>
 public sealed record ConstraintModel(
@@ -48,5 +53,6 @@ public sealed record ConstraintModel(
     string? Pattern = null,
     bool Anchored = false,
     int RegexOptions = 0,
+    string? RegexAccessor = null,
     EquatableArray<string> Values = default,
     bool Negated = false) : IEquatable<ConstraintModel>;

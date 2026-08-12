@@ -207,6 +207,12 @@ public sealed class ValidatorEmitter {
             }
 
             case ConstraintKind.Pattern: {
+                // The reference form resolves to the consumer's own [GeneratedRegex], so nothing is
+                // declared here and the regex engine is never rooted.
+                if (constraint.RegexAccessor is { } accessor) {
+                    return $"{guard}!{accessor}.IsMatch({access})";
+                }
+
                 var field = $"{property.PropertyName}Pattern{patterns.Count}";
                 patterns.Add((field, constraint));
                 return $"{guard}!{field}.IsMatch({access})";
