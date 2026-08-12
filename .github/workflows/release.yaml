@@ -1,0 +1,118 @@
+name: release
+
+# Cutting a release:
+#   git tag v1.0.0 && git push origin v1.0.0
+#
+# The tag is the single source of truth for the published version. Requires a NUGET_API_KEY
+# repository secret with push rights for the ValidationModules.* package IDs on nuget.org.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (without the leading v), e.g. 1.0.0'
+        required: true
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # See build-package.yaml: the 10.0 SDK builds, the 8.0 runtime runs the net8.0 tests.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Resolve version
+        id: version
+        run: |
+          # A manual dispatch runs against whatever ref was selected, and that selector remembers
+          # the last branch used. Without this, an unreviewed branch could be published to
+          # nuget.org, where a version can be unlisted but never removed.
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "::error::Releases may only be dispatched from main. This run is on '${GITHUB_REF_NAME}'."
+            exit 1
+          fi
+
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+
+          # Guard against a mistyped tag producing a bad package version.
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::'$VERSION' is not a valid semantic version"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing $VERSION"
+
+      - run: dotnet restore ValidationModules.sln
+
+      - run: dotnet build ValidationModules.sln --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test ValidationModules.sln --no-build --configuration Release
+
+      - name: Verify Native AOT publish
+        run: ./scripts/verify-aot.sh
+
+      # Listed explicitly rather than packing the solution, so that adding a test or
+      # integration project never publishes one by accident. Extend as the stages land.
+      - name: Pack
+        run: |
+          for project in \
+            src/ValidationModules.Runtime/ValidationModules.Runtime.csproj; do
+            dotnet pack "$project" --configuration Release --output ./artifacts \
+              "/p:PackageVersion=${{ steps.version.outputs.version }}"
+          done
+          ls -la ./artifacts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: ./artifacts/*
+
+      - name: Push to nuget.org
+        run: |
+          dotnet nuget push "./artifacts/*.nupkg" \
+            --api-key "${{ secrets.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+      - name: Push to GitHub Packages
+        run: |
+          dotnet nuget push "./artifacts/*.nupkg" \
+            --api-key ${{ secrets.GITHUB_TOKEN }} \
+            --source "https://nuget.pkg.github.com/ipjohnson/index.json" \
+            --skip-duplicate --no-symbols
+
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # A version carrying a prerelease label must not appear as a stable release.
+          case "${{ steps.version.outputs.version }}" in
+            *-*) prerelease="--prerelease" ;;
+            *)   prerelease="" ;;
+          esac
+
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            ${prerelease} \
+            ./artifacts/*.nupkg

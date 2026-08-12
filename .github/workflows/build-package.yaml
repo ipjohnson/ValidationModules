@@ -1,0 +1,89 @@
+name: build-package
+
+# A branch with an open PR would otherwise build twice for the same commit, once for the push and
+# once for the pull_request. Building main plus pull requests covers everything exactly once.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Superseded runs for the same branch are of no interest once a newer commit lands.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Both SDKs are needed. global.json selects the 10.0 SDK to build with, and it can compile
+      # every target here — but running the net8.0 test projects needs the 8.0 runtime, which the
+      # 10.0 SDK does not carry. Roll-forward stops at the major version boundary by default, so a
+      # net8.0 test host will not start on 10.0 alone.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - run: dotnet restore ValidationModules.sln
+
+      - run: dotnet build ValidationModules.sln --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test ValidationModules.sln --no-build --configuration Release
+
+      # The runtime exists to be AOT-clean, so proving it is a build step rather than a claim in a
+      # README. The IL* warnings are already errors in the csproj; this catches what only ILC sees.
+      - name: Verify Native AOT publish
+        run: ./scripts/verify-aot.sh
+
+  publish-prerelease:
+    # Development builds for anyone tracking main; released packages come from release.yaml.
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+          source-url: https://nuget.pkg.github.com/ipjohnson/index.json
+        env:
+          NUGET_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - run: dotnet restore ValidationModules.sln
+
+      - run: dotnet build ValidationModules.sln --no-restore --configuration Release
+
+      - name: Pack prerelease
+        run: |
+          dotnet pack src/ValidationModules.Runtime/ValidationModules.Runtime.csproj \
+            --configuration Release --no-build \
+            --output ./artifacts/packages \
+            --version-suffix "ci.${{ github.run_number }}"
+
+      - name: Push to GitHub Packages
+        run: |
+          dotnet nuget push "./artifacts/packages/*.nupkg" \
+            --api-key ${{ secrets.GITHUB_TOKEN }} \
+            --source "https://nuget.pkg.github.com/ipjohnson/index.json" \
+            --skip-duplicate --no-symbols
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prerelease-packages
+          path: ./artifacts/packages/*

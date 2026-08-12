@@ -1,0 +1,211 @@
+namespace Microsoft.Extensions.DependencyInjection
+{
+    public static class ValidationModulesServiceCollectionExtensions
+    {
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValidationModules(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.Collections.Generic.IReadOnlyList<ValidationModules.ValidatorRegistration> registrations) { }
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValidationRunner<T>(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
+    }
+}
+namespace ValidationModules.Constraints
+{
+    public sealed class AllowedValuesAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public AllowedValuesAttribute(params object[] values) { }
+        public System.StringComparison Comparison { get; init; }
+        public object[] Values { get; }
+    }
+    [System.AttributeUsage(System.AttributeTargets.Class | System.AttributeTargets.Struct | System.AttributeTargets.Interface)]
+    public sealed class GenerateValidatorAttribute : System.Attribute
+    {
+        public GenerateValidatorAttribute() { }
+        public System.Type[]? Profiles { get; init; }
+    }
+    public sealed class ItemCountAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public ItemCountAttribute() { }
+        public ItemCountAttribute(int min, int max) { }
+        public int Max { get; init; }
+        public int Min { get; init; }
+    }
+    public sealed class PatternAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public PatternAttribute(string pattern) { }
+        public int MatchTimeoutMilliseconds { get; init; }
+        public System.Text.RegularExpressions.RegexOptions Options { get; init; }
+        public string Pattern { get; }
+    }
+    public sealed class RangeAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public RangeAttribute(double min, double max) { }
+        public RangeAttribute(int min, int max) { }
+        public RangeAttribute(long min, long max) { }
+        public RangeAttribute(string min, string max) { }
+        public bool ExclusiveMax { get; init; }
+        public bool ExclusiveMin { get; init; }
+        public object Max { get; }
+        public object Min { get; }
+    }
+    public sealed class RequiredAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public RequiredAttribute() { }
+        public bool AllowEmptyStrings { get; init; }
+    }
+    public sealed class StringLengthAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public StringLengthAttribute() { }
+        public StringLengthAttribute(int min, int max) { }
+        public int Max { get; init; }
+        public int Min { get; init; }
+    }
+    public sealed class ValidateNestedAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public ValidateNestedAttribute() { }
+    }
+    [System.AttributeUsage(System.AttributeTargets.Property | System.AttributeTargets.Field | System.AttributeTargets.Parameter, AllowMultiple=true, Inherited=true)]
+    public abstract class ValidationConstraintAttribute : System.Attribute
+    {
+        protected ValidationConstraintAttribute() { }
+        public string? Code { get; init; }
+        public System.Type? FromProfile { get; init; }
+        public string? Message { get; init; }
+        public System.Type[]? Profiles { get; init; }
+        public System.Type? UntilProfile { get; init; }
+    }
+}
+namespace ValidationModules
+{
+    [System.AttributeUsage(System.AttributeTargets.Assembly)]
+    public sealed class DefaultValidationProfileAttribute : System.Attribute
+    {
+        public DefaultValidationProfileAttribute(System.Type profile) { }
+        public System.Type Profile { get; }
+    }
+    public interface IAsyncValidatorFor<in T>
+    {
+        System.Threading.Tasks.ValueTask ValidateAsync(ValidationModules.ValidationContext context, T value, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IValidationProfile { }
+    public interface IValidationProfile<TPredecessor> : ValidationModules.IValidationProfile
+        where TPredecessor : ValidationModules.IValidationProfile { }
+    public interface IValidatorFor<in T>
+    {
+        void Validate(ref ValidationModules.ValidationContext context, T value);
+    }
+    public interface IValidatorProvider
+    {
+        System.Collections.Generic.IReadOnlyList<System.Type> GetProfiles<T>();
+        ValidationModules.IValidatorFor<T>? GetValidator<T>();
+        ValidationModules.IValidatorFor<T>? GetValidator<T>(System.Type profile);
+    }
+    public readonly struct ValidationContext
+    {
+        public ValidationContext(ValidationModules.ValidationErrorCollector collector) { }
+        public int ErrorCount { get; }
+        public bool HasErrors { get; }
+        public System.Type? Profile { get; }
+        public void Add(string field, string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
+        public void AddHere(string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
+        public ValidationModules.ValidationContext Push(string segment) { }
+        public ValidationModules.ValidationContext PushIndex(string segment, int index) { }
+    }
+    public readonly struct ValidationError : System.IEquatable<ValidationModules.ValidationError>
+    {
+        public ValidationError(string Field, string Code, string Message) { }
+        public string Code { get; init; }
+        public string Field { get; init; }
+        public string Message { get; init; }
+        public ValidationModules.ValidationSeverity Severity { get; init; }
+    }
+    public sealed class ValidationErrorCollector
+    {
+        public ValidationErrorCollector() { }
+        public ValidationErrorCollector(System.Type? profile) { }
+        public int Count { get; }
+        public bool HasErrors { get; }
+        public System.Type? Profile { get; }
+        public void Add(in ValidationModules.ValidationError error) { }
+        public void Reset() { }
+        public ValidationModules.ValidationResult ToResult() { }
+        public static ValidationModules.ValidationErrorCollector CreateSynchronized(System.Type? profile = null) { }
+    }
+    public sealed class ValidationException : System.Exception
+    {
+        public ValidationException(ValidationModules.ValidationResult result) { }
+        public ValidationModules.ValidationResult Result { get; }
+    }
+    [System.AttributeUsage(System.AttributeTargets.Class)]
+    public sealed class ValidationOverlayForAttribute<TTarget> : System.Attribute
+    {
+        public ValidationOverlayForAttribute() { }
+        public System.Type[]? Profiles { get; init; }
+    }
+    public sealed class ValidationResult
+    {
+        public System.Collections.Generic.IReadOnlyList<ValidationModules.ValidationError> Errors { get; }
+        public bool HasErrors { get; }
+        public bool IsValid { get; }
+        public static ValidationModules.ValidationResult Valid { get; }
+        public ValidationModules.ValidationResult Merge(ValidationModules.ValidationResult other) { }
+        public static ValidationModules.ValidationResult FromErrors(System.Collections.Generic.IEnumerable<ValidationModules.ValidationError> errors) { }
+    }
+    public sealed class ValidationRunner<T>
+    {
+        public ValidationRunner(System.Collections.Generic.IEnumerable<ValidationModules.IValidatorFor<T>> structural, System.Collections.Generic.IEnumerable<ValidationModules.IAsyncValidatorFor<T>> business) { }
+        public ValidationModules.ValidationResult Validate(T value, System.Type? profile = null) { }
+        public System.Threading.Tasks.ValueTask<ValidationModules.ValidationResult> ValidateAsync(T value, System.Type? profile = null, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public enum ValidationSeverity
+    {
+        Error = 0,
+        Warning = 1,
+        Info = 2,
+    }
+    public static class ValidatorForExtensions
+    {
+        public static bool IsValid<T>(this ValidationModules.IValidatorFor<T> validator, T value, System.Type? profile = null) { }
+        public static ValidationModules.ValidationResult Validate<T>(this ValidationModules.IValidatorFor<T> validator, T value, System.Type? profile = null) { }
+        public static void ValidateAndThrow<T>(this ValidationModules.IValidatorFor<T> validator, T value, System.Type? profile = null) { }
+        public static void ValidateInto<T>(this ValidationModules.IValidatorFor<T> validator, ValidationModules.ValidationErrorCollector collector, T value) { }
+    }
+    public readonly struct ValidatorRegistration : System.IEquatable<ValidationModules.ValidatorRegistration>
+    {
+        public ValidatorRegistration(System.Type ServiceType, System.Func<System.IServiceProvider, object> Factory, System.Type? Profile = null) { }
+        public System.Func<System.IServiceProvider, object> Factory { get; init; }
+        public System.Type? Profile { get; init; }
+        public System.Type ServiceType { get; init; }
+    }
+}
+namespace ValidationModules.Naming
+{
+    public sealed class CamelCaseFieldNamer : ValidationModules.Naming.FieldNamer
+    {
+        public CamelCaseFieldNamer() { }
+        public static ValidationModules.Naming.CamelCaseFieldNamer Instance { get; }
+        public override string ToFieldName(string clrPropertyName) { }
+    }
+    public abstract class FieldNamer : ValidationModules.Naming.IValidationFieldNamer
+    {
+        protected FieldNamer() { }
+        public string Combine(string parentPath, string fieldName) { }
+        public string CombineIndex(string parentPath, string fieldName, int index) { }
+        public abstract string ToFieldName(string clrPropertyName);
+    }
+    public interface IValidationFieldNamer
+    {
+        string Combine(string parentPath, string fieldName);
+        string CombineIndex(string parentPath, string fieldName, int index);
+        string ToFieldName(string clrPropertyName);
+    }
+    public sealed class PascalCaseFieldNamer : ValidationModules.Naming.FieldNamer
+    {
+        public PascalCaseFieldNamer() { }
+        public static ValidationModules.Naming.PascalCaseFieldNamer Instance { get; }
+        public override string ToFieldName(string clrPropertyName) { }
+    }
+    public sealed class SnakeCaseFieldNamer : ValidationModules.Naming.FieldNamer
+    {
+        public SnakeCaseFieldNamer() { }
+        public static ValidationModules.Naming.SnakeCaseFieldNamer Instance { get; }
+        public override string ToFieldName(string clrPropertyName) { }
+    }
+}
