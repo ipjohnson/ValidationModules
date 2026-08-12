@@ -97,6 +97,15 @@ namespace ValidationModules
         ValidationModules.IValidatorFor<T>? GetValidator<T>();
         ValidationModules.IValidatorFor<T>? GetValidator<T>(System.Type profile);
     }
+    public static class ValidationCodes
+    {
+        public const string ArrayBounds = "array_bounds";
+        public const string Enum = "enum";
+        public const string Pattern = "pattern";
+        public const string Range = "range";
+        public const string Required = "required";
+        public const string StringLength = "string_length";
+    }
     public readonly struct ValidationContext
     {
         public ValidationContext(ValidationModules.ValidationErrorCollector collector) { }
@@ -107,6 +116,16 @@ namespace ValidationModules
         public void AddHere(string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
         public ValidationModules.ValidationContext Push(string segment) { }
         public ValidationModules.ValidationContext PushIndex(string segment, int index) { }
+    }
+    public static class ValidationContextExtensions
+    {
+        public static void AddAllowedValues(this ValidationModules.ValidationContext context, string field, string allowedValues, ValidationModules.ValidationSeverity severity = 0) { }
+        public static void AddItemCount(this ValidationModules.ValidationContext context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0) { }
+        public static void AddPattern(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0) { }
+        public static void AddRange<T>(this ValidationModules.ValidationContext context, string field, T min, T max, ValidationModules.ValidationSeverity severity = 0)
+            where T : System.IFormattable { }
+        public static void AddRequired(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0) { }
+        public static void AddStringLength(this ValidationModules.ValidationContext context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0) { }
     }
     public readonly struct ValidationError : System.IEquatable<ValidationModules.ValidationError>
     {

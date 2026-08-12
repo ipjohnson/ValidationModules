@@ -14,4 +14,4 @@ var config = DefaultConfig.Instance
     .AddJob(Job.Default.WithRuntime(CoreRuntime.Core10_0).WithId("jit").WithWarmupCount(5).WithIterationCount(15))
     .AddJob(Job.Default.WithRuntime(NativeAotRuntime.Net10_0).WithId("aot").WithWarmupCount(5).WithIterationCount(15));
 
-BenchmarkSwitcher.FromTypes([typeof(EmissionShapeBenchmarks)]).Run(args, config);
+BenchmarkSwitcher.FromTypes([typeof(EmissionShapeBenchmarks), typeof(MessageMaterializationBenchmarks)]).Run(args, config);
