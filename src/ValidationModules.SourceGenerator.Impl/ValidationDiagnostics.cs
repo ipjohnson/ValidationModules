@@ -64,7 +64,8 @@ public static class ValidationDiagnostics {
     public static readonly DiagnosticDescriptor InlinePatternUnderAot = Descriptor(
         "VM0017", "Inline pattern roots the regex engine",
         "The pattern on '{0}' is built from a string at run time, which roots the regex parser and " +
-        "interpreter and adds roughly 1.1 MB to an AOT-published binary. Declare it as a " +
+        "interpreter - about 450 KB on an AOT-published binary, once, however many patterns follow. " +
+        "Declare it as a " +
         "[GeneratedRegex] and point at it: [Pattern(typeof({1}Patterns), nameof({1}Patterns.{0}))]. " +
         "Set ValidationModules_PatternPolicy to Allow to keep the inline form",
         DiagnosticSeverity.Warning);

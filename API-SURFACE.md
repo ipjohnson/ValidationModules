@@ -1002,7 +1002,9 @@ Compiled against net8.0, and net9.0/net10.0 where the answer could differ by TFM
 | 14.27 | `[GeneratedRegex]` emitted **by a source generator** | **CS8795** — never implemented |
 | 14.28 | the identical `[GeneratedRegex]` declaration hand-written in the same project | compiles |
 | 14.29 | `foreach` over an `IReadOnlyList<T>` property in a generated validator | 40 bytes/pass — boxed enumerator |
-| 14.30 | AOT binary: no pattern / `new Regex(string)` / `[GeneratedRegex]` | 1.10 / **2.26** / 1.12 MB |
+| 14.30 | AOT binary: no pattern / `[GeneratedRegex]` / `new Regex(pattern)` | 1.103 / 1.119 / **1.550** MB |
+| 14.32 | the same at 5 patterns — is the cost per-pattern? | 1.136 / **1.550** MB — a threshold, not per-pattern |
+| 14.33 | `new Regex(p)` vs `new Regex(p, RegexOptions.None)` | +448 KB vs **+1,161 KB** |
 | 14.31 | pattern match, AOT: specialized / `[GeneratedRegex]` / interpreted / `Compiled` | 1.3 / 14.3 / 38.8 / **38.7** ns |
 
 14.17 through 14.22 are the DataAnnotations semantics §18 is specified against — read from the
@@ -1335,17 +1337,31 @@ plan's §7.2 note about generators not seeing each other applies to *every* gene
 DependencyModules'.
 
 The alternative, a `static readonly Regex` built once, is correct and publishes AOT-clean — zero IL
-warnings. What it costs is size, and the number is the whole reason this section exists:
+warnings. What it costs is size:
 
-| | IL warnings | AOT binary | cost of one pattern |
-|---|---|---|---|
-| no pattern | 0 | 1.10 MB | — |
-| `static readonly Regex` from a string | 0 | 2.26 MB | **+1.16 MB** |
-| `[GeneratedRegex]` | 0 | 1.12 MB | +16 KB |
+| | AOT binary | vs no pattern |
+|---|---|---|
+| no pattern | 1.103 MB | — |
+| `[GeneratedRegex]` × 1 | 1.119 MB | +16 KB |
+| `[GeneratedRegex]` × 5 | 1.136 MB | +33 KB |
+| `new Regex(pattern)` × 1 | 1.550 MB | **+448 KB** |
+| `new Regex(pattern)` × 5 | 1.550 MB | **+448 KB** |
 
-Constructing a `Regex` from a pattern string roots the parser and the interpreter, so the whole
-engine survives trimming. `[GeneratedRegex]` compiles the pattern to code and the engine trims away.
-A 70× difference, on the runtime whose users chose it partly for size.
+Two properties matter more than the headline number.
+
+**It is a threshold, not a per-pattern cost.** One runtime-constructed `Regex` and five cost exactly
+the same, because what is being paid for is rooting the parser and the interpreter — the pattern
+strings themselves are noise. `[GeneratedRegex]` compiles each pattern to code and needs neither, so
+it starts 28× cheaper and grows at about 4 KB per pattern. A corollary worth stating: if the
+application already constructs a `Regex` at run time anywhere else, an inline pattern here adds
+nothing further.
+
+**Never pass `RegexOptions` when there is nothing to say.** `new Regex(pattern,
+RegexOptions.None)` measures **713 KB larger** than `new Regex(pattern)` — more than the engine
+itself costs. The single-argument constructor lets ILC prove `RegexOptions.Compiled` is never set
+and trim the `RegexCompiler` path with it; passing the enum defeats that analysis. The emitter omits
+the argument unless a constraint actually sets options. This one is easy to reintroduce by tidying,
+so it carries a comment at the emission site.
 
 So the inline form is **rejected in an AOT-facing project**, and the reference form points at a
 `[GeneratedRegex]` the consumer declares. Their declaration is in the original compilation, so the
