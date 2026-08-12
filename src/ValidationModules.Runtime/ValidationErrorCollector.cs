@@ -13,6 +13,12 @@ namespace ValidationModules;
 /// <see cref="Reset"/> between passes.
 /// </para>
 /// <para>
+/// It also owns one semantic rule rather than only storage: a field that has failed
+/// <see cref="ValidationCodes.Required"/> accepts no further errors for the rest of the pass. That
+/// lives here so every engine gets it, including ones that map errors from elsewhere and have no
+/// control flow to express it with. See <c>AddCore</c>.
+/// </para>
+/// <para>
 /// Not thread-safe by default. Use <see cref="CreateSynchronized"/> when concurrent branches add
 /// errors in parallel; the default keeps the lock off the path that runs per nested object, which
 /// is correct for every generated validator and for any async validator that awaits sequentially.
@@ -41,6 +47,13 @@ public sealed class ValidationErrorCollector {
     private PathNode[] _nodes = new PathNode[16];
     private int _nodeCount;
     private List<ValidationError>? _errors;
+
+    /// <summary>
+    /// Field paths that have already failed <see cref="ValidationCodes.Required"/> at error
+    /// severity. Allocated only once something is actually missing, and short in every realistic
+    /// pass, so the membership test below stays a linear scan rather than a set.
+    /// </summary>
+    private List<string>? _requiredFields;
 
     /// <summary>
     /// Creates an unsynchronized collector for the default profile.
@@ -115,6 +128,7 @@ public sealed class ValidationErrorCollector {
     /// </summary>
     public void Reset() {
         _errors?.Clear();
+        _requiredFields?.Clear();
 
         // Clearing rather than only resetting the count: the nodes hold string references, and a
         // pooled collector would otherwise keep the last pass's segment names alive indefinitely.
@@ -122,7 +136,58 @@ public sealed class ValidationErrorCollector {
         _nodeCount = 0;
     }
 
-    private void AddCore(in ValidationError error) => (_errors ??= []).Add(error);
+    /// <summary>
+    /// The single choke point every error passes through, and therefore where the suppression rule
+    /// lives.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why here rather than in the emitter.</b> Generated code expresses suppression as an
+    /// <c>else if</c> chain, which works only for engines that generate code. The FluentValidation
+    /// adapter maps <c>ValidationFailure</c>s that FluentValidation has already produced - it has no
+    /// control flow to put an <c>else</c> in - so if suppression were only a shape in emitted
+    /// source, the adapter could never honour it and §8's conformance suite would have to exclude
+    /// it. Enforcing it here makes it a property of the error model, which every engine reaches
+    /// through, and the <c>else if</c> in generated code becomes an optimization rather than the
+    /// mechanism.
+    /// </para>
+    /// <para>
+    /// <b>Forward-only, and exact-match.</b> A field is suppressed from the moment it fails
+    /// Required; errors already recorded are not removed retroactively, because a result that
+    /// changes its contents based on a later unrelated add is worse to reason about than an
+    /// occasional duplicate. That makes the rule depend on Required being evaluated first, which
+    /// §4.2 requires of every engine. Matching is on the whole path, so <c>home.postalCode</c> and
+    /// <c>work.postalCode</c> are different fields, and it is not a prefix match: a failed Required
+    /// on <c>home</c> does not suppress <c>home.postalCode</c>. Nothing recurses into a value that
+    /// failed Required in the first place, so there is nothing there to suppress.
+    /// </para>
+    /// </remarks>
+    private void AddCore(in ValidationError error) {
+        if (_requiredFields is { Count: > 0 } && IsSuppressed(error.Field)) {
+            return;
+        }
+
+        (_errors ??= []).Add(error);
+
+        // Only a real failure suppresses. A Required reported as a warning is advisory, and
+        // silencing the rest of the field on the strength of it would be wrong.
+        if (error.Severity == ValidationSeverity.Error &&
+            string.Equals(error.Code, ValidationCodes.Required, StringComparison.Ordinal)) {
+            (_requiredFields ??= []).Add(error.Field);
+        }
+    }
+
+    private bool IsSuppressed(string field) {
+        var fields = _requiredFields!;
+
+        for (var i = 0; i < fields.Count; i++) {
+            if (string.Equals(fields[i], field, StringComparison.Ordinal)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     internal int AddNode(int parent, string name, int index) {
         if (_gate is null) {

@@ -168,6 +168,10 @@ restriction — and one that cost the async interface its natural shape.
 Public because pooling it is the point, and because hand-written validators and the adapter write
 into it.
 
+It also owns one semantic rule rather than only storage: a field that has failed `required` accepts
+no further errors for the rest of the pass. §4.3 has the reasoning; the short version is that it has
+to live somewhere every engine reaches, and this is the only such place.
+
 ```csharp
 namespace ValidationModules;
 
@@ -289,14 +293,49 @@ because it is already on the wire and renaming it would break existing API consu
   validators run in registration order, and `ValidationRunner<T>` awaits async ones sequentially, so
   the guarantee holds across validators too. The one exception is an async validator that fans out
   internally: its own errors land in completion order, which is the author's choice to make.
-- A failed `[Required]` **suppresses** every other constraint on the same field. The generator emits
-  `if (…required fails…) ctx.Add(…); else if (…next constraint…)`, so this is structural rather than
-  incidental.
+- Within a property, **`[Required]` is evaluated first**, whatever order the attributes are written
+  in. Every other constraint follows attribute order. This is the one place declaration order is
+  overridden, and the next rule is why.
+- A failed `[Required]` **suppresses** every other error on the same field for the rest of the pass.
+  This is enforced by `ValidationErrorCollector`, not by generated control flow — see §4.3.
 - Nothing else short-circuits. All errors are collected; there is no first-failure exit.
-- `[ValidateNested]` does not recurse into a value that failed `[Required]`.
+- `[ValidateNested]` does not recurse into a value that failed `[Required]`. That is the emitter's
+  job, not the collector's: suppression matches whole field paths and is deliberately not a prefix
+  match, so a failed `[Required]` on `home` does not silence `home.postalCode`.
 - Field paths are dotted with bracketed indices: `home.postalCode`, `toys[3].name`. Chosen over JSON
   Pointer because FluentValidation already produces this shape, which keeps the adapter's job to a
   case conversion.
+
+### 4.3 Suppression lives in the collector
+
+The obvious home for "a failed `[Required]` suppresses the rest of the field" is the emitter, as an
+`else if` chain — and that is where the plan puts it. It only works for engines that generate code.
+
+The FluentValidation adapter maps `ValidationFailure`s that FluentValidation has already produced.
+It has no control flow to put an `else` in, so `RuleFor(x => x.Name).NotNull().Length(1, 100)`
+against a null name hands it two failures and it must forward both. If suppression is a shape in
+emitted source, the adapter cannot honour it, and §16's conformance suite has to exclude the rule —
+at which point the two engines are not substitutable on the one semantic §4.2 exists to pin.
+
+So `ValidationErrorCollector` enforces it, at the single point every error passes through. Every
+engine reaches the collector, so every engine gets the rule, and the `else if` in generated code
+becomes an optimization — skip work whose result would be discarded — rather than the mechanism.
+Correctness stops depending on the emitter getting the chain right.
+
+Three properties, each chosen against a plausible alternative:
+
+- **Forward-only.** A field is suppressed from the moment it fails `[Required]`; errors already
+  recorded are not removed. Retroactive removal would report a different result depending on the
+  order two independent validators happened to run in, which is worse to reason about than an
+  occasional duplicate. This is what makes the evaluation-order rule in §4.2 load-bearing rather
+  than cosmetic.
+- **Exact path match, not prefix.** `home.postalCode` and `work.postalCode` are different fields.
+- **Error severity only.** A `required` reported as a warning is advisory; silencing the field on
+  the strength of it would drop a real failure.
+
+The cost is on the failure path and gated: the collector tracks whether any `required` has been seen
+at all, so an ordinary length-or-range failure never runs the check. The list it scans holds only
+fields that are actually missing, which is short in any realistic pass.
 
 ---
 
@@ -743,6 +782,9 @@ public sealed partial class PetValidator_V2 : IValidatorFor<Pet> {
 
 Guarantees the surface makes:
 
+- The `else if` after a `required` check is an **optimization**, not the suppression mechanism —
+  §4.3. It skips work whose result the collector would discard anyway, and a validator hand-written
+  without it still produces one error rather than two.
 - No attributes on generated types (plan §7.2 — a second generator would not see them anyway).
 - Parameterless, private constructor plus `static readonly Instance`, which is what keeps
   registration free of constructor reflection.
@@ -891,6 +933,12 @@ struct, and recorded so it is not rediscovered.
 `ctx.Add("required", "name is required.")` while the error must come out on field `name`. The
 surface takes `Add(field, code, message)`, with `AddHere(code, message)` for object-level rules.
 
+**13.5 `[Required]` suppression is enforced by the collector, not the emitter.** Plan §4 specifies
+the rule and describes it as the `else if` shape generated code takes. The rule is kept exactly; the
+enforcement point moved, because an emitted shape is unavailable to any engine that maps failures
+produced elsewhere — which is the FluentValidation adapter, the one thing §8 asks to be proven
+substitutable. §4.3 has the full reasoning.
+
 Unchanged from the plan and worth stating: `IValidatorFor<T>`, `IAsyncValidatorFor<T>`,
 `IValidationProfile`, `IValidationProfile<TPredecessor>` and `ValidationError`'s shape are exactly
 as §4 specifies. `ValidationResult` is immutable, which is the "make it immutable" branch of §4's
@@ -929,6 +977,7 @@ Compiled against net8.0, and net9.0/net10.0 where the answer could differ by TFM
 | 14.23 | emission shape, success path, 12 constraints (BenchmarkDotNet) | AOT 19.9 / 19.9 / 20.2 ns |
 | 14.24 | emission shape, success path, JIT | 10.3 / 10.0 / **16.2** ns |
 | 14.25 | message composition, per error | **56 bytes**; 0 for an emitted literal |
+| 14.26 | suppression across two validators, adapter-style pre-pathed adds, and a pooled reset | enforced in all three |
 
 14.17 through 14.22 are the DataAnnotations semantics §18 is specified against — read from the
 runtime attributes rather than from the documentation, because two of them (anchoring, and `[Range]`
@@ -1028,6 +1077,12 @@ public static class FluentValidationCodeMap {
 (§4). `PropertyName` goes through the injected `IValidationFieldNamer` so the adapter cannot emit
 `Home.PostalCode` where the generator emits `home.postalCode`.
 
+The adapter forwards every failure FluentValidation produces and does **not** try to implement
+`[Required]` suppression itself — it cannot, having no control over the rules it is mapping.
+Writing into the collector is what gives it the rule, which is the reason §4.3 put it there. So
+`RuleFor(x => x.Name).NotNull().Length(1, 100)` against a null name yields one error here, matching
+the generated engine, without the adapter knowing that is the rule.
+
 Registered **closed, per type, by the generator** — `AddScoped<IAsyncValidatorFor<Pet>,
 FluentValidatorAdapter<Pet>>()` — never as an open generic, so nothing depends on MS.DI's
 reflection-based open-generic activation.
@@ -1056,9 +1111,14 @@ public interface IValidationEngineConformanceAdapter {
 }
 
 /// <summary>
-/// The shared suite. Pins §4.2 — declaration order, Required suppression, no first-failure exit,
+/// The shared suite. Pins §4.2 - declaration order, Required suppression, no first-failure exit,
 /// nested and indexed path shapes, code vocabulary, severity. If the generated engine and the
 /// FluentValidation adapter both pass, substitutability is a fact rather than a claim.
+///
+/// Suppression is assertable here only because §4.3 moved it into the collector. As an emitted
+/// else-if it was a property of one engine's code generation, which an adapter over a third-party
+/// engine could not have reproduced - the suite would have had to carve out an exception for the
+/// exact rule it most needed to check.
 /// </summary>
 public abstract class ValidationEngineConformanceTests<TAdapter>
     where TAdapter : IValidationEngineConformanceAdapter, new();

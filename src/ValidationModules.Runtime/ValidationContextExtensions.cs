@@ -60,8 +60,11 @@ public static class ValidationContextExtensions {
     /// <summary>
     /// Records that a collection fell outside its element-count bounds.
     /// </summary>
+    /// <param name="context">The context to record against.</param>
+    /// <param name="field">The field name.</param>
     /// <param name="min">The lower bound; zero means unbounded below.</param>
     /// <param name="max">The upper bound; <see cref="int.MaxValue"/> means unbounded above.</param>
+    /// <param name="severity">Defaults to <see cref="ValidationSeverity.Error"/>.</param>
     public static void AddItemCount(
         this ValidationContext context,
         string field,
@@ -119,11 +122,14 @@ public static class ValidationContextExtensions {
     /// <summary>
     /// Records that a value was not one of the permitted set.
     /// </summary>
+    /// <param name="context">The context to record against.</param>
+    /// <param name="field">The field name.</param>
     /// <param name="allowedValues">
     /// The permitted values, already joined - <c>"available, pending, sold"</c>. The set is a
     /// compile-time constant, so the generator emits the joined form once as a static field rather
     /// than joining an array on every failure.
     /// </param>
+    /// <param name="severity">Defaults to <see cref="ValidationSeverity.Error"/>.</param>
     public static void AddAllowedValues(
         this ValidationContext context,
         string field,
