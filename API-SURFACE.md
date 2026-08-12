@@ -946,9 +946,26 @@ produced elsewhere — which is the FluentValidation adapter, the one thing §8 
 substitutable. §4.3 has the full reasoning.
 
 **13.6 Patterns compile to a `static readonly Regex`, not `[GeneratedRegex]`.** Plan §2 makes
-`[GeneratedRegex]` a non-negotiable. It is not available to us: source generators cannot see each
-other's output, so the partial method we would declare is never implemented by the regex generator
-and the *consumer's* build fails with CS8795. Verified both ways — §14.27 and §14.28.
+`[GeneratedRegex]` a non-negotiable. It is not available to us, but the reason is narrower than
+"generators cannot see each other's output" and worth stating precisely, because the loose version
+invites an attempt that looks like it should work.
+
+**Post-initialization output *is* visible to other generators; regular source output is not.**
+Sources added through `RegisterPostInitializationOutput` are put into the compilation before any
+generator's pipeline runs, so every generator sees them as if a human had written them — a
+`[GeneratedRegex]` emitted that way is implemented by the regex generator and runs (§14.34). Sources
+added through `RegisterSourceOutput` are collected afterwards and only reach the final compilation,
+which is why *your* code can call generated code while another generator cannot see it — the same
+declaration emitted that way fails with CS8795 (§14.35).
+
+There is no fixed-point loop, no differential check and no re-running of generators against an
+augmented compilation. One pass, with post-initialization simply earlier in it.
+
+That does not rescue this case. `IncrementalGeneratorPostInitializationContext` exposes `AddSource`
+and a `CancellationToken` and nothing else — no compilation, no syntax trees, no analyzer config, no
+additional files — because it runs before anything has been examined. It is the hook for marker
+attributes, whose text is fixed. A pattern is user data, from an attribute argument or a `pattern:`
+in a spec, so the only hook that would work is the one that cannot see what we would need to emit.
 
 What §2 was protecting against is intact. The defect it was written against (plan §10.2) was a
 `Regex` constructed **per request** with `RegexOptions.Compiled`, which emits IL through
@@ -957,8 +974,9 @@ passes `Compiled`, so nothing reaches `Reflection.Emit` and the AOT publish stay
 an interpreted match rather than a source-generated one, which is a throughput difference on a path
 that already allocates nothing.
 
-The same class of trap as plan §7.2's "generators cannot see each other's output" — it is worth
-reading that note as applying to *every* other generator, not only DependencyModules'.
+Plan §7.2 states the same rule flatly. It is worth reading as applying to every other generator, not
+only DependencyModules' — and with the post-initialization exception above, which DM's own marker
+attributes rely on.
 
 Unchanged from the plan and worth stating: `IValidatorFor<T>`, `IAsyncValidatorFor<T>`,
 `IValidationProfile`, `IValidationProfile<TPredecessor>` and `ValidationError`'s shape are exactly
@@ -999,8 +1017,10 @@ Compiled against net8.0, and net9.0/net10.0 where the answer could differ by TFM
 | 14.24 | emission shape, success path, JIT | 10.3 / 10.0 / **16.2** ns |
 | 14.25 | message composition, per error | **56 bytes**; 0 for an emitted literal |
 | 14.26 | suppression across two validators, adapter-style pre-pathed adds, and a pooled reset | enforced in all three |
-| 14.27 | `[GeneratedRegex]` emitted **by a source generator** | **CS8795** — never implemented |
+| 14.27 | `[GeneratedRegex]` emitted from `RegisterSourceOutput` | **CS8795** — never implemented |
 | 14.28 | the identical `[GeneratedRegex]` declaration hand-written in the same project | compiles |
+| 14.34 | `[GeneratedRegex]` emitted from `RegisterPostInitializationOutput` | **compiles and runs** |
+| 14.35 | the same text moved to `RegisterSourceOutput`, everything else unchanged | **CS8795** |
 | 14.29 | `foreach` over an `IReadOnlyList<T>` property in a generated validator | 40 bytes/pass — boxed enumerator |
 | 14.30 | AOT binary: no pattern / `[GeneratedRegex]` / `new Regex(pattern)` | 1.103 / 1.119 / **1.550** MB |
 | 14.32 | the same at 5 patterns — is the cost per-pattern? | 1.136 / **1.550** MB — a threshold, not per-pattern |

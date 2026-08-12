@@ -48,11 +48,13 @@ public sealed class ValidatorEmitter {
                 ? $@"\A(?:{constraint.Pattern})\z"
                 : constraint.Pattern!;
 
-            // A static readonly Regex, not [GeneratedRegex]. Plan §2 mandates the latter, and it is
-            // unavailable here: source generators cannot see each other's output, so the partial
-            // method this would declare is never implemented by the regex generator and the
-            // consumer's build fails with CS8795. Verified - the identical declaration hand-written
-            // in the same project compiles.
+            // A static readonly Regex, not [GeneratedRegex]. Plan §2 mandates the latter and it is
+            // unavailable here, for a narrower reason than it first appears. Post-initialization
+            // output IS visible to other generators, so a [GeneratedRegex] emitted that way would be
+            // implemented; output from RegisterSourceOutput is not, and fails with CS8795. Both
+            // verified. Post-initialization cannot help: it runs before anything has been examined
+            // and can read neither the compilation nor additional files, while a pattern is always
+            // user data. See API-SURFACE.md §13.6.
             //
             // What §2 was actually protecting against is intact. The instance is built once at type
             // initialization rather than per validation call, and RegexOptions.Compiled is never
