@@ -939,6 +939,21 @@ enforcement point moved, because an emitted shape is unavailable to any engine t
 produced elsewhere — which is the FluentValidation adapter, the one thing §8 asks to be proven
 substitutable. §4.3 has the full reasoning.
 
+**13.6 Patterns compile to a `static readonly Regex`, not `[GeneratedRegex]`.** Plan §2 makes
+`[GeneratedRegex]` a non-negotiable. It is not available to us: source generators cannot see each
+other's output, so the partial method we would declare is never implemented by the regex generator
+and the *consumer's* build fails with CS8795. Verified both ways — §14.27 and §14.28.
+
+What §2 was protecting against is intact. The defect it was written against (plan §10.2) was a
+`Regex` constructed **per request** with `RegexOptions.Compiled`, which emits IL through
+`Reflection.Emit` on every call. The emitted field is built once at type initialization and never
+passes `Compiled`, so nothing reaches `Reflection.Emit` and the AOT publish stays clean. The cost is
+an interpreted match rather than a source-generated one, which is a throughput difference on a path
+that already allocates nothing.
+
+The same class of trap as plan §7.2's "generators cannot see each other's output" — it is worth
+reading that note as applying to *every* other generator, not only DependencyModules'.
+
 Unchanged from the plan and worth stating: `IValidatorFor<T>`, `IAsyncValidatorFor<T>`,
 `IValidationProfile`, `IValidationProfile<TPredecessor>` and `ValidationError`'s shape are exactly
 as §4 specifies. `ValidationResult` is immutable, which is the "make it immutable" branch of §4's
@@ -978,6 +993,9 @@ Compiled against net8.0, and net9.0/net10.0 where the answer could differ by TFM
 | 14.24 | emission shape, success path, JIT | 10.3 / 10.0 / **16.2** ns |
 | 14.25 | message composition, per error | **56 bytes**; 0 for an emitted literal |
 | 14.26 | suppression across two validators, adapter-style pre-pathed adds, and a pooled reset | enforced in all three |
+| 14.27 | `[GeneratedRegex]` emitted **by a source generator** | **CS8795** — never implemented |
+| 14.28 | the identical `[GeneratedRegex]` declaration hand-written in the same project | compiles |
+| 14.29 | `foreach` over an `IReadOnlyList<T>` property in a generated validator | 40 bytes/pass — boxed enumerator |
 
 14.17 through 14.22 are the DataAnnotations semantics §18 is specified against — read from the
 runtime attributes rather than from the documentation, because two of them (anchoring, and `[Range]`

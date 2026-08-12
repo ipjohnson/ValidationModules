@@ -1,0 +1,297 @@
+using System.Collections.Immutable;
+using Microsoft.CodeAnalysis;
+using ValidationModules.SourceGenerator.Impl.Models;
+
+namespace ValidationModules.SourceGenerator.Impl.FrontEnds;
+
+/// <summary>
+/// Turns a type's attributes into a <see cref="ValidatedTypeModel"/>.
+/// </summary>
+/// <remarks>
+/// Reads both vocabularies - <c>ValidationModules.Constraints</c> and
+/// <c>System.ComponentModel.DataAnnotations</c> - into the same IR, so a rule's origin stops
+/// mattering the moment it is read. DataAnnotations attributes are never instantiated or invoked;
+/// their arguments are read out of metadata at build time, which is what keeps the result free of
+/// the reflection <c>Validator.TryValidateObject</c> would otherwise do.
+/// </remarks>
+public sealed class AttributeFrontEnd {
+    private readonly List<Diagnostic> _diagnostics = new();
+    private readonly bool _compileDataAnnotations;
+    private readonly Func<string, string> _fieldNamer;
+
+    public AttributeFrontEnd(bool compileDataAnnotations, Func<string, string> fieldNamer) {
+        _compileDataAnnotations = compileDataAnnotations;
+        _fieldNamer = fieldNamer;
+    }
+
+    public IReadOnlyList<Diagnostic> Diagnostics => _diagnostics;
+
+    /// <summary>
+    /// Builds the model for <paramref name="type"/>, or null when nothing about it asks for a
+    /// validator.
+    /// </summary>
+    /// <param name="type">The candidate type.</param>
+    /// <param name="validatorNameFor">
+    /// Resolves the validator name for a nested type, so a property's model can name the validator
+    /// it will call before that type has itself been processed.
+    /// </param>
+    public ValidatedTypeModel? Build(INamedTypeSymbol type, Func<INamedTypeSymbol, string> validatorNameFor) {
+        var properties = ImmutableArray.CreateBuilder<ValidatedPropertyModel>();
+        var sawAnything = HasGenerateValidator(type);
+
+        foreach (var member in type.GetMembers()) {
+            if (member is not IPropertySymbol property || property.IsStatic || property.IsIndexer) {
+                continue;
+            }
+
+            var constraints = ReadConstraints(property);
+            var validateNested = HasValidateNested(property);
+
+            if (constraints.Count == 0 && !validateNested) {
+                continue;
+            }
+
+            sawAnything = true;
+
+            if (property.GetMethod is null || property.GetMethod.DeclaredAccessibility == Accessibility.Private) {
+                Report(ValidationDiagnostics.InaccessibleProperty, property, property.Name);
+                continue;
+            }
+
+            properties.Add(BuildProperty(property, constraints, validateNested, validatorNameFor));
+        }
+
+        if (!sawAnything) {
+            return null;
+        }
+
+        if (ImplementsValidatableObject(type)) {
+            Report(ValidationDiagnostics.ValidatableObjectNotCompiled, type, type.Name);
+        }
+
+        var ns = type.ContainingNamespace.IsGlobalNamespace
+            ? "ValidationModules.Generated"
+            : type.ContainingNamespace.ToDisplayString();
+
+        return new ValidatedTypeModel(
+            ns,
+            type.Name,
+            type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+            validatorNameFor(type),
+            new EquatableArray<ValidatedPropertyModel>(properties.ToImmutable()));
+    }
+
+    private ValidatedPropertyModel BuildProperty(
+        IPropertySymbol property,
+        List<ConstraintModel> constraints,
+        bool validateNested,
+        Func<INamedTypeSymbol, string> validatorNameFor) {
+
+        var type = property.Type;
+        var isString = type.SpecialType == SpecialType.System_String;
+        var elementType = TypeFacts.ElementTypeOf(type);
+
+        var shape = PropertyShape.Scalar;
+        string? elementTypeName = null;
+        string? elementValidatorName = null;
+
+        if (validateNested) {
+            if (elementType is not null) {
+                shape = PropertyShape.Collection;
+                elementTypeName = elementType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+                if (elementType is INamedTypeSymbol namedElement) {
+                    elementValidatorName = QualifiedValidator(namedElement, validatorNameFor);
+                }
+            } else if (type is INamedTypeSymbol namedType) {
+                shape = PropertyShape.Object;
+                elementValidatorName = QualifiedValidator(namedType, validatorNameFor);
+            }
+        }
+
+        ValidateConstraintsAgainstType(property, constraints, isString, elementType is not null);
+
+        return new ValidatedPropertyModel(
+            property.Name,
+            FieldNameFor(property),
+            type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+            shape,
+            elementTypeName,
+            elementValidatorName,
+            type.IsReferenceType,
+            isString,
+            TypeFacts.IsNullableValueType(type),
+            elementType is not null && TypeFacts.IsIndexable(type),
+            TypeFacts.CountAccessor(type),
+            validateNested,
+            new EquatableArray<ConstraintModel>(Order(constraints).ToImmutableArray()));
+    }
+
+    /// <summary>
+    /// Required is evaluated first whatever order the attributes were written in, because the
+    /// collector's suppression rule is forward-only. Everything else keeps attribute order, which
+    /// is what §4.2 promises.
+    /// </summary>
+    private static IEnumerable<ConstraintModel> Order(List<ConstraintModel> constraints) =>
+        constraints.Where(constraint => constraint.Kind == ConstraintKind.Required)
+            .Concat(constraints.Where(constraint => constraint.Kind != ConstraintKind.Required));
+
+    private void ValidateConstraintsAgainstType(
+        IPropertySymbol property, List<ConstraintModel> constraints, bool isString, bool isCollection) {
+
+        foreach (var constraint in constraints) {
+            var typeName = property.Type.ToDisplayString();
+
+            switch (constraint.Kind) {
+                case ConstraintKind.StringLength when !isString:
+                    Report(ValidationDiagnostics.StringConstraintOnNonString, property,
+                        "[StringLength]", property.Name, typeName);
+                    break;
+
+                case ConstraintKind.Pattern when !isString:
+                    Report(ValidationDiagnostics.StringConstraintOnNonString, property,
+                        "[Pattern]", property.Name, typeName);
+                    break;
+
+                case ConstraintKind.ItemCount when !isCollection:
+                    Report(ValidationDiagnostics.ItemCountOnNonCollection, property, property.Name, typeName);
+                    break;
+
+                case ConstraintKind.Range when !TypeFacts.IsOrdered(property.Type):
+                    Report(ValidationDiagnostics.RangeOnUnorderedType, property, property.Name, typeName);
+                    break;
+
+                case ConstraintKind.Required when property.Type.IsValueType && !TypeFacts.IsNullableValueType(property.Type):
+                    Report(ValidationDiagnostics.RequiredOnNonNullableValueType, property, property.Name);
+                    break;
+            }
+
+            if (constraint.Kind is ConstraintKind.StringLength or ConstraintKind.ItemCount &&
+                int.TryParse(constraint.Min, out var min) &&
+                int.TryParse(constraint.Max, out var max) &&
+                min > max) {
+                Report(ValidationDiagnostics.MinExceedsMax, property, property.Name);
+            }
+
+            if (constraint.Kind == ConstraintKind.Pattern && constraint.Pattern is { } pattern &&
+                !TypeFacts.IsValidRegex(pattern, out var error)) {
+                Report(ValidationDiagnostics.InvalidPattern, property, property.Name, error);
+            }
+
+            // RegexOptions.Compiled is 8. Meaningless against a source-generated regex, and asking
+            // for it usually means someone is carrying over a habit this library exists to remove.
+            if (constraint.Kind == ConstraintKind.Pattern && (constraint.RegexOptions & 8) != 0) {
+                Report(ValidationDiagnostics.CompiledRegexRequested, property, property.Name);
+            }
+        }
+    }
+
+    private List<ConstraintModel> ReadConstraints(IPropertySymbol property) {
+        var constraints = new List<ConstraintModel>();
+
+        foreach (var attribute in property.GetAttributes()) {
+            var attributeClass = attribute.AttributeClass;
+            if (attributeClass is null) {
+                continue;
+            }
+
+            var ns = attributeClass.ContainingNamespace?.ToDisplayString();
+
+            if (ns == KnownTypes.ConstraintsNamespace) {
+                var native = NativeConstraintReader.Read(attribute, attributeClass.Name);
+                if (native is not null) {
+                    constraints.Add(native);
+                }
+
+                continue;
+            }
+
+            if (ns != KnownTypes.DataAnnotationsNamespace) {
+                if (DerivesFromValidationAttribute(attributeClass)) {
+                    Report(ValidationDiagnostics.CustomValidationAttribute, property,
+                        attributeClass.Name, property.Name);
+                }
+
+                continue;
+            }
+
+            if (!_compileDataAnnotations) {
+                if (DataAnnotationsConstraintReader.IsConstraint(attributeClass.Name)) {
+                    Report(ValidationDiagnostics.DataAnnotationsSkipped, property,
+                        attributeClass.Name, property.Name);
+                }
+
+                continue;
+            }
+
+            var outcome = DataAnnotationsConstraintReader.Read(attribute, attributeClass.Name, property);
+            if (outcome.Constraint is not null) {
+                constraints.Add(outcome.Constraint);
+            }
+
+            if (outcome.Diagnostic is not null) {
+                _diagnostics.Add(Diagnostic.Create(
+                    outcome.Diagnostic, Location(property), attributeClass.Name, property.Name));
+            }
+        }
+
+        return constraints;
+    }
+
+    private string FieldNameFor(IPropertySymbol property) {
+        foreach (var attribute in property.GetAttributes()) {
+            var name = attribute.AttributeClass?.ToDisplayString();
+
+            if (name == KnownTypes.JsonPropertyName &&
+                attribute.ConstructorArguments.Length == 1 &&
+                attribute.ConstructorArguments[0].Value is string jsonName) {
+                return jsonName;
+            }
+
+            if (name == KnownTypes.DisplayAttribute) {
+                foreach (var named in attribute.NamedArguments) {
+                    if (named.Key == "Name" && named.Value.Value is string displayName) {
+                        return displayName;
+                    }
+                }
+            }
+        }
+
+        return _fieldNamer(property.Name);
+    }
+
+    private static string QualifiedValidator(INamedTypeSymbol type, Func<INamedTypeSymbol, string> validatorNameFor) {
+        var ns = type.ContainingNamespace.IsGlobalNamespace
+            ? "ValidationModules.Generated"
+            : type.ContainingNamespace.ToDisplayString();
+
+        return $"global::{ns}.{validatorNameFor(type)}";
+    }
+
+    private static bool HasGenerateValidator(INamedTypeSymbol type) =>
+        type.GetAttributes().Any(attribute =>
+            attribute.AttributeClass?.ToDisplayString() == KnownTypes.GenerateValidatorAttribute);
+
+    private static bool HasValidateNested(IPropertySymbol property) =>
+        property.GetAttributes().Any(attribute =>
+            attribute.AttributeClass?.Name == "ValidateNestedAttribute" &&
+            attribute.AttributeClass.ContainingNamespace?.ToDisplayString() == KnownTypes.ConstraintsNamespace);
+
+    private static bool DerivesFromValidationAttribute(INamedTypeSymbol attributeClass) {
+        for (var current = attributeClass.BaseType; current is not null; current = current.BaseType) {
+            if (current.ToDisplayString() == KnownTypes.ValidationAttribute) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ImplementsValidatableObject(INamedTypeSymbol type) =>
+        type.AllInterfaces.Any(i => i.ToDisplayString() == KnownTypes.ValidatableObject);
+
+    private void Report(DiagnosticDescriptor descriptor, ISymbol symbol, params object?[] args) =>
+        _diagnostics.Add(Diagnostic.Create(descriptor, Location(symbol), args));
+
+    private static Location? Location(ISymbol symbol) => symbol.Locations.FirstOrDefault();
+}

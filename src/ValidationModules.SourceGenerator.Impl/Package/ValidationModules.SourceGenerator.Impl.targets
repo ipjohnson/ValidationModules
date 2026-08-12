@@ -1,0 +1,20 @@
+<Project>
+    <PropertyGroup>
+        <ExcludeGeneratedCodeFromCoverage Condition="'$(ExcludeGeneratedCodeFromCoverage)' == ''">true</ExcludeGeneratedCodeFromCoverage>
+    </PropertyGroup>
+
+    <!--
+        Every property the generator reads has to be listed here, or it is invisible to the
+        compiler and silently takes its default.
+    -->
+    <ItemGroup>
+        <CompilerVisibleProperty Include="ValidationModules_Registration"/>
+        <CompilerVisibleProperty Include="ValidationModules_FieldNaming"/>
+        <CompilerVisibleProperty Include="ValidationModules_DataAnnotations"/>
+        <CompilerVisibleProperty Include="ExcludeGeneratedCodeFromCoverage"/>
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(PackageValidationModulesIncludeSource)' == 'true'">
+        <Compile Include="$(MSBuildThisFileDirectory)../src/**/*.cs" Visible="false"/>
+    </ItemGroup>
+</Project>

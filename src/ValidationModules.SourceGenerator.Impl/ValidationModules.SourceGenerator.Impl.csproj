@@ -1,0 +1,70 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <LangVersion>10</LangVersion>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <IsRoslynComponent>true</IsRoslynComponent>
+        <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+        <IsPackable>True</IsPackable>
+        <Nullable>enable</Nullable>
+        <PackageId>ValidationModules.SourceGenerator.Impl</PackageId>
+        <Description>Source-only package containing the ValidationModules generator internals: the validated-type IR, the attribute and DataAnnotations front-ends, and the validator and registration emitters. Set PackageValidationModulesIncludeSource=true to compile these into your own Roslyn generator and drive the same emitter from your own front-end. Most projects want ValidationModules.SourceGenerator instead.</Description>
+        <DevelopmentDependency>true</DevelopmentDependency>
+        <IncludeBuildOutput>false</IncludeBuildOutput>
+        <!-- Source-only package: ships .cs under src/ and no lib/, which is exactly what NU5128 flags. -->
+        <!--
+            RS2000 for the DM#### rules. DependencyModules' diagnostics arrive with its source
+            import and are tracked in that project's own AnalyzerReleases files; listing them in
+            ours would claim them as this package's. The VM#### rules are tracked normally.
+        -->
+        <NoWarn>$(NoWarn);NU5128;RS2000;RS2008</NoWarn>
+    </PropertyGroup>
+
+    <!--
+        DependencyModules' own generator internals and CSharpAuthor are compiled in from their
+        packages rather than vendored. Both ship as source-only packages gated on a property, which
+        is the same mechanism this package offers its own consumers.
+    -->
+    <PropertyGroup>
+        <PackageDependencyModuleIncludeSource>true</PackageDependencyModuleIncludeSource>
+        <PackageCSharpAuthorIncludeSource>true</PackageCSharpAuthorIncludeSource>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- PackagePath must use a forward slash: a trailing backslash packs to "build//" on Linux/macOS,
+             which breaks NuGet's build/$(PackageId).props|targets convention. -->
+        <None Remove="Package\ValidationModules.*"/>
+        <Content Include="Package\ValidationModules.*">
+            <Pack>true</Pack>
+            <PackagePath>build/</PackagePath>
+            <PackageCopyToOutput>true</PackageCopyToOutput>
+        </Content>
+        <Content Include="**\*.cs" Exclude="**\obj\**;**\bin\**" Visible="true">
+            <Pack>true</Pack>
+            <PackagePath>src/ValidationModules.SourceGenerator.Impl/</PackagePath>
+            <PackageCopyToOutput>true</PackageCopyToOutput>
+        </Content>
+    </ItemGroup>
+
+    <!-- These deps intentionally flow: consumers compile the shipped sources into their own generator. -->
+    <ItemGroup>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.10.0"/>
+        <PackageReference Include="DependencyModules.SourceGenerator.Impl" Version="1.0.0-rc9230"/>
+        <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <PackageReference Include="CSharpAuthor" Version="1.1.1007">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>build</IncludeAssets>
+        </PackageReference>
+    </ItemGroup>
+
+    <!-- Release tracking for the VM#### diagnostics (RS2008). -->
+    <ItemGroup>
+        <AdditionalFiles Include="AnalyzerReleases.Shipped.md"/>
+        <AdditionalFiles Include="AnalyzerReleases.Unshipped.md"/>
+    </ItemGroup>
+
+</Project>
