@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
 using BenchmarkDotNet.Attributes;
 
-namespace ValidationModules.Benchmarks;
+namespace ValidationModules.Benchmarks.Design;
 
 /// <summary>
 /// What a pattern constraint costs under each strategy available to a source generator.
@@ -25,6 +25,7 @@ namespace ValidationModules.Benchmarks;
 /// </para>
 /// </remarks>
 [MemoryDiagnoser]
+[BenchmarkCategory(BenchmarkCategories.Design)]
 public partial class RegexStrategyBenchmarks {
     private const string Pattern = "^[A-Z]{3}$";
 

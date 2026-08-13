@@ -104,6 +104,19 @@ an intended change:
 UPDATE_SNAPSHOTS=1 dotnet test tests/ValidationModules.Runtime.Tests
 ```
 
+## Benchmarks
+
+```bash
+./scripts/benchmark.sh                     # ValidationModules alone, JIT and Native AOT
+./scripts/benchmark.sh --quick             # the same, fast enough to run after a change
+./scripts/benchmark.sh --comparative       # against FluentValidation and DataAnnotations
+```
+
+Two suites. The default one measures this library on its own and is what a change should be checked
+against; the comparative one is opt-in, because its numbers move when FluentValidation changes as
+well as when this does. `benchmarks/README.md` covers what each measures, and the four choices the
+comparative suite makes in FluentValidation's favour so the comparison stays honest.
+
 ## License
 
 MIT.

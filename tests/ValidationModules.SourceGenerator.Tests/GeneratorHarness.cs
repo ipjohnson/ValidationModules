@@ -32,6 +32,13 @@ public static class GeneratorHarness {
             typeof(System.Text.RegularExpressions.Regex).Assembly,
             typeof(System.ComponentModel.DataAnnotations.RequiredAttribute).Assembly,
             typeof(object).Assembly,
+
+            // System.ComponentModel carries the type-forward for IServiceProvider, which the emitted
+            // registration table's factory delegates take. Without it the validators compile and the
+            // registration does not, so CompilationErrors reports a missing reference on every run
+            // and can never be asserted empty.
+            Assembly.Load("System.ComponentModel"),
+            Assembly.Load("System.Runtime"),
         };
 
         var references = AppDomain.CurrentDomain.GetAssemblies()

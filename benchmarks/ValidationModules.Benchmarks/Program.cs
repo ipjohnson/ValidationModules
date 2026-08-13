@@ -1,17 +1,23 @@
-using BenchmarkDotNet.Configs;
-using BenchmarkDotNet.Environments;
-using BenchmarkDotNet.Jobs;
+using System.Reflection;
 using BenchmarkDotNet.Running;
 using ValidationModules.Benchmarks;
 
-// Native AOT is the target runtime and the one the emission-shape question turns on: whether ILC
-// inlines the runtime helpers back into the caller. The JIT job is kept alongside it because a
-// difference that appears under one and not the other is worth knowing about.
+// The default suite: ValidationModules on its own, no competitor packages referenced. Comparisons
+// against FluentValidation and DataAnnotations live in ValidationModules.Benchmarks.Comparative and
+// are opted into explicitly - see benchmarks/README.md.
 //
 //   dotnet run -c Release --project benchmarks/ValidationModules.Benchmarks
-//   dotnet run -c Release --project benchmarks/ValidationModules.Benchmarks -- --job short
-var config = DefaultConfig.Instance
-    .AddJob(Job.Default.WithRuntime(CoreRuntime.Core10_0).WithId("jit").WithWarmupCount(5).WithIterationCount(15))
-    .AddJob(Job.Default.WithRuntime(NativeAotRuntime.Net10_0).WithId("aot").WithWarmupCount(5).WithIterationCount(15));
+//   dotnet run -c Release --project benchmarks/ValidationModules.Benchmarks -- --list flat
+//   dotnet run -c Release --project benchmarks/ValidationModules.Benchmarks -- --anyCategories=endtoend
+//   dotnet run -c Release --project benchmarks/ValidationModules.Benchmarks -- --runtime jit --job short
+//
+// Both runtimes by default: Native AOT is what the library targets, so a number taken only under
+// the JIT is only half an answer. --runtime jit drops the ILC publish when the question is relative
+// cost rather than the published binary.
+//
+// Types are discovered rather than listed, so a new benchmark class is picked up by existing it.
+var (config, forwarded) = BenchmarkArguments.Parse(args);
 
-BenchmarkSwitcher.FromTypes([typeof(EmissionShapeBenchmarks), typeof(MessageMaterializationBenchmarks), typeof(RegexStrategyBenchmarks)]).Run(args, config);
+BenchmarkSwitcher
+    .FromAssembly(Assembly.GetExecutingAssembly())
+    .Run(forwarded, config);

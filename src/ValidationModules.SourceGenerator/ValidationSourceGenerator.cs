@@ -70,7 +70,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             }
 
             if (result.Model is { } model) {
-                production.AddSource($"{model.ValidatorName}.g.cs", new ValidatorEmitter().Emit(model));
+                production.AddSource(HintNameFor(model), new ValidatorEmitter().Emit(model));
             }
         });
 
@@ -94,14 +94,34 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             };
 
             // Ordered by name so the emitted table does not reshuffle between builds, which would
-            // otherwise turn every incremental compile into a diff.
-            var ordered = collected.OrderBy(model => model.ValidatorName, StringComparer.Ordinal).ToArray();
+            // otherwise turn every incremental compile into a diff. Namespace first, because the
+            // validator name alone is not unique - two namespaces may each declare a Customer.
+            var ordered = collected
+                .OrderBy(model => model.Namespace, StringComparer.Ordinal)
+                .ThenBy(model => model.ValidatorName, StringComparer.Ordinal)
+                .ToArray();
 
             if (new RegistrationEmitter().Emit(ordered, mode, ns) is { } source) {
                 production.AddSource("GeneratedValidatorRegistration.g.cs", source);
             }
         });
     }
+
+    /// <summary>
+    /// The file name a validator is added under, which Roslyn requires to be unique per generator.
+    /// </summary>
+    /// <remarks>
+    /// Qualified by namespace, because the validator name is not unique on its own: two namespaces
+    /// in one assembly may each declare a <c>Customer</c>, and emitting both as
+    /// <c>CustomerValidator.g.cs</c> makes <c>AddSource</c> throw - which fails the whole generator,
+    /// not just the second type. Versioned model sets make this ordinary rather than exotic:
+    /// <c>Api.V1.Customer</c> alongside <c>Api.V2.Customer</c> is the shape §6 of the plan is built
+    /// around.
+    /// </remarks>
+    private static string HintNameFor(ValidatedTypeModel model) =>
+        model.Namespace.Length == 0
+            ? $"{model.ValidatorName}.g.cs"
+            : $"{model.Namespace}.{model.ValidatorName}.g.cs";
 
     private static ModelResult BuildModel(INamedTypeSymbol symbol, GeneratorOptions options) {
         var frontEnd = new AttributeFrontEnd(options.CompileDataAnnotations, options.FieldNamer, options.ResolvedPatternPolicy);
