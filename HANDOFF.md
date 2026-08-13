@@ -187,6 +187,31 @@ request-body shape.
 **Not a wire-shape change** — `ValidationError.Field` keeps its place in the JSON. The *value* of
 that field changes, which matters only to clients keying off it to attach messages to form inputs.
 
+**Adding full paths back later is additive, and here is the shape it would take.** There is no
+MSBuild opt-in for them now — one cannot coexist with the struct above, because there is no ancestry
+left to reconstruct a path from. Checked against the emitter rather than assumed:
+
+- **The `ctx.Add*` extensions are unaffected.** They take the context by value and call
+  `Add(field, code, message, severity)`. Neither signature nor body references path storage; the
+  message embeds the bare field name and the path lives in `ValidationError.Field`.
+- **The emitted text is identical under both designs** — `ValidatorEmitter` writes `ctx.Push`,
+  `ctx.PushIndex` and `ctx.PushKey` at :145, :167 and :135, and none of them depend on the
+  representation.
+- So the choice is *where* the switch lives. Reusing the existing push names means no emitter change
+  but taxes everyone — the context must always carry a node index and the collector must always keep
+  the log, because at push time it cannot know what the process wants. **Distinct names
+  (`PushTracked`, …) let the generator pick at compile time**, the same mechanism as §3.5, and the
+  compact path stays free.
+- Cost of the tracked variant: a `_node` int in the struct (`-1` when compact, 44 bytes → 48
+  padded), a node write in `PushTracked` only, and one branch in `Emit` — which is the failure path,
+  never the clean one. Allocate the node array lazily and a compact-only process never touches it.
+  §7.5's additive-only commitment covers adding the three names.
+
+**The hazard, if that day comes:** the property is per-compilation, but a context flows across
+assembly boundaries at runtime, and ValidationModules / Hardened / consumer app is exactly that
+arrangement. A compact-compiled validator nesting into a tracked-compiled one yields a path that is
+full only from the point tracking began. It degrades rather than breaks, and it will not be obvious.
+
 ### 3.2 Redaction: shape by default
 
 Three policies, selectable at assembly (csproj), class, and property level — same resolution order
