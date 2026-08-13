@@ -34,4 +34,22 @@ public static class ValidationCodes {
 
     /// <summary>A collection fell outside its element-count bounds.</summary>
     public const string ArrayBounds = "array_bounds";
+
+    /// <summary>
+    /// A value could not be read as the type it was declared as - <c>?limit=abc</c> where an integer
+    /// was expected.
+    /// </summary>
+    /// <remarks>
+    /// Nothing in this library emits this one. A validator receives a typed model, so by the time it
+    /// runs the conversion has already succeeded; the code belongs to whatever bound the request.
+    /// It lives here anyway because the vocabulary is defined by the wire rather than by which
+    /// library produced the value, and a client switching on <see cref="ValidationError.Code"/> sees
+    /// this alongside the rest. Splitting it out would leave five codes in one place and the sixth
+    /// somewhere a consumer has to already know to look.
+    ///
+    /// Distinct from the constraint codes rather than folded into one of them: the value never
+    /// became the right type, so no constraint on it was evaluated at all, and reporting
+    /// <see cref="Range"/> would claim one was.
+    /// </remarks>
+    public const string Invalid = "invalid";
 }
