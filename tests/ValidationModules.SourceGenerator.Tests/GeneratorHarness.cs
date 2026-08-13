@@ -21,7 +21,15 @@ public static class GeneratorHarness {
         IReadOnlyDictionary<string, string> Sources,
         ImmutableArray<Diagnostic> CompilationErrors);
 
-    public static Result Run(string source, params (string Key, string Value)[] buildProperties) {
+    public static Result Run(string source, params (string Key, string Value)[] buildProperties) =>
+        Run(source, assemblyName: "GeneratorTests", buildProperties);
+
+    /// <param name="assemblyName">
+    /// The compilation's assembly name, which the registration emitter derives its namespace from.
+    /// Worth varying: an assembly name is not necessarily a valid namespace.
+    /// </param>
+    public static Result Run(
+        string source, string assemblyName, params (string Key, string Value)[] buildProperties) {
         // Touch the types first: GetAssemblies returns only what is already loaded, and nothing in
         // a test has any reason to have loaded the runtime or the regex library before this point.
         // Without them the attributes do not bind, the front end sees an unannotated type, and every
@@ -31,6 +39,10 @@ public static class GeneratorHarness {
             typeof(global::ValidationModules.IValidatorFor<>).Assembly,
             typeof(System.Text.RegularExpressions.Regex).Assembly,
             typeof(System.ComponentModel.DataAnnotations.RequiredAttribute).Assembly,
+
+            // [JsonPropertyName] overrides the derived field name, so the field-naming tests need
+            // it bound rather than reported as a missing type.
+            typeof(System.Text.Json.Serialization.JsonPropertyNameAttribute).Assembly,
             typeof(object).Assembly,
 
             // System.ComponentModel carries the type-forward for IServiceProvider, which the emitted
@@ -50,7 +62,7 @@ public static class GeneratorHarness {
             .ToList();
 
         var compilation = CSharpCompilation.Create(
-            "GeneratorTests",
+            assemblyName,
             new[] { CSharpSyntaxTree.ParseText(source) },
             references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));

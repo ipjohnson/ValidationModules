@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Coverage settings for the command in CLAUDE.md, which passes this file to "dotnet test" with
+    the collect and settings switches.
+
+    Generated code is excluded rather than measured. A generated validator is straight-line output
+    of the emitter, so covering it measures the integration projects' models rather than the
+    product, and its coverage moves whenever a test model gains a property. What the emitter
+    produces is pinned by the golden files under
+    tests/ValidationModules.SourceGenerator.Tests/Snapshots instead, which is a stricter check than
+    a line count.
+-->
+<RunSettings>
+    <DataCollectionRunSettings>
+        <DataCollectors>
+            <DataCollector friendlyName="XPlat code coverage">
+                <Configuration>
+                    <Format>cobertura</Format>
+
+                    <!-- The benchmark projects are measurement harnesses, not product code. -->
+                    <Exclude>[ValidationModules.Benchmarks*]*,[SutProject*]*</Exclude>
+
+                    <ExcludeByAttribute>Obsolete,GeneratedCodeAttribute,CompilerGeneratedAttribute</ExcludeByAttribute>
+                    <ExcludeByFile>**/*.g.cs,**/*.Designer.cs</ExcludeByFile>
+
+                    <!-- Assertion helpers in the test projects would otherwise inflate the total. -->
+                    <IncludeTestAssembly>false</IncludeTestAssembly>
+
+                    <SingleHit>false</SingleHit>
+                    <UseSourceLink>true</UseSourceLink>
+                    <SkipAutoProps>true</SkipAutoProps>
+                    <DeterministicReport>false</DeterministicReport>
+                </Configuration>
+            </DataCollector>
+        </DataCollectors>
+    </DataCollectionRunSettings>
+</RunSettings>
