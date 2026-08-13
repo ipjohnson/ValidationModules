@@ -5,6 +5,44 @@ Every attribute the generator reads, in `ValidationModules.Constraints` unless n
 None of these is ever constructed at run time. Their arguments are read out of metadata during the
 build and compiled into comparisons.
 
+## Shared members
+
+Every constraint derives from `ValidationConstraintAttribute` and inherits:
+
+| Member | Type | |
+|---|---|---|
+| `Code` | `string?` | overrides the machine-readable code |
+| `Message` | `string?` | overrides the composed message |
+| `FromProfile` | `Type?` | **not implemented** — see below |
+| `UntilProfile` | `Type?` | **not implemented** |
+| `Profiles` | `Type[]?` | **not implemented** |
+
+There is no `Severity` on a constraint. Severity is reachable from
+[`rules.Ensure(…, severity:)`](/reference/rules-api#ensure) and from `context.Add` in a
+hand-written validator.
+
+::: danger Profile attribution is accepted and ignored
+Profiles are Stage 3 of the plan and are **not built**. The declaration surface shipped ahead of the
+implementation, so this compiles, reads exactly as the design describes, and does something else:
+
+```csharp
+[Required(FromProfile = typeof(V2))]     // "not required before V2"
+public string? Tag { get; init; }
+```
+
+The rule is enforced **unconditionally**, including under V1, with no diagnostic. One validator is
+emitted rather than one per profile, no dispatch table is generated, and `ValidatorRegistration`'s
+`Profile` component is never populated. Nonsense arguments — a type that is not a profile, or a
+range that can never admit anything — are accepted too, because the diagnostics reserved for them
+(VM0011–VM0015, VM0020) are not declared yet.
+
+The failure direction is the bad one: a rule applying where it should not, rejecting data a caller
+was entitled to send. Do not use these arguments until Stage 3 lands.
+
+Pinned by `tests/ValidationModules.SourceGenerator.Tests/ProfileAttributionTests.cs`, which will
+fail when it does.
+:::
+
 ## `[Required]`
 
 | Member | Type | Default | |

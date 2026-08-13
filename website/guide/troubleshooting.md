@@ -45,6 +45,14 @@ did not run at all; if the files are there, the problem is downstream.
 `ValidationModules_DataAnnotations` is `Ignore`, no validator is emitted — but every skipped
 constraint reports [VM0010](/reference/diagnostics#vm0010), so check your warnings.
 
+## A profiled rule applies in every profile
+
+`FromProfile`, `UntilProfile` and `Profiles` are **accepted and ignored**. Profiles are Stage 3 and
+are not built, so a rule written to apply only from V2 is enforced everywhere, with no diagnostic.
+
+Do not use those arguments yet. See
+[the attributes reference](/reference/attributes#shared-members).
+
 ## The validator exists but a rule never fires
 
 **`[Required]` on a non-nullable value type.** `int Age` is always present, so `[Required]` can never
@@ -139,6 +147,19 @@ An inline `[Pattern("…")]` roots the regex parser and interpreter. Declare the
 If you did not see [VM0017](/reference/diagnostics#vm0017) warning you, the policy resolved to
 `Allow`, which happens when neither `PublishAot` nor `IsAotCompatible` is set on the project holding
 the models. Set `IsAotCompatible` there.
+
+## `InvalidOperationException: Validation nested more than 64 levels deep`
+
+Your object graph contains a cycle, or a genuinely very deep tree. The message names the path it
+reached.
+
+This is a guard rather than a cycle detector — tracking visited instances would cost an allocation
+and a lookup on every descent. It throws rather than reporting an error because a cycle is a bug in
+the graph, not invalid data, and the alternative is a `StackOverflowException`, which cannot be
+caught.
+
+If the depth is legitimate, leave the recursive property without `[ValidateNested]` and validate the
+levels you care about explicitly. See [Cycles and depth](/guide/nesting#cycles-and-depth).
 
 ## A diagnostic is too noisy
 

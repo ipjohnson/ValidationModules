@@ -188,15 +188,38 @@ There is no root name and nothing is synthesized. `body` is not special — it i
 that got pushed like any other, and it appears only because something pushed it. A path or query
 parameter validated on its own is depth 0 and renders bare: `id`, `page`.
 
-## Cycles
+## Cycles and depth
 
-A model that references itself will recurse until the stack runs out. There is no cycle detector —
-it would cost something on every descent to catch a shape that is rare in a request body, which is
-what this library validates.
+A self-referential model is fine, and generation terminates regardless — the emitter walks types,
+not values, so `Node` containing a `Node?` produces one validator that calls itself.
 
-If you model a tree, bound it yourself: leave the recursive property without `[ValidateNested]` and
-validate the levels you care about explicitly, or check depth in an
-[`IAsyncValidatorFor<T>`](/guide/async).
+Validation of an actual cycle is guarded. Descending past **64 levels** throws
+`InvalidOperationException` naming the path it got to:
+
+```
+Validation nested more than 64 levels deep at 'child...child.child'.
+This normally means the object graph contains a cycle.
+```
+
+A guard rather than a detector, deliberately: tracking visited instances would cost an allocation
+and a lookup on every descent to catch a shape that is rare in a request body, which is what this
+library validates. The depth counter is already in the context, so the check is a comparison against
+a field.
+
+It throws rather than reporting an error because a cycle is a bug in the caller's object graph, not
+invalid data — and because the alternative is a `StackOverflowException`, which cannot be caught and
+takes the process down with it.
+
+```csharp
+var head = new MutableNode { Label = "head" };
+head.Child = head;
+
+MutableNodeValidator.Instance.Validate(head);   // InvalidOperationException
+```
+
+Note that a `record` cannot hold a cycle — `a with { Child = b }` copies — so this needs a mutable
+type to reproduce. If you genuinely model a deep tree, leave the recursive property without
+`[ValidateNested]` and validate the levels you care about explicitly.
 
 ## Types with no rules of their own
 
