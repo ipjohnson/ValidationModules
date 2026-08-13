@@ -30,8 +30,10 @@ public sealed class ValidatorEmitter {
         builder.AppendLine("using System.Text.RegularExpressions;");
         builder.AppendLine("using ValidationModules;");
         builder.AppendLine();
-        builder.AppendLine($"namespace {model.Namespace};");
-        builder.AppendLine();
+        if (model.Namespace.Length > 0) {
+            builder.AppendLine($"namespace {model.Namespace};");
+            builder.AppendLine();
+        }
         builder.AppendLine($"public sealed partial class {model.ValidatorName} : IValidatorFor<{model.QualifiedTypeName}> {{");
         builder.AppendLine($"    public static readonly {model.ValidatorName} Instance = new();");
         builder.AppendLine();

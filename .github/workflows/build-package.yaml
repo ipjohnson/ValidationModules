@@ -48,6 +48,11 @@ jobs:
       - name: Verify Native AOT publish
         run: ./scripts/verify-aot.sh
 
+      # Packs and consumes the packages the way a real user would. Catches packaging faults that a
+      # ProjectReference-based test suite cannot see.
+      - name: Verify packages
+        run: ./scripts/verify-packages.sh
+
   publish-prerelease:
     # Development builds for anyone tracking main; released packages come from release.yaml.
     needs: build
@@ -71,10 +76,14 @@ jobs:
 
       - name: Pack prerelease
         run: |
-          dotnet pack src/ValidationModules.Runtime/ValidationModules.Runtime.csproj \
-            --configuration Release --no-build \
+          for project in \
+            src/ValidationModules.Runtime/ValidationModules.Runtime.csproj \
+            src/ValidationModules.SourceGenerator/ValidationModules.SourceGenerator.csproj \
+            src/ValidationModules.SourceGenerator.Impl/ValidationModules.SourceGenerator.Impl.csproj; do
+            dotnet pack "$project" --configuration Release --no-build \
             --output ./artifacts/packages \
             --version-suffix "ci.${{ github.run_number }}"
+          done
 
       - name: Push to GitHub Packages
         run: |

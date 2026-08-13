@@ -71,8 +71,11 @@ public sealed class AttributeFrontEnd {
             Report(ValidationDiagnostics.ValidatableObjectNotCompiled, type, type.Name);
         }
 
+        // The validator lives where the type lives, global namespace included. Parking those in a
+        // namespace of ours made PetValidator unfindable from the file that declared Pet, and put a
+        // consumer's types inside ValidationModules.
         var ns = type.ContainingNamespace.IsGlobalNamespace
-            ? "ValidationModules.Generated"
+            ? string.Empty
             : type.ContainingNamespace.ToDisplayString();
 
         return new ValidatedTypeModel(
@@ -340,11 +343,11 @@ public sealed class AttributeFrontEnd {
     }
 
     private static string QualifiedValidator(INamedTypeSymbol type, Func<INamedTypeSymbol, string> validatorNameFor) {
-        var ns = type.ContainingNamespace.IsGlobalNamespace
-            ? "ValidationModules.Generated"
-            : type.ContainingNamespace.ToDisplayString();
+        var name = validatorNameFor(type);
 
-        return $"global::{ns}.{validatorNameFor(type)}";
+        return type.ContainingNamespace.IsGlobalNamespace
+            ? $"global::{name}"
+            : $"global::{type.ContainingNamespace.ToDisplayString()}.{name}";
     }
 
     private static bool HasGenerateValidator(INamedTypeSymbol type) =>

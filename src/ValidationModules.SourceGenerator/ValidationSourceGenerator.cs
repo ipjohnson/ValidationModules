@@ -47,8 +47,10 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         var hasDependencyModules = context.CompilationProvider.Select(static (compilation, _) =>
             compilation.GetTypeByMetadataName(KnownTypes.DependencyModule) is not null);
 
+        // An assembly name is not necessarily a valid namespace: "My-App" emitted `namespace My-App;`
+        // and broke the consumer's build in generated code.
         var assemblyNamespace = context.CompilationProvider.Select(static (compilation, _) =>
-            string.IsNullOrEmpty(compilation.AssemblyName) ? "ValidationModules.Generated" : compilation.AssemblyName!);
+            SanitizeNamespace(compilation.AssemblyName));
 
         var candidates = context.SyntaxProvider
             .CreateSyntaxProvider(
@@ -109,6 +111,34 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
     }
 
     private sealed record ModelResult(ValidatedTypeModel? Model, ImmutableArray<Diagnostic> Diagnostics);
+
+    private static string SanitizeNamespace(string? assemblyName) {
+        if (string.IsNullOrEmpty(assemblyName)) {
+            return "Generated";
+        }
+
+        var builder = new System.Text.StringBuilder(assemblyName!.Length);
+
+        foreach (var part in assemblyName.Split('.')) {
+            if (part.Length == 0) {
+                continue;
+            }
+
+            if (builder.Length > 0) {
+                builder.Append('.');
+            }
+
+            if (!char.IsLetter(part[0]) && part[0] != '_') {
+                builder.Append('_');
+            }
+
+            foreach (var character in part) {
+                builder.Append(char.IsLetterOrDigit(character) || character == '_' ? character : '_');
+            }
+        }
+
+        return builder.Length == 0 ? "Generated" : builder.ToString();
+    }
 
     private static bool IsTrue(string? value) => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
 

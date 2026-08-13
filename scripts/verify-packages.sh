@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+#
+# Packs the shipping projects and consumes them from a throwaway project, the way a stranger would.
+#
+# A ProjectReference-based test suite cannot see packaging faults: it resolves types through the
+# compilation rather than through lib/ and analyzers/, so a validator emitted into the wrong
+# namespace, an analyzer that never loads, or a missing build/*.targets all look fine. Two real bugs
+# were found by doing this by hand, which is why it is a script.
+#
+# Usage: ./scripts/verify-packages.sh [version]
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VERSION="${1:-0.1.0-local}"
+FEED="$(mktemp -d)"
+WORK="$(mktemp -d)"
+trap 'rm -rf "${FEED}" "${WORK}"' EXIT
+
+echo "Packing ${VERSION}"
+for project in Runtime SourceGenerator SourceGenerator.Impl; do
+    dotnet pack "${REPO_ROOT}/src/ValidationModules.${project}/ValidationModules.${project}.csproj" \
+        --configuration Release --output "${FEED}" --nologo \
+        "/p:PackageVersion=${VERSION}" > /dev/null
+done
+ls -1 "${FEED}"
+
+echo "Checking package layout"
+
+# Listed once into a variable rather than piped into grep -q: grep exits at the first match, which
+# SIGPIPEs unzip, and pipefail then reports the whole pipeline as failed on success.
+GENERATOR_FILES="$(unzip -l "${FEED}/ValidationModules.SourceGenerator.${VERSION}.nupkg")"
+IMPL_FILES="$(unzip -l "${FEED}/ValidationModules.SourceGenerator.Impl.${VERSION}.nupkg")"
+
+expect() {
+    case "$1" in
+        *"$2"*) ;;
+        *) echo "FAILED: $3"; exit 1 ;;
+    esac
+}
+
+reject() {
+    case "$1" in
+        *"$2"*) echo "FAILED: $3"; exit 1 ;;
+    esac
+}
+
+expect "${GENERATOR_FILES}" "analyzers/dotnet/cs/ValidationModules.SourceGenerator.dll" \
+    "analyzer assembly is not under analyzers/dotnet/cs, so Roslyn will not load it"
+expect "${GENERATOR_FILES}" "build/ValidationModules.SourceGenerator.targets" \
+    "build targets missing, so MSBuild properties never reach the generator"
+expect "${IMPL_FILES}" "src/ValidationModules.SourceGenerator.Impl/" \
+    "Impl ships no sources"
+
+# The [Generator] entry point must not be in Impl, or a framework author compiling it in registers
+# a second generator alongside ours and every validator is emitted twice.
+reject "${IMPL_FILES}" "ValidationSourceGenerator.cs" \
+    "the [Generator] entry point is packed into Impl"
+
+echo "Consuming from a clean project"
+cat > "${WORK}/nuget.config" <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <clear/>
+    <add key="local" value="${FEED}"/>
+    <add key="nuget" value="https://api.nuget.org/v3/index.json"/>
+  </packageSources>
+</configuration>
+EOF
+
+cat > "${WORK}/Consumer.csproj" <<EOF
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ValidationModules.Runtime" Version="${VERSION}"/>
+    <PackageReference Include="ValidationModules.SourceGenerator" Version="${VERSION}" PrivateAssets="all"/>
+  </ItemGroup>
+</Project>
+EOF
+
+cat > "${WORK}/Program.cs" <<'PROGRAM'
+using System.Text.RegularExpressions;
+using ValidationModules;
+using ValidationModules.Constraints;
+using Sample;
+
+var errors = PetValidator.Instance.Validate(new Pet { Toys = new List<Toy> { new() } }).Errors;
+var actual = string.Join("; ", errors.Select(e => $"{e.Field}:{e.Code}"));
+var expected = "name:required; toys[0].name:required";
+
+if (actual != expected) {
+    Console.Error.WriteLine($"FAILED: expected '{expected}' but got '{actual}'");
+    Environment.Exit(1);
+}
+
+// A global-namespace type must get its validator in the global namespace, not in one of ours.
+if (GlobalPetValidator.Instance.Validate(new GlobalPet()).Errors.Count != 1) {
+    Console.Error.WriteLine("FAILED: global-namespace type did not validate");
+    Environment.Exit(1);
+}
+
+Console.WriteLine("Package verification passed");
+
+public record GlobalPet {
+    [Required] public string? Name { get; init; }
+}
+
+namespace Sample {
+    public static partial class Patterns {
+        [GeneratedRegex("^[A-Z]{3}$")] public static partial Regex Sku();
+    }
+
+    public record Pet {
+        [Required][StringLength(min: 1, max: 10)] public string? Name { get; init; }
+        [Pattern(typeof(Patterns), nameof(Patterns.Sku))] public string? Sku { get; init; }
+        [ItemCount(min: 1, max: 3)][ValidateNested] public IReadOnlyList<Toy> Toys { get; init; } = new List<Toy>();
+    }
+
+    public record Toy {
+        [Required] public string? Name { get; init; }
+    }
+}
+PROGRAM
+
+dotnet run --project "${WORK}/Consumer.csproj" -c Release --nologo

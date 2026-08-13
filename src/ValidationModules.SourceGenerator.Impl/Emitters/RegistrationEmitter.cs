@@ -39,8 +39,11 @@ public sealed class RegistrationEmitter {
         builder.AppendLine("using Microsoft.Extensions.DependencyInjection;");
         builder.AppendLine("using ValidationModules;");
         builder.AppendLine();
-        builder.AppendLine($"namespace {ns};");
-        builder.AppendLine();
+        if (ns.Length > 0) {
+            builder.AppendLine($"namespace {ns};");
+            builder.AppendLine();
+        }
+
         builder.AppendLine("/// <summary>Registers every validator this assembly generated.</summary>");
         builder.AppendLine("public sealed class ValidationModule : IDependencyModule {");
         builder.AppendLine("    public void PopulateServiceCollection(IServiceCollection services) {");
@@ -48,7 +51,7 @@ public sealed class RegistrationEmitter {
         foreach (var model in models) {
             builder.AppendLine(
                 $"        services.AddSingleton<IValidatorFor<{model.QualifiedTypeName}>>(" +
-                $"global::{model.Namespace}.{model.ValidatorName}.Instance);");
+                $"{Qualified(model)}.Instance);");
         }
 
         builder.AppendLine();
@@ -70,8 +73,11 @@ public sealed class RegistrationEmitter {
         builder.AppendLine("using System.Collections.Generic;");
         builder.AppendLine("using ValidationModules;");
         builder.AppendLine();
-        builder.AppendLine($"namespace {ns};");
-        builder.AppendLine();
+        if (ns.Length > 0) {
+            builder.AppendLine($"namespace {ns};");
+            builder.AppendLine();
+        }
+
         builder.AppendLine("/// <summary>Every validator this assembly generated, ready for AddValidationModules.</summary>");
         builder.AppendLine("public static class GeneratedValidators {");
         builder.AppendLine("    public static IReadOnlyList<ValidatorRegistration> All { get; } = new ValidatorRegistration[] {");
@@ -81,7 +87,7 @@ public sealed class RegistrationEmitter {
             // through ActivatorUtilities constructor reflection.
             builder.AppendLine(
                 $"        new ValidatorRegistration(typeof(IValidatorFor<{model.QualifiedTypeName}>), " +
-                $"static _ => global::{model.Namespace}.{model.ValidatorName}.Instance),");
+                $"static _ => {Qualified(model)}.Instance),");
         }
 
         builder.AppendLine("    };");
@@ -89,6 +95,11 @@ public sealed class RegistrationEmitter {
 
         return builder.ToString();
     }
+
+    private static string Qualified(ValidatedTypeModel model) =>
+        model.Namespace.Length == 0
+            ? $"global::{model.ValidatorName}"
+            : $"global::{model.Namespace}.{model.ValidatorName}";
 
     private static StringBuilder Header(string ns) {
         var builder = new StringBuilder();

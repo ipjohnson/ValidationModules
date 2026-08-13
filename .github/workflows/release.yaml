@@ -70,12 +70,17 @@ jobs:
       - name: Verify Native AOT publish
         run: ./scripts/verify-aot.sh
 
+      - name: Verify packages
+        run: ./scripts/verify-packages.sh "${{ steps.version.outputs.version }}"
+
       # Listed explicitly rather than packing the solution, so that adding a test or
       # integration project never publishes one by accident. Extend as the stages land.
       - name: Pack
         run: |
           for project in \
-            src/ValidationModules.Runtime/ValidationModules.Runtime.csproj; do
+            src/ValidationModules.Runtime/ValidationModules.Runtime.csproj \
+            src/ValidationModules.SourceGenerator/ValidationModules.SourceGenerator.csproj \
+            src/ValidationModules.SourceGenerator.Impl/ValidationModules.SourceGenerator.Impl.csproj; do
             dotnet pack "$project" --configuration Release --output ./artifacts \
               "/p:PackageVersion=${{ steps.version.outputs.version }}"
           done
