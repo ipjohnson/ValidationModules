@@ -130,9 +130,8 @@ The premise: the first consumer is Hardened, for query, path and body validation
 header parameters are flat scalars — depth 0. Body is depth 1. §10.4 records that Hardened's current
 emitter does not walk past the top level, so nothing downstream depends on deep paths today.
 
-So full ancestry is not worth what it costs. Default to reporting the root plus the current property,
-eliding the middle when deeper: `body...postalCode`. Full paths become an opt-in MSBuild property
-alongside the existing `ValidationModules_Registration` and `ValidationModules_PatternPolicy`.
+So full ancestry is not worth what it costs. Report **the outermost segment, the immediate parent and
+the field**, eliding whatever sits between the first two: `body...address.postalCode`.
 
 Rationale, in the order it was argued:
 
@@ -145,20 +144,45 @@ and roll-up all exist solely to reconstruct ancestry. Drop the requirement and t
 
 ```csharp
 public readonly struct ValidationContext {
-    private readonly ValidationErrorCollector _collector;  // 8
-    private readonly string?                  _root;       // 8  — "body", "query"
-    private readonly int                      _depth;      // 4
+    private readonly ValidationErrorCollector _collector;   // 8
+    private readonly string?                  _outermost;   // 8  — first pushed segment, null at depth 0
+    private readonly string?                  _parent;      // 8  — immediate parent segment
+    private readonly string?                  _parentKey;   // 8  — dictionary key, else null
+    private readonly int                      _parentIndex; // 4  — element index, else -1
+    private readonly int                      _depth;       // 4
 }
 ```
 
-`Push` copies the struct and increments depth. No log, no nodes, no pinning, no unwind bookkeeping,
-no allocation and no writes at any depth or element count. Simpler and cheaper than anything
+`Push` copies the struct, moves the incoming segment into the parent slot, fills `_outermost` if it
+is still null, and increments depth. No log, no nodes, no pinning, no unwind bookkeeping, no
+allocation and no writes at any depth or element count. Simpler and cheaper than anything
 benchmarked.
 
-**Open, and worth resolving:** collections. `body...sku` on a 500-row bulk import does not say which
-row, and "which row" is the whole question. Carrying the *nearest* index costs two more fields in the
-struct and no allocation — `body...lines[3].sku`. Not agreed, but it is the one place elision loses
-information the caller cannot recover.
+Key and index stay as separate components rather than a pre-rendered `"[3]"` suffix, because
+rendering the index at push time would allocate on a path that currently does not.
+
+**There is no root name and nothing is synthesized.** Path, query and header parameters are depth-0
+scalars and render bare — `id`, `page`. `body` is not a special root, it is an ordinary property that
+gets pushed like any other, so the anchor appears only because something pushed it. `_outermost` is
+the first pushed segment retained, never a configured prefix.
+
+**Elision fires only when a segment was actually dropped**, which is what makes the marker mean
+something:
+
+| true path | pushes | renders |
+|---|---|---|
+| `id` | 0 | `id` |
+| `body.email` | 1 | `body.email` |
+| `body.lines[3].sku` | 2 | `body.lines[3].sku` |
+| `body.order.address.postalCode` | 3 | `body...address.postalCode` |
+
+**Collections — resolved.** Retaining the parent's own index subsumes the case that raised the
+question: `body.lines[3].sku` is depth 2 and renders complete, so a 500-row bulk import says which
+row without a second index field. Two losses are accepted rather than fixed. An index on a
+*non-parent* ancestor is dropped (`body.order.lines[3].address.postalCode`), which needs depth ≥3
+*and* an object between the element and the failing field. An index on the outermost segment itself
+is dropped — validating a bare `List<Order>` at the top reports `...lines[3].sku` — which is not a
+request-body shape.
 
 **Not a wire-shape change** — `ValidationError.Field` keeps its place in the JSON. The *value* of
 that field changes, which matters only to clients keying off it to attach messages to form inputs.
@@ -288,11 +312,23 @@ validator (for messages) and the logger (for payloads). For AOT that likely mean
 
 ## 5. Suggested order
 
-1. The three allocation fixes in §2.3 — independent of every design question, all small, and two of
-   them make existing documentation true.
-2. Settle §3.1's collection question (nearest index or not), because it decides the context struct.
+1. Allocation fixes #2 and #3 from §2.3 — the boxed enumerator in `ValidationRunner<T>` and
+   `ToResult`'s three allocations. Independent of every design question and both small.
+
+   **Fix #1 is moot.** §3.1 deletes `_nodes` outright, so lazily allocating it is work with no
+   surviving target. And fix #2 alone does not make `ValidationRunner.Validate`'s
+   "allocation-free when the value is clean" true — it news a collector on every call, so that needs
+   either an overload taking a pooled collector or the doc comment corrected.
+
+2. ~~Settle §3.1's collection question.~~ **Resolved 2026-08-13 — see §3.1.** Outermost segment plus
+   parent plus field, parent carries its own index, no second index field.
 3. Implement the context from §3.1 and delete the four-way shape comparison, or keep it in `Design/`
-   as a record of why the simple shape was chosen.
+   as a record of why the simple shape was chosen. Deleting the node log takes `AddNode`, the
+   cycle-depth walk and the parent-chain `BuildPath` with it, and makes the async-safety argument in
+   `ValidationContext`'s remarks unnecessary rather than merely satisfied — the struct has no shared
+   mutable backing to race on. Update `ValidationContextExtensions`' "it is two words" justification
+   for taking the context by value; the reasoning still holds (a `ref`/`in` receiver would refuse
+   `context.Push("home").AddRequired(...)`), but not on size grounds.
 4. §3.2 and §3.5 together — the policy ladder and the compile-time argument selection are one change
    to the emitter.
 5. The analyzer in §3.5.
