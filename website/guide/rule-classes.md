@@ -190,10 +190,10 @@ rules.Ensure(x => true);                    // VM0075
 rules.Ensure(x => true, field: "nights");   // VM0075 as well
 ```
 
-::: warning `field:` renames; it does not detach
-Passing `field:` does **not** silence [VM0075](/reference/diagnostics#vm0075), despite the message
-saying "pass field: explicitly". A rule is emitted inside its anchored property's chain so both
-engines agree on ordering, and a rule belonging to no property has nowhere to go.
+::: warning `field:` renames; it does not anchor
+Passing `field:` does **not** silence [VM0075](/reference/diagnostics#vm0075). A rule is emitted
+inside its anchored property's chain so both engines agree on ordering, and a rule belonging to no
+property has nowhere to go.
 
 This is also the one place the two engines legitimately diverge: `DescribedValidator<T>` accepts
 `rules.Ensure(x => true, field: "nights")` and runs it; the generator rejects it. The generated path

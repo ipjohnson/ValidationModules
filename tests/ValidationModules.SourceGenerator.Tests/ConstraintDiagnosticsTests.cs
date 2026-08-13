@@ -280,16 +280,14 @@ public class ConstraintDiagnosticsTests {
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0016");
     }
 
-    // VM0051's case, which VM0051 does not currently report. Characterized rather than asserted as
-    // correct — see RangeStringBoundsTests for the other half of the same gap.
+    // VM0051 — a constraint on a record parameter, which binds to the parameter and is never read.
 
     [Fact]
-    public void ConstraintOnARecordParameter_EmitsNothingAndSaysNothing() {
-        // The attribute binds to the constructor parameter, so the property carries no metadata and
-        // the front end sees an unconstrained type. Not "a validator with no rules" — no validator
-        // at all, and no diagnostic, which makes this the quietest failure in the library:
-        // IValidatorFor<Pet> does not resolve, and a runner merging zero validators calls every
-        // value valid. [property: Required] is the working form.
+    public void ConstraintOnARecordParameter_IsVM0051() {
+        // Without this the type looks entirely unconstrained: no validator is emitted, nothing is
+        // registered, IValidatorFor<Pet> does not resolve, and a runner merging zero validators
+        // calls every value valid. Silent in every direction, which is why it is reported before
+        // any property is read rather than as part of reading one.
         var result = GeneratorHarness.Run("""
             using ValidationModules.Constraints;
 
@@ -298,12 +296,39 @@ public class ConstraintDiagnosticsTests {
             public record Pet([Required] string Name);
             """);
 
-        Assert.Empty(result.Sources);
-        Assert.Empty(result.Diagnostics);
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0051");
+        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
     }
 
     [Fact]
-    public void ConstraintOnARecordParameterWithThePropertyTarget_IsReadNormally() {
+    public void VM0051_SuggestsTheFixAsItWouldBeTyped() {
+        var result = GeneratorHarness.Run("""
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public record Pet([Required] string Name);
+            """);
+
+        // "[property: Required]", not "[property: RequiredAttribute]".
+        Assert.Contains("[property: Required]", Assert.Single(result.Diagnostics, d => d.Id == "VM0051").GetMessage());
+    }
+
+    [Fact]
+    public void ConstraintOnARecordParameter_ReportsOncePerAttribute() {
+        var result = GeneratorHarness.Run("""
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public record Pet([Required][StringLength(1, 10)] string Name, [Range(0, 30)] int Age);
+            """);
+
+        Assert.Equal(3, result.Diagnostics.Count(d => d.Id == "VM0051"));
+    }
+
+    [Fact]
+    public void ConstraintOnARecordParameterWithThePropertyTarget_IsReadNormallyAndIsSilent() {
         var result = GeneratorHarness.Run("""
             using ValidationModules.Constraints;
 
@@ -312,7 +337,104 @@ public class ConstraintDiagnosticsTests {
             public record Pet([property: Required] string Name);
             """);
 
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0051");
         Assert.Contains("ctx.AddRequired(\"name\")", result.Sources["Sample.PetValidator.g.cs"]);
+    }
+
+    [Fact]
+    public void MixedTargets_ReportOnlyTheUntargetedOne() {
+        var result = GeneratorHarness.Run("""
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public record Pet([property: Required] string Name, [StringLength(1, 10)] string Tag);
+            """);
+
+        Assert.Contains("StringLength", Assert.Single(result.Diagnostics, d => d.Id == "VM0051").GetMessage());
+    }
+
+    [Fact]
+    public void DataAnnotationsConstraintOnARecordParameter_IsAlsoVM0051() {
+        var result = GeneratorHarness.Run("""
+            using System.ComponentModel.DataAnnotations;
+
+            namespace Sample;
+
+            public record Customer([Required] string Name);
+            """);
+
+        Assert.Single(result.Diagnostics, d => d.Id == "VM0051");
+    }
+
+    [Fact]
+    public void DataAnnotationsConstraintOnARecordParameter_IsSilentWhenTheFrontEndIsOff() {
+        // With the vocabulary switched off the attribute is inert wherever it sits, and VM0010 is
+        // the diagnostic with that news. Reporting both would be two answers to one question.
+        var result = GeneratorHarness.Run(
+            """
+            using System.ComponentModel.DataAnnotations;
+
+            namespace Sample;
+
+            public record Customer([Required] string Name);
+            """,
+            ("ValidationModules_DataAnnotations", "Ignore"));
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0051");
+    }
+
+    [Fact]
+    public void NonConstraintAttributeOnARecordParameter_IsSilent() {
+        var result = GeneratorHarness.Run("""
+            using System;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            [AttributeUsage(AttributeTargets.Parameter)]
+            public sealed class NoteAttribute : Attribute { }
+
+            public record Pet([Note] string Name) {
+                [Required] public string? Tag { get; init; }
+            }
+            """);
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0051");
+    }
+
+    [Fact]
+    public void ConstraintOnAnOrdinaryConstructorParameter_IsNotVM0051() {
+        // Equally inert, but [property:] is not legal there, so this diagnostic's advice would be
+        // wrong. Scoped to the primary constructor for exactly that reason.
+        var result = GeneratorHarness.Run("""
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public record Pet {
+                public Pet([Required] string name) => Name = name;
+
+                [Required] public string? Name { get; init; }
+            }
+            """);
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0051");
+    }
+
+    [Fact]
+    public void ConstraintOnARecordParameter_DoesNotAlsoEmitAValidatorWithNoRules() {
+        // The diagnostic is the whole output. Emitting an empty validator as well would register
+        // something that validates nothing, which is the state this exists to make visible.
+        var result = GeneratorHarness.Run("""
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public record Pet([Required] string Name);
+            """);
+
+        Assert.DoesNotContain("Sample.PetValidator.g.cs", result.Sources.Keys);
     }
 
     // A model with no mistakes in it produces no diagnostics at all, which is the assertion that

@@ -123,13 +123,21 @@ public class RulesClassDiagnosticsTests {
         // Deliberate, per RulesFrontEnd.cs:288 — a rule is emitted inside its anchored property's
         // chain so both engines agree on ordering (§4.2), and a rule belonging to no property has
         // nowhere to go. field: renames the error; it does not detach the rule.
-        //
-        // The behaviour is right and the *message* is not: VM0075 ends "pass field: explicitly",
-        // which is the one fix that does not work. Pinned here so correcting the wording is a
-        // deliberate change rather than an accident.
         var result = GeneratorHarness.Run(Rules("        rules.Ensure(x => true, field: \"nights\");"));
 
         Assert.Single(result.Diagnostics, d => d.Id == "VM0075");
+    }
+
+    [Fact]
+    public void VM0075_DoesNotAdviseTheOneFixThatDoesNotWork() {
+        // The message used to end "pass field: explicitly", which leaves this firing and sends the
+        // reader round the loop a second time. It now says what to do and what not to bother with.
+        var message = Assert
+            .Single(GeneratorHarness.Run(Rules("        rules.Ensure(x => true);")).Diagnostics, d => d.Id == "VM0075")
+            .GetMessage();
+
+        Assert.DoesNotContain("pass field: explicitly", message);
+        Assert.Contains("does not anchor the rule", message);
     }
 
     [Fact]

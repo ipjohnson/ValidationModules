@@ -26,19 +26,16 @@ public class DiagnosticCatalogueTests {
     /// Declared, released, and never constructed anywhere in the product.
     /// </summary>
     /// <remarks>
-    /// Each of these is a gap rather than a decision, and the middle one is the one that costs
-    /// something. VM0051 catches <c>record Pet([Required] string Name)</c> — where the attribute
-    /// binds to the constructor parameter rather than to the property, so the front end never sees
-    /// it and the type validates nothing. That failure is silent today, and it is the single most
-    /// natural way to write a constrained record.
+    /// VM0051 and VM0065 were here and are now wired up; VM0007 is what is left. It fires when
+    /// <c>[ValidateNested]</c> targets a type with no rules, which today descends into nothing and
+    /// says nothing — a real gap, and the mildest of the three, because the result is a rule that
+    /// does not run rather than one that runs where it should not.
     ///
-    /// Listed rather than asserted-unreachable: the point is that removing an entry here should
-    /// mean writing its coverage, and this test says so out loud.
+    /// Listed rather than asserted-unreachable: removing an entry here should mean writing its
+    /// coverage, and this test says so out loud.
     /// </remarks>
     private static readonly HashSet<string> NeverReported = new() {
         "VM0007",   // NestedTypeHasNoRules
-        "VM0051",   // RecordParameterMissingPropertyTarget
-        "VM0065",   // RangeBoundsNotParseable
     };
 
     [Fact]

@@ -59,16 +59,16 @@ Pre-1.0, and under construction. Built so far:
 Also built since the plan was written, and not in its staging: a declarative rule-class front end
 (`IValidationRulesFor<T>`, `API-SURFACE.md` §19) and a DataAnnotations front end (§18).
 
-Three known gaps, each pinned by a test that will fail when it is fixed:
+Two known gaps remain:
 
-- **`[Range]`'s `(string, string)` overload is not implemented.** The bound is emitted as a quoted
-  literal rather than parsed, so `[Range("2000-01-01", "2100-01-01")]` on a `DateOnly` emits code
-  that does not compile. `tests/ValidationModules.SourceGenerator.Tests/RangeStringBoundsTests.cs`.
-- **VM0007, VM0051 and VM0065 are declared and never reported.** VM0051 is the costly one:
-  `record Pet([Required] string Name)` emits no validator and no diagnostic.
-  `DiagnosticCatalogueTests` records exactly those three and fails in both directions.
-- **VM0075's message tells you to pass `field:`, which does not silence it.** The behaviour is
-  intended; the wording is not.
+- **Profiles are not built**, and their declaration surface shipped ahead of them —
+  `FromProfile`/`UntilProfile`/`Profiles` on every constraint, and `IValidationProfile` in the
+  runtime. Using one is `VM0019`, an error, because the arguments are ignored rather than inert: a
+  rule written to apply only from V2 would be enforced under V1 as well. Removing that diagnostic is
+  the first thing Stage 3 does.
+- **VM0007 is declared and never reported.** `[ValidateNested]` on a type with no rules of its own
+  descends into nothing and says nothing. `DiagnosticCatalogueTests` records it as the one dead
+  descriptor and fails in both directions.
 
 ## Documentation
 

@@ -14,11 +14,10 @@ dotnet_analyzer_diagnostic.category-ValidationModules.Usage.severity = suggestio
 Prefer silencing one id over the category. Several are errors because the alternative is generated
 code that does not compile.
 
-::: warning Three of these never fire
-[VM0007](#vm0007), [VM0051](#vm0051) and [VM0065](#vm0065) are declared and released, but nothing in
-the product reports them. They are documented here as declared and marked **not reported**, because
-a rule you expect to catch a mistake and which silently does not is worse than one you know is
-missing.
+::: warning One of these never fires
+[VM0007](#vm0007) is declared and released, and nothing in the product reports it. It is documented
+here as declared and marked **not reported**, because a rule you expect to catch a mistake and which
+silently does not is worse than one you know is missing.
 :::
 
 ## Summary
@@ -37,13 +36,14 @@ missing.
 | [VM0016](#vm0016) | Warning | `RegexOptions.Compiled` is not meaningful |
 | [VM0017](#vm0017) | *policy* | an inline pattern roots the regex engine |
 | [VM0018](#vm0018) | Error | referenced regex member is unusable |
+| [VM0019](#vm0019) | Error | profile attribution is declared, and profiles are not implemented |
 | [VM0040](#vm0040) | Error | `ValidationModules.Runtime` is too old |
-| [VM0051](#vm0051) | Warning | constraint on a record parameter — **not reported** |
+| [VM0051](#vm0051) | Warning | constraint on a record parameter without `property:` |
 | [VM0060](#vm0060) | Warning | a custom `ValidationAttribute` is not compiled |
 | [VM0061](#vm0061) | Warning | a cross-field DataAnnotations attribute is not compiled |
 | [VM0063](#vm0063) | Warning | a format DataAnnotations attribute is not compiled |
 | [VM0064](#vm0064) | Error | a length constraint on neither a string nor a collection |
-| [VM0065](#vm0065) | Error | `[Range]` bounds do not parse — **not reported** |
+| [VM0065](#vm0065) | Error | `[Range]` bounds do not parse as the member's type |
 | [VM0067](#vm0067) | Warning | `IValidatableObject` is not called |
 | [VM0070](#vm0070) | Error | a statement in `Describe` is not a rule declaration |
 | [VM0071](#vm0071) | Error | a rule selector is not a property path |
@@ -207,6 +207,35 @@ and be visible to the generated validator. The message names which of those fail
 | `is not accessible` |
 | `is not a method, property or field` |
 
+### VM0019 {#vm0019}
+
+**Error** — *`'Required' declares a profile on 'Tag', and profiles are not implemented — profile arguments are ignored, so every rule is enforced in every profile including the ones it excludes`*
+
+```csharp
+[Required(FromProfile = typeof(V2))]     // VM0019
+public string? Tag { get; init; }
+```
+
+Also fires on assembly-level `[DefaultValidationProfile]`.
+
+Profiles are Stage 3 of the plan and are not built. The declaration surface shipped ahead of the
+implementation — `ValidationConstraintAttribute` carries `FromProfile`, `UntilProfile` and
+`Profiles`, and `IValidationProfile` exists in the runtime — so the code compiles, reads exactly as
+the design describes, and does something else.
+
+**An error rather than a warning, because of which way it fails.** A rule that never fires costs a
+caller nothing. This is the opposite: a rule written to apply only from V2 is enforced under V1 as
+well, rejecting data the caller was entitled to send. A warning is a thing a build ships with.
+
+Remove the profile argument until the feature lands. Declaring `IValidationProfile` types is
+harmless; attaching a rule to one is what does not work.
+
+::: tip Why not VM0011–VM0015
+Plan §11 reserves those for profile *semantics* — a profile argument that is not a profile, a range
+that admits nothing, a cyclic chain. Those describe a feature that exists. This one says it does
+not, so it sits with VM0016–VM0018, the "this does not do what you think" family.
+:::
+
 ### VM0040 {#vm0040}
 
 **Error** — *`The generated validators require ValidationModules.Runtime contract N or later; the referenced runtime is contract M`*
@@ -221,18 +250,23 @@ Update the `ValidationModules.Runtime` package reference to match the generator.
 
 **Warning** — *`'Required' is on a record parameter without the property: target, so it lands on the parameter and is never evaluated. Write [property: Required]`*
 
-::: danger Not reported
-Declared, released, and never constructed. This is the quietest failure in the library:
-
 ```csharp
-public record Pet([Required] string Name);
+public record Pet([Required] string Name);              // VM0051
+public record Pet([property: Required] string Name);    // correct
 ```
 
-produces **no validator and no diagnostic**. The attribute binds to the constructor parameter, so
-the property carries no metadata and the type looks entirely unconstrained. Nothing is registered
-for it, so `IValidatorFor<Pet>` does not resolve, and a `ValidationRunner<Pet>` merging zero
-validators reports every value as valid.
-:::
+Without this the failure is silent in every direction. The attribute binds to the primary
+constructor's parameter, so the generated property carries no metadata, the type looks entirely
+unconstrained, and **no validator is emitted at all** — not an empty one. Nothing is registered, so
+`IValidatorFor<Pet>` does not resolve and a `ValidationRunner<Pet>` merging zero validators reports
+every value as valid.
+
+Reported before any property is read, precisely because the situation is one where no property
+carries anything. One diagnostic per attribute, since each has to be fixed. The diagnostic is the
+whole output — no empty validator is emitted alongside it.
+
+Scoped to the **primary** constructor. A constraint on an ordinary constructor's parameter is
+equally inert, but `[property:]` is not legal there, so this advice would be wrong.
 
 Write `[property: Required]`, or use a record with an explicit body:
 
@@ -302,30 +336,30 @@ so the member's type decides which constraint each becomes. A member that is nei
 
 **Error** — *`The bounds on 'Born' do not parse as 'System.DateOnly'`*
 
-::: danger Not reported — and the gap it leaves is live
-Declared, released, and never constructed. `RangeAttribute`'s `(string min, string max)` overload is
-documented for `decimal`, `DateTime`, `DateOnly` and `TimeSpan`, and says the bounds are "parsed
-invariantly at generation time". **No such parsing happens.** The bound is emitted as a quoted C#
-string literal and dropped into a comparison:
-
 ```csharp
-[Range("2000-01-01", "2100-01-01")] public DateOnly Born { get; init; }
+[Range("not-a-date", "2100-01-01")] public DateOnly Born { get; init; }   // VM0065
+[Range("abc", "def")]               public decimal Price { get; init; }  // VM0065
+[Range("2000-01-01", "2100-01-01")] public int Age { get; init; }        // VM0065
 ```
 
-```csharp
-if ((value.Born < "2000-01-01" || value.Born > "2100-01-01"))   // does not compile
-```
+A bound written as a string is parsed against the member's own type at generation time — which is
+what `RangeAttribute`'s documentation has always promised — and emitted as a constructor call rather
+than a quoted literal. A bound that does not parse is reported here, at the declaration, rather than
+becoming a comparison between a `DateOnly` and a `string` inside a generated file.
 
-The failure lands inside generated code with no diagnostic pointing at the declaration.
+The constraint is dropped when its bounds do not parse, so the build fails on VM0065 alone and not
+also on generated code that will not compile.
+
+`[Range]` on a member with no ordering at all is [VM0003](#vm0003), which fires first — saying it
+twice would be worse than saying it once.
+
+::: tip What the emitted bound looks like
+`[Range("2000-01-15", "2100-12-31")]` on a `DateOnly` becomes
+`new global::System.DateOnly(2000, 1, 15)` and `new global::System.DateOnly(2100, 12, 31)`, in both
+the comparison and the message — so the two cannot disagree about what the bound is. A `DateTime`
+bound is `DateTimeKind.Unspecified`: a bound written `"2000-01-01"` carries no zone, and anchoring it
+to whatever the build machine happened to be in would make the same source mean two things.
 :::
-
-Until it is fixed, express the bound with [`rules.Ensure`](/guide/rule-classes#ensure):
-
-```csharp
-rules.Ensure(x => x.Born >= new DateOnly(2000, 1, 1) && x.Born <= new DateOnly(2100, 1, 1));
-```
-
-The numeric overloads — `int`, `long`, `double` — are unaffected.
 
 ### VM0067 {#vm0067}
 
@@ -388,30 +422,25 @@ that would genuinely compile on one path and not the other.
 
 ### VM0075 {#vm0075}
 
-**Error** — *`The predicate in 'PetRules.Describe' reads no property of its parameter, so no field can be inferred; pass field: explicitly`*
+**Error** — *`The predicate in 'PetRules.Describe' reads no property of its parameter, so the rule has no property to be anchored to. Rewrite it to read the property it is about; field: renames the error but does not anchor the rule, so passing it does not resolve this`*
 
 ```csharp
 rules.Ensure(x => true);                      // VM0075
+rules.Ensure(x => true, field: "nights");     // VM0075 as well
 ```
 
-::: warning The message's advice does not work
-Passing `field:` does **not** silence this:
-
-```csharp
-rules.Ensure(x => true, field: "nights");     // still VM0075
-```
-
-The behaviour is intentional — a rule is emitted inside its anchored property's chain so both engines
-agree on ordering, and a rule belonging to no property has nowhere to go. `field:` renames the error;
-it does not detach the rule. The message is the part that is wrong.
-
-This is also the one place the two engines legitimately diverge: `DescribedValidator<T>` accepts the
-call and runs it. The generated path is the stricter of the two, which is the safe direction for a
-divergence to run in.
-:::
+A rule is emitted inside its anchored property's chain so both engines agree on ordering, and a rule
+belonging to no property has nowhere to go. `field:` renames the error; it does not anchor the rule.
 
 Write a predicate that reads the property the rule is about:
 
 ```csharp
 rules.Ensure(x => x.Nights <= 7);
 ```
+
+::: tip Where the two engines diverge
+This is the one place they legitimately do: `DescribedValidator<T>` accepts `Ensure(x => true,
+field: "nights")` and runs it, because an explicit field means it never consults the anchor. The
+generated path is the stricter of the two, which is the safe direction — the build fails rather than
+two deployments disagreeing.
+:::

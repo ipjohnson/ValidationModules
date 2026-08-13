@@ -63,3 +63,25 @@ public static partial class PetPatterns {
     [GeneratedRegex("^[a-z0-9-]+$")]
     public static partial Regex Slug();
 }
+
+/// <summary>
+/// The string-bounds form of <c>[Range]</c>, for the types with no constant form in metadata.
+/// </summary>
+/// <remarks>
+/// Here rather than only in the generator tests because those prove the emitted file compiles, and
+/// what matters is that the comparison it compiles to is the right one. A bound parsed into the
+/// wrong month would still compile.
+/// </remarks>
+public sealed record Booking {
+    [Range("2000-01-01", "2100-12-31")]
+    public DateOnly Starts { get; init; }
+
+    [Range("0.00", "9.99")]
+    public decimal Price { get; init; }
+
+    [Range("00:00:00", "23:59:59")]
+    public TimeSpan Window { get; init; }
+
+    [Range("2000-01-01", "2100-01-01", ExclusiveMax = true)]
+    public DateTime Effective { get; init; }
+}

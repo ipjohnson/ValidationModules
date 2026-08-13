@@ -1,34 +1,32 @@
+using Microsoft.CodeAnalysis;
 using Xunit;
 
 namespace ValidationModules.SourceGenerator.Tests;
 
 /// <summary>
-/// Characterization tests for profile attribution, which the attributes accept and the generator
-/// ignores.
+/// VM0019 — the guard on a declaration surface that shipped ahead of its implementation.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>These pin a gap, not a design.</b> Profiles are Stage 3 of the plan and are not built. What
-/// makes that worth a test rather than a line in the README is that the *declaration* surface
-/// shipped ahead of the implementation: <c>ValidationConstraintAttribute</c> carries
-/// <c>FromProfile</c>, <c>UntilProfile</c> and <c>Profiles</c>, all three are documented at length
-/// on the attribute itself, and <c>IValidationProfile</c> exists in the runtime.
+/// <c>ValidationConstraintAttribute</c> carries <c>FromProfile</c>, <c>UntilProfile</c> and
+/// <c>Profiles</c>, all three documented at length on the attribute itself, and
+/// <c>IValidationProfile</c> exists in the runtime. Profiles are plan Stage 3 and are not built, so
+/// none of it is read: one validator is emitted rather than one per profile, and every profiled
+/// rule is enforced in every profile.
 /// </para>
 /// <para>
-/// So the code compiles, reads exactly as the design describes, and does something else. A rule
-/// written <c>[Required(FromProfile = typeof(V2))]</c> — meaning "not required before V2" — is
-/// enforced unconditionally, including under V1, with no diagnostic. That is the failure direction
-/// that matters: a rule applying where it should not reject data a caller was entitled to send.
+/// <b>An error rather than a warning, because of which way it fails.</b> A rule that never fires
+/// costs a caller nothing; a rule written to apply only from V2 and enforced under V1 rejects data
+/// the caller was entitled to send. A warning is a thing a build ships with.
 /// </para>
 /// <para>
-/// Plan §11 reserves VM0011–VM0015 and VM0020 for profile diagnostics; none of them is declared
-/// yet, so there is not even a descriptor to switch on. When Stage 3 lands, these tests fail and
-/// this file is replaced by real ones.
+/// When Stage 3 lands this file is replaced by tests for what the arguments actually do, and VM0019
+/// goes with it.
 /// </para>
 /// </remarks>
 public class ProfileAttributionTests {
 
-    private const string Profiled = """
+    private static string Model(string members) => $$"""
         using ValidationModules;
         using ValidationModules.Constraints;
 
@@ -39,76 +37,91 @@ public class ProfileAttributionTests {
         public sealed class Strict : IValidationProfile;
 
         public record Pet {
-            [Required]
-            public string? Name { get; init; }
+        {{members}}
+        }
+        """;
 
+    [Theory]
+    [InlineData("[Required(FromProfile = typeof(V2))] public string? Tag { get; init; }")]
+    [InlineData("[Required(UntilProfile = typeof(V2))] public string? Legacy { get; init; }")]
+    [InlineData("[Required(Profiles = [typeof(Strict)])] public string? Sku { get; init; }")]
+    [InlineData("[StringLength(1, 10, FromProfile = typeof(V2))] public string? Name { get; init; }")]
+    [InlineData("[Range(0, 30, Profiles = [typeof(Strict)])] public int Age { get; init; }")]
+    public void ProfileArgument_IsVM0019(string member) {
+        var result = GeneratorHarness.Run(Model(member));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0019");
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+    }
+
+    [Fact]
+    public void VM0019_NamesTheAttributeAndTheProperty() {
+        var result = GeneratorHarness.Run(Model(
+            "[Required(FromProfile = typeof(V2))] public string? Tag { get; init; }"));
+
+        var message = Assert.Single(result.Diagnostics, d => d.Id == "VM0019").GetMessage();
+
+        Assert.Contains("Required", message);
+        Assert.Contains("Tag", message);
+    }
+
+    [Fact]
+    public void VM0019_SaysWhatCurrentlyHappensRatherThanOnlyThatItIsUnsupported() {
+        // The consequential half. "Not implemented" invites the reader to assume the argument is
+        // inert; it is not, and the rule is enforced where it was written not to be.
+        var message = Assert
+            .Single(
+                GeneratorHarness.Run(Model("[Required(FromProfile = typeof(V2))] public string? Tag { get; init; }")).Diagnostics,
+                d => d.Id == "VM0019")
+            .GetMessage();
+
+        Assert.Contains("enforced in every profile", message);
+    }
+
+    [Fact]
+    public void ProfileArgument_IsReportedPerConstraintRatherThanOncePerType() {
+        // The author has to remove each one, and a single diagnostic on the type would not say
+        // which rule to look at.
+        var result = GeneratorHarness.Run(Model("""
             [Required(FromProfile = typeof(V2))]
             public string? Tag { get; init; }
 
             [Required(UntilProfile = typeof(V2))]
             public string? Legacy { get; init; }
+            """));
 
-            [Required(Profiles = [typeof(Strict)])]
-            public string? Sku { get; init; }
-        }
-        """;
-
-    [Fact]
-    public void ProfileArguments_ProduceNoDiagnostic() {
-        Assert.Empty(GeneratorHarness.Run(Profiled).Diagnostics);
+        Assert.Equal(2, result.Diagnostics.Count(d => d.Id == "VM0019"));
     }
 
     [Fact]
-    public void OneValidatorIsEmitted_RatherThanOnePerProfile() {
-        var result = GeneratorHarness.Run(Profiled);
+    public void OneConstraintCarryingTwoProfileArguments_ReportsOnce() {
+        var result = GeneratorHarness.Run(Model(
+            "[Required(FromProfile = typeof(V1), UntilProfile = typeof(V2))] public string? Tag { get; init; }"));
 
-        Assert.Contains("Sample.PetValidator.g.cs", result.Sources.Keys);
-        Assert.DoesNotContain(result.Sources.Keys, name => name.Contains("_V1") || name.Contains("_V2"));
+        Assert.Single(result.Diagnostics, d => d.Id == "VM0019");
     }
 
     [Fact]
-    public void EveryProfiledRuleIsEnforcedUnconditionally() {
-        // The consequential assertion. FromProfile = V2 should not admit V1; UntilProfile = V2
-        // should not admit V2; Profiles = [Strict] should admit neither. All four checks are
-        // emitted side by side with nothing distinguishing them.
-        var emitted = GeneratorHarness.Run(Profiled).Sources["Sample.PetValidator.g.cs"];
+    public void UnprofiledConstraints_AreSilent() {
+        // Profiles being unimplemented must cost nothing to a codebase that declares none — plan §2
+        // requires that such a codebase never encounters the concept at all.
+        var result = GeneratorHarness.Run(Model("""
+            [Required]
+            [StringLength(1, 10)]
+            public string? Name { get; init; }
 
-        Assert.Contains("ctx.AddRequired(\"name\")", emitted);
-        Assert.Contains("ctx.AddRequired(\"tag\")", emitted);
-        Assert.Contains("ctx.AddRequired(\"legacy\")", emitted);
-        Assert.Contains("ctx.AddRequired(\"sku\")", emitted);
+            [Range(0, 30)]
+            public int Age { get; init; }
+            """));
+
+        Assert.Empty(result.Diagnostics);
+        Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
-    public void NothingInTheEmittedValidatorMentionsAProfile() {
-        var emitted = GeneratorHarness.Run(Profiled).Sources["Sample.PetValidator.g.cs"];
-
-        Assert.DoesNotContain("Profile", emitted);
-    }
-
-    [Fact]
-    public void NoDispatchTableIsEmitted() {
-        // Plan §6 specifies a PetValidators.For(Type profile) switch so runtime profile selection
-        // needs no MakeGenericType. Nothing emits one yet.
-        var result = GeneratorHarness.Run(Profiled);
-
-        Assert.DoesNotContain(result.Sources.Keys, name => name.Contains("Validators.g.cs"));
-    }
-
-    [Fact]
-    public void RegistrationCarriesNoProfile() {
-        // ValidatorRegistration has a Profile component, defaulted to null and never populated.
-        var registration = GeneratorHarness.Run(Profiled).Sources["GeneratedValidatorRegistration.g.cs"];
-
-        Assert.Contains("PetValidator.Instance", registration);
-        Assert.DoesNotContain("typeof(global::Sample.V1)", registration);
-        Assert.DoesNotContain("typeof(global::Sample.V2)", registration);
-    }
-
-    [Fact]
-    public void ProfileArgumentsThatAreNonsense_AreAlsoAccepted() {
-        // VM0011 would reject a profile argument that does not implement IValidationProfile, and
-        // VM0013 a range that can never admit anything. Neither descriptor exists, so both compile.
+    public void DeclaringProfileTypesWithoutUsingThem_IsSilent() {
+        // IValidationProfile is a public runtime type. Declaring one is harmless; attaching a rule
+        // to it is what does not work.
         var result = GeneratorHarness.Run("""
             using ValidationModules;
             using ValidationModules.Constraints;
@@ -117,18 +130,62 @@ public class ProfileAttributionTests {
 
             public sealed class V1 : IValidationProfile;
             public sealed class V2 : IValidationProfile<V1>;
-            public sealed class NotAProfile;
 
             public record Pet {
-                [Required(Profiles = [typeof(NotAProfile)])]
-                public string? Name { get; init; }
-
-                [Required(FromProfile = typeof(V2), UntilProfile = typeof(V1))]
-                public string? Tag { get; init; }
+                [Required] public string? Name { get; init; }
             }
             """);
 
         Assert.Empty(result.Diagnostics);
+    }
+
+    [Fact]
+    public void NullProfileArgument_IsSilentBecauseItRestrictsNothing() {
+        var result = GeneratorHarness.Run(Model(
+            "[Required(FromProfile = null)] public string? Tag { get; init; }"));
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0019");
+    }
+
+    [Fact]
+    public void EmptyProfileSet_IsSilentBecauseItRestrictsNothing() {
+        var result = GeneratorHarness.Run(Model(
+            "[Required(Profiles = [])] public string? Tag { get; init; }"));
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0019");
+    }
+
+    [Fact]
+    public void AssemblyLevelDefaultProfile_IsAlsoVM0019() {
+        // [DefaultValidationProfile] promises the bare IValidatorFor<T> resolves to that profile's
+        // rules. It resolves to all of them, so the promise is broken in the same direction.
+        var result = GeneratorHarness.Run("""
+            using ValidationModules;
+            using ValidationModules.Constraints;
+
+            [assembly: DefaultValidationProfile(typeof(Sample.V2))]
+
+            namespace Sample;
+
+            public sealed class V1 : IValidationProfile;
+            public sealed class V2 : IValidationProfile<V1>;
+
+            public record Pet {
+                [Required] public string? Name { get; init; }
+            }
+            """);
+
+        Assert.Contains("DefaultValidationProfile", Assert.Single(result.Diagnostics, d => d.Id == "VM0019").GetMessage());
+    }
+
+    [Fact]
+    public void ProfiledRuleIsStillEmitted_SoTheDiagnosticIsTheOnlyFailure() {
+        // The constraint is not dropped. Dropping it would turn one clear error into that plus a
+        // model quietly missing a rule, and the build has already failed on the error.
+        var result = GeneratorHarness.Run(Model(
+            "[Required(FromProfile = typeof(V2))] public string? Tag { get; init; }"));
+
+        Assert.Contains("ctx.AddRequired(\"tag\")", result.Sources["Sample.PetValidator.g.cs"]);
         Assert.Empty(result.CompilationErrors);
     }
 }

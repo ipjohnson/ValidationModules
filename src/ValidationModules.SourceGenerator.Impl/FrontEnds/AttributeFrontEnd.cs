@@ -49,6 +49,10 @@ public sealed class AttributeFrontEnd {
         IReadOnlyList<DeclaredRule>? declared = null,
         IReadOnlyList<string>? applied = null) {
 
+        // Before anything reads a property, because the situation this reports is precisely one
+        // where no property carries anything and the type would otherwise look unconstrained.
+        ReportRecordParameterConstraints(type);
+
         var properties = ImmutableArray.CreateBuilder<ValidatedPropertyModel>();
         var order = new List<int>();
         var sawAnything = HasGenerateValidator(type) || declared is { Count: > 0 } || applied is { Count: > 0 };
@@ -202,6 +206,7 @@ public sealed class AttributeFrontEnd {
             }
         }
 
+        ResolveRangeBounds(property, constraints);
         ValidateConstraintsAgainstType(property, constraints, isString, elementType is not null);
 
         return new ValidatedPropertyModel(
@@ -228,6 +233,166 @@ public sealed class AttributeFrontEnd {
     private static IEnumerable<ConstraintModel> Order(List<ConstraintModel> constraints) =>
         constraints.Where(constraint => constraint.Kind == ConstraintKind.Required)
             .Concat(constraints.Where(constraint => constraint.Kind != ConstraintKind.Required));
+
+    /// <summary>
+    /// Reports a constraint carrying profile attribution, which nothing here reads.
+    /// </summary>
+    /// <remarks>
+    /// Reported per constraint rather than once per type: the author has to remove each argument,
+    /// and a single diagnostic on the type would not say which rule to look at.
+    /// </remarks>
+    private void ReportProfileAttribution(
+        AttributeData attribute, INamedTypeSymbol attributeClass, IPropertySymbol property) {
+
+        foreach (var argument in attribute.NamedArguments) {
+            if (argument.Key is not ("FromProfile" or "UntilProfile" or "Profiles")) {
+                continue;
+            }
+
+            // A null or empty argument restricts nothing, so it is not silently changing behaviour.
+            if (argument.Value.IsNull ||
+                (argument.Key == "Profiles" && argument.Value.Kind == TypedConstantKind.Array &&
+                 argument.Value.Values.Length == 0)) {
+                continue;
+            }
+
+            var location = attribute.ApplicationSyntaxReference is { } reference
+                ? Microsoft.CodeAnalysis.Location.Create(reference.SyntaxTree, reference.Span)
+                : Location(property);
+
+            _diagnostics.Add(Diagnostic.Create(
+                ValidationDiagnostics.ProfileAttributionNotImplemented,
+                location,
+                Unsuffixed(attributeClass.Name),
+                property.Name));
+
+            return;
+        }
+    }
+
+    /// <summary>
+    /// Reports a constraint written on a record's positional parameter without the
+    /// <c>property:</c> target.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The quietest failure this library had. <c>record Pet([Required] string Name)</c> binds the
+    /// attribute to the primary constructor's parameter, so the generated property carries no
+    /// metadata, nothing here sees a constraint, and no validator is emitted at all - not an empty
+    /// one. Nothing is registered, <c>IValidatorFor&lt;Pet&gt;</c> does not resolve, and a runner
+    /// merging zero validators calls every value valid.
+    /// </para>
+    /// <para>
+    /// Scoped to the primary constructor, identified by its declaring syntax being the type
+    /// declaration rather than a constructor declaration. A constraint on an ordinary constructor's
+    /// parameter is equally inert, but <c>[property:]</c> is not legal there, so the advice this
+    /// diagnostic gives would be wrong.
+    /// </para>
+    /// </remarks>
+    private void ReportRecordParameterConstraints(INamedTypeSymbol type) {
+        if (!type.IsRecord) {
+            return;
+        }
+
+        foreach (var constructor in type.InstanceConstructors) {
+            if (!IsPrimaryConstructor(constructor)) {
+                continue;
+            }
+
+            foreach (var parameter in constructor.Parameters) {
+                foreach (var attribute in parameter.GetAttributes()) {
+                    if (attribute.AttributeClass is not { } attributeClass || !IsConstraintAttribute(attributeClass)) {
+                        continue;
+                    }
+
+                    // Qualified because this class has a Location(ISymbol) helper of its own, which
+                    // otherwise shadows the type.
+                    var location = attribute.ApplicationSyntaxReference is { } reference
+                        ? Microsoft.CodeAnalysis.Location.Create(reference.SyntaxTree, reference.Span)
+                        : Location(parameter);
+
+                    _diagnostics.Add(Diagnostic.Create(
+                        ValidationDiagnostics.RecordParameterMissingPropertyTarget,
+                        location,
+                        Unsuffixed(attributeClass.Name)));
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether this constructor is the one written in the type's own header.
+    /// </summary>
+    /// <remarks>
+    /// A primary constructor's declaring syntax is the type declaration; an ordinary one's is a
+    /// <c>ConstructorDeclarationSyntax</c>. The record's copy constructor is implicit and has no
+    /// declaring syntax at all.
+    /// </remarks>
+    private static bool IsPrimaryConstructor(IMethodSymbol constructor) {
+        foreach (var reference in constructor.DeclaringSyntaxReferences) {
+            if (reference.GetSyntax() is Microsoft.CodeAnalysis.CSharp.Syntax.TypeDeclarationSyntax) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool IsConstraintAttribute(INamedTypeSymbol attributeClass) {
+        var ns = attributeClass.ContainingNamespace?.ToDisplayString();
+
+        if (ns == KnownTypes.ConstraintsNamespace) {
+            return true;
+        }
+
+        // Only when the second vocabulary is switched on. With it off the attribute is not enforced
+        // wherever it sits, and VM0010 is the diagnostic with that news.
+        return ns == KnownTypes.DataAnnotationsNamespace &&
+               _compileDataAnnotations &&
+               DataAnnotationsConstraintReader.IsConstraint(attributeClass.Name);
+    }
+
+    /// <summary>"RequiredAttribute" to "Required", so the suggested fix reads as it would be typed.</summary>
+    private static string Unsuffixed(string attributeName) =>
+        attributeName.EndsWith("Attribute", StringComparison.Ordinal)
+            ? attributeName.Substring(0, attributeName.Length - "Attribute".Length)
+            : attributeName;
+
+    /// <summary>
+    /// Rewrites <c>[Range]</c> bounds written as strings into expressions of the member's own type.
+    /// </summary>
+    /// <remarks>
+    /// Runs before <see cref="ValidateConstraintsAgainstType"/> so the ordering check reports
+    /// VM0003 first on a member that is not ordered at all - a bound that cannot parse against a
+    /// type that could never carry a range is VM0003's news, not VM0065's. A bound that fails to
+    /// parse takes its constraint with it, so the build fails on the diagnostic alone rather than
+    /// also on generated code that will not compile.
+    /// </remarks>
+    private void ResolveRangeBounds(IPropertySymbol property, List<ConstraintModel> constraints) {
+        if (!TypeFacts.IsOrdered(property.Type)) {
+            return;
+        }
+
+        for (var i = constraints.Count - 1; i >= 0; i--) {
+            var constraint = constraints[i];
+
+            if (constraint.Kind != ConstraintKind.Range) {
+                continue;
+            }
+
+            if (!RangeBoundReader.TryResolve(property.Type, constraint.Min ?? "0", out var min) ||
+                !RangeBoundReader.TryResolve(property.Type, constraint.Max ?? "0", out var max)) {
+
+                Report(ValidationDiagnostics.RangeBoundsNotParseable, property,
+                    property.Name, property.Type.ToDisplayString());
+
+                constraints.RemoveAt(i);
+                continue;
+            }
+
+            constraints[i] = constraint with { Min = min, Max = max };
+        }
+    }
 
     private void ValidateConstraintsAgainstType(
         IPropertySymbol property, List<ConstraintModel> constraints, bool isString, bool isCollection) {
@@ -291,6 +456,8 @@ public sealed class AttributeFrontEnd {
             var ns = attributeClass.ContainingNamespace?.ToDisplayString();
 
             if (ns == KnownTypes.ConstraintsNamespace) {
+                ReportProfileAttribution(attribute, attributeClass, property);
+
                 var native = NativeConstraintReader.Read(attribute, attributeClass.Name);
 
                 if (native is { Kind: ConstraintKind.Pattern }) {

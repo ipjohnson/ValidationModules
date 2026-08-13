@@ -13,34 +13,28 @@ Every constraint derives from `ValidationConstraintAttribute` and inherits:
 |---|---|---|
 | `Code` | `string?` | overrides the machine-readable code |
 | `Message` | `string?` | overrides the composed message |
-| `FromProfile` | `Type?` | **not implemented** — see below |
-| `UntilProfile` | `Type?` | **not implemented** |
-| `Profiles` | `Type[]?` | **not implemented** |
+| `FromProfile` | `Type?` | **not implemented** — [VM0019](/reference/diagnostics#vm0019) |
+| `UntilProfile` | `Type?` | **not implemented** — VM0019 |
+| `Profiles` | `Type[]?` | **not implemented** — VM0019 |
 
 There is no `Severity` on a constraint. Severity is reachable from
 [`rules.Ensure(…, severity:)`](/reference/rules-api#ensure) and from `context.Add` in a
 hand-written validator.
 
-::: danger Profile attribution is accepted and ignored
+::: danger Profile attribution is declared but not implemented
 Profiles are Stage 3 of the plan and are **not built**. The declaration surface shipped ahead of the
-implementation, so this compiles, reads exactly as the design describes, and does something else:
+implementation, so this compiles and reads exactly as the design describes:
 
 ```csharp
-[Required(FromProfile = typeof(V2))]     // "not required before V2"
+[Required(FromProfile = typeof(V2))]     // VM0019, an error
 public string? Tag { get; init; }
 ```
 
-The rule is enforced **unconditionally**, including under V1, with no diagnostic. One validator is
-emitted rather than one per profile, no dispatch table is generated, and `ValidatorRegistration`'s
-`Profile` component is never populated. Nonsense arguments — a type that is not a profile, or a
-range that can never admit anything — are accepted too, because the diagnostics reserved for them
-(VM0011–VM0015, VM0020) are not declared yet.
+Were it accepted, the rule would be enforced **unconditionally** — including under V1, rejecting
+data the caller was entitled to send. So it is [VM0019](/reference/diagnostics#vm0019), an error
+rather than a warning, and the same for assembly-level `[DefaultValidationProfile]`.
 
-The failure direction is the bad one: a rule applying where it should not, rejecting data a caller
-was entitled to send. Do not use these arguments until Stage 3 lands.
-
-Pinned by `tests/ValidationModules.SourceGenerator.Tests/ProfileAttributionTests.cs`, which will
-fail when it does.
+Declaring `IValidationProfile` types is harmless. Attaching a rule to one is what does not work.
 :::
 
 ## `[Required]`
@@ -100,11 +94,10 @@ Constructors: `(int, int)`, `(long, long)`, `(double, double)`, `(string, string
 
 Numeric and date-like types only — [VM0003](/reference/diagnostics#vm0003).
 
-::: danger The `(string, string)` overload is not implemented
-Documented for `decimal`, `DateTime`, `DateOnly` and `TimeSpan`, and the bound is never parsed — it
-reaches the comparison as a quoted string literal, so the generated file does not compile. See
-[VM0065](/reference/diagnostics#vm0065).
-:::
+The `(string, string)` overload is for the types with no constant form in metadata — `decimal`,
+`DateTime`, `DateOnly`, `TimeOnly`, `TimeSpan`, `DateTimeOffset`. The bound is parsed against the
+member's type at build time and emitted as a constructor call, in both the comparison and the
+message. A bound that does not parse is [VM0065](/reference/diagnostics#vm0065).
 
 ## `[Pattern]`
 

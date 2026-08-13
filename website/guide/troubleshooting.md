@@ -10,16 +10,16 @@ because it has at least one constraint, a `[ValidateNested]`, a rule class targe
 using ValidationModules.Constraints;   // not ValidationModules
 ```
 
-**The constraint is on a record parameter.** This is the most common cause and it is currently
-silent:
+**The constraint is on a record parameter.** This is the most common cause, and it now reports
+[VM0051](/reference/diagnostics#vm0051) — so check your warnings before reading further:
 
 ```csharp
-public record Pet([Required] string Name);              // no validator, no diagnostic
+public record Pet([Required] string Name);              // VM0051
 public record Pet([property: Required] string Name);    // works
 ```
 
 The attribute binds to the constructor parameter, so the property carries no metadata and the type
-looks unconstrained. [VM0051](/reference/diagnostics#vm0051) exists for this and is not reported.
+looks unconstrained to the generator.
 
 **The generator is not running.** Check that the analyzer reference survived:
 
@@ -45,13 +45,13 @@ did not run at all; if the files are there, the problem is downstream.
 `ValidationModules_DataAnnotations` is `Ignore`, no validator is emitted — but every skipped
 constraint reports [VM0010](/reference/diagnostics#vm0010), so check your warnings.
 
-## A profiled rule applies in every profile
+## `VM0019: profile attribution is not implemented`
 
-`FromProfile`, `UntilProfile` and `Profiles` are **accepted and ignored**. Profiles are Stage 3 and
-are not built, so a rule written to apply only from V2 is enforced everywhere, with no diagnostic.
+Profiles are Stage 3 and are not built. The declaration surface shipped ahead of the implementation,
+so a rule written to apply only from V2 would be enforced everywhere — which is why this is an error
+rather than a warning. Remove the profile argument until the feature lands.
 
-Do not use those arguments yet. See
-[the attributes reference](/reference/attributes#shared-members).
+Declaring `IValidationProfile` types is harmless; attaching a rule to one is what does not work.
 
 ## The validator exists but a rule never fires
 
@@ -67,19 +67,15 @@ null collection has no element count. Add `[Required]` if absence should fail to
 
 **`[ValidateNested]` on a type with no rules.** Nothing was generated for the nested type, so there
 is nothing to call. Mark it `[GenerateValidator]` if its rules come from a
-[rule class](/guide/rule-classes). [VM0007](/reference/diagnostics#vm0007) covers this and is not
-currently reported.
+[rule class](/guide/rule-classes). [VM0007](/reference/diagnostics#vm0007) covers this and is the one
+diagnostic still not wired up, so it is currently silent.
 
 ## Generated code does not compile
 
-**`[Range]` with string bounds.** The `(string, string)` overload is not implemented: the bound is
-emitted as a quoted literal rather than parsed, so `[Range("2000-01-01", "2100-01-01")]` on a
-`DateOnly` emits `value.Born < "2000-01-01"`. Use
-[`rules.Ensure`](/guide/rule-classes#ensure) until it is fixed:
-
-```csharp
-rules.Ensure(x => x.Born >= new DateOnly(2000, 1, 1));
-```
+**A `[Range]` bound that does not parse.** String bounds are parsed against the member's type at
+build time, and one that does not parse is [VM0065](/reference/diagnostics#vm0065) with the
+constraint dropped — so this should no longer reach generated code. If it does, that is a bug worth
+reporting.
 
 **A referenced pattern member that is not visible.** The generated validator lands in your assembly,
 so a `private` member is out of reach. [VM0018](/reference/diagnostics#vm0018) names the reason.
@@ -175,9 +171,9 @@ dotnet_analyzer_diagnostic.category-ValidationModules.Usage.severity = suggestio
 Prefer silencing one id over the whole category. Several of them are errors because the alternative
 is generated code that does not compile.
 
-## Three diagnostics that never fire
+## One diagnostic that never fires
 
-[VM0007](/reference/diagnostics#vm0007), [VM0051](/reference/diagnostics#vm0051) and
-[VM0065](/reference/diagnostics#vm0065) are declared and released but never reported. They are
+[VM0007](/reference/diagnostics#vm0007) is declared and released but never reported:
+`[ValidateNested]` on a type with no rules of its own descends into nothing and says nothing. It is
 listed in the reference and marked, so a rule you expected to catch something may simply not be
-wired up yet. VM0051 and VM0065 both have workarounds above.
+wired up yet.

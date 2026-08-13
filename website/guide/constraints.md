@@ -92,19 +92,23 @@ if ((value.Age < 0 || value.Age > 30)) ctx.AddRange("age", 0, 30);
 `[Range]` to a `Nullable<T>` checks the value only when it has one; combine it with `[Required]` if
 null should also fail.
 
-::: danger The string-bounds overload does not work
-`RangeAttribute` has a `(string min, string max)` overload, documented for `decimal`, `DateTime`,
-`DateOnly` and `TimeSpan`. **It is not implemented.** The bound is emitted as a quoted string
-literal rather than parsed, so `[Range("2000-01-01", "2100-01-01")]` on a `DateOnly` emits
-`value.Born < "2000-01-01"` and the generated file does not compile.
-
-[VM0065](/reference/diagnostics#vm0065) is the diagnostic declared to catch this, and it is one of
-three that are declared but never reported. Until it is fixed, express a date bound with
-[`rules.Ensure`](/guide/rule-classes#ensure) instead:
+::: tip String bounds, for the types with no constant form
+`decimal`, `DateTime`, `DateOnly`, `TimeOnly`, `TimeSpan` and `DateTimeOffset` have no constant form
+in metadata, so their bounds are written as strings and parsed against the member's own type at
+build time:
 
 ```csharp
-rules.Ensure(x => x.Born >= new DateOnly(2000, 1, 1));
+[Range("2000-01-01", "2100-12-31")] public DateOnly Born  { get; init; }
+[Range("0.00", "9.99")]             public decimal Price { get; init; }
+[Range("00:00:00", "23:59:59")]     public TimeSpan Window { get; init; }
 ```
+
+The bound is emitted as a constructor call — `new global::System.DateOnly(2000, 1, 1)` — in both the
+comparison and the message, so the two cannot disagree. A bound that does not parse is
+[VM0065](/reference/diagnostics#vm0065) at the declaration, not an error inside a generated file.
+
+A `DateTime` bound is `DateTimeKind.Unspecified`: `"2000-01-01"` carries no zone, and anchoring it to
+the build machine's would make the same source mean two things.
 :::
 
 ## `[Pattern]`
@@ -231,16 +235,14 @@ public record Pet([property: Required] string Name);   // correct
 public record Pet([Required] string Name);             // silently validates nothing
 ```
 
-::: danger This is not currently diagnosed
-[VM0051](/reference/diagnostics#vm0051) exists for exactly this and is **never reported**. The
-second form compiles, emits **no validator at all**, and produces no diagnostic — the type looks
-unconstrained to the generator, because as far as the metadata is concerned it is. Nothing is
-registered for it, so `IValidatorFor<Pet>` does not resolve and a `ValidationRunner<Pet>` merging
-zero validators reports every value as valid.
+::: warning The wrong form is caught, and it is worth knowing why it needs catching
+The second form is [VM0051](/reference/diagnostics#vm0051). Without that diagnostic it is silent in
+every direction: the attribute binds to the constructor parameter, so the property carries no
+metadata, **no validator is emitted at all**, `IValidatorFor<Pet>` does not resolve, and a runner
+merging zero validators reports every value as valid.
 
-Prefer a record with an explicit body until that is fixed:
+A record with an explicit body avoids the question:
 
-```csharp
 public record Pet {
     [Required] public string? Name { get; init; }
 }
