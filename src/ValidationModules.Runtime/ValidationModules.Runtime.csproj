@@ -47,4 +47,17 @@
         <InternalsVisibleTo Include="ValidationModules.Runtime.Tests"/>
     </ItemGroup>
 
+    <!--
+        PackagePath must use a forward slash: a trailing backslash packs to "build//" on Linux and
+        macOS, which breaks NuGet's build/$(PackageId).props convention.
+    -->
+    <ItemGroup>
+        <None Remove="Package\ValidationModules.Runtime.*"/>
+        <Content Include="Package\ValidationModules.Runtime.*">
+            <Pack>true</Pack>
+            <PackagePath>build/</PackagePath>
+            <PackageCopyToOutput>true</PackageCopyToOutput>
+        </Content>
+    </ItemGroup>
+
 </Project>

@@ -100,6 +100,10 @@ namespace ValidationModules
         ValidationModules.IValidatorFor<T>? GetValidator<T>();
         ValidationModules.IValidatorFor<T>? GetValidator<T>(System.Type profile);
     }
+    public static class RuntimeContract
+    {
+        public const int Version = 1;
+    }
     public static class ValidationCodes
     {
         public const string ArrayBounds = "array_bounds";

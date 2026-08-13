@@ -17,6 +17,7 @@ VM0010 | ValidationModules.Usage | Warning | A DataAnnotations constraint was sk
 VM0016 | ValidationModules.Usage | Warning | RegexOptions.Compiled is ignored; patterns use [GeneratedRegex].
 VM0017 | ValidationModules.Usage | Warning | An inline pattern roots the regex engine in an AOT-facing project.
 VM0018 | ValidationModules.Usage | Error | A referenced regex member is missing, not static, inaccessible or not a Regex.
+VM0040 | ValidationModules.Usage | Error | The referenced ValidationModules.Runtime is older than the emitted code requires.
 VM0051 | ValidationModules.Usage | Warning | A constraint on a record parameter is missing the property: target.
 VM0060 | ValidationModules.Usage | Warning | A custom ValidationAttribute subclass cannot be compiled.
 VM0061 | ValidationModules.Usage | Warning | A cross-field DataAnnotations attribute cannot be compiled.

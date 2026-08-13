@@ -15,6 +15,17 @@
         <ProjectReference Include="..\..\src\ValidationModules.Runtime\ValidationModules.Runtime.csproj"/>
     </ItemGroup>
 
+    <!--
+        The runtime package's props carries the contract version for MSBuild hosts that have no
+        compilation to read the constant from. Copied here so RuntimeContractTests can assert the
+        two never drift.
+    -->
+    <ItemGroup>
+        <None Include="..\..\src\ValidationModules.Runtime\Package\ValidationModules.Runtime.props"
+              Link="ValidationModules.Runtime.props"
+              CopyToOutputDirectory="PreserveNewest"/>
+    </ItemGroup>
+
     <ItemGroup>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.10.0"/>
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0"/>

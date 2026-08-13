@@ -106,4 +106,13 @@ public static class ValidationDiagnostics {
         "VM0067", "IValidatableObject is not compiled",
         "'{0}' implements IValidatableObject; its Validate method is not called by the generated validator",
         DiagnosticSeverity.Warning);
+
+    /// <summary>
+    /// Reported before any source is added, so the build fails here rather than on generated code
+    /// calling a runtime member that does not exist. Plan §7.5.
+    /// </summary>
+    public static readonly DiagnosticDescriptor RuntimeContractTooOld = Descriptor(
+        "VM0040", "ValidationModules.Runtime is too old",
+        "The generated validators require ValidationModules.Runtime contract {0} or later; the referenced runtime is contract {1}. Update the ValidationModules.Runtime package reference.",
+        DiagnosticSeverity.Error);
 }
