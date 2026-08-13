@@ -67,6 +67,47 @@ public class ValidationErrorCollectorTests {
     }
 
     [Fact]
+    public void Reset_RecycledNodes_KeepOrderAndCarryNothingOver() {
+        // Reset splices the recorded chain onto the free list rather than walking it, so nodes come
+        // back out in the order they were released. Getting the relink wrong shows up as reversed
+        // errors or a stale one reappearing, neither of which a single-pass test would catch.
+        var collector = new ValidationErrorCollector();
+
+        for (var pass = 0; pass < 5; pass++) {
+            collector.Reset();
+
+            var context = new ValidationContext(collector);
+            for (var i = 0; i < 4 + pass; i++) {
+                context.Add($"field{i}", "required", $"pass {pass}");
+            }
+
+            var errors = collector.ToResult().Errors;
+
+            Assert.Equal(4 + pass, errors.Count);
+            Assert.Equal(
+                Enumerable.Range(0, 4 + pass).Select(i => $"field{i}"),
+                errors.Select(error => error.Field));
+            Assert.All(errors, error => Assert.Equal($"pass {pass}", error.Message));
+        }
+    }
+
+    [Fact]
+    public void Reset_ShrinkingPass_DoesNotLeakTheLongerPassBehindIt() {
+        var collector = new ValidationErrorCollector();
+        var first = new ValidationContext(collector);
+
+        for (var i = 0; i < 10; i++) {
+            first.Add($"field{i}", "required", "x");
+        }
+
+        collector.Reset();
+        new ValidationContext(collector).Add("only", "required", "x");
+
+        Assert.Equal("only", Assert.Single(collector.ToResult().Errors).Field);
+        Assert.Equal(1, collector.Count);
+    }
+
+    [Fact]
     public void Add_PrePathedError_IsTakenAsGiven() {
         var collector = new ValidationErrorCollector();
 

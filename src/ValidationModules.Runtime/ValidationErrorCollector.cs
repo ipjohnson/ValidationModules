@@ -47,9 +47,27 @@ public sealed class ValidationErrorCollector {
     /// </remarks>
     public const int MaxDepth = 64;
 
+    /// <summary>
+    /// One recorded failure, and the link to the next. A class rather than an array slot so that
+    /// adding never resizes and never copies what is already there.
+    /// </summary>
+    private sealed class ErrorNode {
+        public ValidationError Error;
+        public ErrorNode? Next;
+    }
+
     private readonly object? _gate;
 
-    private List<ValidationError>? _errors;
+    private ErrorNode? _head;
+    private ErrorNode? _tail;
+    private int _count;
+
+    /// <summary>
+    /// Nodes released by <see cref="Reset"/>, ready to be handed straight back out. This is what
+    /// makes a pooled collector allocation-free once it has seen its worst pass: the second request
+    /// to record eight failures allocates nothing at all.
+    /// </summary>
+    private ErrorNode? _free;
 
     /// <summary>
     /// Field paths that have already failed <see cref="ValidationCodes.Required"/> at error
@@ -90,12 +108,12 @@ public sealed class ValidationErrorCollector {
     /// <summary>
     /// Whether this pass has recorded any failure, at any severity.
     /// </summary>
-    public bool HasErrors => _errors is { Count: > 0 };
+    public bool HasErrors => _head is not null;
 
     /// <summary>
     /// How many failures this pass has recorded.
     /// </summary>
-    public int Count => _errors?.Count ?? 0;
+    public int Count => _count;
 
     /// <summary>
     /// The profile this pass runs under, or <see langword="null"/> for the default profile.
@@ -121,20 +139,42 @@ public sealed class ValidationErrorCollector {
     /// Snapshots what has been collected into an immutable result. Returns the shared
     /// <see cref="ValidationResult.Valid"/> instance when nothing failed.
     /// </summary>
-    public ValidationResult ToResult() =>
-        _errors is null || _errors.Count == 0
-            ? ValidationResult.Valid
-            : ValidationResult.FromErrors(_errors);
+    /// <remarks>
+    /// The count is known before the walk, so this fills one exactly-sized array rather than
+    /// growing a list into it.
+    /// </remarks>
+    public ValidationResult ToResult() {
+        if (_head is null) {
+            return ValidationResult.Valid;
+        }
+
+        var errors = new ValidationError[_count];
+        var i = 0;
+        for (var node = _head; node is not null; node = node.Next) {
+            errors[i++] = node.Error;
+        }
+
+        return ValidationResult.FromOwnedArray(errors);
+    }
 
     /// <summary>
-    /// Clears the errors, keeping the buffer for the next pass.
+    /// Clears the errors, keeping the nodes for the next pass.
     /// </summary>
     /// <remarks>
-    /// <see cref="List{T}.Clear"/> nulls the vacated slots, so a pooled collector does not keep the
-    /// last pass's messages and paths alive.
+    /// The recorded chain is spliced onto the free list whole, so this is constant time however many
+    /// failures the pass produced. A released node keeps its strings reachable until it is handed
+    /// out again and overwritten - bounded by the worst pass this collector has seen, and the reason
+    /// to pool one per pipeline rather than one per process.
     /// </remarks>
     public void Reset() {
-        _errors?.Clear();
+        if (_tail is not null) {
+            _tail.Next = _free;
+            _free = _head;
+            _head = null;
+            _tail = null;
+            _count = 0;
+        }
+
         _requiredFields?.Clear();
     }
 
@@ -169,7 +209,7 @@ public sealed class ValidationErrorCollector {
             return;
         }
 
-        (_errors ??= []).Add(error);
+        Append(in error);
 
         // Only a real failure suppresses. A Required reported as a warning is advisory, and
         // silencing the rest of the field on the strength of it would be wrong.
@@ -177,6 +217,33 @@ public sealed class ValidationErrorCollector {
             string.Equals(error.Code, ValidationCodes.Required, StringComparison.Ordinal)) {
             (_requiredFields ??= []).Add(error.Field);
         }
+    }
+
+    /// <summary>
+    /// Appends at the tail, so errors come out in the order they were recorded - which §4.2 requires
+    /// and which a head-insert would reverse.
+    /// </summary>
+    private void Append(in ValidationError error) {
+        ErrorNode node;
+
+        if (_free is not null) {
+            node = _free;
+            _free = node.Next;
+        } else {
+            node = new ErrorNode();
+        }
+
+        node.Error = error;
+        node.Next = null;
+
+        if (_tail is null) {
+            _head = node;
+        } else {
+            _tail.Next = node;
+        }
+
+        _tail = node;
+        _count++;
     }
 
     private bool IsSuppressed(string field) {
