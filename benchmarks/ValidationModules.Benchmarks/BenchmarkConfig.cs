@@ -3,6 +3,7 @@ using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Environments;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Order;
+using Perfolizer.Horology;
 
 namespace ValidationModules.Benchmarks;
 
@@ -64,8 +65,30 @@ public static class BenchmarkConfig {
     /// to answer "does it still run and is it roughly the same", and a number taken under them
     /// should not be quoted.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The iteration time is 100ms rather than BenchmarkDotNet's 500ms, and that is what makes
+    /// the suite runnable.</b> Nearly everything here is nanosecond-scale, and BenchmarkDotNet sizes
+    /// an iteration to fill the target time - at 500ms a 5ns cell climbs past 100M operations, and
+    /// the pilot stage that discovers that count doubles its way up to it. The default suite spent
+    /// four minutes on a single eight-cell class before this was set.
+    /// </para>
+    /// <para>
+    /// It costs precision rather than correctness: the reported mean is per-operation either way,
+    /// and 100ms of a 5ns operation is still twenty million samples. The iteration <i>count</i> is
+    /// what separates two close readings, and that is unchanged.
+    /// </para>
+    /// <para>
+    /// This was already known - HANDOFF.md §2.1 records one cell taking fifteen minutes, and the
+    /// shape benchmarks carried <c>[IterationTime(100)]</c> for exactly this reason. Setting it on
+    /// the job applies the same fix everywhere instead of one attribute at a time, and means a class
+    /// added later inherits it rather than rediscovering the trap.
+    /// </para>
+    /// </remarks>
     private static Job Counts(Job job, bool quick) =>
         quick
-            ? job.WithWarmupCount(1).WithIterationCount(3).WithLaunchCount(1)
-            : job.WithWarmupCount(5).WithIterationCount(15);
+            ? job.WithWarmupCount(1).WithIterationCount(3).WithLaunchCount(1).WithIterationTime(IterationTime)
+            : job.WithWarmupCount(5).WithIterationCount(15).WithIterationTime(IterationTime);
+
+    private static readonly TimeInterval IterationTime = TimeInterval.FromMilliseconds(100);
 }
