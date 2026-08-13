@@ -53,6 +53,7 @@ public class ContextShapeBenchmarks {
 
     private readonly ValidationErrorCollector _pooledLog = new();
     private readonly ChainErrorCollector _pooledChain = new();
+    private readonly LazyPinCollector _pooledLazyPin = new();
 
     private int _depth;
 
@@ -96,6 +97,23 @@ public class ContextShapeBenchmarks {
         return Consume(ref context);
     }
 
+    /// <summary>
+    /// The log's storage with the chain's laziness. Against <see cref="Log_Clean"/> this is what
+    /// the eager buffer costs; against <see cref="Chain_Clean"/> it is what replacing the array
+    /// with individual heap nodes is worth, which is the comparison the first cut failed to make.
+    /// </summary>
+    [Benchmark(Description = "lazy-pin: descend, add nothing")]
+    public int LazyPin_Clean() {
+        var collector = new LazyPinCollector();
+
+        var context = new LazyPinContext(collector);
+        for (var i = 0; i < _depth; i++) {
+            context = context.Push("home");
+        }
+
+        return Consume(ref context);
+    }
+
     [Benchmark(Description = "log: descend, one error at the leaf")]
     public bool Log_Failing() {
         var collector = new ValidationErrorCollector();
@@ -122,6 +140,20 @@ public class ContextShapeBenchmarks {
         context.Add("postalCode", ValidationCodes.Required, Message);
 
         return collector.HasErrors;
+    }
+
+    [Benchmark(Description = "lazy-pin: descend, one error at the leaf")]
+    public int LazyPin_Failing() {
+        var collector = new LazyPinCollector();
+
+        var context = new LazyPinContext(collector);
+        for (var i = 0; i < _depth; i++) {
+            context = context.Push("home");
+        }
+
+        context.Add("postalCode", ValidationCodes.Required, Message);
+
+        return Consume(ref context);
     }
 
     // ---- Pooled collector: today's escape hatch, and what the chain has to beat -----------------
@@ -171,4 +203,8 @@ public class ContextShapeBenchmarks {
     /// <inheritdoc cref="Consume(ref ValidationContext)"/>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static int Consume(ref ChainContext context) => context.ErrorCount;
+
+    /// <inheritdoc cref="Consume(ref ValidationContext)"/>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int Consume(ref LazyPinContext context) => context.ErrorCount;
 }

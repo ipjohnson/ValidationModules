@@ -21,33 +21,41 @@ public static class ContextShapeParity {
 
         Compare(mismatches, "root field",
             Log(context => context.Add("name", "required", "m")),
-            Chain(context => context.Add("name", "required", "m")));
+            Chain(context => context.Add("name", "required", "m")),
+            LazyPin(context => context.Add("name", "required", "m")));
 
         Compare(mismatches, "one nested object",
             Log(context => context.Push("home").Add("postalCode", "required", "m")),
-            Chain(context => context.Push("home").Add("postalCode", "required", "m")));
+            Chain(context => context.Push("home").Add("postalCode", "required", "m")),
+            LazyPin(context => context.Push("home").Add("postalCode", "required", "m")));
 
         Compare(mismatches, "collection element",
             Log(context => context.PushIndex("toys", 3).Add("name", "required", "m")),
-            Chain(context => context.PushIndex("toys", 3).Add("name", "required", "m")));
+            Chain(context => context.PushIndex("toys", 3).Add("name", "required", "m")),
+            LazyPin(context => context.PushIndex("toys", 3).Add("name", "required", "m")));
 
         Compare(mismatches, "dictionary entry",
             Log(context => context.PushKey("items", "sku-1").Add("name", "required", "m")),
-            Chain(context => context.PushKey("items", "sku-1").Add("name", "required", "m")));
+            Chain(context => context.PushKey("items", "sku-1").Add("name", "required", "m")),
+            LazyPin(context => context.PushKey("items", "sku-1").Add("name", "required", "m")));
 
         Compare(mismatches, "four levels, mixed",
             Log(context => context.Push("order").PushIndex("lines", 2).Push("shipTo").PushKey("tags", "a")
                 .Add("city", "required", "m")),
             Chain(context => context.Push("order").PushIndex("lines", 2).Push("shipTo").PushKey("tags", "a")
+                .Add("city", "required", "m")),
+            LazyPin(context => context.Push("order").PushIndex("lines", 2).Push("shipTo").PushKey("tags", "a")
                 .Add("city", "required", "m")));
 
         Compare(mismatches, "type-level failure at depth",
             Log(context => context.Push("home").AddHere("conflict", "m")),
-            Chain(context => context.Push("home").AddHere("conflict", "m")));
+            Chain(context => context.Push("home").AddHere("conflict", "m")),
+            LazyPin(context => context.Push("home").AddHere("conflict", "m")));
 
         Compare(mismatches, "type-level failure at the root",
             Log(context => context.AddHere("conflict", "m")),
-            Chain(context => context.AddHere("conflict", "m")));
+            Chain(context => context.AddHere("conflict", "m")),
+            LazyPin(context => context.AddHere("conflict", "m")));
 
         // Suppression is a property of the error model rather than of either shape, so it has to
         // survive the change. Two adds on one field, the first a failed Required: one error out.
@@ -57,6 +65,10 @@ public static class ContextShapeParity {
                 context.Add("name", ValidationCodes.StringLength, "m");
             }),
             ChainAll(context => {
+                context.Add("name", ValidationCodes.Required, "m");
+                context.Add("name", ValidationCodes.StringLength, "m");
+            }),
+            LazyPinAll(context => {
                 context.Add("name", ValidationCodes.Required, "m");
                 context.Add("name", ValidationCodes.StringLength, "m");
             }));
@@ -73,7 +85,15 @@ public static class ContextShapeParity {
 
     private static void Compare(List<string> mismatches, string scenario, string log, string chain) {
         if (!string.Equals(log, chain, StringComparison.Ordinal)) {
-            mismatches.Add($"  {scenario}: shipped produced '{log}', prototype produced '{chain}'");
+            mismatches.Add($"  {scenario}: shipped produced '{log}', chain produced '{chain}'");
+        }
+    }
+
+    private static void Compare(List<string> mismatches, string scenario, string log, string chain, string lazyPin) {
+        Compare(mismatches, scenario, log, chain);
+
+        if (!string.Equals(log, lazyPin, StringComparison.Ordinal)) {
+            mismatches.Add($"  {scenario}: shipped produced '{log}', lazy-pin produced '{lazyPin}'");
         }
     }
 
@@ -93,6 +113,16 @@ public static class ContextShapeParity {
         var collector = new ChainErrorCollector();
 
         body(new ChainContext(collector));
+
+        return Describe(collector.ToResult());
+    }
+
+    private static string LazyPin(Action<LazyPinContext> body) => LazyPinAll(body);
+
+    private static string LazyPinAll(Action<LazyPinContext> body) {
+        var collector = new LazyPinCollector();
+
+        body(new LazyPinContext(collector));
 
         return Describe(collector.ToResult());
     }
