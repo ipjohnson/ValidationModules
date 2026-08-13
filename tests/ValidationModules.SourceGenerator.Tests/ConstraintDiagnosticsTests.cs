@@ -280,6 +280,41 @@ public class ConstraintDiagnosticsTests {
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0016");
     }
 
+    // VM0051's case, which VM0051 does not currently report. Characterized rather than asserted as
+    // correct — see RangeStringBoundsTests for the other half of the same gap.
+
+    [Fact]
+    public void ConstraintOnARecordParameter_EmitsNothingAndSaysNothing() {
+        // The attribute binds to the constructor parameter, so the property carries no metadata and
+        // the front end sees an unconstrained type. Not "a validator with no rules" — no validator
+        // at all, and no diagnostic, which makes this the quietest failure in the library:
+        // IValidatorFor<Pet> does not resolve, and a runner merging zero validators calls every
+        // value valid. [property: Required] is the working form.
+        var result = GeneratorHarness.Run("""
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public record Pet([Required] string Name);
+            """);
+
+        Assert.Empty(result.Sources);
+        Assert.Empty(result.Diagnostics);
+    }
+
+    [Fact]
+    public void ConstraintOnARecordParameterWithThePropertyTarget_IsReadNormally() {
+        var result = GeneratorHarness.Run("""
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public record Pet([property: Required] string Name);
+            """);
+
+        Assert.Contains("ctx.AddRequired(\"name\")", result.Sources["Sample.PetValidator.g.cs"]);
+    }
+
     // A model with no mistakes in it produces no diagnostics at all, which is the assertion that
     // keeps the ones above from passing for the wrong reason.
 

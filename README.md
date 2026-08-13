@@ -50,15 +50,36 @@ Pre-1.0, and under construction. Built so far:
 | Stage | | |
 |---|---|---|
 | 1 | Runtime — contracts, context, error model, constraint attributes, naming | **done** |
-| 2 | Generator, no profiles | not started |
+| 2 | Generator, no profiles | **done** |
 | 3 | Profiles | not started |
-| 4 | `Impl` packaging for framework authors | not started |
-| 5 | Hardened integration | not started |
+| 4 | `Impl` packaging for framework authors | **done** |
+| 5 | Hardened integration | substantially done |
 | 6 | FluentValidation adapter and conformance suite | not started |
 
-Until Stage 2 lands there is no generator, so validators are hand-written. The shape they must take
-is pinned by the tests in `tests/ValidationModules.Runtime.Tests/Infrastructure/SampleModel.cs`,
-which double as the emitter's specification.
+Also built since the plan was written, and not in its staging: a declarative rule-class front end
+(`IValidationRulesFor<T>`, `API-SURFACE.md` §19) and a DataAnnotations front end (§18).
+
+Three known gaps, each pinned by a test that will fail when it is fixed:
+
+- **`[Range]`'s `(string, string)` overload is not implemented.** The bound is emitted as a quoted
+  literal rather than parsed, so `[Range("2000-01-01", "2100-01-01")]` on a `DateOnly` emits code
+  that does not compile. `tests/ValidationModules.SourceGenerator.Tests/RangeStringBoundsTests.cs`.
+- **VM0007, VM0051 and VM0065 are declared and never reported.** VM0051 is the costly one:
+  `record Pet([Required] string Name)` emits no validator and no diagnostic.
+  `DiagnosticCatalogueTests` records exactly those three and fails in both directions.
+- **VM0075's message tells you to pass `field:`, which does not silence it.** The behaviour is
+  intended; the wording is not.
+
+## Documentation
+
+The docs site lives in `website/` and publishes to
+<https://ipjohnson.github.io/ValidationModules/>:
+
+```bash
+cd website && npm install && npm run dev
+```
+
+Dead internal links fail the build, so a rename cannot rot a link silently.
 
 ## Design
 
@@ -92,7 +113,7 @@ lands in the consumer's assembly, which already references DM.
 ```bash
 dotnet build --configuration Release
 dotnet test  --configuration Release
-dotnet test  --configuration Release --collect:"XPlat Code Coverage" --settings tests/coverlet.runsettings
+dotnet test  --configuration Release --collect:"XPlat Code Coverage" --settings coverlet.runsettings
 ```
 
 The public API is pinned by a snapshot at

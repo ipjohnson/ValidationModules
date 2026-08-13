@@ -1,0 +1,176 @@
+---
+layout: home
+
+hero:
+  name: ValidationModules
+  text: Validation, decided at compile time
+  tagline: >-
+    Declare constraints on the model they belong to, and a source generator writes the checks during
+    the build. Nothing reflects, nothing compiles an expression tree, and no regex is built at
+    startup — so a Native AOT publish keeps every rule you declared.
+  image:
+    src: /hero.svg
+    alt: A constrained model on the left becoming straight-line generated validation code on the right
+  actions:
+    - theme: brand
+      text: Get started
+      link: /guide/getting-started
+    - theme: alt
+      text: Constraints
+      link: /guide/constraints
+    - theme: alt
+      text: View on GitHub
+      link: https://github.com/ipjohnson/ValidationModules
+
+features:
+  - title: Validators you can read
+    details: >-
+      Every check is emitted into your assembly as plain C#. Set EmitCompilerGeneratedFiles and the
+      file under obj/ is the ground truth — no rule graph to reason about, no startup cost, and
+      nothing between the attribute you wrote and the branch that runs.
+    link: /guide/constraints
+    linkText: The constraint attributes
+
+  - title: Native AOT is the requirement
+    details: >-
+      No MakeGenericType, no Activator.CreateInstance, no Expression.Compile, no assembly scanning.
+      The runtime escalates the trim and AOT warnings to errors, so the compiler enforces this
+      rather than review.
+    link: /guide/aot
+    linkText: Trimming and AOT
+
+  - title: Mistakes reported at build time
+    details: >-
+      A length constraint on an int, a pattern that will not parse, bounds that can never both be
+      satisfied, a constrained property with no getter — each is a VM diagnostic in the IDE rather
+      than a rule that silently never fires.
+    link: /reference/diagnostics
+    linkText: Diagnostics reference
+
+  - title: Three ways to declare a rule
+    details: >-
+      Native constraint attributes, System.ComponentModel.DataAnnotations compiled rather than
+      reflected, and rule classes for a type you do not own. All three read into one model and out
+      through one emitter, so a rule's origin stops mattering.
+    link: /guide/rule-classes
+    linkText: Rule classes
+
+  - title: One error shape
+    details: >-
+      Declaration order, fixed wire codes, and a field path that reads home.postalCode or
+      toys[3].name. A failed required suppresses the rest of its field, enforced where every engine
+      reaches rather than in emitted control flow.
+    link: /guide/errors
+    linkText: The error model
+
+  - title: Registers itself
+    details: >-
+      With DependencyModules referenced the generator emits a complete module. Without it, a static
+      table of factory delegates and one AddValidationModules call. Both branches avoid constructor
+      reflection entirely.
+    link: /guide/registration
+    linkText: Registration and DI
+---
+
+<div class="vm-sample">
+
+## The problem
+
+Validation is the layer most likely to be quietly reflective. FluentValidation compiles expression
+trees; `System.ComponentModel.DataAnnotations` walks attributes with `Validator.TryValidateObject`.
+Both work — and both put reflection on the request path:
+
+```csharp
+RuleFor(x => x.Name).NotNull().Length(1, 100);
+```
+
+Under Native AOT `Expression.Compile()` does not throw. It falls back to the LINQ interpreter, so
+property access is interpreted rather than compiled, and you carry `IL2026`/`IL3050` trim warnings
+into a published build. The rules still run; they just cost more than they look like they cost, in
+the configuration where you can least afford it.
+
+## What it looks like instead
+
+Declare the constraint on the property. The check is written for you during the build.
+
+```csharp
+using ValidationModules.Constraints;
+
+public record Pet {
+    [Required]
+    [StringLength(min: 1, max: 100)]
+    public string? Name { get; init; }
+
+    [Range(0, 30)]
+    public int Age { get; init; }
+
+    [ValidateNested]
+    public Address? Home { get; init; }
+}
+```
+
+What comes out the other side is the code you would have written by hand, in your own assembly:
+
+```csharp
+public sealed partial class PetValidator : IValidatorFor<Pet> {
+    public static readonly PetValidator Instance = new();
+
+    public void Validate(ref ValidationContext ctx, Pet value) {
+        if (string.IsNullOrWhiteSpace(value.Name))      ctx.AddRequired("name");
+        else if (value.Name.Length > 100)               ctx.AddStringLength("name", 1, 100);
+
+        if (value.Age < 0 || value.Age > 30)            ctx.AddRange("age", 0, 30);
+
+        if (value.Home is { } nestedHome) {
+            var ctxHome = ctx.Push("home");
+            AddressValidator.Instance.Validate(ref ctxHome, nestedHome);
+        }
+    }
+}
+```
+
+Then run it:
+
+```csharp
+var result = PetValidator.Instance.Validate(pet);
+
+foreach (var error in result.Errors) {
+    Console.WriteLine($"{error.Field}: {error.Code}");
+}
+// name             required
+// home.postalCode  required
+// toys[3].name     required
+```
+
+## What it costs
+
+Measured against the same rules expressed in FluentValidation and in DataAnnotations, on .NET 10.
+The full method and the four choices made in FluentValidation's favour are in
+[`benchmarks/README.md`](https://github.com/ipjohnson/ValidationModules/blob/main/benchmarks/README.md).
+
+| | ValidationModules | FluentValidation | DataAnnotations |
+|---|---|---|---|
+| Flat model, valid | **39.6 ns** / 472 B | 194 ns / 664 B | 1,056 ns / 2,696 B |
+| Nested model, valid | **119 ns** / 472 B | 1,675 ns / 5,224 B | 545 ns *(top level only)* |
+| 1,000 elements | **15.0 µs** / 49 KB | 242 µs / 846 KB | *does not descend* |
+| Resolve from DI | **4.1 ns** | 2,269 ns | — |
+
+That last row is the one worth reading twice. `AddValidatorsFromAssemblyContaining` registers
+validators **scoped**, and constructing a FluentValidation validator costs about 2,163 ns — so by
+default it rebuilds its rule graph on every request.
+
+</div>
+
+<style>
+.vm-sample {
+  max-width: 1152px;
+  margin: 0 auto;
+  padding: 0 24px 64px;
+}
+
+.vm-sample h2 {
+  border-top: 1px solid var(--vp-c-divider);
+  padding-top: 40px;
+  margin-top: 8px;
+}
+</style>
