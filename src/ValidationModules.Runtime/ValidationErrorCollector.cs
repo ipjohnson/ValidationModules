@@ -5,9 +5,11 @@ namespace ValidationModules;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Public because pooling it is the point: a request pipeline validating a body per request should
-/// reuse one collector rather than allocate a fresh error list each time. Call <see cref="Reset"/>
-/// between passes.
+/// Cheap enough to construct one per validation, which is the expected use. It was made public so a
+/// request pipeline could pool one and skip a 472-byte allocation per request; that buffer is gone
+/// and a fresh collector is 48 bytes holding nothing, so pooling is now a marginal saving rather
+/// than the point. It is still supported - <see cref="Reset"/> between passes - and still the way to
+/// collect several validations into one result.
 /// </para>
 /// <para>
 /// It owns no part of the path. <see cref="ValidationContext"/> carries its own path in the struct
@@ -48,8 +50,8 @@ public sealed class ValidationErrorCollector {
     public const int MaxDepth = 64;
 
     /// <summary>
-    /// One recorded failure, and the link to the next. A class rather than an array slot so that
-    /// adding never resizes and never copies what is already there.
+    /// One recorded failure, and the link to the one recorded before it. A class rather than an
+    /// array slot so that adding never resizes and never copies what is already there.
     /// </summary>
     private sealed class ErrorNode {
         public ValidationError Error;
@@ -58,16 +60,17 @@ public sealed class ValidationErrorCollector {
 
     private readonly object? _gate;
 
-    private ErrorNode? _head;
-    private ErrorNode? _tail;
-    private int _count;
-
     /// <summary>
-    /// Nodes released by <see cref="Reset"/>, ready to be handed straight back out. This is what
-    /// makes a pooled collector allocation-free once it has seen its worst pass: the second request
-    /// to record eight failures allocates nothing at all.
+    /// The most recent failure. The chain runs newest to oldest, which is what lets this be the only
+    /// field the storage needs.
     /// </summary>
-    private ErrorNode? _free;
+    /// <remarks>
+    /// Appending in order would want a tail pointer, and sizing the result array would want a count,
+    /// and those two fields push the object from 48 to 72 bytes - paid on every clean pass, which is
+    /// most of production traffic, to speed up passes that fail. Inserting at the head and having
+    /// <see cref="ToResult"/> fill its array backwards keeps declaration order without either one.
+    /// </remarks>
+    private ErrorNode? _head;
 
     /// <summary>
     /// Field paths that have already failed <see cref="ValidationCodes.Required"/> at error
@@ -95,8 +98,9 @@ public sealed class ValidationErrorCollector {
     }
 
     /// <summary>
-    /// Creates a collector that tolerates concurrent pushes and adds, for async validators that
-    /// genuinely fan out - <c>Task.WhenAll</c> over collection elements, say.
+    /// Creates a collector that tolerates concurrent adds, for async validators that genuinely fan
+    /// out - <c>Task.WhenAll</c> over collection elements, say. Descending needs no synchronization
+    /// either way; <see cref="ValidationContext"/> carries its own path and never writes here.
     /// </summary>
     /// <remarks>
     /// The default collector does not synchronize because generated straight-line code never needs
@@ -113,7 +117,22 @@ public sealed class ValidationErrorCollector {
     /// <summary>
     /// How many failures this pass has recorded.
     /// </summary>
-    public int Count => _count;
+    /// <remarks>
+    /// Walks the chain, so this is linear rather than a field read. A pass holds one node per
+    /// failure and realistic passes hold none or one, which is why the two fields a cached count
+    /// would cost are not worth charging to every clean pass. Snapshotting it around a block, which
+    /// is what this is for, stays cheap for the same reason.
+    /// </remarks>
+    public int Count {
+        get {
+            var count = 0;
+            for (var node = _head; node is not null; node = node.Next) {
+                count++;
+            }
+
+            return count;
+        }
+    }
 
     /// <summary>
     /// The profile this pass runs under, or <see langword="null"/> for the default profile.
@@ -140,41 +159,35 @@ public sealed class ValidationErrorCollector {
     /// <see cref="ValidationResult.Valid"/> instance when nothing failed.
     /// </summary>
     /// <remarks>
-    /// The count is known before the walk, so this fills one exactly-sized array rather than
-    /// growing a list into it.
+    /// Counts, then fills one exactly-sized array from the back, because the chain runs newest to
+    /// oldest and <see cref="ValidationResult.Errors"/> is declaration order. Two walks over a
+    /// handful of nodes, against a list that would have grown its backing array underneath.
     /// </remarks>
     public ValidationResult ToResult() {
         if (_head is null) {
             return ValidationResult.Valid;
         }
 
-        var errors = new ValidationError[_count];
-        var i = 0;
+        var errors = new ValidationError[Count];
+        var i = errors.Length;
         for (var node = _head; node is not null; node = node.Next) {
-            errors[i++] = node.Error;
+            errors[--i] = node.Error;
         }
 
         return ValidationResult.FromOwnedArray(errors);
     }
 
     /// <summary>
-    /// Clears the errors, keeping the nodes for the next pass.
+    /// Drops the errors, so the collector can run another pass.
     /// </summary>
     /// <remarks>
-    /// The recorded chain is spliced onto the free list whole, so this is constant time however many
-    /// failures the pass produced. A released node keeps its strings reachable until it is handed
-    /// out again and overwritten - bounded by the worst pass this collector has seen, and the reason
-    /// to pool one per pipeline rather than one per process.
+    /// The nodes are released rather than retained. Holding them back for reuse costs a field on
+    /// every collector, clean ones included, to save allocating a node on the passes that fail - and
+    /// a fresh collector is cheap enough that constructing one per validation is the simpler
+    /// default. Reuse is still supported; it just no longer recycles.
     /// </remarks>
     public void Reset() {
-        if (_tail is not null) {
-            _tail.Next = _free;
-            _free = _head;
-            _head = null;
-            _tail = null;
-            _count = 0;
-        }
-
+        _head = null;
         _requiredFields?.Clear();
     }
 
@@ -209,7 +222,7 @@ public sealed class ValidationErrorCollector {
             return;
         }
 
-        Append(in error);
+        Record(in error);
 
         // Only a real failure suppresses. A Required reported as a warning is advisory, and
         // silencing the rest of the field on the strength of it would be wrong.
@@ -220,31 +233,11 @@ public sealed class ValidationErrorCollector {
     }
 
     /// <summary>
-    /// Appends at the tail, so errors come out in the order they were recorded - which §4.2 requires
-    /// and which a head-insert would reverse.
+    /// Links the failure in at the head. Storage order is the reverse of declaration order;
+    /// <see cref="ToResult"/> is the only thing that reads the chain and it unwinds it.
     /// </summary>
-    private void Append(in ValidationError error) {
-        ErrorNode node;
-
-        if (_free is not null) {
-            node = _free;
-            _free = node.Next;
-        } else {
-            node = new ErrorNode();
-        }
-
-        node.Error = error;
-        node.Next = null;
-
-        if (_tail is null) {
-            _head = node;
-        } else {
-            _tail.Next = node;
-        }
-
-        _tail = node;
-        _count++;
-    }
+    private void Record(in ValidationError error) =>
+        _head = new ErrorNode { Error = error, Next = _head };
 
     private bool IsSuppressed(string field) {
         var fields = _requiredFields!;

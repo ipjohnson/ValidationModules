@@ -67,10 +67,10 @@ public class ValidationErrorCollectorTests {
     }
 
     [Fact]
-    public void Reset_RecycledNodes_KeepOrderAndCarryNothingOver() {
-        // Reset splices the recorded chain onto the free list rather than walking it, so nodes come
-        // back out in the order they were released. Getting the relink wrong shows up as reversed
-        // errors or a stale one reappearing, neither of which a single-pass test would catch.
+    public void Reset_RepeatedPasses_KeepOrderAndCarryNothingOver() {
+        // The chain is stored newest-first and unwound by ToResult, so declaration order depends on
+        // that reversal rather than on the order things were linked. Getting it wrong shows up as
+        // reversed errors or a stale one reappearing, neither of which a single-pass test catches.
         var collector = new ValidationErrorCollector();
 
         for (var pass = 0; pass < 5; pass++) {
