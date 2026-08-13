@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
 
 namespace ValidationModules.Benchmarks.Design;
@@ -26,8 +27,24 @@ namespace ValidationModules.Benchmarks.Design;
 /// a node, so the chain allocates per element where the pooled log allocates nothing. A shape
 /// comparison that measured only the flattering case would not be worth running.
 /// </para>
+/// <para>
+/// <b><c>[IterationTime]</c>:</b> the one-element cells are a few nanoseconds, and the default
+/// 500 ms target has BenchmarkDotNet climb to over a hundred million operations per iteration to
+/// fill it. See <see cref="ContextShapeBenchmarks"/> for the reasoning.
+/// </para>
+/// <para>
+/// <b>Every element context is handed to <c>Consume</c>, and that is load-bearing.</b> A first
+/// version of this class pushed and dropped the result, which flattered the prototype badly: the
+/// log's push mutates the collector and cannot be elided, while the chain's leaf push builds a
+/// struct with no side effect, so the JIT deleted the loop body outright and the chain "measured"
+/// 0.28 ns per element. <c>Consume</c> takes the context by <c>ref</c> from a non-inlined method,
+/// which is exactly the shape generated code uses -
+/// <c>ToyValidator.Instance.Validate(ref elementCtx, element)</c> - so both arms now pay for a
+/// context that genuinely has to exist.
+/// </para>
 /// </remarks>
 [MemoryDiagnoser]
+[IterationTime(100)]
 [BenchmarkCategory(BenchmarkCategories.Design)]
 public class ContextShapeCollectionBenchmarks {
     private readonly ValidationErrorCollector _pooledLog = new();
@@ -43,76 +60,100 @@ public class ContextShapeCollectionBenchmarks {
     // ---- Elements are leaves: the common shape, and the prototype's best case -------------------
 
     [Benchmark(Baseline = true, Description = "log: fresh collector, leaf elements")]
-    public bool Log_LeafElements() {
+    public int Log_LeafElements() {
         var collector = new ValidationErrorCollector();
 
         var root = new ValidationContext(collector);
+        var total = 0;
         for (var i = 0; i < Elements; i++) {
-            root.PushIndex("lines", i);
+            var element = root.PushIndex("lines", i);
+            total += Consume(ref element);
         }
 
-        return collector.HasErrors;
+        return total;
     }
 
     [Benchmark(Description = "chain: fresh collector, leaf elements")]
-    public bool Chain_LeafElements() {
+    public int Chain_LeafElements() {
         var collector = new ChainErrorCollector();
 
         var root = new ChainContext(collector);
+        var total = 0;
         for (var i = 0; i < Elements; i++) {
-            root.PushIndex("lines", i);
+            var element = root.PushIndex("lines", i);
+            total += Consume(ref element);
         }
 
-        return collector.HasErrors;
+        return total;
     }
 
     [Benchmark(Description = "log: pooled collector, leaf elements")]
-    public bool Log_LeafElements_Pooled() {
+    public int Log_LeafElements_Pooled() {
         _pooledLog.Reset();
 
         var root = new ValidationContext(_pooledLog);
+        var total = 0;
         for (var i = 0; i < Elements; i++) {
-            root.PushIndex("lines", i);
+            var element = root.PushIndex("lines", i);
+            total += Consume(ref element);
         }
 
-        return _pooledLog.HasErrors;
+        return total;
     }
 
     [Benchmark(Description = "chain: pooled collector, leaf elements")]
-    public bool Chain_LeafElements_Pooled() {
+    public int Chain_LeafElements_Pooled() {
         _pooledChain.Reset();
 
         var root = new ChainContext(_pooledChain);
+        var total = 0;
         for (var i = 0; i < Elements; i++) {
-            root.PushIndex("lines", i);
+            var element = root.PushIndex("lines", i);
+            total += Consume(ref element);
         }
 
-        return _pooledChain.HasErrors;
+        return total;
     }
 
     // ---- Elements nest one level further: the prototype's worst case ----------------------------
 
     [Benchmark(Description = "log: pooled collector, elements nest one level")]
-    public bool Log_NestedElements() {
+    public int Log_NestedElements() {
         _pooledLog.Reset();
 
         var root = new ValidationContext(_pooledLog);
+        var total = 0;
         for (var i = 0; i < Elements; i++) {
-            root.PushIndex("lines", i).Push("shipTo");
+            var nested = root.PushIndex("lines", i).Push("shipTo");
+            total += Consume(ref nested);
         }
 
-        return _pooledLog.HasErrors;
+        return total;
     }
 
     [Benchmark(Description = "chain: pooled collector, elements nest one level")]
-    public bool Chain_NestedElements() {
+    public int Chain_NestedElements() {
         _pooledChain.Reset();
 
         var root = new ChainContext(_pooledChain);
+        var total = 0;
         for (var i = 0; i < Elements; i++) {
-            root.PushIndex("lines", i).Push("shipTo");
+            var nested = root.PushIndex("lines", i).Push("shipTo");
+            total += Consume(ref nested);
         }
 
-        return _pooledChain.HasErrors;
+        return total;
     }
+
+    /// <summary>
+    /// Stands in for the nested validator call the emitter writes. Non-inlined and taking the
+    /// context by <c>ref</c>, so the context has to be materialized in both arms rather than
+    /// optimized out of existence in whichever arm has no side effect.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int Consume(ref ValidationContext context) => context.ErrorCount;
+
+    /// <inheritdoc cref="Consume(ref ValidationContext)"/>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int Consume(ref ChainContext context) => context.ErrorCount;
 }

@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
 
 namespace ValidationModules.Benchmarks.Design;
@@ -35,8 +36,17 @@ public enum PathShape {
 /// <para>
 /// Both arms add the same literal message, so message composition is a constant and cancels.
 /// </para>
+/// <para>
+/// <b>Why <c>[IterationTime]</c> is here.</b> Several cells are a few nanoseconds - a pooled
+/// collector reset and one push is close to nothing - and at the default 500 ms target
+/// BenchmarkDotNet climbs to 134 million operations per iteration to fill the time, which turned a
+/// single cell into a fifteen-minute run. 100 ms keeps the op counts sane. Precision suffers on the
+/// fastest rows, which costs nothing here: the decision rests on the allocation column, which is a
+/// GC counter and exact at any iteration count, and on time ratios far larger than the noise.
+/// </para>
 /// </remarks>
 [MemoryDiagnoser]
+[IterationTime(100)]
 [BenchmarkCategory(BenchmarkCategories.Design)]
 public class ContextShapeBenchmarks {
     private const string Message = "the field is required.";
@@ -63,7 +73,7 @@ public class ContextShapeBenchmarks {
     // ---- Fresh collector: the default path, what Validate/IsValid do today ----------------------
 
     [Benchmark(Baseline = true, Description = "log: descend, add nothing")]
-    public bool Log_Clean() {
+    public int Log_Clean() {
         var collector = new ValidationErrorCollector();
 
         var context = new ValidationContext(collector);
@@ -71,11 +81,11 @@ public class ContextShapeBenchmarks {
             context = context.Push("home");
         }
 
-        return collector.HasErrors;
+        return Consume(ref context);
     }
 
     [Benchmark(Description = "chain: descend, add nothing")]
-    public bool Chain_Clean() {
+    public int Chain_Clean() {
         var collector = new ChainErrorCollector();
 
         var context = new ChainContext(collector);
@@ -83,7 +93,7 @@ public class ContextShapeBenchmarks {
             context = context.Push("home");
         }
 
-        return collector.HasErrors;
+        return Consume(ref context);
     }
 
     [Benchmark(Description = "log: descend, one error at the leaf")]
@@ -121,7 +131,7 @@ public class ContextShapeBenchmarks {
     /// achieves and the bar the prototype has to clear without asking the caller for anything.
     /// </summary>
     [Benchmark(Description = "log: pooled collector, descend, add nothing")]
-    public bool Log_Clean_Pooled() {
+    public int Log_Clean_Pooled() {
         _pooledLog.Reset();
 
         var context = new ValidationContext(_pooledLog);
@@ -129,7 +139,7 @@ public class ContextShapeBenchmarks {
             context = context.Push("home");
         }
 
-        return _pooledLog.HasErrors;
+        return Consume(ref context);
     }
 
     /// <summary>
@@ -138,7 +148,7 @@ public class ContextShapeBenchmarks {
     /// worth under this shape.
     /// </summary>
     [Benchmark(Description = "chain: pooled collector, descend, add nothing")]
-    public bool Chain_Clean_Pooled() {
+    public int Chain_Clean_Pooled() {
         _pooledChain.Reset();
 
         var context = new ChainContext(_pooledChain);
@@ -146,6 +156,19 @@ public class ContextShapeBenchmarks {
             context = context.Push("home");
         }
 
-        return _pooledChain.HasErrors;
+        return Consume(ref context);
     }
+
+    /// <summary>
+    /// Stands in for the nested validator call the emitter writes. Non-inlined and taking the
+    /// context by <c>ref</c>, so the descended context has to be materialized rather than optimized
+    /// away in whichever arm leaves no side effect behind. See the remarks on
+    /// <see cref="ContextShapeCollectionBenchmarks"/> for what happened without it.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int Consume(ref ValidationContext context) => context.ErrorCount;
+
+    /// <inheritdoc cref="Consume(ref ValidationContext)"/>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int Consume(ref ChainContext context) => context.ErrorCount;
 }
