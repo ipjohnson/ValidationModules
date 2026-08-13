@@ -57,9 +57,16 @@ public static class ValidatorForExtensions {
     }
 
     /// <summary>
-    /// Runs the validator into a collector the caller owns, so the caller can pool it. This is the
-    /// overload a per-request pipeline should use.
+    /// Runs the validator into a collector the caller owns, for gathering several validations into
+    /// one result.
     /// </summary>
+    /// <remarks>
+    /// This used to be the overload a per-request pipeline should reach for, because owning the
+    /// collector let it be pooled and a fresh one cost 472 bytes. A fresh one now costs 48, and
+    /// reusing one makes every failing pass allocate a node it would otherwise have recycled, so
+    /// <c>Validate</c> is the better default and this is for callers who genuinely want several
+    /// passes in one result.
+    /// </remarks>
     /// <param name="validator">The validator to run.</param>
     /// <param name="collector">Receives the errors. Not reset first - reset it yourself between passes.</param>
     /// <param name="value">The value to validate.</param>

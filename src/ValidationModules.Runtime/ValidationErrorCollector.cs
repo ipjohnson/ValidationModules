@@ -5,11 +5,15 @@ namespace ValidationModules;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Cheap enough to construct one per validation, which is the expected use. It was made public so a
-/// request pipeline could pool one and skip a 472-byte allocation per request; that buffer is gone
-/// and a fresh collector is 48 bytes holding nothing, so pooling is now a marginal saving rather
-/// than the point. It is still supported - <see cref="Reset"/> between passes - and still the way to
-/// collect several validations into one result.
+/// <b>Construct one per validation.</b> It was made public so a request pipeline could pool one and
+/// skip a 472-byte allocation per request; that buffer is gone and a fresh collector is 48 bytes
+/// holding nothing, so pooling now saves 48 bytes and costs a node per error on every failing pass -
+/// measured 2026-08-13, HANDOFF.md §2.6. The first consumer runs on Lambda, where holding state
+/// across invocations for a 48-byte saving is not a trade worth the complexity.
+/// </para>
+/// <para>
+/// Reuse is still supported: <see cref="Reset"/> between passes, and one collector can gather
+/// several validations into a single result. It is just no longer the recommended shape.
 /// </para>
 /// <para>
 /// It owns no part of the path. <see cref="ValidationContext"/> carries its own path in the struct

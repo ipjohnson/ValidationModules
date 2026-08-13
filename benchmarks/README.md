@@ -142,9 +142,12 @@ that gap is the same one §10.4 of the plan found in a shipping framework. It is
 - **The clean-payload rows are the ones that matter.** Production traffic mostly validates cleanly.
   A failing pass composes messages and materializes paths, and lands immediately before a 400
   response whose serialization costs more than all of it.
-- **Allocation is usually the finding, not time.** The design commitments — lazy path building, a
-  poolable collector, a shared `ValidationResult.Valid` — are about what a clean pass allocates.
-  Watch that column first.
+- **Allocation is usually the finding, not time.** The design commitments — a path that lives in the
+  context struct, a linked list of errors, a shared `ValidationResult.Valid` — are about what a
+  clean pass allocates. Watch that column first.
+- **The pooled rows are a measurement, not a recommendation.** Pooling a collector is worth 48 bytes
+  on a clean pass and costs a node per error on every failing one, so the library builds a fresh one
+  per validation. Those rows stay because that is the number the decision rests on.
 - **Run on a quiet machine.** No debugger, no build in another terminal. BenchmarkDotNet will warn
   about multimodal distributions when something else is competing for the CPU.
 - **`--quick` numbers are not quotable.** Three iterations after one warmup answers "does it still

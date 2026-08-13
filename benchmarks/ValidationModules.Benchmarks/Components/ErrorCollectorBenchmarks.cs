@@ -8,9 +8,10 @@ namespace ValidationModules.Benchmarks.Components;
 /// synchronized collector adds.
 /// </summary>
 /// <remarks>
-/// The collector is public specifically so a request pipeline can pool it, and <c>Fresh</c> against
-/// <c>Pooled</c> below is what that decision is worth. Both run the same generated validator over
-/// the same instance, so the difference is the collector and nothing else.
+/// <c>Fresh</c> against <c>Pooled</c> is what pooling is worth, and as of 2026-08-13 the answer is
+/// 48 bytes on a clean pass against a node per error on every failing one - which is why the library
+/// no longer recommends it. Both run the same generated validator over the same instance, so the
+/// difference is the collector and nothing else. Kept as the measurement that decision rests on.
 /// </remarks>
 [MemoryDiagnoser]
 [BenchmarkCategory(BenchmarkCategories.Component)]

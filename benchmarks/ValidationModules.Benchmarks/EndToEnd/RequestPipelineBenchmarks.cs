@@ -72,7 +72,7 @@ public class RequestPipelineBenchmarks {
     /// Both resolved once. The collector is reset rather than allocated, and no
     /// <see cref="ValidationResult"/> is materialized on the clean path.
     /// </summary>
-    [Benchmark(Description = "Validator resolved once, pooled collector - the target shape")]
+    [Benchmark(Description = "Validator resolved once, pooled collector - what pooling is worth")]
     public bool ResolvedOnce_PooledCollector() {
         _pooledCollector.Reset();
 

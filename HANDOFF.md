@@ -118,6 +118,57 @@ the prototype, and both are fixed in the committed benchmarks:
 
 Do not quote the chain's flat/depth-1 allocation ratios. They are not measuring what they claim.
 
+### 2.5 The suite was unrunnable at full fidelity, and now is not
+
+`BenchmarkConfig` used BenchmarkDotNet's default 500ms target iteration time. Nearly every cell here
+is nanosecond-scale, and BDN sizes an iteration to fill the target — a 5ns cell climbs past 100M
+operations, with a pilot stage doubling its way up to that count. A full-fidelity run of five classes
+was on course for the better part of an hour per side; four minutes in it had finished one.
+
+`WithIterationTime(100)` on the job fixes it: **component and endtoend, both sides, in 11 minutes.**
+The mean is per-operation either way, so this costs precision rather than correctness, and iteration
+count — which is what separates two close readings — is unchanged at fifteen. §2.1 already recorded
+this trap and the deleted shape benchmarks carried `[IterationTime(100)]` for it; putting it on the
+job means a class added later inherits the fix.
+
+**This machine cannot produce quotable timings.** Load average ran 3.3–7.6 across 11 cores during
+every run — other Claude sessions, MSBuild, two Rider instances. Allocation columns are unaffected
+(the memory diagnoser counts bytes, not wall clock) and are what the readings below rest on. Any
+timing with StdDev over ~10% of its mean is not a reading; the diff script flags them.
+
+### 2.6 What the two error-model changes measured
+
+Both against the same compact-path context, so the collector's storage is the only variable.
+
+| | path log → compact path | `List` → linked list |
+|---|---|---|
+| Fresh collector, clean pass | 472 B → **48 B** | 48 B → 48 B |
+| Clean pass, 1000 elements | 49,000 B → **48 B** | 48 B → 48 B |
+| Flat, 1 failure, `Validate` | 880 B → 456 B | 456 B → **272 B** |
+| Failure at deepest level, depth 4 | 1,320 B → 584 B | 584 B → **400 B** |
+| Push + add, depth 16 | 1,232 B → **144 B** | unchanged |
+| AddHere, depth 16 | 321 ns / 1,136 B → **35 ns / 48 B** | unchanged |
+| Push to depth 16, no add | 110 ns → **24 ns** (0 B both) | unchanged |
+
+The compact path's win is depth and breadth: allocation stopped scaling with element count, and the
+rows that allocate zero on both sides still got 3–5× faster, because the cycle guard walked to the
+root on every push and the render walked the chain twice into a scratch array.
+
+The linked list's win is the failing pass at realistic error counts. A node is 56 B; a `List` is 32 B
+plus a 24 B array header plus its whole capacity, four slots on the first `Add`. At one error that is
+56 against 184, and `ToResult` fills one exactly-sized array where the old path built a list, its
+backing array and a `ReadOnlyCollection`.
+
+**Pooling is no longer recommended, and this is the number.** A pooled collector saves 48 B on a
+clean pass; against that, `List` reused its backing array across `Reset` where the linked list
+allocates a node per error on every failing pass — measured at +448 B for eight failures, +56 B for
+one. Decided 2026-08-13: construct a collector per validation. The first consumer runs on Lambda,
+where holding state across invocations to save 48 bytes is not worth the complexity, and a frozen
+container retaining a pool is a cost rather than a saving. Revisit if a long-lived host shows up.
+
+The pooled benchmark rows stay as the measurement that decision rests on. Note that most of the
+component suite pools, so a diff of those rows over-represents a shape the library no longer uses.
+
 ---
 
 ## 3. Decisions taken this session, not yet implemented
