@@ -29,6 +29,13 @@ namespace ValidationModules.SourceGenerator;
 [Generator]
 public sealed class ValidationSourceGenerator : IIncrementalGenerator {
 
+    /// <summary>
+    /// What VM0019 names as the site when the declaration is assembly-level rather than on a
+    /// property. The assembly's own name would be more precise and reads worse in the message,
+    /// which already says which attribute it is.
+    /// </summary>
+    private const string compilationAssemblyLabel = "this assembly";
+
     public void Initialize(IncrementalGeneratorInitializationContext context) {
         var options = context.AnalyzerConfigOptionsProvider.Select(static (provider, _) => {
             provider.GlobalOptions.TryGetValue("build_property.ValidationModules_Registration", out var registration);
@@ -57,6 +64,24 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
                 production.ReportDiagnostic(Diagnostic.Create(
                     ValidationDiagnostics.RuntimeContractTooOld, Location.None,
                     EmitterContract.RequiredRuntimeContract, found));
+            }
+        });
+
+        // [DefaultValidationProfile] redirects the bare IValidatorFor<T> registration to a named
+        // profile, and profiles are not built - so the promise is not kept and the bare validator
+        // carries every rule instead. Projected to a count rather than to locations so the stage
+        // caches on the answer; reported at Location.None, as VM0040 above is, because an assembly
+        // attribute's position is not where the reader needs to look anyway.
+        var defaultProfileDeclarations = context.CompilationProvider.Select(static (compilation, _) =>
+            compilation.Assembly.GetAttributes()
+                .Count(attribute =>
+                    attribute.AttributeClass?.ToDisplayString() == KnownTypes.DefaultValidationProfileAttribute));
+
+        context.RegisterSourceOutput(defaultProfileDeclarations, static (production, declared) => {
+            for (var i = 0; i < declared; i++) {
+                production.ReportDiagnostic(Diagnostic.Create(
+                    ValidationDiagnostics.ProfileAttributionNotImplemented, Location.None,
+                    "DefaultValidationProfile", compilationAssemblyLabel));
             }
         });
 

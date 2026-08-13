@@ -50,15 +50,36 @@ Pre-1.0, and under construction. Built so far:
 | Stage | | |
 |---|---|---|
 | 1 | Runtime — contracts, context, error model, constraint attributes, naming | **done** |
-| 2 | Generator, no profiles | not started |
+| 2 | Generator, no profiles | **done** |
 | 3 | Profiles | not started |
-| 4 | `Impl` packaging for framework authors | not started |
-| 5 | Hardened integration | not started |
+| 4 | `Impl` packaging for framework authors | **done** |
+| 5 | Hardened integration | substantially done |
 | 6 | FluentValidation adapter and conformance suite | not started |
 
-Until Stage 2 lands there is no generator, so validators are hand-written. The shape they must take
-is pinned by the tests in `tests/ValidationModules.Runtime.Tests/Infrastructure/SampleModel.cs`,
-which double as the emitter's specification.
+Also built since the plan was written, and not in its staging: a declarative rule-class front end
+(`IValidationRulesFor<T>`, `API-SURFACE.md` §19) and a DataAnnotations front end (§18).
+
+Two known gaps remain:
+
+- **Profiles are not built**, and their declaration surface shipped ahead of them —
+  `FromProfile`/`UntilProfile`/`Profiles` on every constraint, and `IValidationProfile` in the
+  runtime. Using one is `VM0019`, an error, because the arguments are ignored rather than inert: a
+  rule written to apply only from V2 would be enforced under V1 as well. Removing that diagnostic is
+  the first thing Stage 3 does.
+- **VM0007 is declared and never reported.** `[ValidateNested]` on a type with no rules of its own
+  descends into nothing and says nothing. `DiagnosticCatalogueTests` records it as the one dead
+  descriptor and fails in both directions.
+
+## Documentation
+
+The docs site lives in `website/` and publishes to
+<https://ipjohnson.github.io/ValidationModules/>:
+
+```bash
+cd website && npm install && npm run dev
+```
+
+Dead internal links fail the build, so a rename cannot rot a link silently.
 
 ## Design
 
@@ -92,7 +113,7 @@ lands in the consumer's assembly, which already references DM.
 ```bash
 dotnet build --configuration Release
 dotnet test  --configuration Release
-dotnet test  --configuration Release --collect:"XPlat Code Coverage" --settings tests/coverlet.runsettings
+dotnet test  --configuration Release --collect:"XPlat Code Coverage" --settings coverlet.runsettings
 ```
 
 The public API is pinned by a snapshot at

@@ -1,0 +1,179 @@
+# Troubleshooting
+
+## No validator was generated
+
+**The type carries no constraint the generator recognises.** A validator is emitted for a type
+because it has at least one constraint, a `[ValidateNested]`, a rule class targeting it, or
+`[GenerateValidator]`. Check that the attribute is one of ours and that the namespace is imported:
+
+```csharp
+using ValidationModules.Constraints;   // not ValidationModules
+```
+
+**The constraint is on a record parameter.** This is the most common cause, and it now reports
+[VM0051](/reference/diagnostics#vm0051) — so check your warnings before reading further:
+
+```csharp
+public record Pet([Required] string Name);              // VM0051
+public record Pet([property: Required] string Name);    // works
+```
+
+The attribute binds to the constructor parameter, so the property carries no metadata and the type
+looks unconstrained to the generator.
+
+**The generator is not running.** Check that the analyzer reference survived:
+
+```xml
+<PackageReference Include="ValidationModules.SourceGenerator" Version="…" PrivateAssets="all" />
+```
+
+`PrivateAssets="all"` stops it flowing to *your* consumers; it does not stop it running for you. If
+you referenced it as a plain `ProjectReference` in this repository, it needs
+`OutputItemType="Analyzer"`.
+
+Then look at what was actually produced:
+
+```xml
+<EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+```
+
+Files appear under `obj/<Configuration>/<tfm>/generated/`. If the directory is empty, the generator
+did not run at all; if the files are there, the problem is downstream.
+
+**DataAnnotations are switched off.** If your model's only rules are
+`System.ComponentModel.DataAnnotations` attributes and
+`ValidationModules_DataAnnotations` is `Ignore`, no validator is emitted — but every skipped
+constraint reports [VM0010](/reference/diagnostics#vm0010), so check your warnings.
+
+## `VM0019: profile attribution is not implemented`
+
+Profiles are Stage 3 and are not built. The declaration surface shipped ahead of the implementation,
+so a rule written to apply only from V2 would be enforced everywhere — which is why this is an error
+rather than a warning. Remove the profile argument until the feature lands.
+
+Declaring `IValidationProfile` types is harmless; attaching a rule to one is what does not work.
+
+## The validator exists but a rule never fires
+
+**`[Required]` on a non-nullable value type.** `int Age` is always present, so `[Required]` can never
+fail. That is [VM0004](/reference/diagnostics#vm0004), a warning. You probably wanted `[Range]`, or
+`int?`.
+
+**A pattern that is not anchored.** `[Pattern("abc")]` matches `"xabcx"` — patterns follow JSON
+Schema and are unanchored. Write `^abc$`.
+
+**A null value.** Every constraint except `[Required]` skips a null: a null string is not too long, a
+null collection has no element count. Add `[Required]` if absence should fail too.
+
+**`[ValidateNested]` on a type with no rules.** Nothing was generated for the nested type, so there
+is nothing to call. Mark it `[GenerateValidator]` if its rules come from a
+[rule class](/guide/rule-classes). [VM0007](/reference/diagnostics#vm0007) covers this and is the one
+diagnostic still not wired up, so it is currently silent.
+
+## Generated code does not compile
+
+**A `[Range]` bound that does not parse.** String bounds are parsed against the member's type at
+build time, and one that does not parse is [VM0065](/reference/diagnostics#vm0065) with the
+constraint dropped — so this should no longer reach generated code. If it does, that is a bug worth
+reporting.
+
+**A referenced pattern member that is not visible.** The generated validator lands in your assembly,
+so a `private` member is out of reach. [VM0018](/reference/diagnostics#vm0018) names the reason.
+
+**Two types with the same name in one assembly.** Handled — the hint name is qualified by namespace,
+so `Api.V1.Customer` and `Api.V2.Customer` coexist. If you see a duplicate-file error, it is a bug
+worth reporting.
+
+## `IValidatorFor<T>` does not resolve
+
+**Registration was not called.** Without DependencyModules you need the one call:
+
+```csharp
+services.AddValidationModules(GeneratedValidators.All);
+```
+
+`GeneratedValidators` sits in a namespace derived from the assembly name, sanitized — `My-App`
+becomes `My_App`.
+
+**Registration was suppressed.** Check for
+`<ValidationModules_Registration>None</ValidationModules_Registration>`.
+
+**The validator is in another assembly.** Each assembly emits and registers its own validators;
+there is no cross-assembly scanning, deliberately. Call that assembly's `AddValidationModules`, or
+load its module, from your composition root.
+
+**No validator was generated at all.** See the first section — this is usually that in disguise.
+
+## Every error appears twice
+
+A type has two validators registered. The usual cause is calling `AddDescribedValidator<T, TRules>()`
+for a rules class that this generator already compiled — the generator registered the validator it
+emitted, and `ValidationRunner<T>` merges every registered `IValidatorFor<T>`.
+
+Pick one: let the generator compile it, or register it to be run. Within one compilation this is
+VM0074.
+
+## Errors are in the wrong order
+
+Ordering is: properties in source order, constraints in attribute order, nested objects at the point
+of their property, collection elements ascending. Two exceptions by design:
+
+- `[Required]` is evaluated first within a property, whatever order you wrote the attributes in.
+- For a type whose rules come **only** from a rule class, properties report in the order the
+  `Describe` body first mentioned them — `DescribedValidator<T>` cannot see source order without
+  reflection, so the generator matches it.
+
+An async validator that fans out internally produces its own errors in completion order.
+
+## The field name is wrong
+
+Precedence, highest first: `[JsonPropertyName]`, `[Display(Name = …)]`, then the
+[`ValidationModules_FieldNaming`](/reference/msbuild#validationmodules-fieldnaming) property
+(camelCase by default).
+
+Field names are **baked in at build time**, so registering a different `IValidationFieldNamer` does
+not rename a generated validator's errors — it only affects `DescribedValidator<T>` and the
+FluentValidation adapter. Set both to the same policy if you use both engines.
+
+## The AOT binary grew by half a megabyte
+
+An inline `[Pattern("…")]` roots the regex parser and interpreter. Declare the pattern with
+`[GeneratedRegex]` and reference it — see [Patterns and regex](/guide/patterns).
+
+If you did not see [VM0017](/reference/diagnostics#vm0017) warning you, the policy resolved to
+`Allow`, which happens when neither `PublishAot` nor `IsAotCompatible` is set on the project holding
+the models. Set `IsAotCompatible` there.
+
+## `InvalidOperationException: Validation nested more than 64 levels deep`
+
+Your object graph contains a cycle, or a genuinely very deep tree. The message names the path it
+reached.
+
+This is a guard rather than a cycle detector — tracking visited instances would cost an allocation
+and a lookup on every descent. It throws rather than reporting an error because a cycle is a bug in
+the graph, not invalid data, and the alternative is a `StackOverflowException`, which cannot be
+caught.
+
+If the depth is legitimate, leave the recursive property without `[ValidateNested]` and validate the
+levels you care about explicitly. See [Cycles and depth](/guide/nesting#cycles-and-depth).
+
+## A diagnostic is too noisy
+
+Every diagnostic is in category `ValidationModules.Usage`, so you can tune one or all of them from
+`.editorconfig`:
+
+```ini
+[*.cs]
+dotnet_diagnostic.VM0004.severity = none
+dotnet_analyzer_diagnostic.category-ValidationModules.Usage.severity = suggestion
+```
+
+Prefer silencing one id over the whole category. Several of them are errors because the alternative
+is generated code that does not compile.
+
+## One diagnostic that never fires
+
+[VM0007](/reference/diagnostics#vm0007) is declared and released but never reported:
+`[ValidateNested]` on a type with no rules of its own descends into nothing and says nothing. It is
+listed in the reference and marked, so a rule you expected to catch something may simply not be
+wired up yet.
