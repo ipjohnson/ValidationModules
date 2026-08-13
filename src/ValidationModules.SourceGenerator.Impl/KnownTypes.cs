@@ -22,5 +22,8 @@ public static class KnownTypes {
     public const string DependencyModule = "DependencyModules.Runtime.Interfaces.IDependencyModule";
 
     public const string ValidatorForInterface = "ValidationModules.IValidatorFor";
+
+    /// <summary>The marker for a declarative rule class. See API-SURFACE.md §19.2.</summary>
+    public const string ValidationRulesForInterface = "ValidationModules.IValidationRulesFor<T>";
     public const string RuntimeNamespace = "ValidationModules";
 }

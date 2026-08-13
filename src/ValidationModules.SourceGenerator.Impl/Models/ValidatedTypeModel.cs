@@ -14,12 +14,18 @@ namespace ValidationModules.SourceGenerator.Impl.Models;
 /// <param name="QualifiedTypeName">Its fully qualified name, for the interface and parameter.</param>
 /// <param name="ValidatorName">The generated class name.</param>
 /// <param name="Properties">In source order.</param>
+/// <param name="AppliedRules">
+/// Hand-written rules attached by <c>rules.Apply(…)</c>, as fully qualified method names. They own
+/// no property, so they run after every property has been walked, in declaration order.
+/// See API-SURFACE.md §19.6 and §19.7.
+/// </param>
 public sealed record ValidatedTypeModel(
     string Namespace,
     string TypeName,
     string QualifiedTypeName,
     string ValidatorName,
-    EquatableArray<ValidatedPropertyModel> Properties) : IEquatable<ValidatedTypeModel>;
+    EquatableArray<ValidatedPropertyModel> Properties,
+    EquatableArray<string> AppliedRules = default) : IEquatable<ValidatedTypeModel>;
 
 /// <summary>Which registration shape the assembly gets. See plan §7.3.</summary>
 public enum RegistrationMode {
