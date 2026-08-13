@@ -35,3 +35,25 @@ public sealed class MutableNode {
     [Required] public string? Label { get; set; }
     [ValidateNested] public MutableNode? Child { get; set; }
 }
+
+/// <summary>
+/// A request-body shape deep enough that the compact path has to elide, with a distinct name at
+/// every level so the result is legible. Reached through generated code rather than by driving the
+/// context by hand, because what the emitter produces is what a consumer actually sees.
+/// </summary>
+public sealed record Basket {
+    [ValidateNested] public Purchase? Order { get; init; }
+}
+
+public sealed record Purchase {
+    [ValidateNested] public IReadOnlyList<Line> Lines { get; init; } = new List<Line>();
+}
+
+public sealed record Line {
+    [Required] public string? Sku { get; init; }
+    [ValidateNested] public Destination? ShipTo { get; init; }
+}
+
+public sealed record Destination {
+    [Required] public string? PostalCode { get; init; }
+}
