@@ -202,5 +202,9 @@ website/node_modules/
 website/.vitepress/dist/
 website/.vitepress/cache/
 
+# Coverage output from `dotnet test --collect`
+TestResults/
+**/TestResults/
+
 # BenchmarkDotNet output
 BenchmarkDotNet.Artifacts/
