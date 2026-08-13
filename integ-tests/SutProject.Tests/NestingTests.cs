@@ -39,11 +39,7 @@ public class NestingTests {
     public void CyclicGraph_ThrowsRatherThanOverflowingTheStack() {
         // A StackOverflowException cannot be caught and takes the process down with it, so the depth
         // guard turns a caller's data bug into something diagnosable.
-        var a = new Node { Label = "a" };
-        var b = new Node { Label = "b", Child = a };
-        var cyclic = a with { Child = b };
-
-        // `a with { Child = b }` copies, so build a real cycle through a mutable holder instead.
+        // A record cannot hold a cycle - `a with { Child = b }` copies - so this needs a mutable type.
         var head = new MutableNode { Label = "head" };
         head.Child = head;
 
@@ -51,8 +47,6 @@ public class NestingTests {
             () => MutableNodeValidator.Instance.Validate(head));
 
         Assert.Contains("cycle", exception.Message);
-        Assert.Equal("b", b.Label);
-        Assert.NotNull(cyclic.Child);
     }
 
     [Fact]

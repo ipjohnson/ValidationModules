@@ -60,10 +60,23 @@ MSBUILDDISABLENODEREUSE=1 dotnet run --project App/App.csproj
 `MSBUILDDISABLENODEREUSE=1` only matters while iterating on the task — MSBuild reuses long-lived
 nodes and they hold the task assembly open.
 
+## Design-time builds
+
+The open risk was that the target might not run in the IDE, leaving a freshly cloned project red
+until someone did a real build. Simulated from the CLI — `-t:Compile -p:SkipCompilerExecution=true
+-p:DesignTimeBuild=true` against a deleted `obj/` — the target runs, writes both files, and
+`SpecPatterns.g.cs` appears in `@(Compile)` while the compiler itself is skipped. That is what the
+IDE reads for IntelliSense, so a fresh clone should resolve without a build first.
+
+Not a substitute for opening it in Rider: the real `CompileDesignTime` target ships with the IDE
+rather than the SDK and may differ. But it depends on `Compile` and sets exactly these properties,
+so the approximation is close.
+
+The expectation this does set is that **editing the spec needs a build before new types appear** —
+which is how every spec-driven generator in .NET behaves, and is not the same thing as being broken
+on open.
+
 ## Not production shape
 
 The spec parser is a deliberately small stand-in; a real task would use the same OpenAPI reader the
-generator uses today. Packaging is by path rather than a `tasks/` folder. The thing to verify before
-committing to this is **design-time builds** — if the target does not run in the IDE, the
-intermediate files will not exist there and the generator produces nothing, which reads as red
-squiggles everywhere while the CLI build works.
+generator uses today, embedded the same way. Packaging is by path rather than a `tasks/` folder.
