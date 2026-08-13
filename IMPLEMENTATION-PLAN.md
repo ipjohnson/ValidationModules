@@ -556,21 +556,45 @@ runtime dispatch table.
 **Stage 4 — Impl packaging.** Extract the source-only package, verify a second generator can compile
 it in, add the version-lockstep probe.
 
-**Stage 5 — Hardened.** Restructured 2026-08-12; the detail is
-`~/Hardened/VALIDATION-INTEGRATION-PLAN.md` §10. In order: VM0040 as an MSBuild-time check; the
-OpenAPI build task (parse first, then the pure emitters); `ValidationFilter<T>` /
-`ValidationFilterProvider<T>` / `[Validate]` in `Hardened.Requests.Runtime`; the spec front-end in
-the task, deleting `ValidationFilterEmitter` and mapping spec files to profiles; then the attribute
-front-end for controllers, `[HardenedFunction]` and the Amz runtimes.
+**Stage 5 — Hardened. Substantially done, 2026-08-13.** Restructured 2026-08-12; the detail and the
+current status are in `~/Hardened/VALIDATION-INTEGRATION-PLAN.md` §10, which is authoritative for
+this stage. Summary: VM0040, both build-task phases, the filter and attribute, and the spec
+front-end are committed and running in `Hardened.Framework`. `ValidationFilterEmitter` is deleted.
 
-**Stage 6 — FluentValidation adapter and the conformance suite.**
+**The planned last step — an attribute front-end in Hardened's generator — was superseded rather
+than built.** Hardened's build task writes plain constraint attributes onto the types it emits, and
+`Hardened.Validation.SourceGenerator` compiles *this* package's `AttributeFrontEnd` and
+`ValidatorEmitter` in and scans the whole compilation. Spec-declared and hand-written constraints
+are one code path. Two consequences worth carrying:
+
+- Hardened must not ship `ValidationModules.SourceGenerator` alongside its own generator — both read
+  the same attributes and would emit every validator twice.
+- The Impl package's source-only shape (Stage 4) is load-bearing in a second consumer now, not just
+  in theory. Changing an emitter signature breaks a build outside this repo.
+
+What remains there is filter *attachment* off the spec path, not generation — see that document
+§10.1.
+
+**Spec-file-to-profile mapping is not done**, and cannot be until Stage 3 exists.
+
+**Stage 6 — FluentValidation adapter and the conformance suite.** Not started. Note that §19's
+declarative rule classes add a second engine to conform — the suite gains an adapter running it
+against `DescribedValidator<T>` as well as against generated validators, and §19.9 records the one
+place the two legitimately diverge (field naming from `[JsonPropertyName]`, which the runtime cannot
+read without reflection).
 
 ---
 
 ## 12. Open questions
 
-1. Overlay declaration syntax for types you do not own (§6, known gap). Needed by Stage 3 at the
-   latest; prototype before committing to the attribute shape.
+1. ~~Overlay declaration syntax for types you do not own (§6, known gap). Needed by Stage 3 at the
+   latest; prototype before committing to the attribute shape.~~ **Answered 2026-08-13 —
+   API-SURFACE.md §19, declarative rule classes.** A class implementing `IValidationRulesFor<T>`
+   describes rules in a method body, which the generator reads at build time and
+   `DescribedValidator<T>` runs at runtime. It gets name and type checking from the C# compiler
+   rather than from `VM0030`/`VM0031`, does not restate the target's property list, expresses
+   cross-field rules that no attribute form can, and runs without this package's generator — which
+   the mirror-property overlay could not. §6.4 stays specced and unimplemented.
 2. Default profile — a distinct `Default` type, or the absence of a profile?
 3. Does `Severity` enter the error model, or is dropping it from FluentValidation documented?
 4. ~~Should validation failures throw, or write the response directly?~~ **Resolved 2026-08-12 —
@@ -579,7 +603,10 @@ front-end for controllers, `[HardenedFunction]` and the Amz runtimes.
    and the filter path produce one shape rather than two agreeing by duplication — which is what
    that type's own documentation asks for.
 5. Is `[Required]` treating whitespace-only strings as missing the intended policy, and should it
-   be opt-out? Still open; decide when Hardened's attribute front-end lands.
+   be opt-out? Still open. ~~Decide when Hardened's attribute front-end lands.~~ **That trigger will
+   not arrive** — the front-end it was to be decided alongside was superseded (Stage 5 above), and
+   hand-written models already run through this package's front-end in shipped Hardened code, so the
+   policy is live rather than pending. Decide it on its own merits.
 
 ---
 
