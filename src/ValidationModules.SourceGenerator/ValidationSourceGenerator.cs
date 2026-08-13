@@ -47,6 +47,19 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         var hasDependencyModules = context.CompilationProvider.Select(static (compilation, _) =>
             compilation.GetTypeByMetadataName(KnownTypes.DependencyModule) is not null);
 
+        // Version lockstep. Projected to an int rather than the Compilation so the stage caches on
+        // the answer, not on every edit. Plan §7.5.
+        var runtimeContract = context.CompilationProvider.Select(static (compilation, _) =>
+            EmitterContract.ResolveRuntimeContract(compilation));
+
+        context.RegisterSourceOutput(runtimeContract, static (production, found) => {
+            if (found < EmitterContract.RequiredRuntimeContract) {
+                production.ReportDiagnostic(Diagnostic.Create(
+                    ValidationDiagnostics.RuntimeContractTooOld, Location.None,
+                    EmitterContract.RequiredRuntimeContract, found));
+            }
+        });
+
         // An assembly name is not necessarily a valid namespace: "My-App" emitted `namespace My-App;`
         // and broke the consumer's build in generated code.
         var assemblyNamespace = context.CompilationProvider.Select(static (compilation, _) =>

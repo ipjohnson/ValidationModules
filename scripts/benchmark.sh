@@ -78,6 +78,22 @@ while [ $# -gt 0 ]; do
     shift
 done
 
+# BenchmarkDotNet drops into an interactive menu when nothing selects a benchmark, which makes the
+# no-argument invocation — the documented way to run the whole suite — print a prompt and exit,
+# and hang outright under redirection or CI. Supply the selector it wants unless the caller already
+# named one.
+has_selector() {
+    for argument in "$@"; do
+        case "${argument}" in
+            --filter|--filter=*|--anyCategories|--anyCategories=*|--allCategories|--allCategories=*|--attribute|--attribute=*|--list|--list=*|-h|--help)
+                return 0
+                ;;
+        esac
+    done
+
+    return 1
+}
+
 run_suite() {
     local project="$1"
     local runtime="$2"
@@ -88,6 +104,10 @@ run_suite() {
         args+=("--runtime" "${runtime}")
     fi
     args+=("$@")
+
+    if ! has_selector "$@"; then
+        args+=("--filter" "*")
+    fi
 
     echo
     echo "==> $(basename "${project}")"
