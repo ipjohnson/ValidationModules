@@ -1,66 +1,54 @@
-using System.Text;
-
 namespace ValidationModules;
 
 /// <summary>
-/// Accumulates the errors of one validation pass, and owns the path log the
-/// <see cref="ValidationContext"/> cursors point into.
+/// Accumulates the errors of one validation pass.
 /// </summary>
 /// <remarks>
 /// <para>
 /// Public because pooling it is the point: a request pipeline validating a body per request should
-/// reuse one collector rather than allocate a fresh path buffer each time. Call
-/// <see cref="Reset"/> between passes.
+/// reuse one collector rather than allocate a fresh error list each time. Call <see cref="Reset"/>
+/// between passes.
 /// </para>
 /// <para>
-/// It also owns one semantic rule rather than only storage: a field that has failed
+/// It owns no part of the path. <see cref="ValidationContext"/> carries its own path in the struct
+/// and arrives here with it already rendered, which is why descending needs neither this object's
+/// storage nor its lock.
+/// </para>
+/// <para>
+/// It does own one semantic rule rather than only storage: a field that has failed
 /// <see cref="ValidationCodes.Required"/> accepts no further errors for the rest of the pass. That
 /// lives here so every engine gets it, including ones that map errors from elsewhere and have no
 /// control flow to express it with. See <c>AddCore</c>.
 /// </para>
 /// <para>
 /// Not thread-safe by default. Use <see cref="CreateSynchronized"/> when concurrent branches add
-/// errors in parallel; the default keeps the lock off the path that runs per nested object, which
-/// is correct for every generated validator and for any async validator that awaits sequentially.
+/// errors in parallel. The lock now guards only <see cref="Add"/>, so a clean pass never touches it
+/// and descending no longer contends for it whether it is there or not.
 /// </para>
 /// </remarks>
 public sealed class ValidationErrorCollector {
-
-    /// <summary>The node index meaning "the root of the path".</summary>
-    internal const int RootNode = -1;
-
-    /// <summary>The index value meaning "this segment is not a collection element".</summary>
-    internal const int NoIndex = -1;
-
-    /// <summary>
-    /// A path segment. Immutable once written, which is what makes a stored
-    /// <see cref="ValidationContext"/> safe - see that type's remarks.
-    /// </summary>
-    private struct PathNode {
-        public int Parent;
-        public string Name;
-        public int Index;
-
-        /// <summary>Set for a dictionary entry, where the path segment is a key rather than a position.</summary>
-        public string? Key;
-    }
 
     /// <summary>
     /// How deep validation may nest before it is treated as a cycle.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A self-referential type is legitimate and validates fine over a tree. An object graph with an
     /// actual cycle - a.Child = b, b.Child = a - would recurse until the stack ran out, and a
     /// StackOverflowException cannot be caught and takes the process with it. Failing here instead
     /// turns that into an ordinary, diagnosable exception. 64 is far past any hand-written model and
     /// far short of the stack.
+    /// </para>
+    /// <para>
+    /// Enforced by <see cref="ValidationContext"/>, which carries its own depth and so compares
+    /// rather than walking a chain to the root on every descent. It stays declared here because it
+    /// is a property of a validation pass rather than of one cursor into it.
+    /// </para>
     /// </remarks>
     public const int MaxDepth = 64;
 
     private readonly object? _gate;
 
-    private PathNode[] _nodes = new PathNode[16];
-    private int _nodeCount;
     private List<ValidationError>? _errors;
 
     /// <summary>
@@ -139,16 +127,15 @@ public sealed class ValidationErrorCollector {
             : ValidationResult.FromErrors(_errors);
 
     /// <summary>
-    /// Clears the errors and the path log, keeping both buffers for the next pass.
+    /// Clears the errors, keeping the buffer for the next pass.
     /// </summary>
+    /// <remarks>
+    /// <see cref="List{T}.Clear"/> nulls the vacated slots, so a pooled collector does not keep the
+    /// last pass's messages and paths alive.
+    /// </remarks>
     public void Reset() {
         _errors?.Clear();
         _requiredFields?.Clear();
-
-        // Clearing rather than only resetting the count: the nodes hold string references, and a
-        // pooled collector would otherwise keep the last pass's segment names alive indefinitely.
-        Array.Clear(_nodes, 0, _nodeCount);
-        _nodeCount = 0;
     }
 
     /// <summary>
@@ -202,102 +189,5 @@ public sealed class ValidationErrorCollector {
         }
 
         return false;
-    }
-
-    internal int AddNode(int parent, string name, int index) {
-        if (_gate is null) {
-            return AddNodeCore(parent, name, index, null);
-        }
-
-        lock (_gate) {
-            return AddNodeCore(parent, name, index, null);
-        }
-    }
-
-    internal int AddKeyedNode(int parent, string name, string key) {
-        if (_gate is null) {
-            return AddNodeCore(parent, name, NoIndex, key);
-        }
-
-        lock (_gate) {
-            return AddNodeCore(parent, name, NoIndex, key);
-        }
-    }
-
-    internal void Emit(int node, string? field, string code, string message, ValidationSeverity severity) {
-        if (_gate is null) {
-            AddCore(new ValidationError(BuildPath(node, field), code, message) { Severity = severity });
-            return;
-        }
-
-        lock (_gate) {
-            AddCore(new ValidationError(BuildPath(node, field), code, message) { Severity = severity });
-        }
-    }
-
-    private int AddNodeCore(int parent, string name, int index, string? key) {
-        var depth = 1;
-        for (var n = parent; n != RootNode; n = _nodes[n].Parent) {
-            if (++depth > MaxDepth) {
-                throw new InvalidOperationException(
-                    $"Validation nested more than {MaxDepth} levels deep at '{BuildPath(parent, name)}'. " +
-                    "This normally means the object graph contains a cycle.");
-            }
-        }
-
-        if (_nodeCount == _nodes.Length) {
-            Array.Resize(ref _nodes, _nodes.Length * 2);
-        }
-
-        _nodes[_nodeCount] = new PathNode { Parent = parent, Name = name, Index = index, Key = key };
-
-        return _nodeCount++;
-    }
-
-    /// <summary>
-    /// Materializes a path by walking the node's parent chain. Only ever reached when an error is
-    /// actually being added, which is what keeps a clean pass at zero allocations.
-    /// </summary>
-    private string BuildPath(int node, string? leaf) {
-        if (node == RootNode) {
-            return leaf ?? string.Empty;
-        }
-
-        var depth = 0;
-        for (var n = node; n != RootNode; n = _nodes[n].Parent) {
-            depth++;
-        }
-
-        // The chain runs leaf-to-root; fill the buffer backwards rather than reversing after.
-        var segments = new PathNode[depth];
-        var write = depth;
-        for (var n = node; n != RootNode; n = _nodes[n].Parent) {
-            segments[--write] = _nodes[n];
-        }
-
-        var builder = new StringBuilder();
-        for (var i = 0; i < depth; i++) {
-            if (i > 0) {
-                builder.Append('.');
-            }
-
-            builder.Append(segments[i].Name);
-
-            if (segments[i].Key is { } key) {
-                builder.Append('[').Append(key).Append(']');
-            } else if (segments[i].Index != NoIndex) {
-                builder.Append('[').Append(segments[i].Index).Append(']');
-            }
-        }
-
-        if (leaf is not null) {
-            if (builder.Length > 0) {
-                builder.Append('.');
-            }
-
-            builder.Append(leaf);
-        }
-
-        return builder.ToString();
     }
 }

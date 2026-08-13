@@ -8,16 +8,17 @@ namespace ValidationModules.Benchmarks.EndToEnd;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Two costs grow with depth and they grow differently. Descending is one appended node per level,
-/// so a clean pass should be linear and allocate nothing. Materializing a path walks the parent
-/// chain twice - once to measure it, once to fill the buffer - and then concatenates, so a failure
-/// at the leaf is the expensive case and the one <see cref="Failing_Validate"/> measures.
+/// Descending is a struct copy per level, so a clean pass should be linear and allocate nothing.
+/// Materializing a path is now independent of depth - a context carries two segments however far
+/// down it is - so <see cref="Failing_Validate"/> should track the clean row at a constant offset
+/// rather than pulling away from it. Under the path log it did pull away, because rendering walked
+/// the parent chain twice before concatenating.
 /// </para>
 /// <para>
 /// Depth 16 is well inside <see cref="ValidationErrorCollector.MaxDepth"/> of 64, which exists to
 /// turn a genuine object cycle into a diagnosable exception rather than a stack overflow. The guard
-/// itself walks the parent chain on every push, so its cost is included in every reading here -
-/// which is the point of sweeping depth rather than assuming it is free.
+/// is a comparison against the depth the context already carries, so unlike the chain walk it
+/// replaced it contributes nothing that grows with depth.
 /// </para>
 /// </remarks>
 [MemoryDiagnoser]

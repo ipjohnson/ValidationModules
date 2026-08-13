@@ -42,7 +42,7 @@ Three categories, filterable with `--anyCategories=`.
 
 | Class | Measures |
 |---|---|
-| `ValidationContextBenchmarks` | Push, PushIndex, PushKey, Add, and the parent-chain walk that builds `lines[3].shipTo.postalCode`, at depths 1/4/16 |
+| `ValidationContextBenchmarks` | Push, PushIndex, PushKey, Add, and the render that builds `lines[3]...shipTo.postalCode`, at depths 1/4/16 |
 | `ErrorCollectorBenchmarks` | A fresh collector per pass against a pooled one, the synchronized collector's uncontended lock, `ToResult`, `Merge` |
 | `SuppressionBenchmarks` | The linear scan enforcing "a field that failed Required accepts nothing further", at 1/8/64 failed fields |
 | `ConstraintBenchmarks` | Each constraint alone, through generated code, passing and failing |

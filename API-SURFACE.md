@@ -104,9 +104,9 @@ validators be written the obvious way. §13.1 has the reasoning; §3.2 has what 
 namespace ValidationModules;
 
 /// <summary>
-/// A cursor into a <see cref="ValidationErrorCollector"/>: the collector plus the index of this
-/// context's node in the collector's append-only path log. Two words, copied freely.
-/// Push allocates nothing on the heap and nothing is concatenated until an error is added.
+/// The collector, plus the compact path this context sits at: the outermost segment, the
+/// immediate parent, and each one's index or key. Seven words, copied freely. Push allocates
+/// nothing on the heap and nothing is concatenated until an error is added.
 /// </summary>
 public readonly struct ValidationContext {
     public ValidationContext(ValidationErrorCollector collector);
@@ -139,7 +139,10 @@ public readonly struct ValidationContext {
 Argument order on `Add` is `(field, code, message)`, matching `ValidationError`'s member order so
 the two never have to be mentally transposed.
 
-### 3.2 Why the path is an append-only log
+### 3.2 Why the path lives in the struct
+
+*Superseded the append-only path log, 2026-08-13. HANDOFF.md §3.1 has the decision; this is the
+resulting shape.*
 
 The obvious zero-allocation path representation is a stack the contexts index into by depth, where
 `Push` writes at `_depth` and returns `_depth + 1`. It is wrong, and it is wrong in a way that only
@@ -147,21 +150,33 @@ shows up under concurrency: two sibling contexts at the same depth overwrite eac
 so a context that is pushed, parked on an `await`, and used later reports whichever sibling wrote
 last. That is precisely what an async validator doing `Task.WhenAll` over collection elements does.
 
-So the collector never overwrites. Every `Push` appends an immutable `(parent, name, index)` node
-and the context holds that node's index; a path is materialised by walking parent links, and only
-when an error is actually added. Consequences:
+The earlier answer was an append-only log in the collector, with each context holding a node index.
+That was correct, but it existed solely to reconstruct full ancestry — and full ancestry is not
+what gets reported. A context keeps the **outermost** segment and the **immediate parent**, so a
+failure four levels down reads `body...address.postalCode`. Nothing between them is needed, so
+nothing between them is stored, and the log has no remaining job.
+
+Both retained segments carry their own index or key. Rendering `toys.owner.name` for what is really
+`toys[3].owner.name` would not be a shortened path but a false one — it asserts an object at `toys`
+that does not exist. Elision may omit; it may not lie. The `...` marker appears only when a segment
+really was dropped, which is three or more descents.
+
+Consequences:
 
 - A context is valid for the life of its collector. Across awaits, inside closures, in any order.
-- Concurrent fan-out is correct by construction, not by discipline. §14 runs six elements finishing
-  in reverse order and every index comes out right.
-- Still no heap allocation per `Push` — nodes land in a pooled array that `Reset()` reuses. Measured
-  at **0 bytes** for a clean pass over 52 pushes, §14.16.
-- The node array grows with total pushes in a pass rather than with maximum depth. For a 10k-element
-  collection that is a few hundred KB in a buffer that is reused, which is the right trade against
-  needing the caller to reason about aliasing.
+- Concurrent fan-out is correct by construction, and now trivially so: `Push` writes nothing any
+  other context can observe, because the path is entirely inside the copied struct.
+- No heap allocation per `Push` at any depth or element count, and no shared buffer to grow, reset
+  or size. `Reset()` has no path state left to clear.
+- The collector's lock guards only `Add`. Descending never contends for it, synchronized or not.
 
 Because correctness no longer depends on the caller's discipline, `ref struct` was only buying a
 restriction — and one that cost the async interface its natural shape.
+
+**What this gives up.** An index on an ancestor that is neither the outermost nor the parent
+(`body.order.lines[3].address.postalCode` → `body...address.postalCode`), and an index on the
+outermost segment when a bare collection is validated at the very top. Both need three or more
+descents; neither is a request-body shape.
 
 ### 3.3 `ValidationErrorCollector` — the shared accumulator
 
@@ -180,9 +195,9 @@ public sealed class ValidationErrorCollector {
     public ValidationErrorCollector(Type? profile);
 
     /// <summary>
-    /// A collector that tolerates concurrent Push and Add. For async validators that genuinely
-    /// fan out. The default collector does not synchronise, because generated straight-line code
-    /// never needs it and the lock would sit on the hot path.
+    /// A collector that tolerates concurrent Add. For async validators that genuinely fan out.
+    /// The default collector does not synchronise, because generated straight-line code never
+    /// needs it and the lock would sit on the hot path. Push needs no synchronisation either way.
     /// </summary>
     public static ValidationErrorCollector CreateSynchronized(Type? profile = null);
 
@@ -196,7 +211,7 @@ public sealed class ValidationErrorCollector {
     /// <summary>Snapshots into an immutable result. Returns ValidationResult.Valid when empty.</summary>
     public ValidationResult ToResult();
 
-    /// <summary>Clears errors and path nodes, keeping both buffers. For pooled reuse.</summary>
+    /// <summary>Clears errors, keeping the buffer. For pooled reuse.</summary>
     public void Reset();
 }
 ```
@@ -205,7 +220,8 @@ public sealed class ValidationErrorCollector {
 make the *collector* safe to mutate from them. Handing contexts to parallel branches that all add
 errors needs `CreateSynchronized()`. The default collector is unsynchronised, which is correct for
 every generated validator and for any async validator that awaits sequentially — the overwhelming
-majority — and it keeps the lock off the path that runs per nested object.
+majority. Since the path moved into the struct, the lock covers only `Add`; descending into a
+nested object no longer touches the collector at all.
 
 Getting this wrong is silent rather than loud, so `Reset()` and the mutators carry a DEBUG-only
 overlap detector: an `Interlocked` in-use flag that throws `InvalidOperationException` naming the
@@ -925,10 +941,11 @@ benefit was preventing a misuse that §3.2 designs out anyway. Dropping `ref str
 real, keeps plan §4's contracts verbatim, and makes async a first-class shape rather than a
 workaround.
 
-What replaces the safety `ref struct` was providing: the append-only path log in §3.2. A stack
-indexed by depth would have made a stored context unsafe, which is what `ref struct` existed to
-prevent; an append-only log makes a stored context *correct*, verified at 500-way concurrency in
-§14.
+What replaces the safety `ref struct` was providing: §3.2's path-in-the-struct. A stack indexed by
+depth would have made a stored context unsafe, which is what `ref struct` existed to prevent;
+a context that carries its own path makes a stored context *correct*, verified at 500-way
+concurrency in §14. (The append-only log this originally cited did the same job and was replaced
+by the compact path, which does it with no shared state at all.)
 
 **13.2 The path cannot be a stack-linked parent chain.** The other natural zero-allocation reading
 of plan §4's "keep a small path stack" is `ref readonly ValidationContext _parent`, which is

@@ -3,8 +3,8 @@ using BenchmarkDotNet.Attributes;
 namespace ValidationModules.Benchmarks.Components;
 
 /// <summary>
-/// What the path machinery costs: a push, an add, and the walk back up the parent chain that turns
-/// a node index into <c>lines[3].shipTo.postalCode</c>.
+/// What the path machinery costs: a push, an add, and the render that turns the two segments a
+/// context carries into <c>lines[3]...shipTo.postalCode</c>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -26,8 +26,14 @@ public class ValidationContextBenchmarks {
 
     /// <summary>
     /// How many levels to descend before adding. 1 is a top-level field, 4 a realistic nested
-    /// payload, 16 deep enough that the parent-chain walk dominates.
+    /// payload, 16 deep enough that anything scaling with depth would show.
     /// </summary>
+    /// <remarks>
+    /// Under the path log, 16 was the depth at which the parent-chain walk dominated. A context now
+    /// keeps two segments whatever the depth, so the add columns should be flat across all three
+    /// and only the pushes themselves should scale - which is what makes these rows a regression
+    /// test rather than a measurement of the render.
+    /// </remarks>
     [Params(1, 4, 16)]
     public int Depth { get; set; }
 

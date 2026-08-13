@@ -8,15 +8,17 @@ namespace ValidationModules.Benchmarks.EndToEnd;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The emitted loop calls <c>ctx.PushIndex</c> once per element, and each push appends a node to
-/// the collector's path log. So the clean case should be linear in element count with a flat
-/// allocation column - the log grows, but it grows into a buffer that doubles, and nothing
-/// materializes a string until an error appears.
+/// The emitted loop calls <c>ctx.PushIndex</c> once per element, and a push now only copies the
+/// context struct - it writes nothing the next element can see. So the clean case should be linear
+/// in element count with a flat and empty allocation column, and nothing materializes a string
+/// until an error appears.
 /// </para>
 /// <para>
-/// The reading to check is the jump from 100 to 1000: a superlinear step there would mean the node
-/// buffer's growth or the parent-chain walk is costing more than it looks, and 1000-element
-/// payloads are ordinary in bulk-import endpoints.
+/// The reading to check is the jump from 100 to 1000. Under the old path log this was where a
+/// superlinear step would have shown the node buffer's growth or the parent-chain walk costing more
+/// than it looked; with neither of those left it is a regression check, and any departure from
+/// linear now means something reintroduced per-element state. 1000-element payloads are ordinary in
+/// bulk-import endpoints.
 /// </para>
 /// </remarks>
 [MemoryDiagnoser]

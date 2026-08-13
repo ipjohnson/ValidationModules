@@ -80,6 +80,88 @@ public class ValidationContextTests {
     }
 
     [Fact]
+    public void Push_TwoDeep_ReportsEverySegment() {
+        // The boundary case for elision: two descents is the whole path, so the marker must not
+        // appear. Getting this off by one would put `...` into the commonest nested shape there is.
+        var collector = new ValidationErrorCollector();
+
+        new ValidationContext(collector).Push("body").PushIndex("lines", 3).Add("sku", "required", "x");
+
+        Assert.Equal("body.lines[3].sku", Assert.Single(collector.ToResult().Errors).Field);
+    }
+
+    [Fact]
+    public void Push_ThreeDeep_ElidesTheMiddleAndSaysSo() {
+        var collector = new ValidationErrorCollector();
+
+        new ValidationContext(collector)
+            .Push("body").Push("order").Push("address")
+            .Add("postalCode", "required", "x");
+
+        Assert.Equal("body...address.postalCode", Assert.Single(collector.ToResult().Errors).Field);
+    }
+
+    [Fact]
+    public void Push_FarDeeper_StillKeepsOnlyOutermostAndImmediateParent() {
+        var collector = new ValidationErrorCollector();
+        var context = new ValidationContext(collector).Push("body");
+
+        for (var i = 0; i < 20; i++) {
+            context = context.Push($"level{i}");
+        }
+
+        context.Add("name", "required", "x");
+
+        Assert.Equal("body...level19.name", Assert.Single(collector.ToResult().Errors).Field);
+    }
+
+    [Fact]
+    public void Push_IndexedOutermostSegment_KeepsItsIndex() {
+        // Rendering `toys.owner.name` for what is really `toys[3].owner.name` would not be a
+        // shortened path, it would be a false one - it asserts an object at `toys`.
+        var collector = new ValidationErrorCollector();
+
+        new ValidationContext(collector).PushIndex("toys", 3).Push("owner").Add("name", "required", "x");
+
+        Assert.Equal("toys[3].owner.name", Assert.Single(collector.ToResult().Errors).Field);
+    }
+
+    [Fact]
+    public void Push_IndexAndKeyOnBothRetainedSegments_SurviveElision() {
+        var collector = new ValidationErrorCollector();
+
+        new ValidationContext(collector)
+            .PushIndex("lines", 2).Push("shipTo").PushKey("tags", "a")
+            .Add("value", "required", "x");
+
+        Assert.Equal("lines[2]...tags[a].value", Assert.Single(collector.ToResult().Errors).Field);
+    }
+
+    [Fact]
+    public void AddHere_AtDepth_PathsTheObjectRatherThanAField() {
+        var collector = new ValidationErrorCollector();
+
+        new ValidationContext(collector)
+            .Push("body").Push("order").PushIndex("lines", 4)
+            .AddHere("incomplete", "line is incomplete.");
+
+        Assert.Equal("body...lines[4]", Assert.Single(collector.ToResult().Errors).Field);
+    }
+
+    [Fact]
+    public void Push_PastMaxDepth_ThrowsRatherThanOverflowingTheStack() {
+        var context = new ValidationContext(new ValidationErrorCollector());
+
+        for (var i = 0; i < ValidationErrorCollector.MaxDepth; i++) {
+            context = context.Push("child");
+        }
+
+        var exception = Assert.Throws<InvalidOperationException>(() => context.Push("child"));
+
+        Assert.Contains("cycle", exception.Message);
+    }
+
+    [Fact]
     public void Validate_MultipleFailures_EmitsInDeclarationOrder() {
         var pet = new Pet { Home = new Address(), Toys = [new Toy()] };
 

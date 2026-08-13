@@ -98,8 +98,9 @@ public sealed record Basket {
 
 /// <summary>
 /// Self-referential, so nesting depth can be a benchmark parameter. Terminates on a null child;
-/// the collector's cycle guard at <see cref="ValidationErrorCollector.MaxDepth"/> is what stops a
-/// genuine cycle, and is deliberately not exercised here.
+/// the cycle guard at <see cref="ValidationErrorCollector.MaxDepth"/> - enforced by
+/// <c>ValidationContext</c> against the depth it carries - is what stops a genuine cycle, and is
+/// deliberately not exercised here.
 /// </summary>
 public sealed record Node {
     [Required]

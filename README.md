@@ -68,9 +68,9 @@ which double as the emitter's specification.
   verification log behind the claims.
 
 The single most consequential decision is in `API-SURFACE.md` §13.1: `ValidationContext` is a
-`readonly struct` rather than a `ref struct`, over an append-only path log. That is what lets
-`IAsyncValidatorFor<T>` take the same context as the synchronous side, and what makes a context safe
-to hold across an await or hand to a concurrent branch.
+`readonly struct` rather than a `ref struct`, carrying its own path rather than indexing into shared
+storage. That is what lets `IAsyncValidatorFor<T>` take the same context as the synchronous side,
+and what makes a context safe to hold across an await or hand to a concurrent branch.
 
 ## Packages
 
