@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion><Nullable>enable</Nullable>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- ExcludeAssets=runtime: the host supplies these, shipping them causes load conflicts. -->
+    <PackageReference Include="Microsoft.Build.Utilities.Core" Version="17.8.3" ExcludeAssets="runtime"/>
+    <PackageReference Include="Microsoft.Build.Framework" Version="17.8.3" ExcludeAssets="runtime"/>
+  </ItemGroup>
+</Project>

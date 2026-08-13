@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
+    <PublishAot>true</PublishAot><InvariantGlobalization>true</InvariantGlobalization>
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)generated</CompilerGeneratedFilesOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../SpecGen/SpecGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
+    <SpecFile Include="pet.spec.yaml"/>
+  </ItemGroup>
+
+  <UsingTask TaskName="SpecTask.ExtractSpec"
+             AssemblyFile="$(MSBuildThisFileDirectory)../SpecTask/bin/Debug/netstandard2.0/SpecTask.dll"/>
+
+  <!--
+    BeforeTargets="CoreCompile" is early enough: CoreCompile reads @(Compile) when it runs, not
+    when the project is evaluated. Inputs/Outputs give incrementality against the spec.
+  -->
+  <Target Name="ExtractSpecPatterns" BeforeTargets="CoreCompile"
+          Inputs="@(SpecFile)"
+          Outputs="$(IntermediateOutputPath)SpecPatterns.g.cs;$(IntermediateOutputPath)spec-model.txt">
+
+    <SpecTask.ExtractSpec Specs="@(SpecFile)"
+                          PatternsFile="$(IntermediateOutputPath)SpecPatterns.g.cs"
+                          ModelFile="$(IntermediateOutputPath)spec-model.txt"/>
+  </Target>
+
+  <!--
+    Declared outside the target so they survive an incremental build that skips it. The patterns
+    file goes to @(Compile) - that is the whole point, it has to be an ordinary source file for
+    the regex generator to see it. The model goes to @(AdditionalFiles) for our generator.
+  -->
+  <Target Name="AddSpecOutputs" BeforeTargets="CoreCompile" DependsOnTargets="ExtractSpecPatterns">
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)SpecPatterns.g.cs"/>
+      <AdditionalFiles Include="$(IntermediateOutputPath)spec-model.txt"/>
+      <FileWrites Include="$(IntermediateOutputPath)SpecPatterns.g.cs;$(IntermediateOutputPath)spec-model.txt"/>
+    </ItemGroup>
+  </Target>
+
+</Project>

@@ -40,7 +40,22 @@ public sealed class ValidationErrorCollector {
         public int Parent;
         public string Name;
         public int Index;
+
+        /// <summary>Set for a dictionary entry, where the path segment is a key rather than a position.</summary>
+        public string? Key;
     }
+
+    /// <summary>
+    /// How deep validation may nest before it is treated as a cycle.
+    /// </summary>
+    /// <remarks>
+    /// A self-referential type is legitimate and validates fine over a tree. An object graph with an
+    /// actual cycle - a.Child = b, b.Child = a - would recurse until the stack ran out, and a
+    /// StackOverflowException cannot be caught and takes the process with it. Failing here instead
+    /// turns that into an ordinary, diagnosable exception. 64 is far past any hand-written model and
+    /// far short of the stack.
+    /// </remarks>
+    public const int MaxDepth = 64;
 
     private readonly object? _gate;
 
@@ -191,11 +206,21 @@ public sealed class ValidationErrorCollector {
 
     internal int AddNode(int parent, string name, int index) {
         if (_gate is null) {
-            return AddNodeCore(parent, name, index);
+            return AddNodeCore(parent, name, index, null);
         }
 
         lock (_gate) {
-            return AddNodeCore(parent, name, index);
+            return AddNodeCore(parent, name, index, null);
+        }
+    }
+
+    internal int AddKeyedNode(int parent, string name, string key) {
+        if (_gate is null) {
+            return AddNodeCore(parent, name, NoIndex, key);
+        }
+
+        lock (_gate) {
+            return AddNodeCore(parent, name, NoIndex, key);
         }
     }
 
@@ -210,12 +235,21 @@ public sealed class ValidationErrorCollector {
         }
     }
 
-    private int AddNodeCore(int parent, string name, int index) {
+    private int AddNodeCore(int parent, string name, int index, string? key) {
+        var depth = 1;
+        for (var n = parent; n != RootNode; n = _nodes[n].Parent) {
+            if (++depth > MaxDepth) {
+                throw new InvalidOperationException(
+                    $"Validation nested more than {MaxDepth} levels deep at '{BuildPath(parent, name)}'. " +
+                    "This normally means the object graph contains a cycle.");
+            }
+        }
+
         if (_nodeCount == _nodes.Length) {
             Array.Resize(ref _nodes, _nodes.Length * 2);
         }
 
-        _nodes[_nodeCount] = new PathNode { Parent = parent, Name = name, Index = index };
+        _nodes[_nodeCount] = new PathNode { Parent = parent, Name = name, Index = index, Key = key };
 
         return _nodeCount++;
     }
@@ -249,7 +283,9 @@ public sealed class ValidationErrorCollector {
 
             builder.Append(segments[i].Name);
 
-            if (segments[i].Index != NoIndex) {
+            if (segments[i].Key is { } key) {
+                builder.Append('[').Append(key).Append(']');
+            } else if (segments[i].Index != NoIndex) {
                 builder.Append('[').Append(segments[i].Index).Append(']');
             }
         }

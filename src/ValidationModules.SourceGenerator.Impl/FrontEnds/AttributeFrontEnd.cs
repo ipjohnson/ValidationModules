@@ -97,8 +97,17 @@ public sealed class AttributeFrontEnd {
         string? elementTypeName = null;
         string? elementValidatorName = null;
 
+        var dictionary = TypeFacts.DictionaryTypesOf(type);
+
         if (validateNested) {
-            if (elementType is not null) {
+            if (dictionary is { } entry) {
+                shape = PropertyShape.Dictionary;
+                elementTypeName = entry.Value.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+                if (entry.Value is INamedTypeSymbol namedValue) {
+                    elementValidatorName = QualifiedValidator(namedValue, validatorNameFor);
+                }
+            } else if (elementType is not null) {
                 shape = PropertyShape.Collection;
                 elementTypeName = elementType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 

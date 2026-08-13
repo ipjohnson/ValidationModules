@@ -124,6 +124,20 @@ public sealed class ValidatorEmitter {
             return;
         }
 
+        if (property.Shape == PropertyShape.Dictionary) {
+            var entries = $"entries{property.PropertyName}";
+
+            builder.AppendLine($"        if ({access} is {{ }} {entries}) {{");
+            builder.AppendLine($"            foreach (var pair in {entries}) {{");
+            builder.AppendLine("                if (pair.Value is not null) {");
+            builder.AppendLine($"                    var entryCtx = ctx.PushKey({Quote(property.FieldName)}, pair.Key?.ToString() ?? \"\");");
+            builder.AppendLine($"                    {property.ElementValidatorName}.Instance.Validate(ref entryCtx, pair.Value);");
+            builder.AppendLine("                }");
+            builder.AppendLine("            }");
+            builder.AppendLine("        }");
+            return;
+        }
+
         if (property.Shape == PropertyShape.Object) {
             builder.AppendLine($"        if ({access} is {{ }} nested{property.PropertyName}) {{");
             builder.AppendLine($"            var ctx{property.PropertyName} = ctx.Push({Quote(property.FieldName)});");

@@ -66,6 +66,15 @@ public readonly struct ValidationContext {
         new(_collector, _collector.AddNode(_node, segment, index));
 
     /// <summary>
+    /// Descends into a dictionary value. An error added through the returned context reads
+    /// <c>items[sku-1].name</c>.
+    /// </summary>
+    /// <param name="segment">The field name of the dictionary.</param>
+    /// <param name="key">The entry's key, rendered into the path.</param>
+    public ValidationContext PushKey(string segment, string key) =>
+        new(_collector, _collector.AddKeyedNode(_node, segment, key));
+
+    /// <summary>
     /// Records a failure against a field of the current object.
     /// </summary>
     /// <param name="field">The field name, appended to the current path.</param>

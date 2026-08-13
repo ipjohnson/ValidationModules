@@ -11,6 +11,38 @@ public static class TypeFacts {
     /// collections here: <c>string</c> implements <c>IEnumerable&lt;char&gt;</c>, and treating one
     /// as a collection would turn a length constraint into a per-character walk.
     /// </summary>
+    /// <summary>
+    /// The value type of a dictionary, or null if it is not one.
+    /// </summary>
+    /// <remarks>
+    /// Checked before <see cref="ElementTypeOf"/>, because every dictionary is also an
+    /// IEnumerable&lt;KeyValuePair&lt;K,V&gt;&gt; - and taking that reading emitted a call to a
+    /// KeyValuePairValidator that does not exist and never could, so the consumer's build broke in
+    /// generated code.
+    /// </remarks>
+    public static (ITypeSymbol Key, ITypeSymbol Value)? DictionaryTypesOf(ITypeSymbol type) {
+        foreach (var candidate in Interfaces(type)) {
+            if (candidate.ConstructedFrom.SpecialType is SpecialType.None &&
+                candidate.ConstructedFrom.ToDisplayString() is
+                    "System.Collections.Generic.IDictionary<TKey, TValue>" or
+                    "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>") {
+                return (candidate.TypeArguments[0], candidate.TypeArguments[1]);
+            }
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<INamedTypeSymbol> Interfaces(ITypeSymbol type) {
+        if (type is INamedTypeSymbol { TypeKind: TypeKind.Interface } self) {
+            yield return self;
+        }
+
+        foreach (var candidate in type.AllInterfaces) {
+            yield return candidate;
+        }
+    }
+
     public static ITypeSymbol? ElementTypeOf(ITypeSymbol type) {
         if (type.SpecialType == SpecialType.System_String) {
             return null;

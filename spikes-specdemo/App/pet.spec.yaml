@@ -1,0 +1,8 @@
+# stand-in for an OpenAPI schema section
+Pet:
+  Name:
+    required: true
+  Sku:
+    pattern: "^[A-Z]{3}$"
+  Slug:
+    pattern: "^[a-z0-9-]+$"

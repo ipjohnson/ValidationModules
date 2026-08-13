@@ -119,6 +119,7 @@ namespace ValidationModules
         public void AddHere(string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
         public ValidationModules.ValidationContext Push(string segment) { }
         public ValidationModules.ValidationContext PushIndex(string segment, int index) { }
+        public ValidationModules.ValidationContext PushKey(string segment, string key) { }
     }
     public static class ValidationContextExtensions
     {
@@ -140,6 +141,7 @@ namespace ValidationModules
     }
     public sealed class ValidationErrorCollector
     {
+        public const int MaxDepth = 64;
         public ValidationErrorCollector() { }
         public ValidationErrorCollector(System.Type? profile) { }
         public int Count { get; }

@@ -10,6 +10,9 @@ public enum PropertyShape {
 
     /// <summary>A collection whose elements have their own validator.</summary>
     Collection,
+
+    /// <summary>A dictionary whose values have their own validator, pathed by key.</summary>
+    Dictionary,
 }
 
 /// <summary>
