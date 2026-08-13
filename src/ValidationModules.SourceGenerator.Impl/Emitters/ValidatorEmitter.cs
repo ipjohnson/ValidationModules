@@ -45,6 +45,13 @@ public sealed class ValidatorEmitter {
             EmitProperty(body, property, model, patterns);
         }
 
+        // Applied rules own no property, so they run once every property has been walked. Ordering
+        // them last rather than at their declaration point is §19.7: they are the only rules whose
+        // position in the body says nothing about which field they concern.
+        foreach (var rule in model.AppliedRules) {
+            body.AppendLine($"        {rule}(ref ctx, value);");
+        }
+
         foreach (var (field, constraint) in patterns) {
             var expression = constraint.Anchored
                 ? $@"\A(?:{constraint.Pattern})\z"
@@ -113,9 +120,20 @@ public sealed class ValidatorEmitter {
             // else-if after a required check is an optimization, not the suppression mechanism -
             // the collector drops anything on a field that already failed required. It still earns
             // its place by not evaluating a length or pattern test against a value known to be null.
-            var keyword = wroteChain ? "        else if" : "        if";
+            //
+            // A predicate stays out of the chain, in both directions. It may read fields other than
+            // the one it is anchored to, so an earlier failure on the anchor says nothing about
+            // whether it would fail; and skipping it would make this engine report fewer errors than
+            // the runtime one, which walks every rule. §4.2 allows exactly one short-circuit and this
+            // is not it.
+            var standalone = constraint.Kind == ConstraintKind.Predicate;
+            var keyword = wroteChain && !standalone ? "        else if" : "        if";
             builder.AppendLine($"{keyword} ({test}) {AddFor(field, constraint, property)}");
-            wroteChain = true;
+
+            // A standalone predicate also ends the chain, rather than merely not joining it: a
+            // following `else if` would otherwise bind to the predicate's `if` and be skipped
+            // whenever the predicate failed.
+            wroteChain = !standalone;
         }
 
         EmitNested(builder, property, access);
@@ -197,6 +215,13 @@ public sealed class ValidatorEmitter {
         var guard = property.IsReferenceType || property.IsNullableValueType ? $"{access} is not null && " : string.Empty;
 
         switch (constraint.Kind) {
+            // No null guard, deliberately. A predicate may read fields other than the one it is
+            // anchored to - "x => x.Start < x.End" is pathed at start and reads both - so guarding on
+            // the anchor would skip a rule that had nothing to do with it. Null is the author's, the
+            // same as it is on the runtime path.
+            case ConstraintKind.Predicate:
+                return constraint.PredicateAccessor is { } predicate ? $"!{predicate}(value)" : null;
+
             case ConstraintKind.StringLength: {
                 var tests = new List<string>();
                 if (constraint.Min is { } min && min != "0") {
@@ -264,6 +289,11 @@ public sealed class ValidatorEmitter {
             ConstraintKind.Pattern => Add(field, constraint, "AddPattern", ""),
             ConstraintKind.AllowedValues => Add(field, constraint, "AddAllowedValues",
                 $", {Quote(string.Join(", ", constraint.Values.Select(Unquote)))}"),
+
+            // Always the literal branch: a predicate's message was rendered from its own source when
+            // the front-end read it, so there is nothing here to compose and nothing the runtime
+            // could compose it from.
+            ConstraintKind.Predicate => Add(field, constraint, "Add", ""),
             _ => Add(field, constraint, "AddRequired", ""),
         };
 
@@ -289,6 +319,7 @@ public sealed class ValidatorEmitter {
         ConstraintKind.Range => "ValidationCodes.Range",
         ConstraintKind.Pattern => "ValidationCodes.Pattern",
         ConstraintKind.AllowedValues => "ValidationCodes.Enum",
+        ConstraintKind.Predicate => "ValidationCodes.Predicate",
         _ => "ValidationCodes.ArrayBounds",
     };
 

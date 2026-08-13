@@ -106,4 +106,44 @@ public static class ValidationDiagnostics {
         "VM0067", "IValidatableObject is not compiled",
         "'{0}' implements IValidatableObject; its Validate method is not called by the generated validator",
         DiagnosticSeverity.Warning);
+
+    /// <summary>
+    /// Reported before any source is added, so the build fails here rather than on generated code
+    /// calling a runtime member that does not exist. Plan §7.5.
+    /// </summary>
+    public static readonly DiagnosticDescriptor RuntimeContractTooOld = Descriptor(
+        "VM0040", "ValidationModules.Runtime is too old",
+        "The generated validators require ValidationModules.Runtime contract {0} or later; the referenced runtime is contract {1}. Update the ValidationModules.Runtime package reference.",
+        DiagnosticSeverity.Error);
+
+    /// <summary>
+    /// A Describe body is a whitelisted DSL, not general C#. The body being runnable makes it look
+    /// like ordinary code, which is exactly why the half that cannot be compiled has to break the
+    /// build rather than behave differently on the two engines.
+    /// </summary>
+    public static readonly DiagnosticDescriptor NotARuleDeclaration = Descriptor(
+        "VM0070", "Not a rule declaration",
+        "Only rule declarations on the builder are allowed in '{0}.Describe'; this statement is not one and is not compiled",
+        DiagnosticSeverity.Error);
+
+    public static readonly DiagnosticDescriptor SelectorNotAPath = Descriptor(
+        "VM0071", "Selector is not a property path",
+        "A rule selector in '{0}.Describe' must read a property of its parameter, so the error has a field to be pathed against",
+        DiagnosticSeverity.Error);
+
+    /// <summary>
+    /// A predicate is lifted into a static method by the generator and held as a delegate by the
+    /// runtime. A delegate can close over the rules class instance and a static method cannot, so
+    /// anything captured would compile on one path and not the other.
+    /// </summary>
+    public static readonly DiagnosticDescriptor PredicateCapturesState = Descriptor(
+        "VM0072", "Predicate captures state",
+        "A predicate in '{0}.Describe' may read only its own parameter and static or constant state; this one captures something else and cannot be compiled",
+        DiagnosticSeverity.Error);
+
+    public static readonly DiagnosticDescriptor EnsureHasNoField = Descriptor(
+        "VM0075", "Ensure has no field",
+        "The predicate in '{0}.Describe' reads no property of its parameter, so no field can be inferred; pass field: explicitly",
+        DiagnosticSeverity.Error);
+
 }

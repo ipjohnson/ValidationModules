@@ -37,9 +37,22 @@ public sealed class AttributeFrontEnd {
     /// Resolves the validator name for a nested type, so a property's model can name the validator
     /// it will call before that type has itself been processed.
     /// </param>
-    public ValidatedTypeModel? Build(INamedTypeSymbol type, Func<INamedTypeSymbol, string> validatorNameFor) {
+    /// <param name="declared">
+    /// Rules read out of a rules class targeting this type, if any. They merge with the attributes
+    /// rather than replacing them, and land after them on each property - which is §19.7's ordering,
+    /// and the reason both live in one model rather than in two validators for one type.
+    /// </param>
+    /// <param name="applied">Hand-written rules attached with <c>rules.Apply</c>.</param>
+    public ValidatedTypeModel? Build(
+        INamedTypeSymbol type,
+        Func<INamedTypeSymbol, string> validatorNameFor,
+        IReadOnlyList<DeclaredRule>? declared = null,
+        IReadOnlyList<string>? applied = null) {
+
         var properties = ImmutableArray.CreateBuilder<ValidatedPropertyModel>();
-        var sawAnything = HasGenerateValidator(type);
+        var order = new List<int>();
+        var sawAnything = HasGenerateValidator(type) || declared is { Count: > 0 } || applied is { Count: > 0 };
+        var sawAttribute = false;
 
         foreach (var member in type.GetMembers()) {
             if (member is not IPropertySymbol property || property.IsStatic || property.IsIndexer) {
@@ -48,6 +61,25 @@ public sealed class AttributeFrontEnd {
 
             var constraints = ReadConstraints(property);
             var validateNested = HasValidateNested(property);
+            string? overriddenField = null;
+
+            sawAttribute |= constraints.Count > 0 || validateNested;
+
+            if (declared is not null) {
+                foreach (var rule in declared) {
+                    if (!SymbolEqualityComparer.Default.Equals(rule.Property, property)) {
+                        continue;
+                    }
+
+                    overriddenField ??= rule.Field;
+
+                    if (rule.Constraint is not null) {
+                        constraints.Add(rule.Constraint);
+                    }
+
+                    validateNested |= rule.Nesting != Nesting.None;
+                }
+            }
 
             if (constraints.Count == 0 && !validateNested) {
                 continue;
@@ -60,7 +92,8 @@ public sealed class AttributeFrontEnd {
                 continue;
             }
 
-            properties.Add(BuildProperty(property, constraints, validateNested, validatorNameFor));
+            properties.Add(BuildProperty(property, constraints, validateNested, validatorNameFor, overriddenField));
+            order.Add(FirstMentionOf(property, declared));
         }
 
         if (!sawAnything) {
@@ -83,14 +116,60 @@ public sealed class AttributeFrontEnd {
             type.Name,
             type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             validatorNameFor(type),
-            new EquatableArray<ValidatedPropertyModel>(properties.ToImmutable()));
+            new EquatableArray<ValidatedPropertyModel>(Ordered(properties.ToImmutable(), order, sawAttribute)),
+            new EquatableArray<string>(ImmutableArray.CreateRange(applied ?? Array.Empty<string>())));
+    }
+
+    /// <summary>
+    /// Reorders a rules-only type's properties into the order its Describe body first mentioned
+    /// them.
+    /// </summary>
+    /// <remarks>
+    /// §4.2 pins errors to property order, and for an attributed type that is source order because
+    /// source order is where the rules were written. A rules class writes them somewhere else, and a
+    /// body that constrains Notes before Start must report in that order or it disagrees with
+    /// <c>DescribedValidator&lt;T&gt;</c>, which has only the body to go on and cannot see source
+    /// order without reflection.
+    ///
+    /// Only when the type carries no attributes of its own. Mixing the two orderings on one type
+    /// would be worse than either: source order stays authoritative the moment source is involved.
+    /// </remarks>
+    private static ImmutableArray<ValidatedPropertyModel> Ordered(
+        ImmutableArray<ValidatedPropertyModel> properties, List<int> order, bool sawAttribute) {
+
+        if (sawAttribute || properties.Length < 2) {
+            return properties;
+        }
+
+        return properties
+            .Select((property, index) => (property, key: order[index], index))
+            .OrderBy(entry => entry.key)
+            .ThenBy(entry => entry.index)
+            .Select(entry => entry.property)
+            .ToImmutableArray();
+    }
+
+    /// <summary>Where a property is first constrained by a rules class, or int.MaxValue.</summary>
+    private static int FirstMentionOf(IPropertySymbol property, IReadOnlyList<DeclaredRule>? declared) {
+        if (declared is null) {
+            return int.MaxValue;
+        }
+
+        for (var i = 0; i < declared.Count; i++) {
+            if (SymbolEqualityComparer.Default.Equals(declared[i].Property, property)) {
+                return i;
+            }
+        }
+
+        return int.MaxValue;
     }
 
     private ValidatedPropertyModel BuildProperty(
         IPropertySymbol property,
         List<ConstraintModel> constraints,
         bool validateNested,
-        Func<INamedTypeSymbol, string> validatorNameFor) {
+        Func<INamedTypeSymbol, string> validatorNameFor,
+        string? overriddenField = null) {
 
         var type = property.Type;
         var isString = type.SpecialType == SpecialType.System_String;
@@ -127,7 +206,7 @@ public sealed class AttributeFrontEnd {
 
         return new ValidatedPropertyModel(
             property.Name,
-            FieldNameFor(property),
+            overriddenField ?? FieldNameFor(property),
             type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             shape,
             elementTypeName,

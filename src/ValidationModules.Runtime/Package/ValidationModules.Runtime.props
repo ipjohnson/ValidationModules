@@ -1,0 +1,14 @@
+<Project>
+    <!--
+        The contract version this runtime implements, mirroring ValidationModules.RuntimeContract.
+        Version. A Roslyn generator reads that constant out of the compilation; an MSBuild task
+        driving the same emitters has no compilation, so it reads this instead. Both compare against
+        EmitterContract.RequiredRuntimeContract and neither loads an assembly. Plan §7.5.
+
+        Keep this in step with RuntimeContract.cs - ContractVersionMatchesPropsTests fails the build
+        if they drift.
+    -->
+    <PropertyGroup>
+        <ValidationModulesRuntimeContract>1</ValidationModulesRuntimeContract>
+    </PropertyGroup>
+</Project>

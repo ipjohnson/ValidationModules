@@ -2,6 +2,8 @@ namespace Microsoft.Extensions.DependencyInjection
 {
     public static class ValidationModulesServiceCollectionExtensions
     {
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddDescribedValidator<T, TRules>(this Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+            where TRules : ValidationModules.IValidationRulesFor<T>, new () { }
         public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValidationModules(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.Collections.Generic.IReadOnlyList<ValidationModules.ValidatorRegistration> registrations) { }
         public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValidationRunner<T>(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
     }
@@ -83,6 +85,11 @@ namespace ValidationModules
         public DefaultValidationProfileAttribute(System.Type profile) { }
         public System.Type Profile { get; }
     }
+    public sealed class DescribedValidator<T> : ValidationModules.IValidatorFor<T>
+    {
+        public DescribedValidator(ValidationModules.IValidationRulesFor<T> rules, ValidationModules.IValidatorProvider? nested = null, ValidationModules.Naming.IValidationFieldNamer? namer = null) { }
+        public void Validate(ref ValidationModules.ValidationContext context, T value) { }
+    }
     public interface IAsyncValidatorFor<in T>
     {
         System.Threading.Tasks.ValueTask ValidateAsync(ValidationModules.ValidationContext context, T value, System.Threading.CancellationToken cancellationToken = default);
@@ -90,6 +97,10 @@ namespace ValidationModules
     public interface IValidationProfile { }
     public interface IValidationProfile<TPredecessor> : ValidationModules.IValidationProfile
         where TPredecessor : ValidationModules.IValidationProfile { }
+    public interface IValidationRulesFor<T>
+    {
+        void Describe(ValidationModules.ValidationRules<T> rules);
+    }
     public interface IValidatorFor<in T>
     {
         void Validate(ref ValidationModules.ValidationContext context, T value);
@@ -100,11 +111,41 @@ namespace ValidationModules
         ValidationModules.IValidatorFor<T>? GetValidator<T>();
         ValidationModules.IValidatorFor<T>? GetValidator<T>(System.Type profile);
     }
+    public static class PropertyRulesExtensions
+    {
+        public static ValidationModules.PropertyRules<T, TValue> AllowedValues<T, TValue>(this ValidationModules.PropertyRules<T, TValue> rules, params TValue[] allowed) { }
+        public static ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Count<T, TElement>(this ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> rules, int min = 0, int max = 2147483647) { }
+        public static ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Each<T, TElement>(this ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> rules)
+            where TElement :  class { }
+        public static ValidationModules.PropertyRules<T, string?> Length<T>(this ValidationModules.PropertyRules<T, string?> rules, int min = 0, int max = 2147483647) { }
+        public static ValidationModules.PropertyRules<T, TValue?> Nested<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules)
+            where TValue :  class { }
+        public static ValidationModules.PropertyRules<T, string?> Pattern<T>(this ValidationModules.PropertyRules<T, string?> rules, System.Func<System.Text.RegularExpressions.Regex> pattern) { }
+        public static ValidationModules.PropertyRules<T, TValue?> Range<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules, TValue min, TValue max)
+            where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
+        public static ValidationModules.PropertyRules<T, string?> Required<T>(this ValidationModules.PropertyRules<T, string?> rules) { }
+        public static ValidationModules.PropertyRules<T, TValue?> Required<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules)
+            where TValue :  class { }
+        public static ValidationModules.PropertyRules<T, TValue?> Required<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules)
+            where TValue :  struct { }
+        public static ValidationModules.PropertyRules<T, string?> RequiredAllowingEmpty<T>(this ValidationModules.PropertyRules<T, string?> rules) { }
+    }
+    public sealed class PropertyRules<T, TValue>
+    {
+        public ValidationModules.ValidationRules<T> And { get; }
+    }
+    public delegate void RuleAction<in T>(ref ValidationModules.ValidationContext context, T value);
+    public static class RuntimeContract
+    {
+        public const int Version = 1;
+    }
     public static class ValidationCodes
     {
         public const string ArrayBounds = "array_bounds";
         public const string Enum = "enum";
+        public const string Invalid = "invalid";
         public const string Pattern = "pattern";
+        public const string Predicate = "predicate";
         public const string Range = "range";
         public const string Required = "required";
         public const string StringLength = "string_length";
@@ -171,6 +212,28 @@ namespace ValidationModules
         public static ValidationModules.ValidationResult Valid { get; }
         public ValidationModules.ValidationResult Merge(ValidationModules.ValidationResult other) { }
         public static ValidationModules.ValidationResult FromErrors(System.Collections.Generic.IEnumerable<ValidationModules.ValidationError> errors) { }
+    }
+    public sealed class ValidationRules<T>
+    {
+        public ValidationModules.PropertyRules<T, TValue> AllowedValues<TValue>(System.Func<T, TValue> value, TValue[] allowed, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
+        public ValidationModules.ValidationRules<T> Apply(ValidationModules.RuleAction<T> rule) { }
+        public ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Count<TElement>(System.Func<T, System.Collections.Generic.IReadOnlyList<TElement>?> value, int min = 0, int max = 2147483647, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
+        public ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Each<TElement>(System.Func<T, System.Collections.Generic.IReadOnlyList<TElement>?> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null)
+            where TElement :  class { }
+        public ValidationModules.ValidationRules<T> Ensure(System.Func<T, bool> predicate, string? field = null, string? code = null, string? message = null, ValidationModules.ValidationSeverity severity = 0, [System.Runtime.CompilerServices.CallerArgumentExpression("predicate")] string? expression = null) { }
+        public ValidationModules.PropertyRules<T, TValue> For<TValue>(System.Func<T, TValue> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
+        public ValidationModules.PropertyRules<T, string?> Length(System.Func<T, string?> value, int min = 0, int max = 2147483647, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
+        public ValidationModules.PropertyRules<T, TValue?> Nested<TValue>(System.Func<T, TValue?> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null)
+            where TValue :  class { }
+        public ValidationModules.PropertyRules<T, string?> Pattern(System.Func<T, string?> value, System.Func<System.Text.RegularExpressions.Regex> pattern, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
+        public ValidationModules.PropertyRules<T, TValue?> Range<TValue>(System.Func<T, TValue?> value, TValue min, TValue max, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null)
+            where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
+        public ValidationModules.PropertyRules<T, string?> Required(System.Func<T, string?> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
+        public ValidationModules.PropertyRules<T, TValue?> Required<TValue>(System.Func<T, TValue?> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null)
+            where TValue :  class { }
+        public ValidationModules.PropertyRules<T, TValue?> Required<TValue>(System.Func<T, TValue?> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null)
+            where TValue :  struct { }
+        public ValidationModules.PropertyRules<T, string?> RequiredAllowingEmpty(System.Func<T, string?> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
     }
     public sealed class ValidationRunner<T>
     {

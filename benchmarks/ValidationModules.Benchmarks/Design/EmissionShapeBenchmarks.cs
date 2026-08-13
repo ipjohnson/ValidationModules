@@ -1,7 +1,6 @@
 using BenchmarkDotNet.Attributes;
-using ValidationModules;
 
-namespace ValidationModules.Benchmarks;
+namespace ValidationModules.Benchmarks.Design;
 
 /// <summary>
 /// Compares the three candidate shapes for what the generator emits per constraint.
@@ -30,6 +29,7 @@ namespace ValidationModules.Benchmarks;
 /// </para>
 /// </remarks>
 [MemoryDiagnoser]
+[BenchmarkCategory(BenchmarkCategories.Design)]
 public class EmissionShapeBenchmarks {
     private readonly ValidationErrorCollector _collector = new();
 

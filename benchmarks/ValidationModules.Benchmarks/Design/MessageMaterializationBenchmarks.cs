@@ -1,6 +1,6 @@
 using BenchmarkDotNet.Attributes;
 
-namespace ValidationModules.Benchmarks;
+namespace ValidationModules.Benchmarks.Design;
 
 /// <summary>
 /// Answers whether message helpers on the context can avoid the 56 bytes per error that composing
@@ -27,6 +27,7 @@ namespace ValidationModules.Benchmarks;
 /// </para>
 /// </remarks>
 [MemoryDiagnoser]
+[BenchmarkCategory(BenchmarkCategories.Design)]
 public class MessageMaterializationBenchmarks {
     private const int Errors = 12;
 

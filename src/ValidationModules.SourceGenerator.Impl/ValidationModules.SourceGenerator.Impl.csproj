@@ -47,6 +47,22 @@
         </Content>
     </ItemGroup>
 
+    <!--
+        RuleText lives in the runtime and is compiled in here as well, rather than reimplemented.
+        API-SURFACE.md §19.5 rests on the generated validator and DescribedValidator<T> rendering the
+        same predicate to the same string; two copies of that transform would agree only until
+        somebody edited one of them. It is packed explicitly because the glob above only reaches
+        files under this project.
+    -->
+    <ItemGroup>
+        <Compile Include="..\ValidationModules.Runtime\Rules\RuleText.cs" Link="FrontEnds\RuleText.cs"/>
+        <Content Include="..\ValidationModules.Runtime\Rules\RuleText.cs" Visible="false">
+            <Pack>true</Pack>
+            <PackagePath>src/ValidationModules.SourceGenerator.Impl/FrontEnds/RuleText.cs</PackagePath>
+            <PackageCopyToOutput>true</PackageCopyToOutput>
+        </Content>
+    </ItemGroup>
+
     <!-- These deps intentionally flow: consumers compile the shipped sources into their own generator. -->
     <ItemGroup>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.10.0"/>

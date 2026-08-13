@@ -65,6 +65,21 @@ public sealed class ValidationResult {
     }
 
     /// <summary>
+    /// Creates a result that takes ownership of <paramref name="errors"/> rather than copying it.
+    /// </summary>
+    /// <remarks>
+    /// The array must not be touched afterwards - it becomes the result's storage. Internal because
+    /// that contract is only safe to offer callers in this assembly;
+    /// <see cref="ValidationErrorCollector.ToResult"/> builds an exactly-sized array it never
+    /// retains, and the public <see cref="FromErrors"/> overload keeps copying because it cannot
+    /// know what its caller will do next. An array implements
+    /// <see cref="IReadOnlyList{T}"/> directly, so this is one allocation where the copying path is
+    /// three: a list, its backing array, and a wrapper.
+    /// </remarks>
+    internal static ValidationResult FromOwnedArray(ValidationError[] errors) =>
+        errors.Length == 0 ? Valid : new ValidationResult(errors);
+
+    /// <summary>
     /// Combines this result with another, preserving order - this result's failures first.
     /// </summary>
     /// <remarks>

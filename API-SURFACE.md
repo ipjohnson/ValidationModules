@@ -104,9 +104,9 @@ validators be written the obvious way. §13.1 has the reasoning; §3.2 has what 
 namespace ValidationModules;
 
 /// <summary>
-/// A cursor into a <see cref="ValidationErrorCollector"/>: the collector plus the index of this
-/// context's node in the collector's append-only path log. Two words, copied freely.
-/// Push allocates nothing on the heap and nothing is concatenated until an error is added.
+/// The collector, plus the compact path this context sits at: the outermost segment, the
+/// immediate parent, and each one's index or key. Seven words, copied freely. Push allocates
+/// nothing on the heap and nothing is concatenated until an error is added.
 /// </summary>
 public readonly struct ValidationContext {
     public ValidationContext(ValidationErrorCollector collector);
@@ -139,7 +139,10 @@ public readonly struct ValidationContext {
 Argument order on `Add` is `(field, code, message)`, matching `ValidationError`'s member order so
 the two never have to be mentally transposed.
 
-### 3.2 Why the path is an append-only log
+### 3.2 Why the path lives in the struct
+
+*Superseded the append-only path log, 2026-08-13. HANDOFF.md §3.1 has the decision; this is the
+resulting shape.*
 
 The obvious zero-allocation path representation is a stack the contexts index into by depth, where
 `Push` writes at `_depth` and returns `_depth + 1`. It is wrong, and it is wrong in a way that only
@@ -147,21 +150,33 @@ shows up under concurrency: two sibling contexts at the same depth overwrite eac
 so a context that is pushed, parked on an `await`, and used later reports whichever sibling wrote
 last. That is precisely what an async validator doing `Task.WhenAll` over collection elements does.
 
-So the collector never overwrites. Every `Push` appends an immutable `(parent, name, index)` node
-and the context holds that node's index; a path is materialised by walking parent links, and only
-when an error is actually added. Consequences:
+The earlier answer was an append-only log in the collector, with each context holding a node index.
+That was correct, but it existed solely to reconstruct full ancestry — and full ancestry is not
+what gets reported. A context keeps the **outermost** segment and the **immediate parent**, so a
+failure four levels down reads `body...address.postalCode`. Nothing between them is needed, so
+nothing between them is stored, and the log has no remaining job.
+
+Both retained segments carry their own index or key. Rendering `toys.owner.name` for what is really
+`toys[3].owner.name` would not be a shortened path but a false one — it asserts an object at `toys`
+that does not exist. Elision may omit; it may not lie. The `...` marker appears only when a segment
+really was dropped, which is three or more descents.
+
+Consequences:
 
 - A context is valid for the life of its collector. Across awaits, inside closures, in any order.
-- Concurrent fan-out is correct by construction, not by discipline. §14 runs six elements finishing
-  in reverse order and every index comes out right.
-- Still no heap allocation per `Push` — nodes land in a pooled array that `Reset()` reuses. Measured
-  at **0 bytes** for a clean pass over 52 pushes, §14.16.
-- The node array grows with total pushes in a pass rather than with maximum depth. For a 10k-element
-  collection that is a few hundred KB in a buffer that is reused, which is the right trade against
-  needing the caller to reason about aliasing.
+- Concurrent fan-out is correct by construction, and now trivially so: `Push` writes nothing any
+  other context can observe, because the path is entirely inside the copied struct.
+- No heap allocation per `Push` at any depth or element count, and no shared buffer to grow, reset
+  or size. `Reset()` has no path state left to clear.
+- The collector's lock guards only `Add`. Descending never contends for it, synchronized or not.
 
 Because correctness no longer depends on the caller's discipline, `ref struct` was only buying a
 restriction — and one that cost the async interface its natural shape.
+
+**What this gives up.** An index on an ancestor that is neither the outermost nor the parent
+(`body.order.lines[3].address.postalCode` → `body...address.postalCode`), and an index on the
+outermost segment when a bare collection is validated at the very top. Both need three or more
+descents; neither is a request-body shape.
 
 ### 3.3 `ValidationErrorCollector` — the shared accumulator
 
@@ -180,9 +195,9 @@ public sealed class ValidationErrorCollector {
     public ValidationErrorCollector(Type? profile);
 
     /// <summary>
-    /// A collector that tolerates concurrent Push and Add. For async validators that genuinely
-    /// fan out. The default collector does not synchronise, because generated straight-line code
-    /// never needs it and the lock would sit on the hot path.
+    /// A collector that tolerates concurrent Add. For async validators that genuinely fan out.
+    /// The default collector does not synchronise, because generated straight-line code never
+    /// needs it and the lock would sit on the hot path. Push needs no synchronisation either way.
     /// </summary>
     public static ValidationErrorCollector CreateSynchronized(Type? profile = null);
 
@@ -196,7 +211,7 @@ public sealed class ValidationErrorCollector {
     /// <summary>Snapshots into an immutable result. Returns ValidationResult.Valid when empty.</summary>
     public ValidationResult ToResult();
 
-    /// <summary>Clears errors and path nodes, keeping both buffers. For pooled reuse.</summary>
+    /// <summary>Clears errors, keeping the buffer. For pooled reuse.</summary>
     public void Reset();
 }
 ```
@@ -205,7 +220,8 @@ public sealed class ValidationErrorCollector {
 make the *collector* safe to mutate from them. Handing contexts to parallel branches that all add
 errors needs `CreateSynchronized()`. The default collector is unsynchronised, which is correct for
 every generated validator and for any async validator that awaits sequentially — the overwhelming
-majority — and it keeps the lock off the path that runs per nested object.
+majority. Since the path moved into the struct, the lock covers only `Add`; descending into a
+nested object no longer touches the collector at all.
 
 Getting this wrong is silent rather than loud, so `Reset()` and the mutators carry a DEBUG-only
 overlap detector: an `Interlocked` in-use flag that throws `InvalidOperationException` naming the
@@ -278,6 +294,7 @@ public sealed class ValidationException : Exception {
 | `[Pattern]` | `pattern` |
 | `[AllowedValues]` | `enum` |
 | `[ItemCount]` | `array_bounds` |
+| `rules.Ensure(…)` | `predicate` |
 
 These are Hardened's existing wire codes verbatim (grepped from
 `Hardened.Requests.Runtime/Validation/Rules/`), so retargeting Hardened onto this emitter in Stage 5
@@ -881,6 +898,13 @@ as one diagnostic is declared (plan §13).
 **Q1 — overlay syntax.** §6.4. Mirror-property partial class, `[ValidationOverlayFor<T>]`,
 compile-time name and type checking. Prototype before Stage 3, as the plan asks.
 
+**Q1, revisited 2026-08-13 — §19 is the answer, and §6.4 is not.** A declarative rule class gets the
+same compile-time name and type checking from the C# compiler rather than from `VM0030`/`VM0031`,
+without restating the target's property list, and it can express rules spanning two properties, which
+no attribute form can. It also runs without our generator, which the mirror-property overlay cannot —
+that is why it sits beside the generated path rather than replacing it. §6.4 stays specced and
+unimplemented; §19 is the recommended form.
+
 **Q2 — default profile.** §6.3. Absence, meaning the common core, plus an assembly-level redirect
 and `VM0020` to surface the silent-weakening footgun.
 
@@ -925,10 +949,11 @@ benefit was preventing a misuse that §3.2 designs out anyway. Dropping `ref str
 real, keeps plan §4's contracts verbatim, and makes async a first-class shape rather than a
 workaround.
 
-What replaces the safety `ref struct` was providing: the append-only path log in §3.2. A stack
-indexed by depth would have made a stored context unsafe, which is what `ref struct` existed to
-prevent; an append-only log makes a stored context *correct*, verified at 500-way concurrency in
-§14.
+What replaces the safety `ref struct` was providing: §3.2's path-in-the-struct. A stack indexed by
+depth would have made a stored context unsafe, which is what `ref struct` existed to prevent;
+a context that carries its own path makes a stored context *correct*, verified at 500-way
+concurrency in §14. (The append-only log this originally cited did the same job and was replaced
+by the compact path, which does it with no shared state at all.)
 
 **13.2 The path cannot be a stack-linked parent chain.** The other natural zero-allocation reading
 of plan §4's "keep a small path stack" is `ref readonly ValidationContext _parent`, which is
@@ -1196,6 +1221,11 @@ Named so they are decisions rather than oversights.
 - **`[Compare]`, `[When]`, cross-field constraints.** Not expressible as a per-property attribute
   without a predicate language. Cross-field rules are what `IAsyncValidatorFor<T>` and the
   FluentValidation adapter are for. Revisit only with a concrete case.
+
+  **Amended 2026-08-13 — §19 is that predicate language.** `rules.Ensure(x => x.Start < x.End)` in a
+  declarative rule class covers the cross-field case, compiled to straight-line code. It stays out of
+  the *attribute* surface, which is what this entry was about; a per-property attribute still cannot
+  express it and none is being added.
 - **`AttemptedValue` on `ValidationError`.** FluentValidation carries it; it forces boxing and
   retains the validated graph past the pass. Documented as dropped.
 - **Localised messages / `MessageResource`.** `Message` takes a literal today. Resource lookup wants
@@ -1436,3 +1466,357 @@ Added to the table in §11:
 Warnings rather than errors throughout, except where the attribute is simply wrong for the member.
 A build should not break because a model picked up `[EmailAddress]` for some other consumer's
 benefit; it should tell you the constraint is not being enforced.
+
+---
+
+## 19. Declarative rule classes
+
+**Written:** 2026-08-13. Resolves §12 Q1 a second time — see §19.10 for what this does to §6.4 — and
+closes the cross-field deferral in §17.
+
+A third way to declare rules, alongside native constraint attributes (§5) and DataAnnotations (§18):
+a class that describes them in a method body.
+
+```csharp
+public sealed class PetRules : IValidationRulesFor<Pet> {
+    public void Describe(ValidationRules<Pet> rules) {
+        rules.Required(x => x.Name).Length(1, 100);
+        rules.Pattern(x => x.Sku, Patterns.Sku);
+        rules.Range(x => x.Age, 0, 30);
+        rules.Nested(x => x.Home);
+        rules.Count(x => x.Toys, 1, 10).Each();
+
+        rules.Ensure(x => x.Start < x.End);
+        rules.Ensure(x => x.Discount <= x.Price * 0.5m, code: "discount_too_large");
+
+        rules.Apply(PetChecks.SkuChecksum);
+    }
+}
+```
+
+It exists for the case attributes cannot reach — `Pet` comes from a package nobody here owns — and
+it happens to be the only declaration form that can express a rule spanning two properties.
+
+### 19.1 The declaration has two consumers, and that is the whole design
+
+`Describe` is both **read at build time** and **run at runtime**, and the two must agree:
+
+| | reads or runs | cost per rule | needs our generator |
+|---|---|---|---|
+| `ValidatorEmitter` via `RulesFrontEnd` | reads the syntax, flattens to straight-line code | a branch | yes |
+| `DescribedValidator<T>` | runs `Describe` once in its constructor | an interface dispatch and a delegate call | no |
+
+So the interface is the portable contract and the generator is an optimizer that erases its cost.
+That is what makes it usable by a *different* source generator: emit a rules class, register it,
+and validation works with none of our build-time machinery present. Plan §7.2 already settled that
+cross-assembly convention matching is unavailable — each assembly emits and registers its own
+validators — so a rules class arriving from a referenced assembly is precisely the case our
+generator cannot serve and this one can.
+
+`Describe` runs exactly once, in a singleton's constructor. Plan §2's "rule graphs are built once,
+never per validation call" holds by construction on both paths.
+
+**Selectors are `Func<T, TValue>`, never `Expression<Func<T, TValue>>`.** Plan §2 bans
+`Expression.Compile`, and an expression tree would need compiling to be executable. What replaces it
+is §19.3.
+
+### 19.2 Discovery
+
+```csharp
+namespace ValidationModules;
+
+public interface IValidationRulesFor<T> {
+    void Describe(ValidationRules<T> rules);
+}
+```
+
+The interface is the marker; there is no attribute. The generator's candidate provider already walks
+every `TypeDeclarationSyntax` (`ValidationSourceGenerator.cs:68`), so there is no
+`ForAttributeWithMetadataName` fast path being given up, and an attribute would be one more thing to
+forget.
+
+**The rules class is not the validator.** The generator still emits `PetValidator`, because `Pet` may
+also carry attributes and both must fold into one class — two models with one `ValidatorName` collide
+on hint name and `AddSource` throws, which fails the whole generator rather than one type
+(`ValidationSourceGenerator.cs:134`). Two rules classes for one type union the same way. The rules
+class therefore needs no `partial`, and its own name is free.
+
+**A rules class dissolves the §1 namespace collision.** `Required`, `Range` and `Length` are methods
+here, not attribute types, so a file declaring rules never imports `ValidationModules.Constraints`
+and can never hit `CS0104`.
+
+### 19.3 Field inference — `CallerArgumentExpression`
+
+Every selector-taking method carries a `[CallerArgumentExpression]` parameter, so the compiler hands
+the runtime the selector's **source text** at no cost and with no expression tree:
+
+```csharp
+public PropertyRules<T, TValue> Range<TValue>(
+    Func<T, TValue> value,
+    TValue min,
+    TValue max,
+    string? field = null,
+    [CallerArgumentExpression(nameof(value))] string? selector = null);
+```
+
+`"x => x.Age"` → strip the parameter → `Age` → `IValidationFieldNamer` → `age`. Scanned once, when
+the rule set is built, never per validation. The generator ignores the argument and resolves the
+same selector semantically, reaching the same name.
+
+`field:` overrides inference, and a selector that is not a simple property path is `VM0071`.
+
+### 19.4 The vocabulary — anchored chaining
+
+The first call carries the selector; the rest inherit it. There is no `For` ceremony, though `For`
+exists for when the anchor reads better stated.
+
+```csharp
+namespace ValidationModules;
+
+public sealed class ValidationRules<T> {
+    public PropertyRules<T, TValue> For<TValue>(Func<T, TValue> value, string? field = null,
+        [CallerArgumentExpression(nameof(value))] string? selector = null);
+
+    public PropertyRules<T, TValue> Required<TValue>(Func<T, TValue> value, ...);
+    public PropertyRules<T, string?> Length(Func<T, string?> value, int min = 0, int max = int.MaxValue, ...);
+    public PropertyRules<T, TValue> Range<TValue>(Func<T, TValue> value, TValue min, TValue max, ...)
+        where TValue : IComparable<TValue>, IFormattable;
+    public PropertyRules<T, string?> Pattern(Func<T, string?> value, Func<Regex> pattern, ...);
+    public PropertyRules<T, TValue> AllowedValues<TValue>(Func<T, TValue> value, params TValue[] allowed);
+    public PropertyRules<T, TCollection> Count<TCollection>(Func<T, TCollection?> value, int min, int max, ...);
+    public PropertyRules<T, TValue> Nested<TValue>(Func<T, TValue?> value, ...);
+    public PropertyRules<T, TCollection> Each<TCollection>(Func<T, TCollection?> value, ...);
+
+    public ValidationRules<T> Ensure(Func<T, bool> predicate, string? field = null, string? code = null,
+        string? message = null, [CallerArgumentExpression(nameof(predicate))] string? expression = null);
+
+    public ValidationRules<T> Apply(RuleAction<T> rule);
+}
+
+public delegate void RuleAction<in T>(ref ValidationContext context, T value);
+```
+
+`PropertyRules<T, TValue>` carries the anchor — field name, accessor, selector text — and repeats the
+same vocabulary without the selector. The members that are legal only for particular value types are
+**extension methods constrained on the receiver's type argument**, which is how `Length` is offered on
+`PropertyRules<T, string?>` and not on `PropertyRules<T, int>` — an instance method cannot be
+constrained that way, and the alternative is a runtime check for something the compiler should catch.
+Same split as `ValidatorForExtensions` and `ValidationContextExtensions`.
+
+Codes, messages and severity are exactly §4.1 and §4's composed text. A rule declared here and the
+same rule declared as an attribute are the same `ConstraintModel` before the emitter sees either.
+
+### 19.5 `Ensure` — the exit from the vocabulary
+
+For rules with no schema meaning: cross-field comparisons, arithmetic, anything the six constraints
+cannot say. §17 deferred these as "not expressible as a per-property attribute without a predicate
+language"; a method body is that language.
+
+**The message is the predicate, rendered.** `CallerArgumentExpression` supplies the source text, the
+parameter is stripped, member accesses off it take their wire names, and a period is appended:
+
+| written | message |
+|---|---|
+| `x => x.Start < x.End` | `start < end.` |
+| `x => x.Age is >= 0 and <= 30` | `age is >= 0 and <= 30.` |
+| `x => x.Name.Length is >= 1 and <= 100` | `name.Length is >= 1 and <= 100.` |
+| `x => !string.IsNullOrWhiteSpace(x.Name)` | `!string.IsNullOrWhiteSpace(name).` |
+| `x => Patterns.Sku().IsMatch(x.Sku)` | `Patterns.Sku().IsMatch(sku).` |
+
+Three properties this has that a composed message does not:
+
+- **It cannot drift.** A composed message repeats a bound that someone can edit without editing the
+  text. This message *is* the rule.
+- **Both engines produce it identically**, because both start from the same string — the generator
+  bakes a literal, the runtime renders once at rule-build time. This is the reason predicates are
+  never lowered to vocabulary constraints: recognising `x.Age is >= 0 and <= 30` as a `Range` is easy
+  syntactically and impossible for the runtime without shipping a parser, and two engines disagreeing
+  on a code is the one thing §16 exists to prevent.
+- **It is redaction-safe by construction.** The text is compile-time source, so no runtime value can
+  reach it; a render can only ever contain schema, which HANDOFF §3.3 already classifies as
+  publishable. The three-policy ladder in HANDOFF §3.2 does not apply to `Ensure` and needs no
+  plumbing here. The residual is an author embedding a secret as a literal in a predicate, which is a
+  secret-in-source problem.
+
+**Whitespace is normalised — runs collapse to a single space — on both sides.** The compiler's
+`CallerArgumentExpression` text and the generator's `argumentSyntax.ToString()` are both the
+expression's source span and should be byte-identical, but interior trivia in a multi-line lambda is
+where they would part company, and the design rests on them not parting. Normalising makes the
+question moot and stops a reformatted lambda changing a message.
+
+**The last two renders are bad, and that is the signal.** Both are cases the vocabulary has a word
+for — `Required` and `Pattern` — each shorter than what was written. An ugly message means the wrong
+tool, visible without reading a diagnostic, and `VM0073` says so as a suggestion with a code fix.
+
+#### The code does not derive
+
+`code` defaults to `ValidationCodes.Predicate` (`"predicate"`, new in §4.1) and is overridable.
+Deriving it from the expression — slug or hash — was rejected: message and code have opposite churn
+requirements. The message is human-facing and *should* track the rule; the code is a wire contract,
+and `ValidationCodes`' own remarks exist so a client switching on `Code` does not break. Derive it
+and widening `30` to `35` becomes a breaking change for every such client, and reordering does it too
+if the code carries an ordinal.
+
+Two `Ensure`s on one field both report `predicate`, distinguished by field and message. A client that
+needs to tell them apart is branching on an ad-hoc rule, which is what the fixed vocabulary is for —
+name the code and it becomes part of the contract deliberately.
+
+**Cost, from this repo's own measurement.** `ValidatorEmitter.cs:14-19` priced a literal message at
+107 of the 313 native bytes a constraint site costs, because messages embed field names and so
+nothing deduplicates in the string heap. Every `Ensure` is a literal. It is fatter under AOT than the
+composed path, which is a second reason it is the escape rather than the default spelling.
+
+#### What a predicate may reference
+
+**Its own parameter, and static or constant state. Nothing else.** No closure over `Describe`'s
+locals and no `this`, because neither exists in the emitted validator — the generator lifts each
+predicate to a static method and the runtime holds a delegate, and only this rule makes those two the
+same thing. Violations are `VM0072`.
+
+The generator lifts predicates into a **separate generated file per rules class, carrying that file's
+`using` directives**. Copying a lambda into the validator file does not compile — `x => x.Status ==
+Status.Active` needs the `using` that was in the author's file — and the alternatives are a
+symbol-qualifying rewriter that has to reduce extension-method invocations, or this, which is a few
+lines. It also keeps the predicate readable in `obj/…/generated`, which HANDOFF §3.5 leans on.
+
+**Field inference for `Ensure`** takes the first member access off the parameter: `x => x.Start <
+x.End` anchors to `start`. A predicate with no member access off its parameter, and no `field:`, is
+`VM0075`. Anchoring matters beyond the label — an anchored `Ensure` is ordered with that property's
+other rules, so collector suppression (§4.3) drops it when `required` has already failed on the
+field.
+
+### 19.6 `Apply` — a method group, not a name
+
+```csharp
+rules.Apply(PetChecks.SkuChecksum);     // static void SkuChecksum(ref ValidationContext ctx, Pet value)
+```
+
+Emitted as `global::PetChecks.SkuChecksum(ref ctx, value);`, held as a `RuleAction<T>` at runtime.
+
+A `(Type, string)` pair — the shape `[Pattern(typeof(Patterns), "Sku")]` uses — is deliberately not
+offered. That form exists only because an attribute cannot hold a method group. A method body can, so
+the constraint that forced it does not apply, and taking the group directly gets compile-time
+checking, go-to-definition and rename for free with no registry to keep in sync.
+
+`Ensure` is sugar over `Apply`: the generator writes the static method you would otherwise have
+written by hand.
+
+### 19.7 Ordering
+
+§4.2 is unchanged and this has to fit inside it: errors emit in **property** order, and both engines
+have to agree on what that means when the rules were not written on the properties.
+
+1. Rules group by field. Within a field, `Required` first, then declaration order.
+2. Fields order by **source order** when the type carries constraint attributes of its own, and by
+   **first mention in the `Describe` body** when it does not.
+3. `Apply` rules own no field and run last, in declaration order.
+
+Rule 2 is the one that had to be settled by looking at both engines. `DescribedValidator<T>` has only
+the body to go on — it cannot see property source order without reflection — so a rules-only type has
+to be ordered by first mention or the two engines disagree on sequence for the same declaration. A
+type that *does* carry attributes keeps source order, because at that point source is where the rules
+were written and mixing the two orderings on one type would be worse than either. Two rules classes
+for one type contribute in a deterministic order: by class name, ordinal.
+
+**A predicate never joins the `else if` chain.** The chain after a `Required` is an optimisation
+(§4.3) that skips tests whose result would be discarded, and a predicate may read fields other than
+its anchor, so an earlier failure on the anchor says nothing about it. Emitting one as `else if`
+would make the generated engine report fewer errors than the runtime one — which is what happened
+first, and what `RulesClassTests` now pins.
+
+### 19.8 The runtime engine
+
+```csharp
+namespace ValidationModules;
+
+/// <summary>
+/// Runs a rules class without the generator. Describe runs once, in the constructor.
+/// </summary>
+public sealed class DescribedValidator<T> : IValidatorFor<T> {
+    public DescribedValidator(IValidationRulesFor<T> rules);
+    public void Validate(ref ValidationContext context, T value);
+}
+```
+
+```csharp
+namespace Microsoft.Extensions.DependencyInjection;
+
+public static class DescribedValidatorExtensions {
+    public static IServiceCollection AddDescribedValidator<T, TRules>(this IServiceCollection services)
+        where TRules : IValidationRulesFor<T>, new();
+}
+```
+
+Singleton, so `Describe` runs once per process. Each rule is a small sealed class over the accessor
+and its bounds — no reflection, no `MakeGenericType`, nothing to trim-root. It reaches the same
+`ValidationContext` and the same collector, so suppression, ordering and paths are the collector's
+and are shared with generated validators for free (§4.3).
+
+**Double registration is the hazard.** `ValidationRunner<T>` merges every registered
+`IValidatorFor<T>` (§7), so if the generator compiled `PetRules` into `PetValidator` *and* something
+calls `AddDescribedValidator<Pet, PetRules>()`, every error appears twice with nothing to tell the
+two apart. Within one compilation the generator can see both and reports `VM0074`. Across
+compilations the hazard cannot arise from the generator, because it does not compile rules classes
+out of referenced assemblies — that is the case the runtime path exists for. The one uncovered
+arrangement is assembly A running the generator over `PetRules` while assembly B separately calls
+`AddDescribedValidator`; documented, not detectable.
+
+### 19.9 Where the two engines diverge
+
+Pinned by §16's conformance suite, which gains a second adapter so the same suite runs against
+`DescribedValidator<T>` and against generated validators.
+
+**Field naming.** §8 puts `[JsonPropertyName]` above `[DataMember]` above the MSBuild policy. The
+generator reads all three; the runtime can read none of them without reflection, so it names from
+selector text plus `IValidationFieldNamer` alone. A property carrying `[JsonPropertyName("pet_name")]`
+is `pet_name` from one engine and `name` from the other. `field:` on the call is the escape, and it is
+the right answer for a rules class emitted by another generator, which knows the wire names already
+and should pass them.
+
+**Nothing else.** Codes, messages, ordering, suppression and paths are identical, because they come
+from the same `ValidationCodes`, the same `ValidationContextExtensions` and the same collector.
+
+### 19.10 What this does to §6.4
+
+The mirror-property overlay stays specced and unimplemented; a rules class is the recommended form.
+`ctx.Required(x => x.Tag)` gets name and type checking from the C# compiler, which is what §6.4
+claims `VM0030`/`VM0031` for, without the diagnostics and without restating the property list.
+
+### 19.11 Diagnostics
+
+Added to the table in §11:
+
+| ID | Severity | | Status |
+|---|---|---|---|
+| VM0070 | Error | a statement in `Describe` is not a rule declaration | implemented |
+| VM0071 | Error | a selector is not a simple property path | implemented |
+| VM0072 | Error | a predicate references state outside its parameter | implemented |
+| VM0073 | Info | a predicate matches a vocabulary constraint; the named form has a code and a composed message | **not implemented** |
+| VM0074 | Warning | `AddDescribedValidator` for a rules class this compilation already compiled | **not implemented** |
+| VM0075 | Error | an `Ensure` has no inferable field and no `field:` | implemented |
+
+The two unimplemented IDs are reserved, not shipped: neither has a descriptor and neither appears in
+`AnalyzerReleases.Unshipped.md`, so nothing claims to enforce them. VM0073 is a quality-of-life
+suggestion. VM0074 needs a syntax scan for `AddDescribedValidator` call sites combined with the set
+of rules classes this compilation compiled, and until it exists the double-registration hazard in
+§19.8 is documented rather than caught.
+
+**VM0071 is stricter than the runtime.** An `Ensure` whose anchor does not resolve to a property of
+the validated type is an error here, while `DescribedValidator<T>` accepts it as long as `field:` is
+supplied. The reason is §19.7: a rule is emitted inside its anchored property's chain so that both
+engines order errors the same way, and there is nowhere to put one that belongs to no property. That
+`field:` renames rather than detaches is the deliberate part.
+
+**`Describe` is a whitelisted DSL, not general C#.** A local, a loop, an `if`, a call to anything that
+is not on the builder is `VM0070` — a build error, never something silently dropped. The body being
+runnable makes it look like ordinary code, which is exactly why the unsupported half must break the
+build rather than behave differently on the two paths.
+
+### 19.12 Not offered
+
+- **Profiles on rules classes.** Stage 3. The seam is that every builder call already returns a
+  builder, so `.From<V2>()` / `.Until<V3>()` / `.InProfiles(...)` are additive when profiles land.
+- **`Describe` overloads taking dependencies.** A rules class is a declaration; anything needing I/O
+  is `IAsyncValidatorFor<T>` (§7).
+- **Runtime-mutable rule sets.** `Describe` runs once. A rule that varies per request is a business
+  rule.

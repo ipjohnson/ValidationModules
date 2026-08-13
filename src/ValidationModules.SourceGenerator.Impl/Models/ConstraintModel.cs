@@ -8,6 +8,12 @@ public enum ConstraintKind {
     Pattern,
     AllowedValues,
     ItemCount,
+
+    /// <summary>
+    /// A predicate declared with <c>rules.Ensure(…)</c>. Carries no bounds and composes no message -
+    /// its message was rendered from its own source text when it was read. See API-SURFACE.md §19.5.
+    /// </summary>
+    Predicate,
 }
 
 /// <summary>
@@ -41,6 +47,12 @@ public enum ConstraintKind {
 /// </param>
 /// <param name="Values">AllowedValues only: the permitted set, already rendered as C# literals.</param>
 /// <param name="Negated">AllowedValues only: set by DataAnnotations' [DeniedValues].</param>
+/// <param name="PredicateAccessor">
+/// Predicate only. The fully qualified name of the static method the predicate was lifted into -
+/// "global::My.PetRules_Rules.Rule0". The predicate is not inlined at the constraint site because
+/// the lambda's source resolves against its own file's using directives, which the validator file
+/// does not have; the lifted method lives in a file that carries them. See API-SURFACE.md §19.5.
+/// </param>
 public sealed record ConstraintModel(
     ConstraintKind Kind,
     string? Code = null,
@@ -55,4 +67,5 @@ public sealed record ConstraintModel(
     int RegexOptions = 0,
     string? RegexAccessor = null,
     EquatableArray<string> Values = default,
-    bool Negated = false) : IEquatable<ConstraintModel>;
+    bool Negated = false,
+    string? PredicateAccessor = null) : IEquatable<ConstraintModel>;

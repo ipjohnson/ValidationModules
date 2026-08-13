@@ -48,7 +48,7 @@ public class PatternPolicyTests {
         var result = GeneratorHarness.Run(InlinePattern);
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0017");
-        Assert.Contains("new Regex(", result.Sources["PetValidator.g.cs"]);
+        Assert.Contains("new Regex(", result.Sources["Sample.PetValidator.g.cs"]);
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public class PatternPolicyTests {
         // The rejected constraint is dropped rather than emitted anyway, so the build fails with
         // VM0017 and not also with a second, less useful error out of the generated file. Every
         // other constraint on the type still compiles.
-        var emitted = result.Sources["PetValidator.g.cs"];
+        var emitted = result.Sources["Sample.PetValidator.g.cs"];
         Assert.DoesNotContain("new Regex(", emitted);
         Assert.Contains("ctx.AddRequired(\"name\")", emitted);
     }
@@ -101,7 +101,7 @@ public class PatternPolicyTests {
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0017");
         Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
-        Assert.Contains("new Regex(", result.Sources["PetValidator.g.cs"]);
+        Assert.Contains("new Regex(", result.Sources["Sample.PetValidator.g.cs"]);
     }
 
     [Fact]
@@ -126,7 +126,7 @@ public class PatternPolicyTests {
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0017");
 
-        var emitted = result.Sources["PetValidator.g.cs"];
+        var emitted = result.Sources["Sample.PetValidator.g.cs"];
         Assert.Contains("global::Sample.PetPatterns.Sku().IsMatch", emitted);
         Assert.DoesNotContain("new Regex(", emitted);
     }

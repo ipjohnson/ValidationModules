@@ -68,9 +68,9 @@ which double as the emitter's specification.
   verification log behind the claims.
 
 The single most consequential decision is in `API-SURFACE.md` §13.1: `ValidationContext` is a
-`readonly struct` rather than a `ref struct`, over an append-only path log. That is what lets
-`IAsyncValidatorFor<T>` take the same context as the synchronous side, and what makes a context safe
-to hold across an await or hand to a concurrent branch.
+`readonly struct` rather than a `ref struct`, carrying its own path rather than indexing into shared
+storage. That is what lets `IAsyncValidatorFor<T>` take the same context as the synchronous side,
+and what makes a context safe to hold across an await or hand to a concurrent branch.
 
 ## Packages
 
@@ -103,6 +103,19 @@ an intended change:
 ```bash
 UPDATE_SNAPSHOTS=1 dotnet test tests/ValidationModules.Runtime.Tests
 ```
+
+## Benchmarks
+
+```bash
+./scripts/benchmark.sh                     # ValidationModules alone, JIT and Native AOT
+./scripts/benchmark.sh --quick             # the same, fast enough to run after a change
+./scripts/benchmark.sh --comparative       # against FluentValidation and DataAnnotations
+```
+
+Two suites. The default one measures this library on its own and is what a change should be checked
+against; the comparative one is opt-in, because its numbers move when FluentValidation changes as
+well as when this does. `benchmarks/README.md` covers what each measures, and the four choices the
+comparative suite makes in FluentValidation's favour so the comparison stays honest.
 
 ## License
 

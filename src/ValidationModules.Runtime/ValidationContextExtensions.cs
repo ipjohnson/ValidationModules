@@ -22,9 +22,11 @@ namespace ValidationModules;
 /// <para>
 /// <b>Why extensions rather than methods on the context.</b> A consumer with a custom code can add
 /// their own <c>AddSomething</c> in the same shape and it reads identically to the built-ins, which
-/// would not be true of instance methods. They take the context by value: it is two words, and an
-/// <c>in</c> or <c>ref</c> receiver would refuse <c>context.Push("home").AddRequired(...)</c>,
-/// because the result of a call is not addressable.
+/// would not be true of instance methods. They take the context by value because an <c>in</c> or
+/// <c>ref</c> receiver would refuse <c>context.Push("home").AddRequired(...)</c> - the result of a
+/// call is not addressable. The copy is wider than it looks (the context is seven words, not the
+/// two it was when it held a node index), but every one of these runs on the failure path, where a
+/// register shuffle is lost against composing the message that follows it.
 /// </para>
 /// <para>
 /// A constraint carrying an explicit <c>Message</c> bypasses all of this - the generator emits

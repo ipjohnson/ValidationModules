@@ -63,6 +63,14 @@
                  Exclude="../ValidationModules.SourceGenerator.Impl/obj/**/*;../ValidationModules.SourceGenerator.Impl/bin/**/*">
             <Link>Impl\%(RecursiveDir)/%(FileName)%(Extension)</Link>
         </Compile>
+
+        <!--
+            RuleText lives in the runtime and Impl compiles it in from there, so the glob above -
+            which only sees Impl's own directory - misses it. Restated here for the same reason it is
+            restated in Impl: one implementation of the predicate render, not two that agree until
+            somebody edits one. API-SURFACE.md §19.5.
+        -->
+        <Compile Include="../ValidationModules.Runtime/Rules/RuleText.cs" Link="Impl\FrontEnds\RuleText.cs"/>
     </ItemGroup>
 
     <ItemGroup>

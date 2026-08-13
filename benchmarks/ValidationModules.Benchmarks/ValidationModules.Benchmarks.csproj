@@ -11,14 +11,37 @@
         <!-- Required for the NativeAot job. AOT is the target runtime, so it is the one that counts. -->
         <PublishAot>true</PublishAot>
         <InvariantGlobalization>true</InvariantGlobalization>
+        <!--
+            BenchmarkDotNet needs the benchmark types public and non-sealed, and warns loudly when a
+            [Benchmark] method returns void into a dead store. Keeping the assembly in Release with
+            optimizations on is what makes the numbers meaningful; disabling the server GC keeps the
+            allocation columns comparable between runs.
+        -->
+        <ServerGarbageCollection>false</ServerGarbageCollection>
+        <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
     </PropertyGroup>
 
     <ItemGroup>
         <PackageReference Include="BenchmarkDotNet" Version="0.15.4"/>
+        <!-- Registration and resolution are part of the end-to-end cost, so the container is in scope. -->
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0"/>
     </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\..\src\ValidationModules.Runtime\ValidationModules.Runtime.csproj"/>
+        <!--
+            The end-to-end benchmarks measure what the generator actually emits, not a hand-written
+            approximation of it. Hand-written stand-ins are still used in Design/, where the whole
+            point is to compare shapes the generator does not emit today.
+        -->
+        <ProjectReference Include="..\..\src\ValidationModules.SourceGenerator\ValidationModules.SourceGenerator.csproj"
+                          OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
     </ItemGroup>
+
+    <!-- Kept on disk so a surprising number can be traced back to the source that produced it. -->
+    <PropertyGroup>
+        <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+        <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)generated</CompilerGeneratedFilesOutputPath>
+    </PropertyGroup>
 
 </Project>

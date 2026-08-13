@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <IsPackable>false</IsPackable>
+        <!-- Not a test project; nothing here should be collected for coverage. -->
+        <IsTestProject>false</IsTestProject>
+        <ServerGarbageCollection>false</ServerGarbageCollection>
+        <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+        <!--
+            Deliberately no PublishAot here, unlike the default suite.
+
+            Setting it turns on the trim and AOT analyzers, which would report IL2026/IL3050 against
+            every call into FluentValidation - and since TreatWarningsAsErrors is on in CI, the only
+            way to keep the project building would be a NoWarn list suppressing exactly the warnings
+            that are the most interesting thing this suite has to say. Leaving it off keeps them
+            visible where they belong: at the ILC publish, which the aot runtime selection performs
+            through BenchmarkDotNet's own generated project.
+        -->
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="BenchmarkDotNet" Version="0.15.4"/>
+        <PackageReference Include="FluentValidation" Version="12.1.1"/>
+        <!-- For AddValidatorsFromAssemblyContaining, which is how FluentValidation is normally wired up. -->
+        <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1"/>
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\src\ValidationModules.Runtime\ValidationModules.Runtime.csproj"/>
+        <ProjectReference Include="..\..\src\ValidationModules.SourceGenerator\ValidationModules.SourceGenerator.csproj"
+                          OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
+    </ItemGroup>
+
+    <!--
+        Linked rather than referenced. A ProjectReference on the default suite would pull its
+        benchmark types and its generated validators into this assembly, and BenchmarkSwitcher
+        discovers by assembly - so the two suites would stop being separable, which is the one thing
+        the split exists to guarantee.
+    -->
+    <ItemGroup>
+        <Compile Include="..\ValidationModules.Benchmarks\BenchmarkConfig.cs" Link="Shared\BenchmarkConfig.cs"/>
+        <Compile Include="..\ValidationModules.Benchmarks\BenchmarkArguments.cs" Link="Shared\BenchmarkArguments.cs"/>
+    </ItemGroup>
+
+    <PropertyGroup>
+        <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+        <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)generated</CompilerGeneratedFilesOutputPath>
+    </PropertyGroup>
+
+</Project>

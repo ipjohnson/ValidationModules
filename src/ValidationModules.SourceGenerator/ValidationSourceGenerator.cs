@@ -47,6 +47,19 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         var hasDependencyModules = context.CompilationProvider.Select(static (compilation, _) =>
             compilation.GetTypeByMetadataName(KnownTypes.DependencyModule) is not null);
 
+        // Version lockstep. Projected to an int rather than the Compilation so the stage caches on
+        // the answer, not on every edit. Plan §7.5.
+        var runtimeContract = context.CompilationProvider.Select(static (compilation, _) =>
+            EmitterContract.ResolveRuntimeContract(compilation));
+
+        context.RegisterSourceOutput(runtimeContract, static (production, found) => {
+            if (found < EmitterContract.RequiredRuntimeContract) {
+                production.ReportDiagnostic(Diagnostic.Create(
+                    ValidationDiagnostics.RuntimeContractTooOld, Location.None,
+                    EmitterContract.RequiredRuntimeContract, found));
+            }
+        });
+
         // An assembly name is not necessarily a valid namespace: "My-App" emitted `namespace My-App;`
         // and broke the consumer's build in generated code.
         var assemblyNamespace = context.CompilationProvider.Select(static (compilation, _) =>
@@ -59,25 +72,38 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             .Where(static symbol => symbol is not null)
             .Select(static (symbol, _) => symbol!);
 
+        // Rules classes are collected rather than projected one at a time, because a rules class and
+        // the attributes on its target have to become one validator: two models with the same
+        // ValidatorName collide on hint name, and AddSource throwing fails the whole generator rather
+        // than one type. Combining with the compilation is what a rules class needs anyway - its
+        // rules live in a method body, so reading them takes a semantic model and not just a symbol.
         var models = candidates
+            .Collect()
+            .Combine(context.CompilationProvider)
             .Combine(options)
-            .Select(static (pair, _) => BuildModel(pair.Left, pair.Right))
-            .Where(static result => result.Model is not null || result.Diagnostics.Length > 0);
+            .Select(static (input, _) => BuildModels(input.Left.Left, input.Left.Right, input.Right));
 
-        context.RegisterSourceOutput(models, static (production, result) => {
-            foreach (var diagnostic in result.Diagnostics) {
-                production.ReportDiagnostic(diagnostic);
-            }
+        context.RegisterSourceOutput(models, static (production, results) => {
+            foreach (var result in results) {
+                foreach (var diagnostic in result.Diagnostics) {
+                    production.ReportDiagnostic(diagnostic);
+                }
 
-            if (result.Model is { } model) {
-                production.AddSource($"{model.ValidatorName}.g.cs", new ValidatorEmitter().Emit(model));
+                if (result.Model is { } model) {
+                    production.AddSource(HintNameFor(model), new ValidatorEmitter().Emit(model));
+                }
+
+                if (result.Predicates is { } predicates) {
+                    production.AddSource(result.PredicateHintName!, predicates);
+                }
             }
         });
 
         var registrationInput = models
-            .Select(static (result, _) => result.Model)
-            .Where(static model => model is not null)
-            .Select(static (model, _) => model!)
+            .SelectMany(static (results, _) => results
+                .Select(result => result.Model)
+                .Where(model => model is not null)
+                .Select(model => model!))
             .Collect()
             .Combine(hasDependencyModules)
             .Combine(options)
@@ -94,8 +120,12 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             };
 
             // Ordered by name so the emitted table does not reshuffle between builds, which would
-            // otherwise turn every incremental compile into a diff.
-            var ordered = collected.OrderBy(model => model.ValidatorName, StringComparer.Ordinal).ToArray();
+            // otherwise turn every incremental compile into a diff. Namespace first, because the
+            // validator name alone is not unique - two namespaces may each declare a Customer.
+            var ordered = collected
+                .OrderBy(model => model.Namespace, StringComparer.Ordinal)
+                .ThenBy(model => model.ValidatorName, StringComparer.Ordinal)
+                .ToArray();
 
             if (new RegistrationEmitter().Emit(ordered, mode, ns) is { } source) {
                 production.AddSource("GeneratedValidatorRegistration.g.cs", source);
@@ -103,14 +133,123 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         });
     }
 
-    private static ModelResult BuildModel(INamedTypeSymbol symbol, GeneratorOptions options) {
-        var frontEnd = new AttributeFrontEnd(options.CompileDataAnnotations, options.FieldNamer, options.ResolvedPatternPolicy);
-        var model = frontEnd.Build(symbol, static type => $"{type.Name}Validator");
+    /// <summary>
+    /// The file name a validator is added under, which Roslyn requires to be unique per generator.
+    /// </summary>
+    /// <remarks>
+    /// Qualified by namespace, because the validator name is not unique on its own: two namespaces
+    /// in one assembly may each declare a <c>Customer</c>, and emitting both as
+    /// <c>CustomerValidator.g.cs</c> makes <c>AddSource</c> throw - which fails the whole generator,
+    /// not just the second type. Versioned model sets make this ordinary rather than exotic:
+    /// <c>Api.V1.Customer</c> alongside <c>Api.V2.Customer</c> is the shape §6 of the plan is built
+    /// around.
+    /// </remarks>
+    private static string HintNameFor(ValidatedTypeModel model) =>
+        model.Namespace.Length == 0
+            ? $"{model.ValidatorName}.g.cs"
+            : $"{model.Namespace}.{model.ValidatorName}.g.cs";
 
-        return new ModelResult(model, frontEnd.Diagnostics.ToImmutableArray());
+    /// <summary>
+    /// Reads every candidate, folds each rules class into its target's model, and emits one model per
+    /// validated type.
+    /// </summary>
+    /// <remarks>
+    /// The merge is why this is one pass over all candidates rather than a projection per candidate.
+    /// A rules class may target a type in this compilation that also carries attributes - in which
+    /// case the two sets of rules union onto one validator, §19.7 - or a type from a referenced
+    /// assembly, in which case it is the only source of rules that type has. Both fall out of keying
+    /// the declarations by target and running the model build once per target.
+    /// </remarks>
+    private static ImmutableArray<ModelResult> BuildModels(
+        ImmutableArray<INamedTypeSymbol> candidates, Compilation compilation, GeneratorOptions options) {
+
+        var results = ImmutableArray.CreateBuilder<ModelResult>();
+        var declarations = new List<RulesDeclaration>();
+        var rulesFrontEnd = new RulesFrontEnd(options.FieldNamer);
+        var plain = new List<INamedTypeSymbol>();
+
+        foreach (var candidate in candidates) {
+            if (rulesFrontEnd.Build(candidate, compilation) is { } declaration) {
+                declarations.Add(declaration);
+            } else {
+                plain.Add(candidate);
+            }
+        }
+
+        // Ordinal by name so two rules classes for one type contribute deterministically (§19.7) and
+        // the emitted text does not reshuffle between builds.
+        declarations.Sort(static (left, right) =>
+            string.CompareOrdinal(left.RulesClass.Name, right.RulesClass.Name));
+
+        var byTarget = new Dictionary<INamedTypeSymbol, List<RulesDeclaration>>(SymbolEqualityComparer.Default);
+
+        foreach (var declaration in declarations) {
+            if (!byTarget.TryGetValue(declaration.Target, out var list)) {
+                byTarget[declaration.Target] = list = new List<RulesDeclaration>();
+            }
+
+            list.Add(declaration);
+
+            if (new PredicateEmitter().Emit(declaration) is { } predicates) {
+                results.Add(new ModelResult(
+                    null,
+                    ImmutableArray<Diagnostic>.Empty,
+                    predicates,
+                    $"{QualifiedName(declaration.RulesClass)}_Rules.g.cs"));
+            }
+        }
+
+        foreach (var candidate in plain) {
+            byTarget.TryGetValue(candidate, out var declared);
+            byTarget.Remove(candidate);
+
+            if (Build(candidate, declared, options) is { } result) {
+                results.Add(result);
+            }
+        }
+
+        // Whatever is left targets a type this compilation does not declare - the case the feature
+        // exists for. Its model has no attributes to merge with, only the rules class's own.
+        foreach (var pair in byTarget) {
+            if (Build((INamedTypeSymbol)pair.Key, pair.Value, options) is { } result) {
+                results.Add(result);
+            }
+        }
+
+        results.AddRange(rulesFrontEnd.Diagnostics.Select(static diagnostic =>
+            new ModelResult(null, ImmutableArray.Create(diagnostic), null, null)));
+
+        return results.ToImmutable();
     }
 
-    private sealed record ModelResult(ValidatedTypeModel? Model, ImmutableArray<Diagnostic> Diagnostics);
+    private static ModelResult? Build(
+        INamedTypeSymbol target, List<RulesDeclaration>? declared, GeneratorOptions options) {
+
+        var frontEnd = new AttributeFrontEnd(options.CompileDataAnnotations, options.FieldNamer, options.ResolvedPatternPolicy);
+
+        var model = frontEnd.Build(
+            target,
+            static type => $"{type.Name}Validator",
+            declared?.SelectMany(static declaration => declaration.Rules).ToArray(),
+            declared?.SelectMany(static declaration => declaration.AppliedRules).ToArray());
+
+        var diagnostics = frontEnd.Diagnostics.ToImmutableArray();
+
+        return model is null && diagnostics.Length == 0
+            ? null
+            : new ModelResult(model, diagnostics, null, null);
+    }
+
+    private static string QualifiedName(INamedTypeSymbol type) =>
+        type.ContainingNamespace.IsGlobalNamespace
+            ? type.Name
+            : $"{type.ContainingNamespace.ToDisplayString()}.{type.Name}";
+
+    private sealed record ModelResult(
+        ValidatedTypeModel? Model,
+        ImmutableArray<Diagnostic> Diagnostics,
+        string? Predicates,
+        string? PredicateHintName);
 
     private static string SanitizeNamespace(string? assemblyName) {
         if (string.IsNullOrEmpty(assemblyName)) {

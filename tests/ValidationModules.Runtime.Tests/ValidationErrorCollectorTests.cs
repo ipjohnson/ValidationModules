@@ -13,7 +13,7 @@ public class ValidationErrorCollectorTests {
     }
 
     [Fact]
-    public void Reset_ClearsErrorsAndPath() {
+    public void Reset_ClearsErrors() {
         var collector = new ValidationErrorCollector();
         new ValidationContext(collector).Push("home").Add("postalCode", "required", "x");
 
@@ -51,11 +51,12 @@ public class ValidationErrorCollectorTests {
     }
 
     [Fact]
-    public void Push_MoreThanTheInitialBuffer_GrowsWithoutLosingPaths() {
+    public void Push_ManySiblings_EachKeepsItsOwnPath() {
         var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
 
-        // The node buffer starts at 16; walk well past it.
+        // Held simultaneously and added to out of order. Each context owns its path outright, so
+        // there is no shared buffer here to grow, overwrite or exhaust.
         var contexts = Enumerable.Range(0, 100).Select(i => context.PushIndex("toys", i)).ToArray();
 
         foreach (var (child, index) in contexts.Select((child, index) => (child, index))) {
@@ -63,6 +64,47 @@ public class ValidationErrorCollectorTests {
 
             Assert.Equal($"toys[{index}].name", collector.ToResult().Errors[index].Field);
         }
+    }
+
+    [Fact]
+    public void Reset_RepeatedPasses_KeepOrderAndCarryNothingOver() {
+        // The chain is stored newest-first and unwound by ToResult, so declaration order depends on
+        // that reversal rather than on the order things were linked. Getting it wrong shows up as
+        // reversed errors or a stale one reappearing, neither of which a single-pass test catches.
+        var collector = new ValidationErrorCollector();
+
+        for (var pass = 0; pass < 5; pass++) {
+            collector.Reset();
+
+            var context = new ValidationContext(collector);
+            for (var i = 0; i < 4 + pass; i++) {
+                context.Add($"field{i}", "required", $"pass {pass}");
+            }
+
+            var errors = collector.ToResult().Errors;
+
+            Assert.Equal(4 + pass, errors.Count);
+            Assert.Equal(
+                Enumerable.Range(0, 4 + pass).Select(i => $"field{i}"),
+                errors.Select(error => error.Field));
+            Assert.All(errors, error => Assert.Equal($"pass {pass}", error.Message));
+        }
+    }
+
+    [Fact]
+    public void Reset_ShrinkingPass_DoesNotLeakTheLongerPassBehindIt() {
+        var collector = new ValidationErrorCollector();
+        var first = new ValidationContext(collector);
+
+        for (var i = 0; i < 10; i++) {
+            first.Add($"field{i}", "required", "x");
+        }
+
+        collector.Reset();
+        new ValidationContext(collector).Add("only", "required", "x");
+
+        Assert.Equal("only", Assert.Single(collector.ToResult().Errors).Field);
+        Assert.Equal(1, collector.Count);
     }
 
     [Fact]

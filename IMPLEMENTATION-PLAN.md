@@ -392,6 +392,12 @@ Mitigate with a marker-type probe and a clean diagnostic — "ValidationModules.
 required, found 1.1" — and keep the emitted surface small and additive-only. This is cheap now and
 miserable to retrofit.
 
+**Revised 2026-08-12.** Hardened's spec front-end lands in an MSBuild task rather than a Roslyn
+generator (§9), so the check has a better place to live: the task can compare the resolved
+`ValidationModules.Runtime` version at MSBuild time and fail with a project file attached. Build
+both — the marker-type probe for generator-hosted front-ends, and an MSBuild-time check the task can
+call. The second is the one Hardened hits first, and it produces the better error.
+
 ---
 
 ## 8. FluentValidation adapter and conformance
@@ -433,6 +439,43 @@ FluentValidation is Apache 2.0 and free, with no paid tier. Worth restating beca
 ---
 
 ## 9. Hardened integration
+
+**Superseded 2026-08-12 by `~/Hardened/VALIDATION-INTEGRATION-PLAN.md`**, which is the executable
+spec. The original text is kept below the line because most of it held; the summary here records
+what changed and why.
+
+The change is one fact about Impl: `ValidatorEmitter` and `RegistrationEmitter` are `StringBuilder`
+over the IR with no `Microsoft.CodeAnalysis` reference — only `FrontEnds/` and `ValidationDiagnostics`
+are Roslyn-coupled. So **an MSBuild task can drive the emitter**, and Hardened's spec front-end goes
+there rather than into a Roslyn generator. Consequences:
+
+- **`[GeneratedRegex]` becomes available to spec-driven patterns.** A task writes ordinary source
+  into `@(Compile)`, where the regex generator sees it. 448 KB → 33 KB on an AOT publish. §18.8's
+  inline-pattern problem does not arise for the spec front-end at all.
+- **VM0017's per-front-end policy leaves Hardened's critical path.** Still worth doing for this
+  library's own consumers; no longer blocking.
+- **VM0040 gains a better home** — an MSBuild-time version check (§7.5).
+- **No `Hardened.Validation` package.** ValidationModules.Runtime *is* the standalone validation
+  family; only the request-pipeline adapter needs a home, and it is `Hardened.Requests.Runtime`.
+- **The validated type is an interface per operation**, emitted by the task, implemented by
+  Hardened's generated `Parameters` class. The task cannot name `Parameters` — it is nested inside a
+  handler class with a computed suffix — so the interface is the seam between the two halves.
+- **"Compiles Impl in" survives, for the attribute front-end.** Hand-written controllers and
+  `[HardenedFunction]` carry constraints on method parameters, which are in the compilation, so that
+  path stays in Hardened's Roslyn generator. Two front-ends, one emitter — exactly §7.4.
+- **Auto-attach is the primary path**, with `[Validate]` for tuning and opting out.
+- **Failure throws** (§12 Q4), routed through Hardened's `IExceptionToModelConverter`, which also
+  handles this library's `ValidationException` so both routes produce one shape.
+
+One correction to the original: attaching through `IRequestFilterProvider` does **not** by itself
+give construction-time resolution, because `RequestFilterInfo.FilterFunc` runs per request. But
+`GetFilters` itself runs once per handler — the routing table caches handlers with
+`??= new Handler(_rootServiceProvider)` — so a provider that builds the filter in `GetFilters` and
+returns it by capture is construct-once. That is the shape to use.
+
+---
+
+*Original, 2026-08-06:*
 
 Hardened is the first consumer. `Hardened.Validation` is the only package that lands in that repo:
 `ValidationFilter<TBody>` plus a `[Validate]` attribute.
@@ -494,10 +537,11 @@ nothing has noticed. Not a validation bug; recorded so it is not lost.
 
 ## 11. Staged plan
 
-**Stage 0 — Hardened, independent of this repo.** Hoist the generated rule graph into a
-`static readonly` field so the per-request `new Regex(..., Compiled)` stops, and replace the
-`MakeGenericType`/`Invoke` block with a generated typed call. Small, self-contained, worth doing
-whether or not ValidationModules ships.
+**Stage 0 — Hardened, independent of this repo. ~~Do this first.~~ Skipped, 2026-08-12.** Hoist the
+generated rule graph into a `static readonly` field so the per-request `new Regex(..., Compiled)`
+stops, and replace the `MakeGenericType`/`Invoke` block with a generated typed call. Both are fixes
+to `ValidationFilterEmitter.cs`, which Stage 5 deletes. Do them only if Stage 5 will slip past a
+release that has to ship.
 
 **Stage 1 — Runtime.** Contracts, `ValidationContext` with lazy path building, `ValidationResult`,
 constraint attributes, `IValidationFieldNamer`. No generator yet; hand-write a validator in tests
@@ -512,24 +556,57 @@ runtime dispatch table.
 **Stage 4 — Impl packaging.** Extract the source-only package, verify a second generator can compile
 it in, add the version-lockstep probe.
 
-**Stage 5 — Hardened.** `ValidationFilter<TBody>`, `[Validate]`, retarget the OpenAPI generator onto
-the shared emitter, delete `ValidationFilterEmitter`, map spec files to profiles.
+**Stage 5 — Hardened. Substantially done, 2026-08-13.** Restructured 2026-08-12; the detail and the
+current status are in `~/Hardened/VALIDATION-INTEGRATION-PLAN.md` §10, which is authoritative for
+this stage. Summary: VM0040, both build-task phases, the filter and attribute, and the spec
+front-end are committed and running in `Hardened.Framework`. `ValidationFilterEmitter` is deleted.
 
-**Stage 6 — FluentValidation adapter and the conformance suite.**
+**The planned last step — an attribute front-end in Hardened's generator — was superseded rather
+than built.** Hardened's build task writes plain constraint attributes onto the types it emits, and
+`Hardened.Validation.SourceGenerator` compiles *this* package's `AttributeFrontEnd` and
+`ValidatorEmitter` in and scans the whole compilation. Spec-declared and hand-written constraints
+are one code path. Two consequences worth carrying:
+
+- Hardened must not ship `ValidationModules.SourceGenerator` alongside its own generator — both read
+  the same attributes and would emit every validator twice.
+- The Impl package's source-only shape (Stage 4) is load-bearing in a second consumer now, not just
+  in theory. Changing an emitter signature breaks a build outside this repo.
+
+What remains there is filter *attachment* off the spec path, not generation — see that document
+§10.1.
+
+**Spec-file-to-profile mapping is not done**, and cannot be until Stage 3 exists.
+
+**Stage 6 — FluentValidation adapter and the conformance suite.** Not started. Note that §19's
+declarative rule classes add a second engine to conform — the suite gains an adapter running it
+against `DescribedValidator<T>` as well as against generated validators, and §19.9 records the one
+place the two legitimately diverge (field naming from `[JsonPropertyName]`, which the runtime cannot
+read without reflection).
 
 ---
 
 ## 12. Open questions
 
-1. Overlay declaration syntax for types you do not own (§6, known gap). Needed by Stage 3 at the
-   latest; prototype before committing to the attribute shape.
+1. ~~Overlay declaration syntax for types you do not own (§6, known gap). Needed by Stage 3 at the
+   latest; prototype before committing to the attribute shape.~~ **Answered 2026-08-13 —
+   API-SURFACE.md §19, declarative rule classes.** A class implementing `IValidationRulesFor<T>`
+   describes rules in a method body, which the generator reads at build time and
+   `DescribedValidator<T>` runs at runtime. It gets name and type checking from the C# compiler
+   rather than from `VM0030`/`VM0031`, does not restate the target's property list, expresses
+   cross-field rules that no attribute form can, and runs without this package's generator — which
+   the mirror-property overlay could not. §6.4 stays specced and unimplemented.
 2. Default profile — a distinct `Default` type, or the absence of a profile?
 3. Does `Severity` enter the error model, or is dropping it from FluentValidation documented?
-4. Should validation failures throw, or write the response directly? Hardened currently does both:
-   `ValidationFilter` writes a 400 onto the response, while `ValidationException` exists and is
-   handled by `ExceptionToModelConverter.cs:11`. The two shapes agree today by duplication.
+4. ~~Should validation failures throw, or write the response directly?~~ **Resolved 2026-08-12 —
+   throw.** The filter throws and Hardened's `IExceptionToModelConverter` owns the response. That
+   converter also handles this library's `ValidationException`, so a hand-written `ValidateAndThrow`
+   and the filter path produce one shape rather than two agreeing by duplication — which is what
+   that type's own documentation asks for.
 5. Is `[Required]` treating whitespace-only strings as missing the intended policy, and should it
-   be opt-out?
+   be opt-out? Still open. ~~Decide when Hardened's attribute front-end lands.~~ **That trigger will
+   not arrive** — the front-end it was to be decided alongside was superseded (Stage 5 above), and
+   hand-written models already run through this package's front-end in shipped Hardened code, so the
+   policy is live rather than pending. Decide it on its own merits.
 
 ---
 
