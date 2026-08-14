@@ -1,19 +1,28 @@
 name: release
 
 # Cutting a release:
-#   git tag v1.0.0 && git push origin v1.0.0
+#   Actions -> release -> Run workflow, from main.
 #
-# The tag is the single source of truth for the published version. Requires a NUGET_API_KEY
-# repository secret with push rights for the ValidationModules.* package IDs on nuget.org.
+# The version is COMPUTED, not typed: 1.0.0-rc(1000 + this workflow's run number), matching the
+# 1.0.0-rc* stream the sibling packages publish. Nobody picks a number, so nobody picks a duplicate
+# or a number that sorts backwards - a version can be unlisted on nuget.org but never removed.
+#
+# The tag is created by this workflow *after* a successful publish, so it always names something
+# that actually shipped. That is the opposite of the previous arrangement, where the tag was the
+# input; a tag can be pushed before anyone knows whether the build passes.
+#
+# Requires a NUGET_API_KEY repository secret with push rights for the ValidationModules.* IDs.
 
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to publish (without the leading v), e.g. 1.0.0'
-        required: true
+        description: 'Override the computed version, e.g. 1.0.0 for a stable release. Leave blank for 1.0.0-rc(1000 + run number).'
+        required: false
+
+env:
+  # The release line. Bump alongside VersionPrefix in Directory.Build.props.
+  RC_VERSION_PREFIX: '1.0.0'
 
 permissions:
   contents: write
@@ -36,24 +45,35 @@ jobs:
 
       - name: Resolve version
         id: version
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
-          # A manual dispatch runs against whatever ref was selected, and that selector remembers
-          # the last branch used. Without this, an unreviewed branch could be published to
-          # nuget.org, where a version can be unlisted but never removed.
-          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "${GITHUB_REF}" != "refs/heads/main" ]; then
-            echo "::error::Releases may only be dispatched from main. This run is on '${GITHUB_REF_NAME}'."
+          # The dispatch selector remembers the last branch used, so without this an unreviewed
+          # branch could be published to nuget.org, where a version can be unlisted but never
+          # removed.
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "::error::Releases may only be run from main. This run is on '${GITHUB_REF_NAME}'."
             exit 1
           fi
 
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            VERSION="${{ github.event.inputs.version }}"
+          if [ -n "${INPUT_VERSION}" ]; then
+            VERSION="${INPUT_VERSION}"
+            echo "Version supplied explicitly."
           else
-            VERSION="${GITHUB_REF_NAME#v}"
+            VERSION="${RC_VERSION_PREFIX}-rc$((1000 + GITHUB_RUN_NUMBER))"
+            echo "Version computed from run number ${GITHUB_RUN_NUMBER}."
           fi
 
-          # Guard against a mistyped tag producing a bad package version.
+          # Guards the override path; the computed path cannot produce a bad version.
           if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
             echo "::error::'$VERSION' is not a valid semantic version"
+            exit 1
+          fi
+
+          # A tag that already exists means this run number has been used, which should be
+          # impossible - but publishing over it would be worse than stopping.
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "::error::Tag 'v$VERSION' already exists."
             exit 1
           fi
 
@@ -105,19 +125,25 @@ jobs:
             --source "https://nuget.pkg.github.com/ipjohnson/index.json" \
             --skip-duplicate --no-symbols
 
-      - name: Create GitHub release
-        if: startsWith(github.ref, 'refs/tags/v')
+      # Tagged only now, so the tag names something that was built, tested, verified and pushed.
+      - name: Tag and create the GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${VERSION}" -m "v${VERSION}"
+          git push origin "v${VERSION}"
+
           # A version carrying a prerelease label must not appear as a stable release.
-          case "${{ steps.version.outputs.version }}" in
+          case "${VERSION}" in
             *-*) prerelease="--prerelease" ;;
             *)   prerelease="" ;;
           esac
 
-          gh release create "${GITHUB_REF_NAME}" \
-            --title "${GITHUB_REF_NAME}" \
+          gh release create "v${VERSION}" \
+            --title "v${VERSION}" \
             --generate-notes \
             ${prerelease} \
             ./artifacts/*.nupkg
