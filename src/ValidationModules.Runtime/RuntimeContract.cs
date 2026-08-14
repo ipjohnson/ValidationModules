@@ -30,10 +30,15 @@ public static class RuntimeContract {
     // registered for the top-level type always has. A runtime at contract 1 has no such method, and
     // the failure would land inside generated code - which is what VM0040 exists to prevent.
 
+    // 2 -> 3: [MultipleOf] and [UniqueItems] arrived, and neither compiles to a comparison the way
+    // every constraint before them did. Both call into ConstraintChecks, and both report through an
+    // AddMultipleOf/AddUniqueItems that a contract-2 runtime does not have. The same bump covers
+    // AddRangeAtLeast/AddRangeAtMost, which partially-bounded [Range] needs.
+
     /// <summary>
     /// The contract this runtime implements. Compared against
     /// <c>EmitterContract.RequiredRuntimeContract</c> by the generator, and against
     /// <c>$(ValidationModulesRuntimeContract)</c> by build tasks driving the emitter.
     /// </summary>
-    public const int Version = 2;
+    public const int Version = 3;
 }

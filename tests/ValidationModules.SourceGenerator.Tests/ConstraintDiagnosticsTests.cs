@@ -480,4 +480,183 @@ public class ConstraintDiagnosticsTests {
         Assert.Empty(result.Diagnostics);
         Assert.Empty(result.CompilationErrors);
     }
+
+    // VM0021 — [MultipleOf] on a member with no numeric type.
+
+    [Theory]
+    [InlineData("[MultipleOf(5)] public string? Name { get; init; }")]
+    [InlineData("[MultipleOf(5)] public bool Flag { get; init; }")]
+    [InlineData("[MultipleOf(5)] public DateTime Starts { get; init; }")]
+    [InlineData("[MultipleOf(5)] public List<int> Sizes { get; init; } = new();")]
+    public void MultipleOf_OnNonNumeric_IsVM0021(string member) {
+        var result = GeneratorHarness.Run(Model(member));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0021");
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+    }
+
+    /// <summary>
+    /// Every numeric shape, including the floating-point ones, which are checked in the decimal
+    /// domain rather than refused - see <c>ConstraintChecks.IsMultipleOf</c>.
+    /// </summary>
+    [Theory]
+    [InlineData("[MultipleOf(5)] public int Quantity { get; init; }")]
+    [InlineData("[MultipleOf(5)] public long Total { get; init; }")]
+    [InlineData("[MultipleOf(5)] public int? Optional { get; init; }")]
+    [InlineData("[MultipleOf(\"0.05\")] public decimal Price { get; init; }")]
+    [InlineData("[MultipleOf(0.05)] public decimal Rounded { get; init; }")]
+    [InlineData("[MultipleOf(0.01)] public double Ratio { get; init; }")]
+    [InlineData("[MultipleOf(0.01)] public float Share { get; init; }")]
+    public void MultipleOf_OnNumeric_IsSilentAndCompiles(string member) {
+        var result = GeneratorHarness.Run(Model(member));
+
+        Assert.Empty(result.Diagnostics);
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    // VM0022 — a divisor that would divide by zero, or invert the question.
+
+    [Theory]
+    [InlineData("[MultipleOf(0)] public int Quantity { get; init; }")]
+    [InlineData("[MultipleOf(-5)] public int Negative { get; init; }")]
+    [InlineData("[MultipleOf(0.0)] public double Ratio { get; init; }")]
+    [InlineData("[MultipleOf(\"0\")] public decimal Price { get; init; }")]
+    public void MultipleOf_WithANonPositiveDivisor_IsVM0022(string member) {
+        var result = GeneratorHarness.Run(Model(member));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0022");
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+
+        // The point of the diagnostic: `value % 0` is CS0020 for an integral member, so the
+        // constraint has to be dropped rather than emitted.
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    // VM0023 — a divisor with no form the member's type can be checked against.
+
+    [Theory]
+    [InlineData("[MultipleOf(\"not a number\")] public decimal Price { get; init; }")]
+    [InlineData("[MultipleOf(\"2.5\")] public int Quantity { get; init; }")]
+    [InlineData("[MultipleOf(2.5)] public int Whole { get; init; }")]
+    public void MultipleOf_WithAnUnparseableDivisor_IsVM0023(string member) {
+        var result = GeneratorHarness.Run(Model(member));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0023");
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    // VM0024 — [UniqueItems] on something with no elements.
+
+    [Theory]
+    [InlineData("[UniqueItems] public int Age { get; init; }")]
+    [InlineData("[UniqueItems] public string? Name { get; init; }")]
+    public void UniqueItems_OnNonCollection_IsVM0024(string member) {
+        var result = GeneratorHarness.Run(Model(member));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0024");
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+    }
+
+    [Theory]
+    [InlineData("[UniqueItems] public List<string> Tags { get; init; } = new();")]
+    [InlineData("[UniqueItems] public int[] Sizes { get; init; } = Array.Empty<int>();")]
+    [InlineData("[UniqueItems] public IEnumerable<string>? Codes { get; init; }")]
+    public void UniqueItems_OnACollection_IsSilentAndCompiles(string member) {
+        var result = GeneratorHarness.Run(Model(member));
+
+        Assert.Empty(result.Diagnostics);
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    // VM0025 — elements with no equality of their own, which compare by reference.
+
+    [Fact]
+    public void UniqueItems_OverAClassWithNoEquality_IsVM0025() {
+        var result = GeneratorHarness.Run("""
+            using System.Collections.Generic;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public class Tag {
+                public string? Value { get; init; }
+            }
+
+            public record Pet {
+                [UniqueItems]
+                public List<Tag> Tags { get; init; } = new();
+            }
+            """);
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0025");
+        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Contains("Sample.Tag", diagnostic.GetMessage());
+    }
+
+    /// <summary>
+    /// The four ways an element type earns value equality. None of them should warn.
+    /// </summary>
+    [Fact]
+    public void UniqueItems_OverElementsWithEquality_IsSilent() {
+        var result = GeneratorHarness.Run("""
+            using System;
+            using System.Collections.Generic;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public record Named(string Value);
+
+            public class Explicitly : IEquatable<Explicitly> {
+                public bool Equals(Explicitly? other) => true;
+                public override bool Equals(object? obj) => true;
+                public override int GetHashCode() => 0;
+            }
+
+            public record Pet {
+                [UniqueItems] public List<string> Strings { get; init; } = new();
+                [UniqueItems] public List<int> Numbers { get; init; } = new();
+                [UniqueItems] public List<Named> Records { get; init; } = new();
+                [UniqueItems] public List<Explicitly> Equatables { get; init; } = new();
+            }
+            """);
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0025");
+    }
+
+    // VM0026 — a [Range] that declares neither bound.
+
+    [Fact]
+    public void Range_WithNoBounds_IsVM0026() {
+        var result = GeneratorHarness.Run(Model("[Range] public int Age { get; init; }"));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0026");
+        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    [Theory]
+    [InlineData("[Range(Min = 1)] public int Age { get; init; }")]
+    [InlineData("[Range(Max = 99)] public int Count { get; init; }")]
+    [InlineData("[Range(1, 99)] public int Both { get; init; }")]
+    public void Range_WithOneBoundOrTwo_IsSilent(string member) {
+        var result = GeneratorHarness.Run(Model(member));
+
+        Assert.Empty(result.Diagnostics);
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    /// <summary>
+    /// The regression VM0065 did not cover: a fractional bound written as a numeric literal against
+    /// a <c>decimal</c> member. C# has no implicit double-to-decimal conversion, so the emitted
+    /// comparison was CS0019 - an error inside generated code, which plan §7.5 rules out.
+    /// </summary>
+    [Fact]
+    public void Range_WithAFractionalLiteralOnADecimal_Compiles() {
+        var result = GeneratorHarness.Run(Model("[Range(0.5, 9.99)] public decimal Price { get; init; }"));
+
+        Assert.Empty(result.Diagnostics);
+        Assert.Empty(result.CompilationErrors);
+    }
 }

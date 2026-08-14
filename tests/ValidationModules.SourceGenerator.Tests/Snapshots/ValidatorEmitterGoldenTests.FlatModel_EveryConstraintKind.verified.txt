@@ -59,5 +59,11 @@ public sealed partial class PetValidator : IValidatorFor<global::Sample.Pet> {
         if (value.Sku is not null && !SkuPattern0.IsMatch(value.Sku)) ctx.AddPattern("sku");
         if (value.Status is not null && (value.Status != "available" && value.Status != "pending" && value.Status != "sold")) ctx.AddAllowedValues("status", "available, pending, sold");
         if (value.Tags is not null && (value.Tags.Count < 1 || value.Tags.Count > 10)) ctx.AddItemCount("tags", 1, 10);
+        if ((value.Quantity % 5 != 0)) ctx.AddMultipleOf("quantity", 5);
+        if ((value.Price % 0.05m != 0)) ctx.AddMultipleOf("price", 0.05m);
+        if (!global::ValidationModules.ConstraintChecks.IsMultipleOf(value.Ratio, 0.01m)) ctx.AddMultipleOf("ratio", 0.01m);
+        if (value.Codes is not null && !global::ValidationModules.ConstraintChecks.AllUnique(value.Codes)) ctx.AddUniqueItems("codes");
+        if ((value.AtLeastOne < 1)) ctx.AddRangeAtLeast("atLeastOne", 1);
+        if ((value.AtMostNinetyNine > 99)) ctx.AddRangeAtMost("atMostNinetyNine", 99);
     }
 }

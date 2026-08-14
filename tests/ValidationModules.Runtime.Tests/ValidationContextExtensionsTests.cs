@@ -60,6 +60,48 @@ public class ValidationContextExtensionsTests {
         }
     }
 
+    /// <summary>
+    /// The reason the one-sided helpers exist. Composing an absent bound as the type's extreme put
+    /// "must be between 1 and 7.9228162514264338E+28" in a 400 body for a specification that set
+    /// only <c>minimum</c>.
+    /// </summary>
+    [Fact]
+    public void AddRangeAtLeast_NamesOnlyTheBoundThatWasDeclared() {
+        Assert.Equal("age must be at least 1.", Single(context => context.AddRangeAtLeast("age", 1)).Message);
+    }
+
+    [Fact]
+    public void AddRangeAtMost_NamesOnlyTheBoundThatWasDeclared() {
+        Assert.Equal("age must be at most 99.", Single(context => context.AddRangeAtMost("age", 99)).Message);
+    }
+
+    [Fact]
+    public void AddRangeAtLeastAndAtMost_ShareTheRangeCode() {
+        // One code for the shape, because the failure is the same one a client already handles.
+        Assert.Equal(ValidationCodes.Range, Single(context => context.AddRangeAtLeast("age", 1)).Code);
+        Assert.Equal(ValidationCodes.Range, Single(context => context.AddRangeAtMost("age", 99)).Code);
+    }
+
+    [Theory]
+    [InlineData(5, "quantity must be a multiple of 5.")]
+    [InlineData(0.05, "quantity must be a multiple of 0.05.")]
+    public void AddMultipleOf_NamesTheDivisor(double divisor, string expected) {
+        Assert.Equal(expected, Single(context => context.AddMultipleOf("quantity", (decimal)divisor)).Message);
+    }
+
+    [Fact]
+    public void AddMultipleOf_UsesItsOwnCode() {
+        Assert.Equal(ValidationCodes.MultipleOf, Single(context => context.AddMultipleOf("quantity", 5m)).Code);
+    }
+
+    [Fact]
+    public void AddUniqueItems_DoesNotEchoTheDuplicate() {
+        var error = Single(context => context.AddUniqueItems("tags"));
+
+        Assert.Equal("tags must not contain duplicate items.", error.Message);
+        Assert.Equal(ValidationCodes.UniqueItems, error.Code);
+    }
+
     [Fact]
     public void AddPattern_DoesNotEchoThePattern() {
         var error = Single(context => context.AddPattern("sku"));

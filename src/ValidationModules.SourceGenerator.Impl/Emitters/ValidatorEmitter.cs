@@ -352,11 +352,41 @@ public sealed class ValidatorEmitter {
                 return tests.Count == 0 ? null : $"{guard}({string.Join(" || ", tests)})";
             }
 
+            // Each bound is optional and an absent one emits nothing, so a spec that set only
+            // `minimum` compiles to one comparison rather than two, the second of which could never
+            // fail and whose bound the composed message would then quote back at the caller.
             case ConstraintKind.Range: {
-                var low = constraint.ExclusiveMin ? "<=" : "<";
-                var high = constraint.ExclusiveMax ? ">=" : ">";
-                return $"{guard}({value} {low} {constraint.Min} || {value} {high} {constraint.Max})";
+                var tests = new List<string>();
+                if (constraint.Min is { } min) {
+                    tests.Add($"{value} {(constraint.ExclusiveMin ? "<=" : "<")} {min}");
+                }
+
+                if (constraint.Max is { } max) {
+                    tests.Add($"{value} {(constraint.ExclusiveMax ? ">=" : ">")} {max}");
+                }
+
+                return tests.Count == 0 ? null : $"{guard}({string.Join(" || ", tests)})";
             }
+
+            // An integral or decimal member divides exactly, so it keeps the straight-line form the
+            // rest of this switch has. A double or float cannot: `0.3 % 0.01` is 0.00999999999999998
+            // in binary floating point, so the check goes through the runtime, which converts to
+            // decimal first. The divisor already arrives in the right denomination.
+            case ConstraintKind.MultipleOf: {
+                if (constraint.Divisor is not { } divisor) {
+                    return null;
+                }
+
+                return constraint.DecimalDomain
+                    ? $"{guard}!global::ValidationModules.ConstraintChecks.IsMultipleOf({value}, {divisor})"
+                    : $"{guard}({value} % {divisor} != 0)";
+            }
+
+            // The only constraint here that is not a comparison. Typed on IEnumerable<T>, so a
+            // property with no Count needs no separate path - the fallback the count constraints
+            // have does not arise.
+            case ConstraintKind.UniqueItems:
+                return $"{guard}!global::ValidationModules.ConstraintChecks.AllUnique({access})";
 
             case ConstraintKind.Pattern: {
                 // The reference form resolves to the consumer's own [GeneratedRegex], so nothing is
@@ -389,7 +419,9 @@ public sealed class ValidatorEmitter {
         constraint.Kind switch {
             ConstraintKind.StringLength => Add(field, constraint, "AddStringLength", Bounds(constraint)),
             ConstraintKind.ItemCount => Add(field, constraint, "AddItemCount", Bounds(constraint)),
-            ConstraintKind.Range => Add(field, constraint, "AddRange", $", {constraint.Min}, {constraint.Max}"),
+            ConstraintKind.Range => RangeAdd(field, constraint),
+            ConstraintKind.MultipleOf => Add(field, constraint, "AddMultipleOf", $", {constraint.Divisor}"),
+            ConstraintKind.UniqueItems => Add(field, constraint, "AddUniqueItems", ""),
             ConstraintKind.Pattern => Add(field, constraint, "AddPattern", ""),
             ConstraintKind.AllowedValues => Add(field, constraint, "AddAllowedValues",
                 $", {Quote(string.Join(", ", constraint.Values.Select(Unquote)))}"),
@@ -400,6 +432,19 @@ public sealed class ValidatorEmitter {
             ConstraintKind.Predicate => Add(field, constraint, "Add", ""),
             _ => Add(field, constraint, "AddRequired", ""),
         };
+
+    /// <summary>
+    /// The report call for a range, which has a different message per shape rather than one message
+    /// with a bound the author never wrote standing in for the missing side.
+    /// </summary>
+    private static string RangeAdd(string field, ConstraintModel constraint) => constraint switch {
+        { Min: { } min, Max: { } max } => Add(field, constraint, "AddRange", $", {min}, {max}"),
+        { Min: { } min } => Add(field, constraint, "AddRangeAtLeast", $", {min}"),
+        { Max: { } max } => Add(field, constraint, "AddRangeAtMost", $", {max}"),
+
+        // Unreachable: a range with neither bound is VM0026 and never reaches the emitter.
+        _ => Add(field, constraint, "AddRequired", ""),
+    };
 
     private static string Bounds(ConstraintModel constraint) =>
         $", {constraint.Min ?? "0"}, {constraint.Max ?? int.MaxValue.ToString()}";
@@ -423,6 +468,8 @@ public sealed class ValidatorEmitter {
         ConstraintKind.Range => "ValidationCodes.Range",
         ConstraintKind.Pattern => "ValidationCodes.Pattern",
         ConstraintKind.AllowedValues => "ValidationCodes.Enum",
+        ConstraintKind.MultipleOf => "ValidationCodes.MultipleOf",
+        ConstraintKind.UniqueItems => "ValidationCodes.UniqueItems",
         ConstraintKind.Predicate => "ValidationCodes.Predicate",
         _ => "ValidationCodes.ArrayBounds",
     };

@@ -29,7 +29,7 @@ public static class DataAnnotationsConstraintReader {
 
     public static bool IsConstraint(string attributeName) => Array.IndexOf(Constraints, attributeName) >= 0;
 
-    public static Outcome Read(AttributeData attribute, string attributeName, IPropertySymbol property) {
+    public static Outcome Read(AttributeData attribute, string attributeName, ITypeSymbol memberType) {
         switch (attributeName) {
             case "RequiredAttribute":
                 return new Outcome(
@@ -49,16 +49,16 @@ public static class DataAnnotationsConstraintReader {
                 var args = attribute.ConstructorArguments;
                 var min = args.Length > 0 ? NativeConstraintReader.Literal(args[0]) : "0";
                 var max = args.Length > 1 ? NativeConstraintReader.Literal(args[1]) : int.MaxValue.ToString();
-                return Sized(attribute, property, min, max);
+                return Sized(attribute, memberType, min, max);
             }
 
             // Both apply to strings and to collections in DataAnnotations, so the member's type
             // decides which constraint this becomes. A member that is neither is VM0064.
             case "MinLengthAttribute":
-                return Sized(attribute, property, First(attribute) ?? "0", int.MaxValue.ToString());
+                return Sized(attribute, memberType, First(attribute) ?? "0", int.MaxValue.ToString());
 
             case "MaxLengthAttribute":
-                return Sized(attribute, property, "0", First(attribute) ?? int.MaxValue.ToString());
+                return Sized(attribute, memberType, "0", First(attribute) ?? int.MaxValue.ToString());
 
             case "RangeAttribute": {
                 var args = attribute.ConstructorArguments;
@@ -127,12 +127,12 @@ public static class DataAnnotationsConstraintReader {
         }
     }
 
-    private static Outcome Sized(AttributeData attribute, IPropertySymbol property, string min, string max) {
-        if (property.Type.SpecialType == SpecialType.System_String) {
+    private static Outcome Sized(AttributeData attribute, ITypeSymbol memberType, string min, string max) {
+        if (memberType.SpecialType == SpecialType.System_String) {
             return new Outcome(Bounded(ConstraintKind.StringLength, attribute, min, max), null);
         }
 
-        if (TypeFacts.ElementTypeOf(property.Type) is not null) {
+        if (TypeFacts.ElementTypeOf(memberType) is not null) {
             return new Outcome(Bounded(ConstraintKind.ItemCount, attribute, min, max), null);
         }
 

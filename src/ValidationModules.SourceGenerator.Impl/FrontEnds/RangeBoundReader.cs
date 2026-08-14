@@ -44,16 +44,20 @@ public static class RangeBoundReader {
     public static bool TryResolve(ITypeSymbol type, string literal, out string expression) {
         expression = literal;
 
-        // Only the string form needs resolving. A numeric literal already has a type the comparison
-        // accepts, including int bounds against a decimal or a double member.
-        if (!IsQuoted(literal)) {
-            return true;
-        }
-
-        var text = Unquote(literal);
         var underlying = TypeFacts.IsNullableValueType(type)
             ? ((INamedTypeSymbol)type).TypeArguments[0]
             : type;
+
+        // A numeric literal usually already has a type the comparison accepts - an int bound against
+        // a double member widens, and against a decimal member it converts implicitly. `decimal`
+        // against a *fractional* bound is the exception: C# has no implicit conversion from double
+        // or float to decimal, so `[Range(0.5, 9.99)] decimal Price` emitted `price < 0.5` and the
+        // consumer's build failed on CS0019 inside generated code - §7.5's worst place for an error.
+        if (!IsQuoted(literal)) {
+            return underlying.SpecialType != SpecialType.System_Decimal || Redenominate(literal, out expression);
+        }
+
+        var text = Unquote(literal);
 
         switch (underlying.SpecialType) {
             case SpecialType.System_Decimal:
@@ -98,10 +102,31 @@ public static class RangeBoundReader {
         return false;
     }
 
-    private static bool IsQuoted(string literal) =>
+    /// <summary>
+    /// Rewrites an already-typed numeric literal as a <c>decimal</c> one.
+    /// </summary>
+    /// <remarks>
+    /// Parsed rather than suffixed textually: a bound outside decimal's range, or one written as
+    /// <c>double.PositiveInfinity</c>, has no decimal form at all, and returning false here routes
+    /// it to VM0065 instead of emitting something that does not compile.
+    /// </remarks>
+    private static bool Redenominate(string literal, out string expression) {
+        expression = string.Empty;
+
+        var text = literal.TrimEnd('d', 'D', 'f', 'F', 'm', 'M');
+
+        if (!decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)) {
+            return false;
+        }
+
+        expression = value.ToString(CultureInfo.InvariantCulture) + "m";
+        return true;
+    }
+
+    internal static bool IsQuoted(string literal) =>
         literal.Length >= 2 && literal[0] == '"' && literal[literal.Length - 1] == '"';
 
-    private static string Unquote(string literal) =>
+    internal static string Unquote(string literal) =>
         literal.Substring(1, literal.Length - 2).Replace("\\\\", "\\").Replace("\\\"", "\"");
 
     private static bool Numeric(string text, string suffix, out string expression) {

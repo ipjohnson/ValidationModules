@@ -226,10 +226,26 @@ public sealed class RulesFrontEnd {
                     ConstraintKind.ItemCount,
                     Min: Bound(arguments, "min", "0"),
                     Max: Bound(arguments, "max", int.MaxValue.ToString())),
+                // Null rather than a "0" fallback for the bound a one-sided form does not take: an
+                // omitted bound has to stay omitted all the way to the emitter, or it becomes a
+                // comparison the author never wrote and a bound the message quotes back at a caller.
                 "Range" => new ConstraintModel(
                     ConstraintKind.Range,
-                    Min: Bound(arguments, "min", "0"),
-                    Max: Bound(arguments, "max", "0")),
+                    Min: OptionalBound(arguments, "min"),
+                    Max: OptionalBound(arguments, "max")),
+                "RangeAtLeast" => new ConstraintModel(
+                    ConstraintKind.Range,
+                    Min: OptionalBound(arguments, "min")),
+                "RangeAtMost" => new ConstraintModel(
+                    ConstraintKind.Range,
+                    Max: OptionalBound(arguments, "max")),
+                "Unique" => new ConstraintModel(ConstraintKind.UniqueItems),
+
+                // The divisor is carried as written and resolved against the member's type by the
+                // shared front-end pass, the same as a [MultipleOf] argument is.
+                "MultipleOf" => new ConstraintModel(
+                    ConstraintKind.MultipleOf,
+                    Divisor: Bound(arguments, "divisor", "1")),
                 "Pattern" => PatternConstraint(arguments, call),
                 "AllowedValues" => AllowedValuesConstraint(arguments, call),
                 _ => null,
@@ -413,6 +429,13 @@ public sealed class RulesFrontEnd {
         private string Bound(
             IReadOnlyDictionary<string, ExpressionSyntax> arguments, string parameter, string fallback) =>
             arguments.TryGetValue(parameter, out var expression) ? expression.ToString() : fallback;
+
+        /// <summary>A bound that was not passed, as null rather than as a stand-in value.</summary>
+        private string? OptionalBound(
+            IReadOnlyDictionary<string, ExpressionSyntax> arguments, string parameter) =>
+            arguments.TryGetValue(parameter, out var expression) && expression.ToString() != "null"
+                ? expression.ToString()
+                : null;
 
         /// <summary>
         /// Maps a call's arguments onto parameter names, so the reader never depends on position and

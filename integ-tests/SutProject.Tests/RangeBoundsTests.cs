@@ -26,6 +26,61 @@ public class RangeBoundsTests {
         Assert.True(new BookingValidator().IsValid(Valid()));
     }
 
+    /// <summary>
+    /// A bound the author did not declare is not compared against and is not named. It used to be
+    /// emitted as the type's extreme, which reached a caller as "must be between 1 and
+    /// 7.9228162514264338E+28" for a specification that set only <c>minimum</c>.
+    /// </summary>
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, true)]
+    [InlineData(int.MaxValue, true)]
+    public void RangeWithOnlyAMinimum_HasNoUpperBound(int value, bool expected) {
+        var allocation = new Allocation { AtLeastOne = value, AtMostNinetyNine = 1, Fractional = 1m };
+
+        Assert.Equal(expected, new AllocationValidator().IsValid(allocation));
+    }
+
+    [Theory]
+    [InlineData(int.MinValue, true)]
+    [InlineData(99, true)]
+    [InlineData(100, false)]
+    public void RangeWithOnlyAMaximum_HasNoLowerBound(int value, bool expected) {
+        var allocation = new Allocation { AtLeastOne = 1, AtMostNinetyNine = value, Fractional = 1m };
+
+        Assert.Equal(expected, new AllocationValidator().IsValid(allocation));
+    }
+
+    [Fact]
+    public void OneSidedRange_NamesOnlyTheBoundThatWasDeclared() {
+        var result = new AllocationValidator().Validate(
+            new Allocation { AtLeastOne = 0, AtMostNinetyNine = 1, Fractional = 1m });
+
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(ValidationCodes.Range, error.Code);
+        Assert.Equal("atLeastOne must be at least 1.", error.Message);
+    }
+
+    /// <summary>
+    /// A fractional bound written as a numeric literal against a <c>decimal</c>. C# has no implicit
+    /// double-to-decimal conversion, so this used to emit <c>fractional &lt; 0.5</c> and fail to
+    /// compile - which is why the assertion that matters is that the comparison runs at all.
+    /// </summary>
+    [Theory]
+    [InlineData("0.49", false)]
+    [InlineData("0.5", true)]
+    [InlineData("9.99", true)]
+    [InlineData("10.00", false)]
+    public void RangeWithAFractionalNumericBound_ComparesAgainstADecimal(string value, bool expected) {
+        var allocation = new Allocation {
+            AtLeastOne = 1,
+            AtMostNinetyNine = 1,
+            Fractional = decimal.Parse(value, System.Globalization.CultureInfo.InvariantCulture),
+        };
+
+        Assert.Equal(expected, new AllocationValidator().IsValid(allocation));
+    }
+
     [Theory]
     [InlineData(1999, 12, 31, false)]
     [InlineData(2000, 1, 1, true)]      // the lower bound itself — inclusive

@@ -136,6 +136,52 @@ public static class TypeFacts {
             "System.TimeSpan" or "System.DateTimeOffset";
     }
 
+    /// <summary>
+    /// Whether <c>EqualityComparer&lt;T&gt;.Default</c> would compare two of these by reference.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Structs are excluded whether or not they override anything: <c>ValueType.Equals</c> compares
+    /// fields, which is slow but is the right answer. Interfaces and <c>object</c> are excluded
+    /// because the comparison dispatches to whatever the runtime type is, and warning about a type
+    /// that may well implement equality would be noise.
+    /// </para>
+    /// <para>
+    /// <c>IEquatable&lt;T&gt;</c> counts as well as an <c>Equals(object)</c> override, because that
+    /// is the interface <c>EqualityComparer&lt;T&gt;.Default</c> actually looks for first.
+    /// </para>
+    /// </remarks>
+    public static bool ComparesByReference(ITypeSymbol type) {
+        if (type.IsValueType ||
+            type.SpecialType is SpecialType.System_String or SpecialType.System_Object ||
+            type.TypeKind is TypeKind.Interface or TypeKind.TypeParameter ||
+            type is INamedTypeSymbol { IsRecord: true }) {
+            return false;
+        }
+
+        foreach (var candidate in type.AllInterfaces) {
+            if (candidate.ConstructedFrom.ToDisplayString().StartsWith("System.IEquatable<", StringComparison.Ordinal) &&
+                candidate.TypeArguments.Length == 1 &&
+                SymbolEqualityComparer.Default.Equals(candidate.TypeArguments[0], type)) {
+                return false;
+            }
+        }
+
+        for (var current = type as INamedTypeSymbol;
+             current is not null && current.SpecialType != SpecialType.System_Object;
+             current = current.BaseType) {
+
+            foreach (var member in current.GetMembers("Equals")) {
+                if (member is IMethodSymbol { IsOverride: true, Parameters.Length: 1 } method &&
+                    method.Parameters[0].Type.SpecialType == SpecialType.System_Object) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
     public static bool IsValidRegex(string pattern, out string error) {
         try {
             _ = new Regex(pattern);

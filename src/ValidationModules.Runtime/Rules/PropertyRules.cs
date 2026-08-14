@@ -116,6 +116,26 @@ public static class PropertyRulesExtensions {
         return rules;
     }
 
+    /// <summary>Declares the anchored value's lower bound, with no upper one.</summary>
+    public static PropertyRules<T, TValue?> RangeAtLeast<T, TValue>(
+        this PropertyRules<T, TValue?> rules, TValue min)
+        where TValue : struct, IComparable<TValue>, IFormattable {
+        ArgumentNullException.ThrowIfNull(rules);
+        rules.Owner.Add(new RangeRule<T, TValue>(rules.Field, rules.Read, min, null));
+
+        return rules;
+    }
+
+    /// <summary>Declares the anchored value's upper bound, with no lower one.</summary>
+    public static PropertyRules<T, TValue?> RangeAtMost<T, TValue>(
+        this PropertyRules<T, TValue?> rules, TValue max)
+        where TValue : struct, IComparable<TValue>, IFormattable {
+        ArgumentNullException.ThrowIfNull(rules);
+        rules.Owner.Add(new RangeRule<T, TValue>(rules.Field, rules.Read, null, max));
+
+        return rules;
+    }
+
     /// <summary>Declares the anchored value's permitted set.</summary>
     public static PropertyRules<T, TValue> AllowedValues<T, TValue>(
         this PropertyRules<T, TValue> rules, params TValue[] allowed) {
@@ -131,6 +151,39 @@ public static class PropertyRulesExtensions {
         this PropertyRules<T, IReadOnlyList<TElement>?> rules, int min = 0, int max = int.MaxValue) {
         ArgumentNullException.ThrowIfNull(rules);
         rules.Owner.Add(new ItemCountRule<T, TElement>(rules.Field, rules.Read, min, max));
+
+        return rules;
+    }
+
+    /// <summary>Declares that the anchored collection's elements must all differ.</summary>
+    public static PropertyRules<T, IEnumerable<TElement>?> Unique<T, TElement>(
+        this PropertyRules<T, IEnumerable<TElement>?> rules) {
+        ArgumentNullException.ThrowIfNull(rules);
+        rules.Owner.Add(new UniqueItemsRule<T, TElement>(rules.Field, rules.Read));
+
+        return rules;
+    }
+
+    /// <summary>Declares that the anchored integral value must be an exact multiple of a divisor.</summary>
+    public static PropertyRules<T, long?> MultipleOf<T>(this PropertyRules<T, long?> rules, long divisor) {
+        ArgumentNullException.ThrowIfNull(rules);
+        rules.Owner.Add(new MultipleOfRule<T>(rules.Field, target => rules.Read(target), divisor));
+
+        return rules;
+    }
+
+    /// <summary>Declares that the anchored decimal value must be an exact multiple of a divisor.</summary>
+    public static PropertyRules<T, decimal?> MultipleOf<T>(this PropertyRules<T, decimal?> rules, decimal divisor) {
+        ArgumentNullException.ThrowIfNull(rules);
+        rules.Owner.Add(new MultipleOfRule<T>(rules.Field, rules.Read, divisor));
+
+        return rules;
+    }
+
+    /// <summary>Declares that the anchored floating-point value must be a multiple of a divisor.</summary>
+    public static PropertyRules<T, double?> MultipleOf<T>(this PropertyRules<T, double?> rules, double divisor) {
+        ArgumentNullException.ThrowIfNull(rules);
+        rules.Owner.Add(new MultipleOfApproximateRule<T>(rules.Field, rules.Read, (decimal)divisor));
 
         return rules;
     }

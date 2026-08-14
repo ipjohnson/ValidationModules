@@ -57,6 +57,54 @@ public static class ValidationDiagnostics {
         DiagnosticSeverity.Warning);
 
     /// <summary>
+    /// VM0021-VM0026 are a fresh block rather than the gaps at VM0005 and VM0011.
+    /// </summary>
+    /// <remarks>
+    /// Both gaps are spoken for. API-SURFACE §11 assigns VM0005 to "[Pattern] on a non-string",
+    /// whose meaning was folded into VM0001 at implementation time, and VM0011-VM0015 to profile
+    /// semantics. Reclaiming a retired id is worse than leaving it retired: an .editorconfig line
+    /// written against the old meaning would go on suppressing, silently, something else entirely.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor MultipleOfOnUnsupportedType = Descriptor(
+        "VM0021", "[MultipleOf] requires a numeric type",
+        "[MultipleOf] applies to integral, decimal and floating-point types; '{0}' is '{1}'",
+        DiagnosticSeverity.Error);
+
+    /// <summary>
+    /// A zero divisor is the reason this is an error rather than a warning that drops the rule.
+    /// <c>value % 0</c> is CS0020 for an integral member and a DivideByZeroException for a decimal
+    /// one, so leaving it to the emitter puts the failure inside generated code - plan §7.5.
+    /// </summary>
+    public static readonly DiagnosticDescriptor MultipleOfDivisorNotPositive = Descriptor(
+        "VM0022", "[MultipleOf] divisor must be positive",
+        "The divisor on '{0}' is '{1}'; it must be greater than zero", DiagnosticSeverity.Error);
+
+    public static readonly DiagnosticDescriptor MultipleOfDivisorNotParseable = Descriptor(
+        "VM0023", "[MultipleOf] divisor does not match the member type",
+        "The divisor on '{0}' does not parse as '{1}'", DiagnosticSeverity.Error);
+
+    public static readonly DiagnosticDescriptor UniqueItemsOnNonCollection = Descriptor(
+        "VM0024", "[UniqueItems] requires a collection",
+        "[UniqueItems] applies to collections; '{0}' is '{1}'", DiagnosticSeverity.Error);
+
+    /// <summary>
+    /// The quiet half of <c>[UniqueItems]</c>. The check runs through
+    /// <c>EqualityComparer&lt;T&gt;.Default</c>, so a class that does not override
+    /// <c>Equals</c> is compared by reference and two elements with identical contents are
+    /// "unique" - a rule that passes for the wrong reason rather than one that fails.
+    /// </summary>
+    public static readonly DiagnosticDescriptor UniqueItemsComparesByReference = Descriptor(
+        "VM0025", "[UniqueItems] will compare by reference",
+        "'{1}' does not override Equals, so [UniqueItems] on '{0}' compares elements by reference " +
+        "and two elements with equal contents both pass. Make it a record, override Equals, or " +
+        "implement IEquatable<{1}>",
+        DiagnosticSeverity.Warning);
+
+    public static readonly DiagnosticDescriptor RangeHasNoBounds = Descriptor(
+        "VM0026", "[Range] declares no bounds",
+        "[Range] on '{0}' sets neither Min nor Max, so it can never fail", DiagnosticSeverity.Warning);
+
+    /// <summary>
     /// Declared with a fixed default severity so release tracking can discover it; the effective
     /// severity is overridden per site from the resolved policy, because the same situation is a
     /// build error for an AOT-facing project and unremarkable for a JIT one.

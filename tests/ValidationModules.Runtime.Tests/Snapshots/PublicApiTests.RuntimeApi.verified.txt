@@ -8,77 +8,14 @@ namespace Microsoft.Extensions.DependencyInjection
         public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValidationRunner<T>(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
     }
 }
-namespace ValidationModules.Constraints
-{
-    public sealed class AllowedValuesAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
-    {
-        public AllowedValuesAttribute(params object[] values) { }
-        public System.StringComparison Comparison { get; init; }
-        public object[] Values { get; }
-    }
-    [System.AttributeUsage(System.AttributeTargets.Class | System.AttributeTargets.Struct | System.AttributeTargets.Interface)]
-    public sealed class GenerateValidatorAttribute : System.Attribute
-    {
-        public GenerateValidatorAttribute() { }
-        public System.Type[]? Profiles { get; init; }
-    }
-    public sealed class ItemCountAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
-    {
-        public ItemCountAttribute() { }
-        public ItemCountAttribute(int min, int max) { }
-        public int Max { get; init; }
-        public int Min { get; init; }
-    }
-    public sealed class PatternAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
-    {
-        public PatternAttribute(string pattern) { }
-        public PatternAttribute(System.Type regexProvider, string regexMember) { }
-        public int MatchTimeoutMilliseconds { get; init; }
-        public System.Text.RegularExpressions.RegexOptions Options { get; init; }
-        public string? Pattern { get; }
-        public string? RegexMember { get; }
-        public System.Type? RegexProvider { get; }
-    }
-    public sealed class RangeAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
-    {
-        public RangeAttribute(double min, double max) { }
-        public RangeAttribute(int min, int max) { }
-        public RangeAttribute(long min, long max) { }
-        public RangeAttribute(string min, string max) { }
-        public bool ExclusiveMax { get; init; }
-        public bool ExclusiveMin { get; init; }
-        public object Max { get; }
-        public object Min { get; }
-    }
-    public sealed class RequiredAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
-    {
-        public RequiredAttribute() { }
-        public bool AllowEmptyStrings { get; init; }
-    }
-    public sealed class StringLengthAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
-    {
-        public StringLengthAttribute() { }
-        public StringLengthAttribute(int min, int max) { }
-        public int Max { get; init; }
-        public int Min { get; init; }
-    }
-    public sealed class ValidateNestedAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
-    {
-        public ValidateNestedAttribute() { }
-    }
-    [System.AttributeUsage(System.AttributeTargets.Property | System.AttributeTargets.Field | System.AttributeTargets.Parameter, AllowMultiple=true, Inherited=true)]
-    public abstract class ValidationConstraintAttribute : System.Attribute
-    {
-        protected ValidationConstraintAttribute() { }
-        public string? Code { get; init; }
-        public System.Type? FromProfile { get; init; }
-        public string? Message { get; init; }
-        public System.Type[]? Profiles { get; init; }
-        public System.Type? UntilProfile { get; init; }
-    }
-}
 namespace ValidationModules
 {
+    public static class ConstraintChecks
+    {
+        public static bool AllUnique<T>(System.Collections.Generic.IEnumerable<T> items) { }
+        public static bool IsMultipleOf(double value, decimal divisor) { }
+        public static bool IsMultipleOf(float value, decimal divisor) { }
+    }
     [System.AttributeUsage(System.AttributeTargets.Assembly)]
     public sealed class DefaultValidationProfileAttribute : System.Attribute
     {
@@ -122,10 +59,17 @@ namespace ValidationModules
         public static ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Each<T, TElement>(this ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> rules)
             where TElement :  class { }
         public static ValidationModules.PropertyRules<T, string?> Length<T>(this ValidationModules.PropertyRules<T, string?> rules, int min = 0, int max = 2147483647) { }
+        public static ValidationModules.PropertyRules<T, decimal?> MultipleOf<T>(this ValidationModules.PropertyRules<T, decimal?> rules, decimal divisor) { }
+        public static ValidationModules.PropertyRules<T, double?> MultipleOf<T>(this ValidationModules.PropertyRules<T, double?> rules, double divisor) { }
+        public static ValidationModules.PropertyRules<T, long?> MultipleOf<T>(this ValidationModules.PropertyRules<T, long?> rules, long divisor) { }
         public static ValidationModules.PropertyRules<T, TValue?> Nested<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules)
             where TValue :  class { }
         public static ValidationModules.PropertyRules<T, string?> Pattern<T>(this ValidationModules.PropertyRules<T, string?> rules, System.Func<System.Text.RegularExpressions.Regex> pattern) { }
         public static ValidationModules.PropertyRules<T, TValue?> Range<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules, TValue min, TValue max)
+            where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
+        public static ValidationModules.PropertyRules<T, TValue?> RangeAtLeast<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules, TValue min)
+            where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
+        public static ValidationModules.PropertyRules<T, TValue?> RangeAtMost<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules, TValue max)
             where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
         public static ValidationModules.PropertyRules<T, string?> Required<T>(this ValidationModules.PropertyRules<T, string?> rules) { }
         public static ValidationModules.PropertyRules<T, TValue?> Required<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules)
@@ -133,6 +77,7 @@ namespace ValidationModules
         public static ValidationModules.PropertyRules<T, TValue?> Required<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules)
             where TValue :  struct { }
         public static ValidationModules.PropertyRules<T, string?> RequiredAllowingEmpty<T>(this ValidationModules.PropertyRules<T, string?> rules) { }
+        public static ValidationModules.PropertyRules<T, System.Collections.Generic.IEnumerable<TElement>?> Unique<T, TElement>(this ValidationModules.PropertyRules<T, System.Collections.Generic.IEnumerable<TElement>?> rules) { }
     }
     public sealed class PropertyRules<T, TValue>
     {
@@ -141,18 +86,20 @@ namespace ValidationModules
     public delegate void RuleAction<in T>(ref ValidationModules.ValidationContext context, T value);
     public static class RuntimeContract
     {
-        public const int Version = 2;
+        public const int Version = 3;
     }
     public static class ValidationCodes
     {
         public const string ArrayBounds = "array_bounds";
         public const string Enum = "enum";
         public const string Invalid = "invalid";
+        public const string MultipleOf = "multiple_of";
         public const string Pattern = "pattern";
         public const string Predicate = "predicate";
         public const string Range = "range";
         public const string Required = "required";
         public const string StringLength = "string_length";
+        public const string UniqueItems = "unique_items";
     }
     public readonly struct ValidationContext
     {
@@ -171,11 +118,17 @@ namespace ValidationModules
     {
         public static void AddAllowedValues(this ValidationModules.ValidationContext context, string field, string allowedValues, ValidationModules.ValidationSeverity severity = 0) { }
         public static void AddItemCount(this ValidationModules.ValidationContext context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0) { }
+        public static void AddMultipleOf(this ValidationModules.ValidationContext context, string field, decimal divisor, ValidationModules.ValidationSeverity severity = 0) { }
         public static void AddPattern(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0) { }
         public static void AddRange<T>(this ValidationModules.ValidationContext context, string field, T min, T max, ValidationModules.ValidationSeverity severity = 0)
             where T : System.IFormattable { }
+        public static void AddRangeAtLeast<T>(this ValidationModules.ValidationContext context, string field, T min, ValidationModules.ValidationSeverity severity = 0)
+            where T : System.IFormattable { }
+        public static void AddRangeAtMost<T>(this ValidationModules.ValidationContext context, string field, T max, ValidationModules.ValidationSeverity severity = 0)
+            where T : System.IFormattable { }
         public static void AddRequired(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0) { }
         public static void AddStringLength(this ValidationModules.ValidationContext context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0) { }
+        public static void AddUniqueItems(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0) { }
     }
     public readonly struct ValidationError : System.IEquatable<ValidationModules.ValidationError>
     {
@@ -228,10 +181,17 @@ namespace ValidationModules
         public ValidationModules.ValidationRules<T> Ensure(System.Func<T, bool> predicate, string? field = null, string? code = null, string? message = null, ValidationModules.ValidationSeverity severity = 0, [System.Runtime.CompilerServices.CallerArgumentExpression("predicate")] string? expression = null) { }
         public ValidationModules.PropertyRules<T, TValue> For<TValue>(System.Func<T, TValue> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
         public ValidationModules.PropertyRules<T, string?> Length(System.Func<T, string?> value, int min = 0, int max = 2147483647, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
+        public ValidationModules.PropertyRules<T, decimal?> MultipleOf(System.Func<T, decimal?> value, decimal divisor, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
+        public ValidationModules.PropertyRules<T, double?> MultipleOf(System.Func<T, double?> value, double divisor, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
+        public ValidationModules.PropertyRules<T, long?> MultipleOf(System.Func<T, long?> value, long divisor, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
         public ValidationModules.PropertyRules<T, TValue?> Nested<TValue>(System.Func<T, TValue?> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null)
             where TValue :  class { }
         public ValidationModules.PropertyRules<T, string?> Pattern(System.Func<T, string?> value, System.Func<System.Text.RegularExpressions.Regex> pattern, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
         public ValidationModules.PropertyRules<T, TValue?> Range<TValue>(System.Func<T, TValue?> value, TValue min, TValue max, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null)
+            where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
+        public ValidationModules.PropertyRules<T, TValue?> RangeAtLeast<TValue>(System.Func<T, TValue?> value, TValue min, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null)
+            where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
+        public ValidationModules.PropertyRules<T, TValue?> RangeAtMost<TValue>(System.Func<T, TValue?> value, TValue max, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null)
             where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
         public ValidationModules.PropertyRules<T, string?> Required(System.Func<T, string?> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
         public ValidationModules.PropertyRules<T, TValue?> Required<TValue>(System.Func<T, TValue?> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null)
@@ -239,6 +199,7 @@ namespace ValidationModules
         public ValidationModules.PropertyRules<T, TValue?> Required<TValue>(System.Func<T, TValue?> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null)
             where TValue :  struct { }
         public ValidationModules.PropertyRules<T, string?> RequiredAllowingEmpty(System.Func<T, string?> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
+        public ValidationModules.PropertyRules<T, System.Collections.Generic.IEnumerable<TElement>?> Unique<TElement>(System.Func<T, System.Collections.Generic.IEnumerable<TElement>?> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
     }
     public sealed class ValidationRunner<T>
     {
@@ -265,6 +226,88 @@ namespace ValidationModules
         public System.Func<System.IServiceProvider, object> Factory { get; init; }
         public System.Type? Profile { get; init; }
         public System.Type ServiceType { get; init; }
+    }
+}
+namespace ValidationModules.Constraints
+{
+    public sealed class AllowedValuesAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public AllowedValuesAttribute(params object[] values) { }
+        public System.StringComparison Comparison { get; init; }
+        public object[] Values { get; }
+    }
+    [System.AttributeUsage(System.AttributeTargets.Class | System.AttributeTargets.Struct | System.AttributeTargets.Interface)]
+    public sealed class GenerateValidatorAttribute : System.Attribute
+    {
+        public GenerateValidatorAttribute() { }
+        public System.Type[]? Profiles { get; init; }
+    }
+    public sealed class ItemCountAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public ItemCountAttribute() { }
+        public ItemCountAttribute(int min, int max) { }
+        public int Max { get; init; }
+        public int Min { get; init; }
+    }
+    public sealed class MultipleOfAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public MultipleOfAttribute(double divisor) { }
+        public MultipleOfAttribute(int divisor) { }
+        public MultipleOfAttribute(long divisor) { }
+        public MultipleOfAttribute(string divisor) { }
+        public object Divisor { get; }
+    }
+    public sealed class PatternAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public PatternAttribute(string pattern) { }
+        public PatternAttribute(System.Type regexProvider, string regexMember) { }
+        public int MatchTimeoutMilliseconds { get; init; }
+        public System.Text.RegularExpressions.RegexOptions Options { get; init; }
+        public string? Pattern { get; }
+        public string? RegexMember { get; }
+        public System.Type? RegexProvider { get; }
+    }
+    public sealed class RangeAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public RangeAttribute() { }
+        public RangeAttribute(double min, double max) { }
+        public RangeAttribute(int min, int max) { }
+        public RangeAttribute(long min, long max) { }
+        public RangeAttribute(string min, string max) { }
+        public bool ExclusiveMax { get; init; }
+        public bool ExclusiveMin { get; init; }
+        public object? Max { get; init; }
+        public object? Min { get; init; }
+    }
+    public sealed class RequiredAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public RequiredAttribute() { }
+        public bool AllowEmptyStrings { get; init; }
+    }
+    public sealed class StringLengthAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public StringLengthAttribute() { }
+        public StringLengthAttribute(int min, int max) { }
+        public int Max { get; init; }
+        public int Min { get; init; }
+    }
+    public sealed class UniqueItemsAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public UniqueItemsAttribute() { }
+    }
+    public sealed class ValidateNestedAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public ValidateNestedAttribute() { }
+    }
+    [System.AttributeUsage(System.AttributeTargets.Property | System.AttributeTargets.Field | System.AttributeTargets.Parameter, AllowMultiple=true, Inherited=true)]
+    public abstract class ValidationConstraintAttribute : System.Attribute
+    {
+        protected ValidationConstraintAttribute() { }
+        public string? Code { get; init; }
+        public System.Type? FromProfile { get; init; }
+        public string? Message { get; init; }
+        public System.Type[]? Profiles { get; init; }
+        public System.Type? UntilProfile { get; init; }
     }
 }
 namespace ValidationModules.Naming

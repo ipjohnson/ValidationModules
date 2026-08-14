@@ -15,6 +15,12 @@ VM0008 | ValidationModules.Usage | Error | A constraint's lower bound exceeds it
 VM0009 | ValidationModules.Usage | Error | A constrained property has no accessible getter.
 VM0010 | ValidationModules.Usage | Warning | A DataAnnotations constraint was skipped because the front-end is off.
 VM0016 | ValidationModules.Usage | Warning | RegexOptions.Compiled is ignored; patterns use [GeneratedRegex].
+VM0021 | ValidationModules.Usage | Error | [MultipleOf] was applied to a member with no numeric type.
+VM0022 | ValidationModules.Usage | Error | A [MultipleOf] divisor is zero or negative.
+VM0023 | ValidationModules.Usage | Error | A [MultipleOf] divisor does not parse as the member's type.
+VM0024 | ValidationModules.Usage | Error | [UniqueItems] was applied to a non-collection member.
+VM0025 | ValidationModules.Usage | Warning | [UniqueItems] will compare elements by reference.
+VM0026 | ValidationModules.Usage | Warning | [Range] declares neither bound and can never fail.
 VM0017 | ValidationModules.Usage | Warning | An inline pattern roots the regex engine in an AOT-facing project.
 VM0018 | ValidationModules.Usage | Error | A referenced regex member is missing, not static, inaccessible or not a Regex.
 VM0019 | ValidationModules.Usage | Error | Profile attribution is declared but profiles are not implemented.
