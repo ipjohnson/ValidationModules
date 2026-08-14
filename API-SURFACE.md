@@ -26,7 +26,7 @@ types and exactly what they get back*.
 | `ValidationModules.Testing` | conformance suite, assertions | test projects |
 | `Microsoft.Extensions.DependencyInjection` | `AddValidationModules` | composition root |
 
-**Constraints get their own namespace, and this is load-bearing.** Five of the seven attribute
+**Constraints get their own namespace, and this is load-bearing.** Five of the nine attribute
 names in plan §5 collide with `System.ComponentModel.DataAnnotations`: `Required`, `StringLength`,
 `Range`, `AllowedValues` and (via `Length`) the item-count family. A model file that imports both
 namespaces gets `error CS0104: 'Required' is an ambiguous reference` — verified, §14.4. Keeping
@@ -294,6 +294,8 @@ public sealed class ValidationException : Exception {
 | `[Pattern]` | `pattern` |
 | `[AllowedValues]` | `enum` |
 | `[ItemCount]` | `array_bounds` |
+| `[MultipleOf]` | `multiple_of` |
+| `[UniqueItems]` | `unique_items` |
 | `rules.Ensure(…)` | `predicate` |
 
 These are Hardened's existing wire codes verbatim (grepped from
@@ -395,7 +397,7 @@ bound per profile:
 public string Name { get; init; }
 ```
 
-### The seven
+### The nine
 
 ```csharp
 namespace ValidationModules.Constraints;
@@ -446,6 +448,18 @@ public sealed class AllowedValuesAttribute : ValidationConstraintAttribute {
     public object[] Values { get; }
     public StringComparison Comparison { get; init; } = StringComparison.Ordinal;
 }
+
+public sealed class MultipleOfAttribute : ValidationConstraintAttribute {
+    public MultipleOfAttribute(int divisor);
+    public MultipleOfAttribute(long divisor);
+    public MultipleOfAttribute(double divisor);
+    public MultipleOfAttribute(string divisor);   // decimal, which has no constant form
+    public object Divisor { get; }
+}
+
+// No arguments; presence is the constraint. The only constraint that does not compile to a
+// comparison - it calls ConstraintChecks.AllUnique.
+public sealed class UniqueItemsAttribute : ValidationConstraintAttribute;
 
 public sealed class ItemCountAttribute : ValidationConstraintAttribute {
     public ItemCountAttribute() { }
