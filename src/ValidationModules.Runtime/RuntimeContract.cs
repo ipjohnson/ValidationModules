@@ -25,10 +25,15 @@ namespace ValidationModules;
 /// </remarks>
 public static class RuntimeContract {
 
+    // 1 -> 2: the emitter began calling NestedValidation.ValidateRegistered after every nested
+    // descent, so that a validator registered for the nested type composes the same way one
+    // registered for the top-level type always has. A runtime at contract 1 has no such method, and
+    // the failure would land inside generated code - which is what VM0040 exists to prevent.
+
     /// <summary>
     /// The contract this runtime implements. Compared against
     /// <c>EmitterContract.RequiredRuntimeContract</c> by the generator, and against
     /// <c>$(ValidationModulesRuntimeContract)</c> by build tasks driving the emitter.
     /// </summary>
-    public const int Version = 1;
+    public const int Version = 2;
 }

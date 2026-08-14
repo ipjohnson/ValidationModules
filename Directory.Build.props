@@ -2,23 +2,26 @@
 
     <!--
         Single source of truth for the product version.
-        Release builds override PackageVersion from the git tag (see .github/workflows/release.yaml);
-        local and CI builds fall back to the values below.
+        Release builds override PackageVersion (see .github/workflows/release.yaml, which computes
+        1.0.0-rc(1000 + run number)); local and CI builds fall back to the values below.
 
-        0.x while the generator is unbuilt. IMPLEMENTATION-PLAN.md §7.5 makes the emitted surface
-        a compatibility promise the moment framework authors compile the Impl package in, so 1.0.0
-        should wait until Stage 4 has something to promise.
+        On the 1.0.0 release-candidate line, matching DependencyModules' own 1.0.0-rc* stream.
+        Stage 4 has shipped, so IMPLEMENTATION-PLAN.md §7.5's emitted-surface promise now has
+        something to promise - and RuntimeContract is what actually versions that surface, rather
+        than this number.
     -->
     <PropertyGroup>
-        <VersionPrefix>0.1.0</VersionPrefix>
+        <VersionPrefix>1.0.0</VersionPrefix>
         <!--
             Prerelease is not optional yet: DependencyModules.SourceGenerator.Impl is published only
             as 1.0.0-rc*, and NU5104 rejects a stable package with a prerelease dependency. Drop the
             suffix when DependencyModules goes stable.
+
+            rc0 for a local build, so it sorts below every published rc(1000+n).
         -->
-        <VersionSuffix Condition="'$(VersionSuffix)' == ''">alpha</VersionSuffix>
-        <AssemblyVersion>0.1.0.0</AssemblyVersion>
-        <FileVersion>0.1.0.0</FileVersion>
+        <VersionSuffix Condition="'$(VersionSuffix)' == ''">rc0</VersionSuffix>
+        <AssemblyVersion>1.0.0.0</AssemblyVersion>
+        <FileVersion>1.0.0.0</FileVersion>
     </PropertyGroup>
 
     <!--

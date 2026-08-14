@@ -30,8 +30,10 @@ Errors from inside `Address` arrive pathed: a failed `[Required]` on `PostalCode
 
 Two properties of that emitted code carry weight:
 
-- **The nested validator is referenced statically**, never injected. That is what keeps generated
-  validators parameterless and registration free of constructor reflection.
+- **The generated nested validator is referenced statically**, never injected. That is what keeps
+  generated validators parameterless and registration free of constructor reflection. Any *other*
+  validator registered for `Address` is picked up separately — see
+  [nested types compose too](/guide/registration#nested-types-compose-too).
 - **A null `Home` is skipped rather than reported.** Whether the property may be absent is
   `[Required]`'s question, not `[ValidateNested]`'s. Declare both if it is both:
 

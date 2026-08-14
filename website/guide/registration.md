@@ -141,6 +141,52 @@ services.AddValidationRunner<Pet>();
 Closed rather than open generic, deliberately — `AddScoped(typeof(ValidationRunner<>))` would have
 MS.DI construct it reflectively, which is what a Native AOT publish cannot do.
 
+## Nested types compose too
+
+A validator registered for a **nested** type runs when that type is reached through its parent, not
+just when it is validated directly:
+
+```csharp
+services.AddValidationModules(GeneratedValidators.All);
+services.AddSingleton<IValidatorFor<Address>, AddressBlocklistValidator>();
+services.AddValidationRunner<Pet>();
+```
+
+```csharp
+runner.Validate(pet);   // reports home.postal_code:blocked from the hand-written Address validator
+```
+
+This works because `ValidationContext` carries the scope it was started in
+(`ValidationContext.Services`), and every `Push` passes it down. After descending, the generated
+validator asks the container for any *other* validators registered for that type and runs them —
+excluding the generated one by reference, so nothing runs twice.
+
+The lookup is `GetServices<IValidatorFor<Address>>()`, a **closed** generic written by the generator,
+which knows the nested type at build time. The reflective spelling would be `MakeGenericType`, so
+this stays AOT-safe.
+
+::: warning Match the field name
+The generated `AddressValidator` derives its field name from `[JsonPropertyName]` and the naming
+policy. A hand-written validator has to say the same thing:
+
+```csharp
+context.Add("postal_code", "blocked", "postal code is blocked.");   // not "postalCode"
+```
+
+Otherwise one field arrives under two names depending on which rule failed. The runtime cannot check
+this for you — reading the attribute at run time is reflection.
+:::
+
+::: tip What it costs, and when
+Nothing when no container took part: `Services` is null, the lookup short-circuits, and the clean
+pass keeps its zero-allocation promise. That is the case for `PetValidator.Instance.Validate(pet)`
+and for a `ValidationRunner<T>` you constructed by hand in a test — both run the generated
+validators alone.
+
+With a provider present, each nested node resolves an enumerable. That is the price of composition,
+and you opt into it by starting the pass from a scope.
+:::
+
 ## Registering a validator by hand
 
 Nothing stops you adding your own alongside the generated one:

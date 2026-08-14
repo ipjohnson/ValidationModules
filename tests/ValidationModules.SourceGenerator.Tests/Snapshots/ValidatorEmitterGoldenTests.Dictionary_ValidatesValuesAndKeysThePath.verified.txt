@@ -37,6 +37,7 @@ public sealed partial class PetValidator : IValidatorFor<global::Sample.Pet> {
                 if (pair.Value is not null) {
                     var entryCtx = ctx.PushKey("toys", pair.Key?.ToString() ?? "");
                     global::Sample.ToyValidator.Instance.Validate(ref entryCtx, pair.Value);
+                    entryCtx.ValidateRegistered(pair.Value, global::Sample.ToyValidator.Instance);
                 }
             }
         }

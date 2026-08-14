@@ -43,6 +43,12 @@ public readonly struct ValidationContext {
 
     private readonly ValidationErrorCollector _collector;
 
+    /// <summary>
+    /// The scope this pass is running in, or <see langword="null"/> when it was started without
+    /// one. See <see cref="Services"/>.
+    /// </summary>
+    private readonly IServiceProvider? _services;
+
     private readonly string? _outermost;
     private readonly string? _outermostKey;
     private readonly string? _parent;
@@ -61,16 +67,23 @@ public readonly struct ValidationContext {
     /// Starts a validation pass at the root of the path.
     /// </summary>
     /// <param name="collector">Receives the errors this pass produces.</param>
-    public ValidationContext(ValidationErrorCollector collector) {
+    /// <param name="services">
+    /// The scope to resolve additional validators from, or <see langword="null"/>. Optional so that
+    /// a generated validator called through its <c>Instance</c> field keeps working with no
+    /// container present, which is the arrangement plan §2 rests on.
+    /// </param>
+    public ValidationContext(ValidationErrorCollector collector, IServiceProvider? services = null) {
         ArgumentNullException.ThrowIfNull(collector);
 
         _collector = collector;
+        _services = services;
         _outermostIndex = NoIndex;
         _parentIndex = NoIndex;
     }
 
     private ValidationContext(
         ValidationErrorCollector collector,
+        IServiceProvider? services,
         string? outermost,
         string? outermostKey,
         int outermostIndex,
@@ -79,6 +92,7 @@ public readonly struct ValidationContext {
         int parentIndex,
         int depth) {
         _collector = collector;
+        _services = services;
         _outermost = outermost;
         _outermostKey = outermostKey;
         _outermostIndex = outermostIndex;
@@ -160,6 +174,30 @@ public readonly struct ValidationContext {
     public Type? Profile => _collector.Profile;
 
     /// <summary>
+    /// The scope this pass is running in, or <see langword="null"/> when it was started without one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Carried so that descending into a nested object can pick up validators registered for
+    /// <i>that</i> type. Without it, composition worked at the top level and silently did not
+    /// nested: a hand-written <c>IValidatorFor&lt;Address&gt;</c> ran when an Address was validated
+    /// directly and was invisible when the same Address was reached through a Pet.
+    /// </para>
+    /// <para>
+    /// <b>Nullable, and that is the design rather than a concession.</b> A generated validator is a
+    /// singleton reached through a static field; there is no scope at type-init time and there does
+    /// not need to be one, because structural constraints are a pure function of the value. Null
+    /// means "no container took part in this pass", and every consumer of it short-circuits on that
+    /// before allocating anything.
+    /// </para>
+    /// <para>
+    /// It is <see cref="IServiceProvider"/> rather than a scope, because a validator has no business
+    /// creating or disposing one. Whoever started the pass owns the lifetime.
+    /// </para>
+    /// </remarks>
+    public IServiceProvider? Services => _services;
+
+    /// <summary>
     /// The one place a descent happens. The first push fills the outermost slot and leaves the
     /// parent empty - at depth 1 they would be the same segment, and holding it once keeps the
     /// render from having to special-case printing it twice. Every push after that overwrites the
@@ -174,9 +212,10 @@ public readonly struct ValidationContext {
         }
 
         return _depth == 0
-            ? new ValidationContext(_collector, segment, key, index, null, null, NoIndex, 1)
+            ? new ValidationContext(_collector, _services, segment, key, index, null, null, NoIndex, 1)
             : new ValidationContext(
-                _collector, _outermost, _outermostKey, _outermostIndex, segment, key, index, _depth + 1);
+                _collector, _services, _outermost, _outermostKey, _outermostIndex,
+                segment, key, index, _depth + 1);
     }
 
     /// <summary>
