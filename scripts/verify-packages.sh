@@ -74,6 +74,16 @@ cat > "${WORK}/Consumer.csproj" <<EOF
   <PropertyGroup>
     <OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
+
+    <!--
+      Restore into a throwaway folder rather than ~/.nuget/packages. NuGet caches by id and version,
+      so a second run at the same version serves the first run's package and never looks at the feed
+      this script just packed - which made the check pass against a generator two days old. CI never
+      saw it, because a fresh runner has an empty cache; that is what made it worth fixing rather
+      than working around with a unique version.
+    -->
+    <RestorePackagesPath>${WORK}/packages</RestorePackagesPath>
+    <DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="ValidationModules.Runtime" Version="${VERSION}"/>
