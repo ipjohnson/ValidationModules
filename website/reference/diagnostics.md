@@ -61,8 +61,11 @@ silently does not is worse than one you know is missing.
 A string constraint — `[StringLength]` or `[Pattern]` — on a member that is not a `string`.
 
 ```csharp
-[StringLength(1, 10)] public int Age { get; init; }        // VM0001
-[Pattern("^a$")]      public int Age { get; init; }        // VM0001
+[StringLength(1, 10)] // VM0001
+public int Age { get; init; }
+
+[Pattern("^a$")] // VM0001
+public int Age { get; init; }
 ```
 
 You probably wanted `[Range]` for a number, or `[ItemCount]` for a collection.
@@ -72,7 +75,8 @@ You probably wanted `[Range]` for a number, or `[ItemCount]` for a collection.
 **Error** — *`[ItemCount] applies to collections; 'Name' is 'string'`*
 
 ```csharp
-[ItemCount(1, 10)] public string? Name { get; init; }      // VM0002
+[ItemCount(1, 10)] // VM0002
+public string? Name { get; init; }
 ```
 
 A `string` is deliberately **not** a collection here, even though it implements `IEnumerable<char>`.
@@ -92,7 +96,8 @@ qualify, as do their nullable forms.
 **Warning** — *`'Age' is a non-nullable value type, so it is always present and [Required] can never fail`*
 
 ```csharp
-[Required] public int Age { get; init; }                   // VM0004
+[Required] // VM0004
+public int Age { get; init; }
 ```
 
 A warning rather than an error: the declaration is harmless, just inert. Making it an error would
@@ -125,7 +130,8 @@ Mark the nested type `[GenerateValidator]` when its rules arrive from a
 **Error** — *`The bounds on 'Name' are inverted, so the constraint can never be satisfied`*
 
 ```csharp
-[StringLength(10, 1)] public string? Name { get; init; }   // VM0008
+[StringLength(10, 1)] // VM0008
+public string? Name { get; init; }
 ```
 
 Applies to `[StringLength]` and `[ItemCount]`. Equal bounds are fine — `[StringLength(2, 2)]` is an
@@ -136,8 +142,11 @@ exact length.
 **Error** — *`'Name' has no accessible getter, so its constraints cannot be evaluated`*
 
 ```csharp
-[Required] public string? Name { set { } }                 // VM0009
-[Required] public string? Name { private get; set; }       // VM0009
+[Required] // VM0009
+public string? Name { set { } }
+
+[Required] // VM0009
+public string? Name { private get; set; }
 ```
 
 `internal` is fine — the generated validator lands in the same assembly.
@@ -151,7 +160,7 @@ applies.
 **Warning** — *`Patterns compile through [GeneratedRegex]; RegexOptions.Compiled on 'Sku' is ignored`*
 
 ```csharp
-[Pattern("^a$", Options = RegexOptions.Compiled)]          // VM0016
+[Pattern("^a$", Options = RegexOptions.Compiled)] // VM0016
 ```
 
 `RegexOptions.Compiled` emits IL through `Reflection.Emit`, which is the habit this library exists to
@@ -165,7 +174,7 @@ An inline `[Pattern("…")]` in an AOT-facing project. Constructing a `Regex` fr
 parser and interpreter must be in the binary — about 450 KB, once.
 
 ```csharp
-[Pattern("^[A-Z]{3}$")]                                    // VM0017 under AOT
+[Pattern("^[A-Z]{3}$")] // VM0017 under AOT
 public string? Sku { get; init; }
 ```
 
@@ -212,7 +221,7 @@ and be visible to the generated validator. The message names which of those fail
 **Error** — *`'Required' declares a profile on 'Tag', and profiles are not implemented — profile arguments are ignored, so every rule is enforced in every profile including the ones it excludes`*
 
 ```csharp
-[Required(FromProfile = typeof(V2))]     // VM0019
+[Required(FromProfile = typeof(V2))] // VM0019
 public string? Tag { get; init; }
 ```
 
@@ -272,7 +281,8 @@ Write `[property: Required]`, or use a record with an explicit body:
 
 ```csharp
 public record Pet {
-    [Required] public string? Name { get; init; }
+    [Required]
+    public string? Name { get; init; }
 }
 ```
 
@@ -304,7 +314,8 @@ Move the rule to a [rule class](/guide/rule-classes) or an
 **Warning** — *`'CompareAttribute' on 'Confirm' compares against another member, which a per-property constraint cannot express`*
 
 ```csharp
-[Compare(nameof(Password))] public string? Confirm { get; set; }   // VM0061
+[Compare(nameof(Password))] // VM0061
+public string? Confirm { get; set; }
 ```
 
 Use `rules.Ensure`, which is the declaration form that *can* span two properties:
@@ -337,9 +348,14 @@ so the member's type decides which constraint each becomes. A member that is nei
 **Error** — *`The bounds on 'Born' do not parse as 'System.DateOnly'`*
 
 ```csharp
-[Range("not-a-date", "2100-01-01")] public DateOnly Born { get; init; }   // VM0065
-[Range("abc", "def")]               public decimal Price { get; init; }  // VM0065
-[Range("2000-01-01", "2100-01-01")] public int Age { get; init; }        // VM0065
+[Range("not-a-date", "2100-01-01")] // VM0065
+public DateOnly Born { get; init; }
+
+[Range("abc", "def")] // VM0065
+public decimal Price { get; init; }
+
+[Range("2000-01-01", "2100-01-01")] // VM0065
+public int Age { get; init; }
 ```
 
 A bound written as a string is parsed against the member's own type at generation time — which is

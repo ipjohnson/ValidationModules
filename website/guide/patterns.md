@@ -89,8 +89,11 @@ Under `Error`, the offending constraint is dropped and the rest of the type is s
 
 ```csharp
 public record Pet {
-    [Required]                 public string? Name { get; init; }
-    [Pattern("^[A-Z]{3}$")]    public string? Sku  { get; init; }
+    [Required]
+    public string? Name { get; init; }
+
+    [Pattern("^[A-Z]{3}$")]
+    public string? Sku { get; init; }
 }
 ```
 
@@ -156,7 +159,7 @@ attribute's `Options` is not consulted when a member is named.
 Caught at build time, with the regex engine's own message:
 
 ```csharp
-[Pattern("[")]   // VM0006: The pattern on 'Sku' is not a valid regular expression: …
+[Pattern("[")] // VM0006: The pattern on 'Sku' is not a valid regular expression: …
 ```
 
 Re-describing the parser's complaint would produce a worse message than the one it already gives.

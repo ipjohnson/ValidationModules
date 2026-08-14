@@ -4,9 +4,14 @@
 the property's shape, and the emitter decides which of three readings applies at build time.
 
 ```csharp
-[ValidateNested] public Address? Home              { get; init; }   // an object
-[ValidateNested] public List<Toy> Toys             { get; init; }   // a collection
-[ValidateNested] public Dictionary<string, Toy> ByName { get; init; }   // a dictionary
+[ValidateNested]
+public Address? Home { get; init; } // an object
+
+[ValidateNested]
+public List<Toy> Toys { get; init; } // a collection
+
+[ValidateNested]
+public Dictionary<string, Toy> ByName { get; init; } // a dictionary
 ```
 
 ## Objects
@@ -86,7 +91,8 @@ The emitter picks a `for` loop when the type is an array, or has both an indexer
 implements `IList<T>`/`IReadOnlyList<T>`. Otherwise it falls back to `foreach`:
 
 ```csharp
-[ValidateNested] public IEnumerable<Toy> Toys { get; init; }
+[ValidateNested]
+public IEnumerable<Toy> Toys { get; init; }
 ```
 
 ```csharp
@@ -111,7 +117,8 @@ about its properties, and there is no field name to hang "this element was null"
 ## Dictionaries
 
 ```csharp
-[ValidateNested] public Dictionary<string, Toy> ToysByName { get; init; } = new();
+[ValidateNested]
+public Dictionary<string, Toy> ToysByName { get; init; } = new();
 ```
 
 ```csharp
@@ -148,11 +155,13 @@ property of a type instead:
 
 ```csharp
 public record Shelf {
-    [ValidateNested] public List<Toy> Toys { get; init; } = [];
+    [ValidateNested]
+    public List<Toy> Toys { get; init; } = [];
 }
 
 public record Room {
-    [ValidateNested] public List<Shelf> Shelves { get; init; } = [];
+    [ValidateNested]
+    public List<Shelf> Shelves { get; init; } = [];
 }
 ```
 

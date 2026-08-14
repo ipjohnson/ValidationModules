@@ -26,7 +26,7 @@ Profiles are Stage 3 of the plan and are **not built**. The declaration surface 
 implementation, so this compiles and reads exactly as the design describes:
 
 ```csharp
-[Required(FromProfile = typeof(V2))]     // VM0019, an error
+[Required(FromProfile = typeof(V2))] // VM0019, an error
 public string? Tag { get; init; }
 ```
 
@@ -46,8 +46,11 @@ Declaring `IValidationProfile` types is harmless. Attaching a rule to one is wha
 | `Message` | `string?` | *composed* | |
 
 ```csharp
-[Required]                              public string? Name { get; init; }
-[Required(AllowEmptyStrings = true)]    public string? Note { get; init; }
+[Required]
+public string? Name { get; init; }
+
+[Required(AllowEmptyStrings = true)]
+public string? Note { get; init; }
 ```
 
 Fails on null; on a `string`, also on empty and whitespace-only. On a non-nullable value type it can
@@ -63,9 +66,14 @@ never fail — [VM0004](/reference/diagnostics#vm0004).
 | `Message` | `string?` | *composed* |
 
 ```csharp
-[StringLength(min: 1, max: 100)]   public string? Name  { get; init; }
-[StringLength(Max = 500)]          public string? Notes { get; init; }
-[StringLength(Min = 8)]            public string? Token { get; init; }
+[StringLength(min: 1, max: 100)]
+public string? Name { get; init; }
+
+[StringLength(Max = 500)]
+public string? Notes { get; init; }
+
+[StringLength(Min = 8)]
+public string? Token { get; init; }
 ```
 
 Constructors: `()` and `(int min, int max)`. Strings only —
@@ -88,8 +96,11 @@ Length is `string.Length` — UTF-16 code units, not grapheme clusters.
 Constructors: `(int, int)`, `(long, long)`, `(double, double)`, `(string, string)`.
 
 ```csharp
-[Range(0, 30)]                          public int    Age   { get; init; }
-[Range(0.0, 1.0, ExclusiveMax = true)]  public double Ratio { get; init; }
+[Range(0, 30)]
+public int Age { get; init; }
+
+[Range(0.0, 1.0, ExclusiveMax = true)]
+public double Ratio { get; init; }
 ```
 
 Numeric and date-like types only — [VM0003](/reference/diagnostics#vm0003).
@@ -135,7 +146,8 @@ See [Patterns and regex](/guide/patterns) for which form to use.
 | `Message` | `string?` | *composed* |
 
 ```csharp
-[AllowedValues("available", "pending", "sold")] public string? Status { get; init; }
+[AllowedValues("available", "pending", "sold")]
+public string? Status { get; init; }
 ```
 
 Constructor is `params object[]`. The permitted set is echoed in the message — an enum's members are
@@ -151,7 +163,8 @@ a schema fact, published in your OpenAPI document anyway.
 | `Message` | `string?` | *composed* |
 
 ```csharp
-[ItemCount(min: 1, max: 10)] public List<string> Tags { get; init; } = [];
+[ItemCount(min: 1, max: 10)]
+public List<string> Tags { get; init; } = [];
 ```
 
 Collections only — [VM0002](/reference/diagnostics#vm0002). A `string` is not a collection here.

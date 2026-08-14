@@ -7,13 +7,26 @@ becomes a branch; none of them is ever constructed at run time.
 using ValidationModules.Constraints;
 
 public record Pet {
-    [Required]                                      public string? Name   { get; init; }
-    [StringLength(min: 1, max: 100)]                public string? Name2  { get; init; }
-    [Range(0, 30)]                                  public int     Age    { get; init; }
-    [Pattern("^[A-Z]{3}$")]                         public string? Sku    { get; init; }
-    [AllowedValues("available", "pending", "sold")] public string? Status { get; init; }
-    [ItemCount(min: 1, max: 10)]                    public List<string> Tags { get; init; } = [];
-    [ValidateNested]                                public Address? Home  { get; init; }
+    [Required]
+    public string? Name { get; init; }
+
+    [StringLength(min: 1, max: 100)]
+    public string? Name2 { get; init; }
+
+    [Range(0, 30)]
+    public int Age { get; init; }
+
+    [Pattern("^[A-Z]{3}$")]
+    public string? Sku { get; init; }
+
+    [AllowedValues("available", "pending", "sold")]
+    public string? Status { get; init; }
+
+    [ItemCount(min: 1, max: 10)]
+    public List<string> Tags { get; init; } = [];
+
+    [ValidateNested]
+    public Address? Home { get; init; }
 }
 ```
 
@@ -27,7 +40,8 @@ mark it `[GenerateValidator]`.
 Emits code `required`.
 
 ```csharp
-[Required] public string? Name { get; init; }
+[Required]
+public string? Name { get; init; }
 ```
 
 ```csharp
@@ -60,9 +74,14 @@ Emits code `string_length`. Strings only; anything else is
 [VM0001](/reference/diagnostics#vm0001).
 
 ```csharp
-[StringLength(min: 1, max: 100)] public string? Name  { get; init; }
-[StringLength(Max = 500)]        public string? Notes { get; init; }
-[StringLength(Min = 8)]          public string? Token { get; init; }
+[StringLength(min: 1, max: 100)]
+public string? Name { get; init; }
+
+[StringLength(Max = 500)]
+public string? Notes { get; init; }
+
+[StringLength(Min = 8)]
+public string? Token { get; init; }
 ```
 
 The named form exists so declaring one bound reads as declaring one bound. `Min` defaults to `0` and
@@ -78,8 +97,11 @@ Emits code `range`. Numeric and date-like types only; anything else is
 [VM0003](/reference/diagnostics#vm0003).
 
 ```csharp
-[Range(0, 30)]                         public int    Age   { get; init; }
-[Range(0.0, 1.0, ExclusiveMax = true)] public double Ratio { get; init; }
+[Range(0, 30)]
+public int Age { get; init; }
+
+[Range(0.0, 1.0, ExclusiveMax = true)]
+public double Ratio { get; init; }
 ```
 
 Bounds are inclusive unless you say otherwise:
@@ -98,9 +120,14 @@ in metadata, so their bounds are written as strings and parsed against the membe
 build time:
 
 ```csharp
-[Range("2000-01-01", "2100-12-31")] public DateOnly Born  { get; init; }
-[Range("0.00", "9.99")]             public decimal Price { get; init; }
-[Range("00:00:00", "23:59:59")]     public TimeSpan Window { get; init; }
+[Range("2000-01-01", "2100-12-31")]
+public DateOnly Born { get; init; }
+
+[Range("0.00", "9.99")]
+public decimal Price { get; init; }
+
+[Range("00:00:00", "23:59:59")]
+public TimeSpan Window { get; init; }
 ```
 
 The bound is emitted as a constructor call — `new global::System.DateOnly(2000, 1, 1)` — in both the
@@ -116,7 +143,8 @@ the build machine's would make the same source mean two things.
 Emits code `pattern`. Strings only; anything else is [VM0001](/reference/diagnostics#vm0001).
 
 ```csharp
-[Pattern("^[A-Z]{3}$")] public string? Sku { get; init; }
+[Pattern("^[A-Z]{3}$")]
+public string? Sku { get; init; }
 ```
 
 Two forms, and which one you use is the single biggest decision on this page for an AOT build:
@@ -149,7 +177,8 @@ is exactly what this library exists to avoid; patterns go through `[GeneratedReg
 Emits code `enum` — named for OpenAPI's `enum` keyword, which is where the code comes from.
 
 ```csharp
-[AllowedValues("available", "pending", "sold")] public string? Status { get; init; }
+[AllowedValues("available", "pending", "sold")]
+public string? Status { get; init; }
 ```
 
 ```csharp
@@ -168,7 +197,8 @@ Emits code `array_bounds`. Collections only; anything else is
 [VM0002](/reference/diagnostics#vm0002).
 
 ```csharp
-[ItemCount(min: 1, max: 10)] public List<string> Tags { get; init; } = [];
+[ItemCount(min: 1, max: 10)]
+public List<string> Tags { get; init; } = [];
 ```
 
 `Min`/`Max` behave exactly as `[StringLength]`'s do, including the named form and the defaults.
@@ -187,9 +217,14 @@ Carries no check of its own. It tells the emitter to descend, and what descendin
 the property's shape — see [Nesting and collections](/guide/nesting).
 
 ```csharp
-[ValidateNested] public Address? Home { get; init; }
-[ValidateNested] public List<Toy> Toys { get; init; } = [];
-[ValidateNested] public Dictionary<string, Toy> ToysByName { get; init; } = new();
+[ValidateNested]
+public Address? Home { get; init; }
+
+[ValidateNested]
+public List<Toy> Toys { get; init; } = [];
+
+[ValidateNested]
+public Dictionary<string, Toy> ToysByName { get; init; } = new();
 ```
 
 `[ValidateNested]` does not recurse into a value that failed `[Required]` — there is nothing to walk,
@@ -243,8 +278,10 @@ merging zero validators reports every value as valid.
 
 A record with an explicit body avoids the question:
 
+```csharp
 public record Pet {
-    [Required] public string? Name { get; init; }
+    [Required]
+    public string? Name { get; init; }
 }
 ```
 :::
