@@ -38,6 +38,7 @@ public sealed partial class PetValidator : IValidatorFor<global::Sample.Pet> {
                 if (element is not null) {
                     var elementCtx = ctx.PushIndex("toys", iToys);
                     global::Sample.ToyValidator.Instance.Validate(ref elementCtx, element);
+                    elementCtx.ValidateRegistered(element, global::Sample.ToyValidator.Instance);
                 }
                 iToys++;
             }

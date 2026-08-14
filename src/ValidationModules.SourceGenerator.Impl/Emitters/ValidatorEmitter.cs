@@ -152,6 +152,7 @@ public sealed class ValidatorEmitter {
             builder.AppendLine("                if (pair.Value is not null) {");
             builder.AppendLine($"                    var entryCtx = ctx.PushKey({Quote(property.FieldName)}, pair.Key?.ToString() ?? \"\");");
             builder.AppendLine($"                    {property.ElementValidatorName}.Instance.Validate(ref entryCtx, pair.Value);");
+            builder.AppendLine($"                    entryCtx.ValidateRegistered(pair.Value, {property.ElementValidatorName}.Instance);");
             builder.AppendLine("                }");
             builder.AppendLine("            }");
             builder.AppendLine("        }");
@@ -162,6 +163,7 @@ public sealed class ValidatorEmitter {
             builder.AppendLine($"        if ({access} is {{ }} nested{property.PropertyName}) {{");
             builder.AppendLine($"            var ctx{property.PropertyName} = ctx.Push({Quote(property.FieldName)});");
             builder.AppendLine($"            {property.ElementValidatorName}.Instance.Validate(ref ctx{property.PropertyName}, nested{property.PropertyName});");
+            builder.AppendLine($"            ctx{property.PropertyName}.ValidateRegistered(nested{property.PropertyName}, {property.ElementValidatorName}.Instance);");
             builder.AppendLine("        }");
             return;
         }
@@ -184,6 +186,7 @@ public sealed class ValidatorEmitter {
         builder.AppendLine("                if (element is not null) {");
         builder.AppendLine($"                    var elementCtx = ctx.PushIndex({Quote(property.FieldName)}, {index});");
         builder.AppendLine($"                    {property.ElementValidatorName}.Instance.Validate(ref elementCtx, element);");
+        builder.AppendLine($"                    elementCtx.ValidateRegistered(element, {property.ElementValidatorName}.Instance);");
         builder.AppendLine("                }");
 
         if (!property.IsIndexable) {

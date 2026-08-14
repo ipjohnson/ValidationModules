@@ -56,6 +56,7 @@ public sealed partial class PetValidator : IValidatorFor<global::Sample.Pet> {
         if (value.Home is { } nestedHome) {
             var ctxHome = ctx.Push("home");
             global::Sample.AddressValidator.Instance.Validate(ref ctxHome, nestedHome);
+            ctxHome.ValidateRegistered(nestedHome, global::Sample.AddressValidator.Instance);
         }
     }
 }
