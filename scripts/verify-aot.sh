@@ -64,7 +64,7 @@ services.AddValidationRunner<Pet>();
 
 var provider = services.BuildServiceProvider();
 
-var pet = new Pet { Home = new Address(), Toys = [new Toy(), new Toy()] };
+var pet = new Pet { Home = new Address(), Toys = [new Toy(), new Toy()], Ratio = 1.05 };
 var result = provider.GetRequiredService<IValidatorFor<Pet>>().Validate(pet);
 
 var fields = string.Join(", ", result.Errors.Select(e => e.Field));
@@ -72,7 +72,8 @@ Expect(fields == "name, home.postalCode, toys[0].name, toys[1].name", $"paths: {
 
 // Structural and business rules, merged, with the context crossing an await.
 var runner = provider.CreateScope().ServiceProvider.GetRequiredService<ValidationRunner<Pet>>();
-var merged = await runner.ValidateAsync(new Pet { Name = "Rex", Toys = [new Toy { Name = "ball" }] });
+var merged = await runner.ValidateAsync(
+    new Pet { Name = "Rex", Toys = [new Toy { Name = "ball" }], Ratio = 1.05 });
 var async = string.Join(", ", merged.Errors.Select(e => $"{e.Field}:{e.Code}"));
 Expect(async == "home.postalCode:unknown", $"async: {async}");
 
@@ -80,7 +81,13 @@ Expect(async == "home.postalCode:unknown", $"async: {async}");
 // holds a singleton - constructing one per call would allocate the object and its nested array.
 var standalone = new PetValidator();
 var collector = new ValidationErrorCollector();
-var clean = new Pet { Name = "Rex", Home = new Address { PostalCode = "1" }, Toys = [new Toy { Name = "b" }] };
+var clean = new Pet {
+    Name = "Rex",
+    Home = new Address { PostalCode = "1" },
+    Toys = [new Toy { Name = "b" }],
+    Codes = ["a", "b", "c"],
+    Ratio = 1.05,
+};
 for (var i = 0; i < 100; i++) {
     collector.Reset();
     standalone.ValidateInto(collector, clean);
@@ -116,6 +123,12 @@ sealed record Pet {
     public string? Name { get; init; }
     public Address? Home { get; init; }
     public IReadOnlyList<Toy> Toys { get; init; } = [];
+
+    // What [UniqueItems] and [MultipleOf] compile against. Here so the zero-allocation assertion
+    // and the trim analysis both cover ConstraintChecks, which is the only part of a validation
+    // pass that is not a comparison.
+    public IReadOnlyList<string> Codes { get; init; } = [];
+    public double Ratio { get; init; }
 }
 
 sealed class AddressValidator : IValidatorFor<Address> {
@@ -164,6 +177,14 @@ sealed class PetValidator : IValidatorFor<Pet> {
             var nested = context.Push("home");
             var hv = HomeValidators;
             for (var v = 0; v < hv.Length; v++) hv[v].Validate(ref nested, home);
+        }
+
+        if (!ConstraintChecks.AllUnique(value.Codes)) {
+            context.AddUniqueItems("codes");
+        }
+
+        if (!ConstraintChecks.IsMultipleOf(value.Ratio, 0.01m)) {
+            context.AddMultipleOf("ratio", 0.01m);
         }
 
         for (var i = 0; i < value.Toys.Count; i++) {

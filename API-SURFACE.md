@@ -885,6 +885,12 @@ as one diagnostic is declared (plan §13).
 | VM0014 | Error | cyclic profile chain |
 | VM0015 | Info | `Profiles` combined with `FromProfile`/`UntilProfile` |
 | VM0020 | Warning | type has profiled rules, assembly declares no default profile — §6.3 |
+| VM0021 | Error | `[MultipleOf]` on a type with no arithmetic |
+| VM0022 | Error | a `[MultipleOf]` divisor that is zero or negative |
+| VM0023 | Error | a `[MultipleOf]` divisor that does not parse as the member's type |
+| VM0024 | Error | `[UniqueItems]` on a non-collection |
+| VM0025 | Warning | `[UniqueItems]` over elements with no equality of their own |
+| VM0026 | Warning | `[Range]` declares neither bound |
 | VM0030 | Error | overlay member matches no property on the target |
 | VM0031 | Error | overlay member type differs from the target property |
 | VM0032 | Warning | two overlays declare conflicting bounds for one property |

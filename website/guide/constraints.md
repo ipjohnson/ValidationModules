@@ -1,6 +1,6 @@
 # Constraints
 
-Seven attributes, all in `ValidationModules.Constraints`. Each one is read at build time and
+Nine attributes, all in `ValidationModules.Constraints`. Each one is read at build time and
 becomes a branch; none of them is ever constructed at run time.
 
 ```csharp
@@ -24,6 +24,12 @@ public record Pet {
 
     [ItemCount(min: 1, max: 10)]
     public List<string> Tags { get; init; } = [];
+
+    [MultipleOf(5)]
+    public int Quantity { get; init; }
+
+    [UniqueItems]
+    public List<string> Codes { get; init; } = [];
 
     [ValidateNested]
     public Address? Home { get; init; }
@@ -113,6 +119,17 @@ if ((value.Age < 0 || value.Age > 30)) ctx.AddRange("age", 0, 30);
 `ExclusiveMin` and `ExclusiveMax` turn the corresponding comparison into `<=` / `>=`. Applying
 `[Range]` to a `Nullable<T>` checks the value only when it has one; combine it with `[Required]` if
 null should also fail.
+
+Either bound may stand alone, through the named form:
+
+```csharp
+[Range(Min = 1)]
+public int Quantity { get; init; }
+```
+
+An absent bound emits no comparison and is not named in the message — `quantity must be at least 1.`
+rather than a second bound nobody wrote. A `[Range]` with neither bound can never fail, and is
+[VM0026](/reference/diagnostics#vm0026).
 
 ::: tip String bounds, for the types with no constant form
 `decimal`, `DateTime`, `DateOnly`, `TimeOnly`, `TimeSpan` and `DateTimeOffset` have no constant form
@@ -210,6 +227,87 @@ VM0002 and `[StringLength]` is what you wanted.
 The count is read without enumerating wherever a `Count` or `Length` exists. Where it does not — a
 bare `IEnumerable<T>` — the emitter walks it once instead, so the constraint still applies rather
 than being silently skipped.
+
+## `[MultipleOf]`
+
+Emits code `multiple_of`. OpenAPI's `multipleOf`. Numeric types only; anything else is
+[VM0021](/reference/diagnostics#vm0021).
+
+```csharp
+[MultipleOf(5)]
+public int Quantity { get; init; }
+
+[MultipleOf("0.05")]
+public decimal Price { get; init; }
+
+[MultipleOf(0.01)]
+public double Ratio { get; init; }
+```
+
+The divisor must be greater than zero — [VM0022](/reference/diagnostics#vm0022). This is an error
+rather than a dropped rule because `value % 0` is a compile error for an integral member and a
+`DivideByZeroException` for a decimal one, and both would land inside a generated file. A divisor
+with no form the member's type can be checked against is
+[VM0023](/reference/diagnostics#vm0023): a fractional divisor on an `int`, or a string that does
+not parse.
+
+`decimal` takes its divisor as a string, for the same reason `[Range]` does — it has no constant
+form in metadata.
+
+::: warning `double` and `float` are not checked with `%`
+In binary floating point `0.3 % 0.01` is `0.00999999999999998`. A naive check against
+`multipleOf: 0.01` rejects 0.3, 1.05, 99.99 and 1234.56 — every value a specification author would
+call valid.
+
+So a `double` or `float` member converts to `decimal` first, which rounds to 15 significant digits
+and cancels exactly that error:
+
+```csharp
+if (!ConstraintChecks.IsMultipleOf(value.Ratio, 0.01m)) ctx.AddMultipleOf("ratio", 0.01m);
+```
+
+Integral and `decimal` members are already exact, and compile to a plain comparison:
+
+```csharp
+if ((value.Quantity % 5 != 0)) ctx.AddMultipleOf("quantity", 5);
+```
+
+The one case with no answer is a floating-point value past `decimal`'s range, around 7.9e28. Its
+spacing there is wider than any realistic divisor, so it is reported as a failure rather than
+passed as a value that could not be evaluated.
+:::
+
+## `[UniqueItems]`
+
+Emits code `unique_items`. OpenAPI's `uniqueItems`. Collections only; anything else is
+[VM0024](/reference/diagnostics#vm0024). No arguments — presence is the constraint.
+
+```csharp
+[UniqueItems]
+public List<string> Codes { get; init; } = [];
+```
+
+This is the one constraint here that is not a comparison, so it is the one that calls into the
+runtime rather than being written inline:
+
+```csharp
+if (value.Codes is not null && !ConstraintChecks.AllUnique(value.Codes)) ctx.AddUniqueItems("codes");
+```
+
+`AllUnique` compares pairwise below sixteen elements and allocates a `HashSet<T>` above them, so a
+request body's worth of elements still costs nothing on the heap. It takes an `IEnumerable<T>`, so
+a property with no `Count` is checked like any other.
+
+::: warning Elements need equality of their own
+Comparison is `EqualityComparer<T>.Default` — value equality for records, primitives and anything
+implementing `IEquatable<T>`, and **reference equality** for a class that overrides none of it. Two
+elements with identical contents would then both pass, which is a rule succeeding for the wrong
+reason. The generator reports [VM0025](/reference/diagnostics#vm0025) rather than letting it
+through quietly.
+
+A `HashSet<T>` or a dictionary cannot fail this constraint, since its own type already guarantees
+what the rule asks for.
+:::
 
 ## `[ValidateNested]`
 

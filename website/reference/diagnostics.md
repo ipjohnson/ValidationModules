@@ -34,6 +34,12 @@ silently does not is worse than one you know is missing.
 | [VM0009](#vm0009) | Error | constrained property has no accessible getter |
 | [VM0010](#vm0010) | Warning | a DataAnnotations constraint was skipped |
 | [VM0016](#vm0016) | Warning | `RegexOptions.Compiled` is not meaningful |
+| [VM0021](#vm0021) | Error | `[MultipleOf]` on a type with no arithmetic |
+| [VM0022](#vm0022) | Error | a `[MultipleOf]` divisor that is zero or negative |
+| [VM0023](#vm0023) | Error | a `[MultipleOf]` divisor that does not parse as the member's type |
+| [VM0024](#vm0024) | Error | `[UniqueItems]` on a non-collection |
+| [VM0025](#vm0025) | Warning | `[UniqueItems]` over elements with no equality of their own |
+| [VM0026](#vm0026) | Warning | `[Range]` declares neither bound |
 | [VM0017](#vm0017) | *policy* | an inline pattern roots the regex engine |
 | [VM0018](#vm0018) | Error | referenced regex member is unusable |
 | [VM0019](#vm0019) | Error | profile attribution is declared, and profiles are not implemented |
@@ -244,6 +250,84 @@ Plan §11 reserves those for profile *semantics* — a profile argument that is 
 that admits nothing, a cyclic chain. Those describe a feature that exists. This one says it does
 not, so it sits with VM0016–VM0018, the "this does not do what you think" family.
 :::
+
+### VM0021 {#vm0021}
+
+**Error** — *`[MultipleOf] applies to integral, decimal and floating-point types; 'Name' is 'string'`*
+
+The check is arithmetic, so the member's type has to support it. Every integral type, `decimal`,
+`double` and `float` qualify, as do their nullable forms. Dates do not: `multipleOf` has no meaning
+for them in OpenAPI either.
+
+### VM0022 {#vm0022}
+
+**Error** — *`The divisor on 'Quantity' is '0'; it must be greater than zero`*
+
+```csharp
+[MultipleOf(0)] // VM0022
+public int Quantity { get; init; }
+```
+
+An error rather than a dropped rule, because of where the alternative fails. `value % 0` is CS0020
+for an integral member and a `DivideByZeroException` for a decimal one — so leaving it to the
+emitter puts the failure inside a generated file, which is the one place plan §7.5 will not have
+one. A negative divisor is caught here too; OpenAPI requires `multipleOf` to be positive, and
+`% -5` answers the same question as `% 5` while reading as if it did not.
+
+### VM0023 {#vm0023}
+
+**Error** — *`The divisor on 'Quantity' does not parse as 'int'`*
+
+The divisor is parsed at build time against the member's own type. This fires when it has no form
+that type can be checked against — a string that is not a number, or a fractional divisor on an
+integral member:
+
+```csharp
+[MultipleOf("2.5")] // VM0023 — 'Quantity' is int
+public int Quantity { get; init; }
+```
+
+Dropping the fraction silently would emit `value % 2`, which is a different rule.
+
+### VM0024 {#vm0024}
+
+**Error** — *`[UniqueItems] applies to collections; 'Name' is 'string'`*
+
+`string` is deliberately not a collection here, as it is not for `[ItemCount]` — treating one as a
+collection would turn this into a check for repeated characters.
+
+### VM0025 {#vm0025}
+
+**Warning** — *`'Sample.Tag' does not override Equals, so [UniqueItems] on 'Tags' compares elements by reference and two elements with equal contents both pass`*
+
+```csharp
+public class Tag { public string? Value { get; init; } }
+
+public record Order {
+    [UniqueItems] // VM0025
+    public List<Tag> Tags { get; init; } = [];
+}
+```
+
+Uniqueness runs through `EqualityComparer<T>.Default`. For a class that overrides nothing that is
+reference equality, so two elements with identical contents are both "unique" and the rule passes
+for the wrong reason — which is worse than one that fails, because nothing says so.
+
+Make it a `record`, override `Equals`, or implement `IEquatable<T>`; any of the three silences this
+and makes the check mean what it reads as. Structs do not warn: `ValueType.Equals` compares fields,
+which is slow but correct.
+
+### VM0026 {#vm0026}
+
+**Warning** — *`[Range] on 'Age' sets neither Min nor Max, so it can never fail`*
+
+```csharp
+[Range] // VM0026
+public int Age { get; init; }
+```
+
+A warning rather than an error, for VM0004's reason: the declaration is inert rather than wrong.
+Set `Min`, `Max`, or both.
 
 ### VM0040 {#vm0040}
 
