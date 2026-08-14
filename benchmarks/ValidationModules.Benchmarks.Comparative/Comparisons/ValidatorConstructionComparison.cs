@@ -32,20 +32,23 @@ namespace ValidationModules.Benchmarks.Comparative.Comparisons;
 [MemoryDiagnoser]
 [BenchmarkCategory(ComparativeCategories.Startup)]
 public class ValidatorConstructionComparison {
+
+    // Hoisted: constructing per invocation would put an allocation on the measured path.
+    private static readonly CustomerValidator CustomerValidatorShared = new();
     private Customer _valid = null!;
 
     [GlobalSetup]
     public void Setup() {
         _valid = SampleData.ValidCustomer();
 
-        _ = CustomerValidator.Instance.IsValid(_valid);
+        _ = CustomerValidatorShared.IsValid(_valid);
         _ = CustomerFluentValidator.Instance.Validate(_valid);
     }
 
     // ---- Reaching the validator ----------------------------------------------------------------
 
     [Benchmark(Baseline = true, Description = "ValidationModules - reach the singleton")]
-    public IValidatorFor<Customer> Vm_Reach() => CustomerValidator.Instance;
+    public IValidatorFor<Customer> Vm_Reach() => CustomerValidatorShared;
 
     [Benchmark(Description = "FluentValidation - construct a validator")]
     public IValidator<Customer> Fv_Construct() => new CustomerFluentValidator();
@@ -61,7 +64,7 @@ public class ValidatorConstructionComparison {
     // ---- Reaching it and using it, which is what a request actually does ------------------------
 
     [Benchmark(Description = "ValidationModules - singleton + validate")]
-    public bool Vm_Shared_Validate() => CustomerValidator.Instance.IsValid(_valid);
+    public bool Vm_Shared_Validate() => CustomerValidatorShared.IsValid(_valid);
 
     [Benchmark(Description = "FluentValidation - shared validator + validate (correct usage)")]
     public bool Fv_Shared_Validate() => CustomerFluentValidator.Instance.Validate(_valid).IsValid;

@@ -16,6 +16,9 @@ namespace ValidationModules.Benchmarks.Components;
 [MemoryDiagnoser]
 [BenchmarkCategory(BenchmarkCategories.Component)]
 public class ErrorCollectorBenchmarks {
+
+    // Hoisted: constructing per invocation would put an allocation on the measured path.
+    private static readonly CustomerValidator CustomerValidatorShared = new();
     private readonly ValidationErrorCollector _pooled = new();
     private readonly ValidationErrorCollector _pooledSynchronized = ValidationErrorCollector.CreateSynchronized();
 
@@ -32,7 +35,7 @@ public class ErrorCollectorBenchmarks {
     public bool Fresh_CleanPass() {
         var collector = new ValidationErrorCollector();
 
-        CustomerValidator.Instance.ValidateInto(collector, _valid);
+        CustomerValidatorShared.ValidateInto(collector, _valid);
 
         return collector.HasErrors;
     }
@@ -41,7 +44,7 @@ public class ErrorCollectorBenchmarks {
     public bool Pooled_CleanPass() {
         _pooled.Reset();
 
-        CustomerValidator.Instance.ValidateInto(_pooled, _valid);
+        CustomerValidatorShared.ValidateInto(_pooled, _valid);
 
         return _pooled.HasErrors;
     }
@@ -50,7 +53,7 @@ public class ErrorCollectorBenchmarks {
     public bool Fresh_FailingPass() {
         var collector = new ValidationErrorCollector();
 
-        CustomerValidator.Instance.ValidateInto(collector, _invalid);
+        CustomerValidatorShared.ValidateInto(collector, _invalid);
 
         return collector.HasErrors;
     }
@@ -59,7 +62,7 @@ public class ErrorCollectorBenchmarks {
     public bool Pooled_FailingPass() {
         _pooled.Reset();
 
-        CustomerValidator.Instance.ValidateInto(_pooled, _invalid);
+        CustomerValidatorShared.ValidateInto(_pooled, _invalid);
 
         return _pooled.HasErrors;
     }
@@ -72,7 +75,7 @@ public class ErrorCollectorBenchmarks {
     public bool Synchronized_FailingPass() {
         _pooledSynchronized.Reset();
 
-        CustomerValidator.Instance.ValidateInto(_pooledSynchronized, _invalid);
+        CustomerValidatorShared.ValidateInto(_pooledSynchronized, _invalid);
 
         return _pooledSynchronized.HasErrors;
     }
@@ -81,7 +84,7 @@ public class ErrorCollectorBenchmarks {
     public ValidationResult ToResult_Clean() {
         _pooled.Reset();
 
-        CustomerValidator.Instance.ValidateInto(_pooled, _valid);
+        CustomerValidatorShared.ValidateInto(_pooled, _valid);
 
         return _pooled.ToResult();
     }
@@ -90,7 +93,7 @@ public class ErrorCollectorBenchmarks {
     public ValidationResult ToResult_Failing() {
         _pooled.Reset();
 
-        CustomerValidator.Instance.ValidateInto(_pooled, _invalid);
+        CustomerValidatorShared.ValidateInto(_pooled, _invalid);
 
         return _pooled.ToResult();
     }
@@ -102,11 +105,11 @@ public class ErrorCollectorBenchmarks {
     [Benchmark(Description = "Merge two failing results")]
     public ValidationResult Merge_TwoFailing() {
         _pooled.Reset();
-        CustomerValidator.Instance.ValidateInto(_pooled, _invalid);
+        CustomerValidatorShared.ValidateInto(_pooled, _invalid);
         var first = _pooled.ToResult();
 
         _pooled.Reset();
-        CustomerValidator.Instance.ValidateInto(_pooled, _invalid);
+        CustomerValidatorShared.ValidateInto(_pooled, _invalid);
         var second = _pooled.ToResult();
 
         return first.Merge(second);

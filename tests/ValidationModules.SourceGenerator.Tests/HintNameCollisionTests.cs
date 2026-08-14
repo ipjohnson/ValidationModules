@@ -65,8 +65,10 @@ public class HintNameCollisionTests {
 
         var registration = result.Sources["GeneratedValidatorRegistration.g.cs"];
 
-        Assert.Contains("global::Api.V1.CustomerValidator.Instance", registration);
-        Assert.Contains("global::Api.V2.CustomerValidator.Instance", registration);
+        // Registered by implementation type, so the container constructs each and injects whatever
+        // validates its nested properties.
+        Assert.Contains("global::Api.V1.CustomerValidator>()", registration);
+        Assert.Contains("global::Api.V2.CustomerValidator>()", registration);
     }
 
     /// <summary>

@@ -152,7 +152,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
                 .ThenBy(model => model.ValidatorName, StringComparer.Ordinal)
                 .ToArray();
 
-            if (new RegistrationEmitter().Emit(ordered, mode, ns) is { } source) {
+            if (new RegistrationEmitter().Emit(ordered, mode, ns, generatorOptions.Naming) is { } source) {
                 production.AddSource("GeneratedValidatorRegistration.g.cs", source);
             }
         });

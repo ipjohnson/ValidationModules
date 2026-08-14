@@ -22,6 +22,14 @@ namespace ValidationModules.Benchmarks.Components;
 [MemoryDiagnoser]
 [BenchmarkCategory(BenchmarkCategories.Component)]
 public class ConstraintBenchmarks {
+
+    // Hoisted: constructing per invocation would put an allocation on the measured path.
+    private static readonly AllowedValuesOnlyValidator AllowedValuesOnlyValidatorShared = new();
+    private static readonly ItemCountOnlyValidator ItemCountOnlyValidatorShared = new();
+    private static readonly PatternOnlyValidator PatternOnlyValidatorShared = new();
+    private static readonly RangeOnlyValidator RangeOnlyValidatorShared = new();
+    private static readonly RequiredOnlyValidator RequiredOnlyValidatorShared = new();
+    private static readonly StringLengthOnlyValidator StringLengthOnlyValidatorShared = new();
     private readonly ValidationErrorCollector _collector = new();
 
     private RequiredOnly _required = null!;
@@ -49,7 +57,7 @@ public class ConstraintBenchmarks {
     public int Required() {
         _collector.Reset();
 
-        RequiredOnlyValidator.Instance.ValidateInto(_collector, _required);
+        RequiredOnlyValidatorShared.ValidateInto(_collector, _required);
 
         return _collector.Count;
     }
@@ -58,7 +66,7 @@ public class ConstraintBenchmarks {
     public int StringLength() {
         _collector.Reset();
 
-        StringLengthOnlyValidator.Instance.ValidateInto(_collector, _stringLength);
+        StringLengthOnlyValidatorShared.ValidateInto(_collector, _stringLength);
 
         return _collector.Count;
     }
@@ -67,7 +75,7 @@ public class ConstraintBenchmarks {
     public int Range() {
         _collector.Reset();
 
-        RangeOnlyValidator.Instance.ValidateInto(_collector, _range);
+        RangeOnlyValidatorShared.ValidateInto(_collector, _range);
 
         return _collector.Count;
     }
@@ -80,7 +88,7 @@ public class ConstraintBenchmarks {
     public int Pattern() {
         _collector.Reset();
 
-        PatternOnlyValidator.Instance.ValidateInto(_collector, _pattern);
+        PatternOnlyValidatorShared.ValidateInto(_collector, _pattern);
 
         return _collector.Count;
     }
@@ -94,7 +102,7 @@ public class ConstraintBenchmarks {
     public int AllowedValues() {
         _collector.Reset();
 
-        AllowedValuesOnlyValidator.Instance.ValidateInto(_collector, _allowedValues);
+        AllowedValuesOnlyValidatorShared.ValidateInto(_collector, _allowedValues);
 
         return _collector.Count;
     }
@@ -103,7 +111,7 @@ public class ConstraintBenchmarks {
     public int ItemCount() {
         _collector.Reset();
 
-        ItemCountOnlyValidator.Instance.ValidateInto(_collector, _itemCount);
+        ItemCountOnlyValidatorShared.ValidateInto(_collector, _itemCount);
 
         return _collector.Count;
     }

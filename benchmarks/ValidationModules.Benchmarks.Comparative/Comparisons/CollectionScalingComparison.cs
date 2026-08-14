@@ -29,6 +29,9 @@ namespace ValidationModules.Benchmarks.Comparative.Comparisons;
 [MemoryDiagnoser]
 [BenchmarkCategory(ComparativeCategories.Collection)]
 public class CollectionScalingComparison {
+
+    // Hoisted: constructing per invocation would put an allocation on the measured path.
+    private static readonly BasketValidator BasketValidatorShared = new();
     private readonly ValidationErrorCollector _pooled = new();
 
     private Basket _basket = null!;
@@ -41,18 +44,18 @@ public class CollectionScalingComparison {
     public void Setup() {
         _basket = SampleData.BasketOf(Elements);
 
-        _ = BasketValidator.Instance.IsValid(_basket);
+        _ = BasketValidatorShared.IsValid(_basket);
         _ = BasketFluentValidator.Instance.Validate(_basket);
     }
 
     [Benchmark(Baseline = true, Description = "ValidationModules")]
-    public bool Vm() => BasketValidator.Instance.IsValid(_basket);
+    public bool Vm() => BasketValidatorShared.IsValid(_basket);
 
     [Benchmark(Description = "ValidationModules - pooled collector")]
     public bool Vm_Pooled() {
         _pooled.Reset();
 
-        BasketValidator.Instance.ValidateInto(_pooled, _basket);
+        BasketValidatorShared.ValidateInto(_pooled, _basket);
 
         return !_pooled.HasErrors;
     }

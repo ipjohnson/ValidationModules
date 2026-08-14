@@ -31,6 +31,11 @@ namespace ValidationModules.Benchmarks.Comparative;
 /// </remarks>
 public static class EngineParity {
 
+    // Hoisted: constructing per invocation would put an allocation on the measured path.
+    private static readonly BasketValidator BasketValidatorShared = new();
+    private static readonly CustomerValidator CustomerValidatorShared = new();
+    private static readonly OrderValidator OrderValidatorShared = new();
+
     /// <summary>
     /// Throws if the engines disagree about any sample payload.
     /// </summary>
@@ -39,27 +44,27 @@ public static class EngineParity {
         var mismatches = new List<string>();
 
         Compare(mismatches, "flat, clean",
-            VmCount(CustomerValidator.Instance, SampleData.ValidCustomer()),
+            VmCount(CustomerValidatorShared, SampleData.ValidCustomer()),
             FvCount(CustomerFluentValidator.Instance, SampleData.ValidCustomer()),
             DaCount(SampleData.ValidAnnotatedCustomer()));
 
         Compare(mismatches, "flat, every rule violated",
-            VmCount(CustomerValidator.Instance, SampleData.InvalidCustomer()),
+            VmCount(CustomerValidatorShared, SampleData.InvalidCustomer()),
             FvCount(CustomerFluentValidator.Instance, SampleData.InvalidCustomer()),
             DaCount(SampleData.InvalidAnnotatedCustomer()));
 
         Compare(mismatches, "nested, clean",
-            VmCount(OrderValidator.Instance, SampleData.ValidOrder()),
+            VmCount(OrderValidatorShared, SampleData.ValidOrder()),
             FvCount(OrderFluentValidator.Instance, SampleData.ValidOrder()),
             null);
 
         Compare(mismatches, "nested, one failure per level",
-            VmCount(OrderValidator.Instance, SampleData.InvalidOrder()),
+            VmCount(OrderValidatorShared, SampleData.InvalidOrder()),
             FvCount(OrderFluentValidator.Instance, SampleData.InvalidOrder()),
             null);
 
         Compare(mismatches, "basket of 100",
-            VmCount(BasketValidator.Instance, SampleData.BasketOf(100)),
+            VmCount(BasketValidatorShared, SampleData.BasketOf(100)),
             FvCount(BasketFluentValidator.Instance, SampleData.BasketOf(100)),
             null);
 

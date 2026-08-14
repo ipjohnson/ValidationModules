@@ -31,7 +31,7 @@ public class RegistrationBenchmarks {
     [GlobalSetup]
     public void Setup() {
         var services = new ServiceCollection();
-        services.AddValidationModules(GeneratedValidators.All);
+        services.AddValidationModulesBenchmarksValidators();
         services.AddValidationRunner<Customer>();
 
         _provider = services.BuildServiceProvider();
@@ -53,7 +53,7 @@ public class RegistrationBenchmarks {
     public int Register() {
         var services = new ServiceCollection();
 
-        services.AddValidationModules(GeneratedValidators.All);
+        services.AddValidationModulesBenchmarksValidators();
 
         return services.Count;
     }
@@ -65,7 +65,7 @@ public class RegistrationBenchmarks {
     [Benchmark(Description = "Register + BuildServiceProvider")]
     public ServiceProvider Register_AndBuild() {
         var services = new ServiceCollection();
-        services.AddValidationModules(GeneratedValidators.All);
+        services.AddValidationModulesBenchmarksValidators();
 
         return services.BuildServiceProvider();
     }

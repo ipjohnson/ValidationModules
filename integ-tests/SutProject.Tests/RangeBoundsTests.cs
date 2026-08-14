@@ -23,7 +23,7 @@ public class RangeBoundsTests {
 
     [Fact]
     public void CleanValue_IsValid() {
-        Assert.True(BookingValidator.Instance.IsValid(Valid()));
+        Assert.True(new BookingValidator().IsValid(Valid()));
     }
 
     [Theory]
@@ -36,7 +36,7 @@ public class RangeBoundsTests {
         // passing by coincidence.
         var booking = Valid() with { Starts = new DateOnly(year, month, day) };
 
-        Assert.Equal(expected, BookingValidator.Instance.IsValid(booking));
+        Assert.Equal(expected, new BookingValidator().IsValid(booking));
     }
 
     [Theory]
@@ -48,7 +48,7 @@ public class RangeBoundsTests {
         // The suffix matters: without it the bound is a double, and 9.99 as a double is not 9.99.
         var booking = Valid() with { Price = decimal.Parse(price, System.Globalization.CultureInfo.InvariantCulture) };
 
-        Assert.Equal(expected, BookingValidator.Instance.IsValid(booking));
+        Assert.Equal(expected, new BookingValidator().IsValid(booking));
     }
 
     [Theory]
@@ -59,18 +59,18 @@ public class RangeBoundsTests {
     public void TimeSpanBounds_AreParsedAsAnElapsedDuration(int seconds, bool expected) {
         var booking = Valid() with { Window = TimeSpan.FromSeconds(seconds) };
 
-        Assert.Equal(expected, BookingValidator.Instance.IsValid(booking));
+        Assert.Equal(expected, new BookingValidator().IsValid(booking));
     }
 
     [Fact]
     public void ExclusiveUpperBound_RejectsTheBoundItself() {
-        Assert.False(BookingValidator.Instance.IsValid(Valid() with { Effective = new DateTime(2100, 1, 1) }));
-        Assert.True(BookingValidator.Instance.IsValid(Valid() with { Effective = new DateTime(2099, 12, 31) }));
+        Assert.False(new BookingValidator().IsValid(Valid() with { Effective = new DateTime(2100, 1, 1) }));
+        Assert.True(new BookingValidator().IsValid(Valid() with { Effective = new DateTime(2099, 12, 31) }));
     }
 
     [Fact]
     public void OutOfRange_ReportsTheRangeCode() {
-        var result = BookingValidator.Instance.Validate(Valid() with { Starts = new DateOnly(1999, 1, 1) });
+        var result = new BookingValidator().Validate(Valid() with { Starts = new DateOnly(1999, 1, 1) });
 
         var error = Assert.Single(result.Errors);
         Assert.Equal(ValidationCodes.Range, error.Code);
@@ -81,7 +81,7 @@ public class RangeBoundsTests {
     public void OutOfRange_RendersTheBoundsInTheMessage() {
         // The message and the comparison take the same expression, so this also pins that they
         // cannot disagree about what the bound is.
-        var result = BookingValidator.Instance.Validate(Valid() with { Starts = new DateOnly(1999, 1, 1) });
+        var result = new BookingValidator().Validate(Valid() with { Starts = new DateOnly(1999, 1, 1) });
 
         var message = Assert.Single(result.Errors).Message;
 
@@ -98,7 +98,7 @@ public class RangeBoundsTests {
             Effective = new DateTime(1999, 1, 1),
         };
 
-        var result = BookingValidator.Instance.Validate(booking);
+        var result = new BookingValidator().Validate(booking);
 
         Assert.Equal(4, result.Errors.Count);
         Assert.All(result.Errors, error => Assert.Equal(ValidationCodes.Range, error.Code));

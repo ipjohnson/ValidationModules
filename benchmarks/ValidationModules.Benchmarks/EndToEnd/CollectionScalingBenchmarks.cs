@@ -24,6 +24,9 @@ namespace ValidationModules.Benchmarks.EndToEnd;
 [MemoryDiagnoser]
 [BenchmarkCategory(BenchmarkCategories.EndToEnd)]
 public class CollectionScalingBenchmarks {
+
+    // Hoisted: constructing per invocation would put an allocation on the measured path.
+    private static readonly BasketValidator BasketValidatorShared = new();
     private readonly ValidationErrorCollector _pooled = new();
 
     private Basket _clean = null!;
@@ -40,13 +43,13 @@ public class CollectionScalingBenchmarks {
     }
 
     [Benchmark(Baseline = true, Description = "All elements clean, IsValid")]
-    public bool Clean_IsValid() => BasketValidator.Instance.IsValid(_clean);
+    public bool Clean_IsValid() => BasketValidatorShared.IsValid(_clean);
 
     [Benchmark(Description = "All elements clean, ValidateInto a pooled collector")]
     public bool Clean_ValidateInto() {
         _pooled.Reset();
 
-        BasketValidator.Instance.ValidateInto(_pooled, _clean);
+        BasketValidatorShared.ValidateInto(_pooled, _clean);
 
         return _pooled.HasErrors;
     }
@@ -56,5 +59,5 @@ public class CollectionScalingBenchmarks {
     /// Each failure materializes a <c>lines[n].quantity</c> path.
     /// </summary>
     [Benchmark(Description = "1 in 10 elements failing, Validate")]
-    public ValidationResult Failing_Validate() => BasketValidator.Instance.Validate(_withFailures);
+    public ValidationResult Failing_Validate() => BasketValidatorShared.Validate(_withFailures);
 }

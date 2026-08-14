@@ -17,25 +17,25 @@ public class DataAnnotationsFrontEndTests {
 
     [Fact]
     public void Generator_ProducedAValidatorFromDataAnnotationsAlone() {
-        Assert.NotNull(CustomerValidator.Instance);
+        Assert.NotNull(new CustomerValidator());
     }
 
     [Fact]
     public void Validate_CleanValue_IsValid() {
-        Assert.True(CustomerValidator.Instance.IsValid(ValidCustomer()));
+        Assert.True(new CustomerValidator().IsValid(ValidCustomer()));
     }
 
     [Fact]
     public void Required_TreatsWhitespaceAsMissing() {
         // DataAnnotations trims before testing, and the compiled form matches it.
-        var result = CustomerValidator.Instance.Validate(ValidCustomer(customer => customer.Name = "   "));
+        var result = new CustomerValidator().Validate(ValidCustomer(customer => customer.Name = "   "));
 
         Assert.Equal(ValidationCodes.Required, Assert.Single(result.Errors).Code);
     }
 
     [Fact]
     public void StringLength_ReadsBothBoundsIncludingMinimumLength() {
-        var tooShort = CustomerValidator.Instance.Validate(ValidCustomer(c => c.Name = "a"));
+        var tooShort = new CustomerValidator().Validate(ValidCustomer(c => c.Name = "a"));
 
         var error = Assert.Single(tooShort.Errors);
         Assert.Equal(ValidationCodes.StringLength, error.Code);
@@ -46,19 +46,19 @@ public class DataAnnotationsFrontEndTests {
     public void RegularExpression_IsAnchored() {
         // The divergence from the native [Pattern], and the reason they are two IR states rather
         // than one. DataAnnotations requires the whole value to match, so an embedded match fails.
-        Assert.True(CustomerValidator.Instance.IsValid(ValidCustomer(c => c.Code = "ABC")));
-        Assert.False(CustomerValidator.Instance.IsValid(ValidCustomer(c => c.Code = "xABCx")));
+        Assert.True(new CustomerValidator().IsValid(ValidCustomer(c => c.Code = "ABC")));
+        Assert.False(new CustomerValidator().IsValid(ValidCustomer(c => c.Code = "xABCx")));
     }
 
     [Fact]
     public void RegularExpression_AnchoringRejectsATrailingNewline() {
         // \z rather than $, which would otherwise admit "ABC\n".
-        Assert.False(CustomerValidator.Instance.IsValid(ValidCustomer(c => c.Code = "ABC\n")));
+        Assert.False(new CustomerValidator().IsValid(ValidCustomer(c => c.Code = "ABC\n")));
     }
 
     [Fact]
     public void Range_MapsToTheSameConstraintAsTheNativeAttribute() {
-        var result = CustomerValidator.Instance.Validate(ValidCustomer(c => c.Age = 0));
+        var result = new CustomerValidator().Validate(ValidCustomer(c => c.Age = 0));
 
         Assert.Equal("age must be between 1 and 120.", Assert.Single(result.Errors).Message);
     }
@@ -67,7 +67,7 @@ public class DataAnnotationsFrontEndTests {
     public void MaxLength_OnACollection_BecomesAnItemCountConstraint() {
         // [MaxLength] applies to strings and collections in DataAnnotations; the member's type is
         // what decides which constraint it compiles to.
-        var result = CustomerValidator.Instance.Validate(
+        var result = new CustomerValidator().Validate(
             ValidCustomer(c => c.Tags = new List<string> { "a", "b", "c", "d" }));
 
         var error = Assert.Single(result.Errors);
@@ -77,14 +77,14 @@ public class DataAnnotationsFrontEndTests {
 
     [Fact]
     public void AllowedValues_MapsAcross() {
-        var result = CustomerValidator.Instance.Validate(ValidCustomer(c => c.Tier = "bronze"));
+        var result = new CustomerValidator().Validate(ValidCustomer(c => c.Tier = "bronze"));
 
         Assert.Equal(ValidationCodes.Enum, Assert.Single(result.Errors).Code);
     }
 
     [Fact]
     public void FieldNames_UseTheSamePolicyAsNativeConstraints() {
-        var result = CustomerValidator.Instance.Validate(ValidCustomer(c => c.Name = null));
+        var result = new CustomerValidator().Validate(ValidCustomer(c => c.Name = null));
 
         Assert.Equal("name", Assert.Single(result.Errors).Field);
     }

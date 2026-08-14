@@ -26,6 +26,9 @@ namespace ValidationModules.Benchmarks.Comparative.Comparisons;
 [MemoryDiagnoser]
 [BenchmarkCategory(ComparativeCategories.Nested)]
 public class NestedValidationComparison {
+
+    // Hoisted: constructing per invocation would put an allocation on the measured path.
+    private static readonly OrderValidator OrderValidatorShared = new();
     private readonly List<DataAnnotations.ValidationResult> _annotationResults = [];
     private readonly ValidationErrorCollector _pooled = new();
 
@@ -41,13 +44,13 @@ public class NestedValidationComparison {
         _validAnnotated = SampleData.ValidAnnotatedOrder();
         _invalidAnnotated = SampleData.InvalidAnnotatedOrder();
 
-        _ = OrderValidator.Instance.IsValid(_valid);
+        _ = OrderValidatorShared.IsValid(_valid);
         _ = OrderFluentValidator.Instance.Validate(_valid);
         _ = DataAnnotationsEngine.TryValidate(_validAnnotated, _annotationResults);
     }
 
     [Benchmark(Baseline = true, Description = "ValidationModules - clean")]
-    public bool Vm_Clean() => OrderValidator.Instance.IsValid(_valid);
+    public bool Vm_Clean() => OrderValidatorShared.IsValid(_valid);
 
     [Benchmark(Description = "FluentValidation - clean")]
     public bool Fv_Clean() => OrderFluentValidator.Instance.Validate(_valid).IsValid;
@@ -59,7 +62,7 @@ public class NestedValidationComparison {
     public bool Vm_Clean_Pooled() {
         _pooled.Reset();
 
-        OrderValidator.Instance.ValidateInto(_pooled, _valid);
+        OrderValidatorShared.ValidateInto(_pooled, _valid);
 
         return !_pooled.HasErrors;
     }
@@ -69,7 +72,7 @@ public class NestedValidationComparison {
     /// build a qualified error path.
     /// </summary>
     [Benchmark(Description = "ValidationModules - 1 failure per level")]
-    public ValidationResult Vm_Failing() => OrderValidator.Instance.Validate(_invalid);
+    public ValidationResult Vm_Failing() => OrderValidatorShared.Validate(_invalid);
 
     [Benchmark(Description = "FluentValidation - 1 failure per level")]
     public FluentValidation.Results.ValidationResult Fv_Failing() =>

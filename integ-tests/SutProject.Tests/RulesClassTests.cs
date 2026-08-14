@@ -22,7 +22,7 @@ namespace SutProject.Tests;
 /// </remarks>
 public class RulesClassTests {
 
-    private static readonly IValidatorFor<Reservation> Generated = ReservationValidator.Instance;
+    private static readonly IValidatorFor<Reservation> Generated = new ReservationValidator();
     private static readonly IValidatorFor<Reservation> Described = new DescribedValidator<Reservation>(new ReservationRules());
 
     /// <summary>
