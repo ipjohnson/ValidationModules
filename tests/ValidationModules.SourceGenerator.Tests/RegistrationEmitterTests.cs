@@ -53,17 +53,30 @@ public class RegistrationEmitterTests {
         Registration(compiles: true, properties);
 
     [Fact]
-    public void ServiceCollectionBranch_EmitsAStaticTableOfFactories() {
-        // Factory delegates rather than (Type, Type) pairs, so nothing resolves through
-        // ActivatorUtilities' constructor reflection.
+    public void ServiceCollectionBranch_EmitsAnIServiceCollectionExtension() {
+        // Strongly typed AddSingleton calls rather than a table of (Type, factory) records: the
+        // table erased the generic, allocated closures at static init to iterate once at startup,
+        // and lived in a class the consumer had to know the name of.
         Snapshot.Match(Registration(("ValidationModules_Registration", "ServiceCollection")));
     }
 
     [Fact]
-    public void DependencyModulesBranch_EmitsACompleteModule() {
-        // IDependencyModule has exactly one member without a default implementation, so no DM
-        // generator involvement is needed and there is no partial left to complete.
+    public void DependencyModulesBranch_EmitsAModuleWrappingTheSameExtension() {
+        // One body, two wrappers — plan §7.3. The module is a single call into the extension rather
+        // than a second copy of the registrations, so the two branches cannot drift.
         Snapshot.Match(Registration(compiles: false, ("ValidationModules_Registration", "DependencyModules")));
+    }
+
+    [Fact]
+    public void DependencyModulesBranch_DelegatesRatherThanRepeatingTheRegistrations() {
+        var source = Registration(compiles: false, ("ValidationModules_Registration", "DependencyModules"));
+
+        Assert.Contains("services.AddGeneratorTestsValidators();", source);
+
+        // The validator registrations appear once, in the extension — not again inside the module.
+        // Anchored on "services.AddSingleton<" rather than "AddSingleton<", which also matches
+        // inside the TryAddSingleton that registers the namer.
+        Assert.Equal(2, source.Split("services.AddSingleton<").Length - 1);
     }
 
     [Fact]
@@ -77,8 +90,40 @@ public class RegistrationEmitterTests {
     public void WithoutDependencyModulesReferenced_TheDefaultIsTheServiceCollectionBranch() {
         // The harness compilation does not reference DependencyModules, so this is the probe's
         // negative answer rather than an explicit setting.
-        Assert.Contains("GeneratedValidators", Registration());
+        Assert.Contains("AddGeneratorTestsValidators", Registration());
         Assert.DoesNotContain("IDependencyModule", Registration());
+    }
+
+    [Fact]
+    public void TheExtensionLandsInTheDependencyInjectionNamespace() {
+        // Where a composition root has already imported, so the method turns up on IntelliSense
+        // after `services.Add` without a second using.
+        Assert.Contains("namespace Microsoft.Extensions.DependencyInjection {", Registration());
+    }
+
+    [Fact]
+    public void NoValidatorRegistrationTableIsEmitted() {
+        // ValidatorRegistration and AddValidationModules(IReadOnlyList<…>) stay in the runtime for
+        // anyone hand-building a table. Nothing generates one.
+        var source = Registration();
+
+        Assert.DoesNotContain("GeneratedValidators", source);
+        Assert.DoesNotContain("ValidatorRegistration", source);
+    }
+
+    [Theory]
+    [InlineData(null, "CamelCaseFieldNamer")]
+    [InlineData("SnakeCase", "SnakeCaseFieldNamer")]
+    [InlineData("PascalCase", "PascalCaseFieldNamer")]
+    [InlineData("AsDeclared", "PascalCaseFieldNamer")]
+    public void TheRegisteredNamerMatchesThePolicyTheLiteralsWereEmittedWith(string? policy, string expected) {
+        // Field names are baked in at build time, so a namer resolved at run time that disagrees
+        // with them puts one field on the wire under two spellings.
+        var source = policy is null
+            ? Registration()
+            : Registration(("ValidationModules_FieldNaming", policy));
+
+        Assert.Contains($"TryAddSingleton<IValidationFieldNamer>({expected}.Instance)", source);
     }
 
     [Fact]
@@ -133,14 +178,19 @@ public class RegistrationEmitterTests {
     }
 
     [Theory]
-    [InlineData("My-App", "My_App")]
-    [InlineData("7Eleven", "_7Eleven")]
-    [InlineData("My..App", "My.App")]
-    public void AssemblyNameThatIsNotAValidNamespace_IsSanitized(string assemblyName, string expected) {
-        // "My-App" emitted `namespace My-App;` and broke the consumer's build in generated code.
+    [InlineData("My-App", "AddMy_AppValidators")]
+    [InlineData("7Eleven", "Add_7ElevenValidators")]
+    [InlineData("My..App", "AddMyAppValidators")]
+    [InlineData("My.App", "AddMyAppValidators")]
+    public void AssemblyNameThatIsNotAnIdentifier_IsSanitizedIntoTheMethodName(
+        string assemblyName, string expected) {
+
+        // "My-App" once emitted `namespace My-App;` and broke the consumer's build in generated
+        // code; the same sanitization now has to survive being spliced into a method name, where
+        // a dot is illegal as well.
         var source = GeneratorHarness.Run(TwoTypes, assemblyName)
             .Sources["GeneratedValidatorRegistration.g.cs"];
 
-        Assert.Contains($"namespace {expected};", source);
+        Assert.Contains($"public static IServiceCollection {expected}(", source);
     }
 }

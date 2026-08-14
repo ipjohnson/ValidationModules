@@ -142,6 +142,41 @@ public sealed class ValidationRules<T> {
     }
 
     /// <summary>
+    /// Declares an inclusive lower bound and no upper one - <c>[Range(Min = 1)]</c>.
+    /// </summary>
+    /// <remarks>
+    /// A separate method rather than an optional <c>max</c>, because a nullable bound parameter
+    /// costs the type inference that lets <c>Range(x =&gt; x.Age, 0, 120)</c> be written without
+    /// naming <c>TValue</c>. Reporting is <see cref="ValidationCodes.Range"/> either way.
+    /// </remarks>
+    public PropertyRules<T, TValue?> RangeAtLeast<TValue>(
+        Func<T, TValue?> value,
+        TValue min,
+        string? field = null,
+        [CallerArgumentExpression(nameof(value))] string? selector = null)
+        where TValue : struct, IComparable<TValue>, IFormattable {
+
+        var name = FieldOf(field, selector);
+        _rules.Add(new RangeRule<T, TValue>(name, value, min, null));
+
+        return new PropertyRules<T, TValue?>(this, name, value);
+    }
+
+    /// <summary>Declares an inclusive upper bound and no lower one - <c>[Range(Max = 99)]</c>.</summary>
+    public PropertyRules<T, TValue?> RangeAtMost<TValue>(
+        Func<T, TValue?> value,
+        TValue max,
+        string? field = null,
+        [CallerArgumentExpression(nameof(value))] string? selector = null)
+        where TValue : struct, IComparable<TValue>, IFormattable {
+
+        var name = FieldOf(field, selector);
+        _rules.Add(new RangeRule<T, TValue>(name, value, null, max));
+
+        return new PropertyRules<T, TValue?>(this, name, value);
+    }
+
+    /// <summary>
     /// Declares a pattern, taken as the accessor for a <c>[GeneratedRegex]</c> partial method.
     /// </summary>
     /// <remarks>
@@ -207,6 +242,71 @@ public sealed class ValidationRules<T> {
         _rules.Add(new ItemCountRule<T, TElement>(name, value, min, max));
 
         return new PropertyRules<T, IReadOnlyList<TElement>?>(this, name, value);
+    }
+
+    /// <summary>Declares that the collection's elements must all differ.</summary>
+    /// <remarks>
+    /// <see cref="IEnumerable{T}"/> rather than the <see cref="IReadOnlyList{T}"/> that
+    /// <see cref="Count{TElement}"/> takes, because uniqueness enumerates rather than reading a
+    /// count - so a set-typed or enumerable-only property is declarable here where a count is not.
+    /// </remarks>
+    public PropertyRules<T, IEnumerable<TElement>?> Unique<TElement>(
+        Func<T, IEnumerable<TElement>?> value,
+        string? field = null,
+        [CallerArgumentExpression(nameof(value))] string? selector = null) {
+
+        var name = FieldOf(field, selector);
+        _rules.Add(new UniqueItemsRule<T, TElement>(name, value));
+
+        return new PropertyRules<T, IEnumerable<TElement>?>(this, name, value);
+    }
+
+    /// <summary>Declares that an integral value must be an exact multiple of a divisor.</summary>
+    /// <remarks>
+    /// Three overloads rather than one generic method, because the divisor's own type is what
+    /// resolves them: <c>MultipleOf(x =&gt; x.Quantity, 5)</c> picks this one, <c>0.05m</c> picks
+    /// the decimal one and <c>0.01</c> the double one. A single generic would need the caller to
+    /// name <c>TValue</c>, which is the trap <see cref="RangeAtLeast{TValue}"/> exists to avoid.
+    /// </remarks>
+    public PropertyRules<T, long?> MultipleOf(
+        Func<T, long?> value,
+        long divisor,
+        string? field = null,
+        [CallerArgumentExpression(nameof(value))] string? selector = null) {
+
+        var name = FieldOf(field, selector);
+        _rules.Add(new MultipleOfRule<T>(name, target => value(target), divisor));
+
+        return new PropertyRules<T, long?>(this, name, value);
+    }
+
+    /// <summary>Declares that a decimal value must be an exact multiple of a divisor.</summary>
+    public PropertyRules<T, decimal?> MultipleOf(
+        Func<T, decimal?> value,
+        decimal divisor,
+        string? field = null,
+        [CallerArgumentExpression(nameof(value))] string? selector = null) {
+
+        var name = FieldOf(field, selector);
+        _rules.Add(new MultipleOfRule<T>(name, value, divisor));
+
+        return new PropertyRules<T, decimal?>(this, name, value);
+    }
+
+    /// <summary>
+    /// Declares that a floating-point value must be a multiple of a divisor, decided in the decimal
+    /// domain - see <see cref="ConstraintChecks.IsMultipleOf(double, decimal)"/>.
+    /// </summary>
+    public PropertyRules<T, double?> MultipleOf(
+        Func<T, double?> value,
+        double divisor,
+        string? field = null,
+        [CallerArgumentExpression(nameof(value))] string? selector = null) {
+
+        var name = FieldOf(field, selector);
+        _rules.Add(new MultipleOfApproximateRule<T>(name, value, (decimal)divisor));
+
+        return new PropertyRules<T, double?>(this, name, value);
     }
 
     /// <summary>Descends into a nested object, the equivalent of <c>[ValidateNested]</c>.</summary>

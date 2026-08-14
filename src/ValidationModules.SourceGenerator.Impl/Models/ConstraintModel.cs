@@ -8,6 +8,13 @@ public enum ConstraintKind {
     Pattern,
     AllowedValues,
     ItemCount,
+    MultipleOf,
+
+    /// <summary>
+    /// The only kind that does not compile to a comparison - it calls
+    /// <c>ConstraintChecks.AllUnique</c>. See <c>UniqueItemsAttribute</c>.
+    /// </summary>
+    UniqueItems,
 
     /// <summary>
     /// A predicate declared with <c>rules.Ensure(…)</c>. Carries no bounds and composes no message -
@@ -45,6 +52,16 @@ public enum ConstraintKind {
 /// "global::My.Patterns.Sku()" for a method, without parentheses for a property or field. Null
 /// means the inline form, where the emitter declares the Regex itself.
 /// </param>
+/// <param name="Divisor">
+/// MultipleOf only: the divisor, already rendered in the member's own denomination - "5" for an
+/// integral member, "0.05m" for a decimal one, and also "0.05m" for a double or float, because the
+/// check for those is decided in the decimal domain.
+/// </param>
+/// <param name="DecimalDomain">
+/// MultipleOf only. True when the member is double or float, so the emitted test calls
+/// <c>ConstraintChecks.IsMultipleOf</c> rather than writing <c>%</c> - which in binary floating
+/// point rejects 0.3, 1.05 and 99.99 against a divisor of 0.01.
+/// </param>
 /// <param name="Values">AllowedValues only: the permitted set, already rendered as C# literals.</param>
 /// <param name="Negated">AllowedValues only: set by DataAnnotations' [DeniedValues].</param>
 /// <param name="PredicateAccessor">
@@ -66,6 +83,8 @@ public sealed record ConstraintModel(
     bool Anchored = false,
     int RegexOptions = 0,
     string? RegexAccessor = null,
+    string? Divisor = null,
+    bool DecimalDomain = false,
     EquatableArray<string> Values = default,
     bool Negated = false,
     string? PredicateAccessor = null) : IEquatable<ConstraintModel>;

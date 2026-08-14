@@ -13,8 +13,15 @@ public sealed class ValidationRules<T> {
 
     public PropertyRules<T, string?> Length(Func<T, string?> value, int min = 0, int max = int.MaxValue, …);
     public PropertyRules<T, TValue?> Range<TValue>(Func<T, TValue?> value, TValue min, TValue max, …);
+    public PropertyRules<T, TValue?> RangeAtLeast<TValue>(Func<T, TValue?> value, TValue min, …);
+    public PropertyRules<T, TValue?> RangeAtMost<TValue>(Func<T, TValue?> value, TValue max, …);
     public PropertyRules<T, string?> Pattern(Func<T, string?> value, Func<Regex> pattern, …);
     public PropertyRules<T, IReadOnlyList<TElement>?> Count<TElement>(Func<T, …> value, int min, int max, …);
+    public PropertyRules<T, IEnumerable<TElement>?> Unique<TElement>(Func<T, …> value, …);
+
+    public PropertyRules<T, long?>    MultipleOf(Func<T, long?> value, long divisor, …);
+    public PropertyRules<T, decimal?> MultipleOf(Func<T, decimal?> value, decimal divisor, …);
+    public PropertyRules<T, double?>  MultipleOf(Func<T, double?> value, double divisor, …);
 
     public PropertyRules<T, TValue?> Nested<TValue>(Func<T, TValue?> value, …);
     public PropertyRules<T, IReadOnlyList<TElement>?> Each<TElement>(Func<T, …> value, …);
@@ -69,7 +76,11 @@ is a run-time check for something the compiler should catch.
 | `Range(x => x.Age, 0, 30)` | `[Range(0, 30)]` | `range` |
 | `Pattern(x => x.Sku, Patterns.Sku)` | `[Pattern(typeof(Patterns), "Sku")]` | `pattern` |
 | `AllowedValues(x => x.Status, "a", "b")` | `[AllowedValues("a", "b")]` | `enum` |
+| `RangeAtLeast(x => x.Qty, 1)` | `[Range(Min = 1)]` | `range` |
+| `RangeAtMost(x => x.Qty, 99)` | `[Range(Max = 99)]` | `range` |
 | `Count(x => x.Toys, 1, 10)` | `[ItemCount(1, 10)]` | `array_bounds` |
+| `MultipleOf(x => x.Qty, 5)` | `[MultipleOf(5)]` | `multiple_of` |
+| `Unique(x => x.Codes)` | `[UniqueItems]` | `unique_items` |
 | `Nested(x => x.Home)` | `[ValidateNested]` | — |
 | `Each(x => x.Toys)` | `[ValidateNested]` on a collection | — |
 
@@ -79,6 +90,18 @@ emitter sees either, so codes, messages and ordering match exactly.
 `Range<TValue>` is constrained `where TValue : IComparable<TValue>, IFormattable` — which is what
 makes it work for `DateOnly` and `decimal` where the
 [`[Range]` string overload does not](/reference/diagnostics#vm0065).
+
+`RangeAtLeast` and `RangeAtMost` are separate methods rather than an optional bound on `Range`. A
+nullable bound parameter costs the type inference that lets `Range(x => x.Age, 0, 120)` be written
+without naming `TValue`, and naming it at every call site is worse than one extra method.
+
+`MultipleOf` resolves on the divisor's own type: `5` picks the integral overload, `0.05m` the
+decimal one and `0.01` the double one. The double overload checks in the decimal domain, the same
+as the emitted path — see [the guide](/guide/constraints#multipleof).
+
+`Unique` takes an `IEnumerable<TElement>` where `Count` takes an `IReadOnlyList<TElement>`, because
+uniqueness enumerates rather than reading a count. A set-typed or enumerable-only property is
+declarable here where a count is not.
 
 ## `Ensure`
 

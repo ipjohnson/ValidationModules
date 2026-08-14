@@ -186,7 +186,7 @@ fits. [Registration and DI](/guide/registration) covers forcing the choice, and 
 
 ## Where to go next
 
-- [Constraints](/guide/constraints) — the seven attributes and what each emits.
+- [Constraints](/guide/constraints) — the nine attributes and what each emits.
 - [Nesting and collections](/guide/nesting) — `[ValidateNested]`, element paths, dictionaries.
 - [The error model](/guide/errors) — ordering, codes, field paths, severity.
 - [Rule classes](/guide/rule-classes) — declaring rules for a type you do not own, and cross-field

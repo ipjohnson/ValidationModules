@@ -43,6 +43,11 @@ public static class GeneratorHarness {
             // [JsonPropertyName] overrides the derived field name, so the field-naming tests need
             // it bound rather than reported as a missing type.
             typeof(System.Text.Json.Serialization.JsonPropertyNameAttribute).Assembly,
+
+            // The emitted registration is an IServiceCollection extension calling TryAddSingleton,
+            // so the abstractions have to be bound or every registration test reports a missing
+            // type rather than whatever it was actually asserting.
+            typeof(Microsoft.Extensions.DependencyInjection.IServiceCollection).Assembly,
             typeof(object).Assembly,
 
             // System.ComponentModel carries the type-forward for IServiceProvider, which the emitted

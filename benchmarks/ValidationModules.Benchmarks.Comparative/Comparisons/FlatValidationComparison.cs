@@ -24,6 +24,9 @@ namespace ValidationModules.Benchmarks.Comparative.Comparisons;
 [MemoryDiagnoser]
 [BenchmarkCategory(ComparativeCategories.Flat)]
 public class FlatValidationComparison {
+
+    // Hoisted: constructing per invocation would put an allocation on the measured path.
+    private static readonly CustomerValidator CustomerValidatorShared = new();
     private readonly List<DataAnnotations.ValidationResult> _annotationResults = [];
     private readonly ValidationErrorCollector _pooled = new();
 
@@ -42,7 +45,7 @@ public class FlatValidationComparison {
         // First call warms each engine's lazily-built state, so no benchmark pays it once and
         // reports it as though it were per-call. DataAnnotations caches property descriptors on
         // first use; FluentValidation resolves its display-name providers.
-        _ = CustomerValidator.Instance.IsValid(_valid);
+        _ = CustomerValidatorShared.IsValid(_valid);
         _ = CustomerFluentValidator.Instance.Validate(_valid);
         _ = DataAnnotationsEngine.TryValidate(_validAnnotated, _annotationResults);
     }
@@ -50,7 +53,7 @@ public class FlatValidationComparison {
     // ---- Clean payload: the path production traffic actually takes ------------------------------
 
     [Benchmark(Baseline = true, Description = "ValidationModules - clean")]
-    public bool Vm_Clean() => CustomerValidator.Instance.IsValid(_valid);
+    public bool Vm_Clean() => CustomerValidatorShared.IsValid(_valid);
 
     [Benchmark(Description = "FluentValidation - clean")]
     public bool Fv_Clean() => CustomerFluentValidator.Instance.Validate(_valid).IsValid;
@@ -61,7 +64,7 @@ public class FlatValidationComparison {
     // ---- Failing payload: every rule violated ---------------------------------------------------
 
     [Benchmark(Description = "ValidationModules - 5 failures")]
-    public bool Vm_Failing() => CustomerValidator.Instance.IsValid(_invalid);
+    public bool Vm_Failing() => CustomerValidatorShared.IsValid(_invalid);
 
     [Benchmark(Description = "FluentValidation - 5 failures")]
     public bool Fv_Failing() => CustomerFluentValidator.Instance.Validate(_invalid).IsValid;
@@ -80,13 +83,13 @@ public class FlatValidationComparison {
     public bool Vm_Clean_Pooled() {
         _pooled.Reset();
 
-        CustomerValidator.Instance.ValidateInto(_pooled, _valid);
+        CustomerValidatorShared.ValidateInto(_pooled, _valid);
 
         return !_pooled.HasErrors;
     }
 
     [Benchmark(Description = "ValidationModules - clean, materialized result")]
-    public ValidationResult Vm_Clean_Result() => CustomerValidator.Instance.Validate(_valid);
+    public ValidationResult Vm_Clean_Result() => CustomerValidatorShared.Validate(_valid);
 
     [Benchmark(Description = "FluentValidation - clean, materialized result")]
     public FluentValidation.Results.ValidationResult Fv_Clean_Result() =>

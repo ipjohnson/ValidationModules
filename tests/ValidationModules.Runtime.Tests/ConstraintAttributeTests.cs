@@ -94,6 +94,42 @@ public class ConstraintAttributeTests {
         Assert.True(new RangeAttribute(0.0, 1.0) { ExclusiveMax = true }.ExclusiveMax);
     }
 
+    /// <summary>
+    /// What makes <c>[Range(Min = 1)]</c> readable, and what stops the absent bound becoming the
+    /// type's extreme in a composed message.
+    /// </summary>
+    [Fact]
+    public void Range_Parameterless_LeavesBothBoundsUnset() {
+        var attribute = new RangeAttribute();
+
+        Assert.Null(attribute.Min);
+        Assert.Null(attribute.Max);
+    }
+
+    [Fact]
+    public void Range_NamedBoundsStandAlone() {
+        Assert.Equal(1, new RangeAttribute { Min = 1 }.Min);
+        Assert.Null(new RangeAttribute { Min = 1 }.Max);
+        Assert.Equal(99, new RangeAttribute { Max = 99 }.Max);
+        Assert.Null(new RangeAttribute { Max = 99 }.Min);
+    }
+
+    [Fact]
+    public void MultipleOf_HasAnOverloadPerConstantForm() {
+        // The string overload is decimal's, which has no constant form in metadata - the same
+        // arrangement [Range] has and for the same reason.
+        Assert.Equal(5, new MultipleOfAttribute(5).Divisor);
+        Assert.Equal(5L, new MultipleOfAttribute(5L).Divisor);
+        Assert.Equal(0.01, new MultipleOfAttribute(0.01).Divisor);
+        Assert.Equal("0.05", new MultipleOfAttribute("0.05").Divisor);
+    }
+
+    [Fact]
+    public void UniqueItems_TakesNoArguments() {
+        // Presence is the constraint; there is nothing for a reader to read but the type.
+        Assert.Empty(typeof(UniqueItemsAttribute).GetConstructors()[0].GetParameters());
+    }
+
     [Fact]
     public void Pattern_InlineForm_CarriesThePatternAndNoProvider() {
         var attribute = new PatternAttribute("^[A-Z]{3}$");

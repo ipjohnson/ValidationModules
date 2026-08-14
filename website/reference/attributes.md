@@ -26,7 +26,7 @@ Profiles are Stage 3 of the plan and are **not built**. The declaration surface 
 implementation, so this compiles and reads exactly as the design describes:
 
 ```csharp
-[Required(FromProfile = typeof(V2))]     // VM0019, an error
+[Required(FromProfile = typeof(V2))] // VM0019, an error
 public string? Tag { get; init; }
 ```
 
@@ -46,8 +46,11 @@ Declaring `IValidationProfile` types is harmless. Attaching a rule to one is wha
 | `Message` | `string?` | *composed* | |
 
 ```csharp
-[Required]                              public string? Name { get; init; }
-[Required(AllowEmptyStrings = true)]    public string? Note { get; init; }
+[Required]
+public string? Name { get; init; }
+
+[Required(AllowEmptyStrings = true)]
+public string? Note { get; init; }
 ```
 
 Fails on null; on a `string`, also on empty and whitespace-only. On a non-nullable value type it can
@@ -63,9 +66,14 @@ never fail — [VM0004](/reference/diagnostics#vm0004).
 | `Message` | `string?` | *composed* |
 
 ```csharp
-[StringLength(min: 1, max: 100)]   public string? Name  { get; init; }
-[StringLength(Max = 500)]          public string? Notes { get; init; }
-[StringLength(Min = 8)]            public string? Token { get; init; }
+[StringLength(min: 1, max: 100)]
+public string? Name { get; init; }
+
+[StringLength(Max = 500)]
+public string? Notes { get; init; }
+
+[StringLength(Min = 8)]
+public string? Token { get; init; }
 ```
 
 Constructors: `()` and `(int min, int max)`. Strings only —
@@ -78,21 +86,30 @@ Length is `string.Length` — UTF-16 code units, not grapheme clusters.
 
 | Member | Type | Default |
 |---|---|---|
-| `Min` | `object` | — |
-| `Max` | `object` | — |
+| `Min` | `object?` | `null` — unbounded below |
+| `Max` | `object?` | `null` — unbounded above |
 | `ExclusiveMin` | `bool` | `false` |
 | `ExclusiveMax` | `bool` | `false` |
 | `Code` | `string?` | `"range"` |
 | `Message` | `string?` | *composed* |
 
-Constructors: `(int, int)`, `(long, long)`, `(double, double)`, `(string, string)`.
+Constructors: `()`, `(int, int)`, `(long, long)`, `(double, double)`, `(string, string)`.
 
 ```csharp
-[Range(0, 30)]                          public int    Age   { get; init; }
-[Range(0.0, 1.0, ExclusiveMax = true)]  public double Ratio { get; init; }
+[Range(0, 30)]
+public int Age { get; init; }
+
+[Range(0.0, 1.0, ExclusiveMax = true)]
+public double Ratio { get; init; }
+
+[Range(Min = 1)]
+public int Quantity { get; init; }
 ```
 
 Numeric and date-like types only — [VM0003](/reference/diagnostics#vm0003).
+
+An absent bound emits no comparison and is not named in the message. Neither bound is
+[VM0026](/reference/diagnostics#vm0026).
 
 The `(string, string)` overload is for the types with no constant form in metadata — `decimal`,
 `DateTime`, `DateOnly`, `TimeOnly`, `TimeSpan`, `DateTimeOffset`. The bound is parsed against the
@@ -135,7 +152,8 @@ See [Patterns and regex](/guide/patterns) for which form to use.
 | `Message` | `string?` | *composed* |
 
 ```csharp
-[AllowedValues("available", "pending", "sold")] public string? Status { get; init; }
+[AllowedValues("available", "pending", "sold")]
+public string? Status { get; init; }
 ```
 
 Constructor is `params object[]`. The permitted set is echoed in the message — an enum's members are
@@ -151,11 +169,59 @@ a schema fact, published in your OpenAPI document anyway.
 | `Message` | `string?` | *composed* |
 
 ```csharp
-[ItemCount(min: 1, max: 10)] public List<string> Tags { get; init; } = [];
+[ItemCount(min: 1, max: 10)]
+public List<string> Tags { get; init; } = [];
 ```
 
 Collections only — [VM0002](/reference/diagnostics#vm0002). A `string` is not a collection here.
 Counted without enumerating where a `Count` or `Length` exists; walked once otherwise.
+
+## `[MultipleOf]`
+
+| Member | Type | Default |
+|---|---|---|
+| `Divisor` | `object` | — |
+| `Code` | `string?` | `"multiple_of"` |
+| `Message` | `string?` | *composed* |
+
+Constructors: `(int)`, `(long)`, `(double)`, `(string)`.
+
+```csharp
+[MultipleOf(5)]
+public int Quantity { get; init; }
+
+[MultipleOf("0.05")]
+public decimal Price { get; init; }
+
+[MultipleOf(0.01)]
+public double Ratio { get; init; }
+```
+
+Numeric types only — [VM0021](/reference/diagnostics#vm0021). The divisor must be greater than zero
+([VM0022](/reference/diagnostics#vm0022)) and must have a form the member's type can be checked
+against ([VM0023](/reference/diagnostics#vm0023)).
+
+`double` and `float` are checked in the decimal domain rather than with `%`, because
+`0.3 % 0.01` is `0.00999999999999998` in binary floating point. See
+[the guide](/guide/constraints#multipleof) for what that costs and what it buys.
+
+## `[UniqueItems]`
+
+| Member | Type | Default |
+|---|---|---|
+| `Code` | `string?` | `"unique_items"` |
+| `Message` | `string?` | *composed* |
+
+Constructors: `()`. Presence is the constraint.
+
+```csharp
+[UniqueItems]
+public List<string> Codes { get; init; } = [];
+```
+
+Collections only — [VM0024](/reference/diagnostics#vm0024). Elements are compared with
+`EqualityComparer<T>.Default`; an element type with no equality of its own compares by reference and
+is [VM0025](/reference/diagnostics#vm0025).
 
 ## `[ValidateNested]`
 

@@ -21,7 +21,7 @@ public class NestingTests {
             },
         };
 
-        var result = CatalogValidator.Instance.Validate(catalog);
+        var result = new CatalogValidator().Validate(catalog);
 
         Assert.Equal("items[sku-2].sku", Assert.Single(result.Errors).Field);
     }
@@ -30,7 +30,7 @@ public class NestingTests {
     public void SelfReferentialType_ValidatesDownTheWholeTree() {
         var node = new Node { Label = "a", Child = new Node { Label = "b", Child = new Node() } };
 
-        var result = NodeValidator.Instance.Validate(node);
+        var result = new NodeValidator().Validate(node);
 
         Assert.Equal("child.child.label", Assert.Single(result.Errors).Field);
     }
@@ -39,7 +39,7 @@ public class NestingTests {
     public void TwoLevelsDeep_ReportsEverySegment() {
         var basket = TwoLineBasket(secondLineSku: null);
 
-        var result = BasketValidator.Instance.Validate(basket);
+        var result = new BasketValidator().Validate(basket);
 
         Assert.Equal("order.lines[1].sku", Assert.Single(result.Errors).Field);
     }
@@ -52,7 +52,7 @@ public class NestingTests {
         // see a postal code failed on some line, but not which. HANDOFF.md §3.1, API-SURFACE.md §3.2.
         var basket = TwoLineBasket(secondLinePostalCode: null);
 
-        var result = BasketValidator.Instance.Validate(basket);
+        var result = new BasketValidator().Validate(basket);
 
         Assert.Equal("order...shipTo.postalCode", Assert.Single(result.Errors).Field);
     }
@@ -66,14 +66,14 @@ public class NestingTests {
         head.Child = head;
 
         var exception = Assert.Throws<InvalidOperationException>(
-            () => MutableNodeValidator.Instance.Validate(head));
+            () => new MutableNodeValidator().Validate(head));
 
         Assert.Contains("cycle", exception.Message);
     }
 
     [Fact]
     public void NestedObject_DoesNotRecurseIntoAMissingValue() {
-        var result = NodeValidator.Instance.Validate(new Node { Label = "a" });
+        var result = new NodeValidator().Validate(new Node { Label = "a" });
 
         Assert.True(result.IsValid);
     }

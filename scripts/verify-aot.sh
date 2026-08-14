@@ -51,19 +51,20 @@ cat > "${WORK_DIR}/Program.cs" <<'EOF'
 using Microsoft.Extensions.DependencyInjection;
 using ValidationModules;
 
-// A hand-written validator in the shape the generator emits: static singleton, private ctor,
-// nested validators referenced statically rather than injected.
+// Hand-written validators in the shape the generator emits: no static singleton, nested
+// validators injected, registered by implementation type so the container constructs them.
+// That last part is what this probe exists to prove is AOT-safe - MS.DI selects the constructor
+// at run time, and if the trimmer could not follow it the publish would fail here.
 var services = new ServiceCollection();
-services.AddValidationModules([
-    new ValidatorRegistration(typeof(IValidatorFor<Pet>), static _ => PetValidator.Instance),
-    new ValidatorRegistration(typeof(IValidatorFor<Address>), static _ => AddressValidator.Instance),
-]);
+services.AddSingleton<IValidatorFor<Address>, AddressValidator>();
+services.AddSingleton<IValidatorFor<Toy>, ToyValidator>();
+services.AddSingleton<IValidatorFor<Pet>, PetValidator>();
 services.AddSingleton<IAsyncValidatorFor<Pet>, PetBusinessRule>();
 services.AddValidationRunner<Pet>();
 
 var provider = services.BuildServiceProvider();
 
-var pet = new Pet { Home = new Address(), Toys = [new Toy(), new Toy()] };
+var pet = new Pet { Home = new Address(), Toys = [new Toy(), new Toy()], Ratio = 1.05 };
 var result = provider.GetRequiredService<IValidatorFor<Pet>>().Validate(pet);
 
 var fields = string.Join(", ", result.Errors.Select(e => e.Field));
@@ -71,23 +72,32 @@ Expect(fields == "name, home.postalCode, toys[0].name, toys[1].name", $"paths: {
 
 // Structural and business rules, merged, with the context crossing an await.
 var runner = provider.CreateScope().ServiceProvider.GetRequiredService<ValidationRunner<Pet>>();
-var merged = await runner.ValidateAsync(new Pet { Name = "Rex", Toys = [new Toy { Name = "ball" }] });
+var merged = await runner.ValidateAsync(
+    new Pet { Name = "Rex", Toys = [new Toy { Name = "ball" }], Ratio = 1.05 });
 var async = string.Join(", ", merged.Errors.Select(e => $"{e.Field}:{e.Code}"));
 Expect(async == "home.postalCode:unknown", $"async: {async}");
 
-// A clean pass over a reused collector must not allocate.
+// A clean pass over a reused collector must not allocate. The validator is held, as a container
+// holds a singleton - constructing one per call would allocate the object and its nested array.
+var standalone = new PetValidator();
 var collector = new ValidationErrorCollector();
-var clean = new Pet { Name = "Rex", Home = new Address { PostalCode = "1" }, Toys = [new Toy { Name = "b" }] };
+var clean = new Pet {
+    Name = "Rex",
+    Home = new Address { PostalCode = "1" },
+    Toys = [new Toy { Name = "b" }],
+    Codes = ["a", "b", "c"],
+    Ratio = 1.05,
+};
 for (var i = 0; i < 100; i++) {
     collector.Reset();
-    PetValidator.Instance.ValidateInto(collector, clean);
+    standalone.ValidateInto(collector, clean);
 }
 Expect(collector.Count == 0, "clean pass produced errors");
 
 var before = GC.GetAllocatedBytesForCurrentThread();
 for (var i = 0; i < 500; i++) {
     collector.Reset();
-    PetValidator.Instance.ValidateInto(collector, clean);
+    standalone.ValidateInto(collector, clean);
 }
 var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 Expect(allocated == 0, $"clean pass allocated {allocated} bytes");
@@ -113,11 +123,16 @@ sealed record Pet {
     public string? Name { get; init; }
     public Address? Home { get; init; }
     public IReadOnlyList<Toy> Toys { get; init; } = [];
+
+    // What [UniqueItems] and [MultipleOf] compile against. Here so the zero-allocation assertion
+    // and the trim analysis both cover ConstraintChecks, which is the only part of a validation
+    // pass that is not a comparison.
+    public IReadOnlyList<string> Codes { get; init; } = [];
+    public double Ratio { get; init; }
 }
 
 sealed class AddressValidator : IValidatorFor<Address> {
-    public static readonly AddressValidator Instance = new();
-    private AddressValidator() { }
+    public AddressValidator() { }
 
     public void Validate(ref ValidationContext context, Address value) {
         if (string.IsNullOrWhiteSpace(value.PostalCode)) {
@@ -127,8 +142,7 @@ sealed class AddressValidator : IValidatorFor<Address> {
 }
 
 sealed class ToyValidator : IValidatorFor<Toy> {
-    public static readonly ToyValidator Instance = new();
-    private ToyValidator() { }
+    public ToyValidator() { }
 
     public void Validate(ref ValidationContext context, Toy value) {
         if (string.IsNullOrWhiteSpace(value.Name)) {
@@ -138,8 +152,21 @@ sealed class ToyValidator : IValidatorFor<Toy> {
 }
 
 sealed class PetValidator : IValidatorFor<Pet> {
-    public static readonly PetValidator Instance = new();
-    private PetValidator() { }
+    private IValidatorFor<Address>[]? _home;
+    private IValidatorFor<Toy>[]? _toys;
+
+    public PetValidator(IEnumerable<IValidatorFor<Address>> home, IEnumerable<IValidatorFor<Toy>> toys) {
+        _home = System.Linq.Enumerable.ToArray(home);
+        _toys = System.Linq.Enumerable.ToArray(toys);
+    }
+
+    public PetValidator() { }
+
+    private IValidatorFor<Address>[] HomeValidators =>
+        _home ??= new IValidatorFor<Address>[] { new AddressValidator() };
+
+    private IValidatorFor<Toy>[] ToysValidators =>
+        _toys ??= new IValidatorFor<Toy>[] { new ToyValidator() };
 
     public void Validate(ref ValidationContext context, Pet value) {
         if (string.IsNullOrWhiteSpace(value.Name)) {
@@ -148,12 +175,22 @@ sealed class PetValidator : IValidatorFor<Pet> {
 
         if (value.Home is { } home) {
             var nested = context.Push("home");
-            AddressValidator.Instance.Validate(ref nested, home);
+            var hv = HomeValidators;
+            for (var v = 0; v < hv.Length; v++) hv[v].Validate(ref nested, home);
+        }
+
+        if (!ConstraintChecks.AllUnique(value.Codes)) {
+            context.AddUniqueItems("codes");
+        }
+
+        if (!ConstraintChecks.IsMultipleOf(value.Ratio, 0.01m)) {
+            context.AddMultipleOf("ratio", 0.01m);
         }
 
         for (var i = 0; i < value.Toys.Count; i++) {
             var item = context.PushIndex("toys", i);
-            ToyValidator.Instance.Validate(ref item, value.Toys[i]);
+            var tv = ToysValidators;
+            for (var v = 0; v < tv.Length; v++) tv[v].Validate(ref item, value.Toys[i]);
         }
     }
 }

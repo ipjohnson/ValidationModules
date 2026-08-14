@@ -29,8 +29,11 @@ namespace ValidationModules.Benchmarks.EndToEnd;
 [BenchmarkCategory(BenchmarkCategories.EndToEnd)]
 public class RequestPipelineBenchmarks {
 
+    // Hoisted: constructing per invocation would put an allocation on the measured path.
+    private static readonly OrderValidator OrderValidatorShared = new();
+
     /// <summary>Resolved once, as a generic filter constructed by generated code would.</summary>
-    private readonly IValidatorFor<Order> _resolvedOnce = OrderValidator.Instance;
+    private readonly IValidatorFor<Order> _resolvedOnce = OrderValidatorShared;
 
     /// <summary>Pooled across requests, as a filter holding one per handler instance would.</summary>
     private readonly ValidationErrorCollector _pooledCollector = new();
@@ -44,7 +47,7 @@ public class RequestPipelineBenchmarks {
 
         // Stands in for what a container hands back: the validator arrives as a sequence that has
         // to be walked, not as a field that was already resolved.
-        _registered = [OrderValidator.Instance];
+        _registered = [OrderValidatorShared];
     }
 
     /// <summary>

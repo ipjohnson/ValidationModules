@@ -27,18 +27,51 @@ public static class NativeConstraintReader {
 
             case "RangeAttribute": {
                 var args = attribute.ConstructorArguments;
-                if (args.Length != 2) {
+                if (args.Length is not (0 or 2)) {
                     return null;
+                }
+
+                string? min = null;
+                string? max = null;
+
+                if (args.Length == 2) {
+                    min = Literal(args[0]);
+                    max = Literal(args[1]);
+                }
+
+                // Named wins where set, the same arrangement ReadBounds has. A null bound stays
+                // null rather than becoming the type's extreme - see RangeAttribute's own remarks.
+                if (NamedConstant(attribute, "Min") is { IsNull: false } namedMin) {
+                    min = Literal(namedMin);
+                }
+
+                if (NamedConstant(attribute, "Max") is { IsNull: false } namedMax) {
+                    max = Literal(namedMax);
                 }
 
                 return common with {
                     Kind = ConstraintKind.Range,
-                    Min = Literal(args[0]),
-                    Max = Literal(args[1]),
+                    Min = min,
+                    Max = max,
                     ExclusiveMin = Named(attribute, "ExclusiveMin") is bool exMin && exMin,
                     ExclusiveMax = Named(attribute, "ExclusiveMax") is bool exMax && exMax,
                 };
             }
+
+            case "MultipleOfAttribute": {
+                var args = attribute.ConstructorArguments;
+                if (args.Length != 1) {
+                    return null;
+                }
+
+                // Carried through as written. Resolving it needs the member's type, which is the
+                // front end's to supply - the same division of labour [Range] bounds already have.
+                return common with { Kind = ConstraintKind.MultipleOf, Divisor = Literal(args[0]) };
+            }
+
+            // Presence is the constraint; there is nothing to read.
+            case "UniqueItemsAttribute":
+                return common with { Kind = ConstraintKind.UniqueItems };
 
             case "PatternAttribute": {
                 var args = attribute.ConstructorArguments;
@@ -106,6 +139,24 @@ public static class NativeConstraintReader {
         return (min, max);
     }
 
+    /// <summary>
+    /// A named argument as its constant, rather than as its value.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Named"/> unwraps to <c>object?</c>, which is enough for a bool or an int but loses
+    /// what <see cref="Literal"/> needs to render a bound: an <c>object</c>-typed <c>Min</c> holding
+    /// the string "0.00" and one holding the double 0.0 unwrap to values that render differently.
+    /// </remarks>
+    internal static TypedConstant? NamedConstant(AttributeData attribute, string name) {
+        foreach (var argument in attribute.NamedArguments) {
+            if (argument.Key == name) {
+                return argument.Value;
+            }
+        }
+
+        return null;
+    }
+
     internal static object? Named(AttributeData attribute, string name) {
         foreach (var argument in attribute.NamedArguments) {
             if (argument.Key == name) {
@@ -122,9 +173,23 @@ public static class NativeConstraintReader {
         string text => SymbolDisplay.FormatLiteral(text, quote: true),
         bool flag => flag ? "true" : "false",
         char character => SymbolDisplay.FormatLiteral(character, quote: true),
-        double number => number.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
-        float number => number.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "f",
+        double number => double.IsNaN(number) || double.IsInfinity(number)
+            ? NonFinite("double", number)
+            : number.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+        float number => float.IsNaN(number) || float.IsInfinity(number)
+            ? NonFinite("float", number)
+            : number.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "f",
         decimal number => number.ToString(System.Globalization.CultureInfo.InvariantCulture) + "m",
         var other => Convert.ToString(other, System.Globalization.CultureInfo.InvariantCulture) ?? "null",
     };
+
+    /// <summary>
+    /// The named form of a non-finite bound. <c>double.NegativeInfinity</c> is a constant, so it is
+    /// a legal attribute argument, but <c>"R"</c> renders it "-Infinity" - which is not an
+    /// expression, so the bound reached the emitter and generated code failed to compile.
+    /// </summary>
+    private static string NonFinite(string type, double value) =>
+        double.IsNaN(value) ? type + ".NaN"
+        : value > 0 ? type + ".PositiveInfinity"
+        : type + ".NegativeInfinity";
 }

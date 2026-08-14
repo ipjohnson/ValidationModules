@@ -19,11 +19,22 @@ drifting silently.
 | `pattern` | `ValidationCodes.Pattern` | `[Pattern]`, `.Pattern(…)` |
 | `enum` | `ValidationCodes.Enum` | `[AllowedValues]`, `.AllowedValues(…)` |
 | `array_bounds` | `ValidationCodes.ArrayBounds` | `[ItemCount]`, `.Count(…)` |
+| `multiple_of` | `ValidationCodes.MultipleOf` | `[MultipleOf]`, `.MultipleOf(…)` |
+| `unique_items` | `ValidationCodes.UniqueItems` | `[UniqueItems]`, `.Unique(…)` |
 | `predicate` | `ValidationCodes.Predicate` | `rules.Ensure(…)` |
 | `invalid` | `ValidationCodes.Invalid` | nothing in this library — see below |
 
 These are a **wire contract**. A client attaching messages to form inputs, or branching on failure
 kind, depends on them not moving.
+
+## `range` covers three shapes
+
+`[Range(1, 99)]`, `[Range(Min = 1)]` and `[Range(Max = 99)]` all report `range`. Only the message
+differs — "must be between 1 and 99", "must be at least 1", "must be at most 99" — because the
+failure is the same one and a client should not have to learn a second code for it.
+
+An absent bound is never named. A specification setting only `minimum` used to compose the type's
+extreme into the message as the other bound.
 
 ## The two that read oddly
 
@@ -37,7 +48,7 @@ failure, not validation's.
 
 It lives in this vocabulary anyway, because the vocabulary is defined by the wire rather than by
 which library produced the value. A client switching on `Code` sees this alongside the rest, and
-splitting it out would leave seven codes in one place and the eighth somewhere a consumer has to
+splitting it out would leave nine codes in one place and the tenth somewhere a consumer has to
 already know to look.
 
 It is deliberately distinct from `range` rather than folded into it: the value never became the right

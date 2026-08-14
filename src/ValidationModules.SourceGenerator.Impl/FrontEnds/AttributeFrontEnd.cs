@@ -63,7 +63,7 @@ public sealed class AttributeFrontEnd {
                 continue;
             }
 
-            var constraints = ReadConstraints(property);
+            var constraints = ReadConstraintsFor(property, property.Type);
             var validateNested = HasValidateNested(property);
             string? overriddenField = null;
 
@@ -206,8 +206,7 @@ public sealed class AttributeFrontEnd {
             }
         }
 
-        ResolveRangeBounds(property, constraints);
-        ValidateConstraintsAgainstType(property, constraints, isString, elementType is not null);
+        ValidateAndResolve(property, type, constraints, isString, elementType);
 
         return new ValidatedPropertyModel(
             property.Name,
@@ -242,7 +241,7 @@ public sealed class AttributeFrontEnd {
     /// and a single diagnostic on the type would not say which rule to look at.
     /// </remarks>
     private void ReportProfileAttribution(
-        AttributeData attribute, INamedTypeSymbol attributeClass, IPropertySymbol property) {
+        AttributeData attribute, INamedTypeSymbol attributeClass, ISymbol member) {
 
         foreach (var argument in attribute.NamedArguments) {
             if (argument.Key is not ("FromProfile" or "UntilProfile" or "Profiles")) {
@@ -258,13 +257,13 @@ public sealed class AttributeFrontEnd {
 
             var location = attribute.ApplicationSyntaxReference is { } reference
                 ? Microsoft.CodeAnalysis.Location.Create(reference.SyntaxTree, reference.Span)
-                : Location(property);
+                : Location(member);
 
             _diagnostics.Add(Diagnostic.Create(
                 ValidationDiagnostics.ProfileAttributionNotImplemented,
                 location,
                 Unsuffixed(attributeClass.Name),
-                property.Name));
+                member.Name));
 
             return;
         }
@@ -368,8 +367,8 @@ public sealed class AttributeFrontEnd {
     /// parse takes its constraint with it, so the build fails on the diagnostic alone rather than
     /// also on generated code that will not compile.
     /// </remarks>
-    private void ResolveRangeBounds(IPropertySymbol property, List<ConstraintModel> constraints) {
-        if (!TypeFacts.IsOrdered(property.Type)) {
+    private void ResolveRangeBounds(ISymbol member, ITypeSymbol memberType, List<ConstraintModel> constraints) {
+        if (!TypeFacts.IsOrdered(memberType)) {
             return;
         }
 
@@ -380,11 +379,33 @@ public sealed class AttributeFrontEnd {
                 continue;
             }
 
-            if (!RangeBoundReader.TryResolve(property.Type, constraint.Min ?? "0", out var min) ||
-                !RangeBoundReader.TryResolve(property.Type, constraint.Max ?? "0", out var max)) {
+            if (constraint.Min is null && constraint.Max is null) {
+                Report(ValidationDiagnostics.RangeHasNoBounds, member, member.Name);
+                constraints.RemoveAt(i);
+                continue;
+            }
 
-                Report(ValidationDiagnostics.RangeBoundsNotParseable, property,
-                    property.Name, property.Type.ToDisplayString());
+            // Each bound resolves on its own, because either may be absent. A [Range(Min = 1)] on a
+            // spec that set only `minimum` has to emit one comparison, not a second one against the
+            // type's extreme - which is what put "must be between 1 and 7.9228162514264338E+28" in a
+            // 400 body.
+            var min = constraint.Min;
+            var max = constraint.Max;
+            var parsed = true;
+
+            if (min is not null) {
+                parsed = RangeBoundReader.TryResolve(memberType, min, out var resolved);
+                min = resolved;
+            }
+
+            if (parsed && max is not null) {
+                parsed = RangeBoundReader.TryResolve(memberType, max, out var resolved);
+                max = resolved;
+            }
+
+            if (!parsed) {
+                Report(ValidationDiagnostics.RangeBoundsNotParseable, member,
+                    member.Name, memberType.ToDisplayString());
 
                 constraints.RemoveAt(i);
                 continue;
@@ -394,33 +415,133 @@ public sealed class AttributeFrontEnd {
         }
     }
 
+    /// <summary>
+    /// Resolves a member's constraints against its type and reports the ones that do not fit.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Public and typed on <see cref="ISymbol"/> rather than <see cref="IPropertySymbol"/>, together
+    /// with <see cref="ReadConstraintsFor"/>, so a host that carries constraints somewhere other
+    /// than a property - a handler's method parameter, in Hardened's case - reaches the same
+    /// vocabulary, the same pattern reference form, the same AOT pattern policy and the same
+    /// diagnostics. The alternative was a second implementation of a policy this package owns, which
+    /// is the arrangement the two front ends here exist to avoid.
+    /// </para>
+    /// <para>
+    /// Order matters and is the reason this is one method rather than three calls a caller sequences
+    /// itself. Both resolvers run before the applicability check, so a bound or a divisor that
+    /// cannot parse against a type that could never carry the constraint reports the constraint's
+    /// diagnostic rather than the parse one.
+    /// </para>
+    /// </remarks>
+    /// <param name="member">The property or parameter the constraints were written on.</param>
+    /// <param name="memberType">Its type.</param>
+    /// <param name="constraints">Read in; rewritten and pruned in place.</param>
+    /// <param name="isString">Whether <paramref name="memberType"/> is <c>string</c>.</param>
+    /// <param name="elementType">Its element type, or null when it is not a collection.</param>
+    public void ValidateAndResolve(
+        ISymbol member,
+        ITypeSymbol memberType,
+        List<ConstraintModel> constraints,
+        bool isString,
+        ITypeSymbol? elementType) {
+
+        ResolveRangeBounds(member, memberType, constraints);
+        ResolveMultipleOfDivisors(member, memberType, constraints);
+        ValidateConstraintsAgainstType(member, memberType, constraints, isString, elementType);
+    }
+
+    /// <summary>
+    /// Rewrites <c>[MultipleOf]</c> divisors into the denomination their check runs in, dropping any
+    /// that has no such form.
+    /// </summary>
+    /// <remarks>
+    /// Runs before <see cref="ValidateConstraintsAgainstType"/> for the reason
+    /// <see cref="ResolveRangeBounds"/> does: on a member no divisor could apply to, VM0021 is the
+    /// news rather than VM0023. A divisor that survives is positive and rendered, so the emitter
+    /// never writes <c>% 0</c> - CS0020 for an integral member, DivideByZeroException for a decimal
+    /// one, and either way a failure inside generated code.
+    /// </remarks>
+    private void ResolveMultipleOfDivisors(ISymbol member, ITypeSymbol memberType, List<ConstraintModel> constraints) {
+        if (!MultipleOfReader.IsSupported(memberType)) {
+            return;
+        }
+
+        for (var i = constraints.Count - 1; i >= 0; i--) {
+            var constraint = constraints[i];
+
+            if (constraint.Kind != ConstraintKind.MultipleOf) {
+                continue;
+            }
+
+            if (!MultipleOfReader.TryResolve(
+                    memberType, constraint.Divisor ?? "0",
+                    out var divisor, out var value, out var decimalDomain)) {
+
+                Report(ValidationDiagnostics.MultipleOfDivisorNotParseable, member,
+                    member.Name, memberType.ToDisplayString());
+
+                constraints.RemoveAt(i);
+                continue;
+            }
+
+            if (value <= 0m) {
+                Report(ValidationDiagnostics.MultipleOfDivisorNotPositive, member, member.Name, divisor);
+                constraints.RemoveAt(i);
+                continue;
+            }
+
+            constraints[i] = constraint with { Divisor = divisor, DecimalDomain = decimalDomain };
+        }
+    }
+
     private void ValidateConstraintsAgainstType(
-        IPropertySymbol property, List<ConstraintModel> constraints, bool isString, bool isCollection) {
+        ISymbol member, ITypeSymbol memberType, List<ConstraintModel> constraints,
+        bool isString, ITypeSymbol? elementType) {
+
+        var isCollection = elementType is not null;
 
         foreach (var constraint in constraints) {
-            var typeName = property.Type.ToDisplayString();
+            var typeName = memberType.ToDisplayString();
 
             switch (constraint.Kind) {
                 case ConstraintKind.StringLength when !isString:
-                    Report(ValidationDiagnostics.StringConstraintOnNonString, property,
-                        "[StringLength]", property.Name, typeName);
+                    Report(ValidationDiagnostics.StringConstraintOnNonString, member,
+                        "[StringLength]", member.Name, typeName);
                     break;
 
                 case ConstraintKind.Pattern when !isString:
-                    Report(ValidationDiagnostics.StringConstraintOnNonString, property,
-                        "[Pattern]", property.Name, typeName);
+                    Report(ValidationDiagnostics.StringConstraintOnNonString, member,
+                        "[Pattern]", member.Name, typeName);
                     break;
 
                 case ConstraintKind.ItemCount when !isCollection:
-                    Report(ValidationDiagnostics.ItemCountOnNonCollection, property, property.Name, typeName);
+                    Report(ValidationDiagnostics.ItemCountOnNonCollection, member, member.Name, typeName);
                     break;
 
-                case ConstraintKind.Range when !TypeFacts.IsOrdered(property.Type):
-                    Report(ValidationDiagnostics.RangeOnUnorderedType, property, property.Name, typeName);
+                case ConstraintKind.Range when !TypeFacts.IsOrdered(memberType):
+                    Report(ValidationDiagnostics.RangeOnUnorderedType, member, member.Name, typeName);
                     break;
 
-                case ConstraintKind.Required when property.Type.IsValueType && !TypeFacts.IsNullableValueType(property.Type):
-                    Report(ValidationDiagnostics.RequiredOnNonNullableValueType, property, property.Name);
+                case ConstraintKind.MultipleOf when !MultipleOfReader.IsSupported(memberType):
+                    Report(ValidationDiagnostics.MultipleOfOnUnsupportedType, member, member.Name, typeName);
+                    break;
+
+                case ConstraintKind.UniqueItems when !isCollection:
+                    Report(ValidationDiagnostics.UniqueItemsOnNonCollection, member, member.Name, typeName);
+                    break;
+
+                // The check runs through EqualityComparer<T>.Default, so an element type with no
+                // equality of its own compares by reference and two elements with identical contents
+                // are "unique". A rule that passes for the wrong reason, which is worse than one
+                // that fails.
+                case ConstraintKind.UniqueItems when elementType is { } element && TypeFacts.ComparesByReference(element):
+                    Report(ValidationDiagnostics.UniqueItemsComparesByReference, member,
+                        member.Name, element.ToDisplayString());
+                    break;
+
+                case ConstraintKind.Required when memberType.IsValueType && !TypeFacts.IsNullableValueType(memberType):
+                    Report(ValidationDiagnostics.RequiredOnNonNullableValueType, member, member.Name);
                     break;
             }
 
@@ -428,26 +549,26 @@ public sealed class AttributeFrontEnd {
                 int.TryParse(constraint.Min, out var min) &&
                 int.TryParse(constraint.Max, out var max) &&
                 min > max) {
-                Report(ValidationDiagnostics.MinExceedsMax, property, property.Name);
+                Report(ValidationDiagnostics.MinExceedsMax, member, member.Name);
             }
 
             if (constraint.Kind == ConstraintKind.Pattern && constraint.RegexAccessor is null &&
                 constraint.Pattern is { } pattern && !TypeFacts.IsValidRegex(pattern, out var error)) {
-                Report(ValidationDiagnostics.InvalidPattern, property, property.Name, error);
+                Report(ValidationDiagnostics.InvalidPattern, member, member.Name, error);
             }
 
             // RegexOptions.Compiled is 8. Meaningless against a source-generated regex, and asking
             // for it usually means someone is carrying over a habit this library exists to remove.
             if (constraint.Kind == ConstraintKind.Pattern && (constraint.RegexOptions & 8) != 0) {
-                Report(ValidationDiagnostics.CompiledRegexRequested, property, property.Name);
+                Report(ValidationDiagnostics.CompiledRegexRequested, member, member.Name);
             }
         }
     }
 
-    private List<ConstraintModel> ReadConstraints(IPropertySymbol property) {
+    public List<ConstraintModel> ReadConstraintsFor(ISymbol member, ITypeSymbol memberType) {
         var constraints = new List<ConstraintModel>();
 
-        foreach (var attribute in property.GetAttributes()) {
+        foreach (var attribute in member.GetAttributes()) {
             var attributeClass = attribute.AttributeClass;
             if (attributeClass is null) {
                 continue;
@@ -456,12 +577,12 @@ public sealed class AttributeFrontEnd {
             var ns = attributeClass.ContainingNamespace?.ToDisplayString();
 
             if (ns == KnownTypes.ConstraintsNamespace) {
-                ReportProfileAttribution(attribute, attributeClass, property);
+                ReportProfileAttribution(attribute, attributeClass, member);
 
                 var native = NativeConstraintReader.Read(attribute, attributeClass.Name);
 
                 if (native is { Kind: ConstraintKind.Pattern }) {
-                    native = ResolvePattern(native, attribute, property);
+                    native = ResolvePattern(native, attribute, member);
                 }
 
                 if (native is not null) {
@@ -473,8 +594,8 @@ public sealed class AttributeFrontEnd {
 
             if (ns != KnownTypes.DataAnnotationsNamespace) {
                 if (DerivesFromValidationAttribute(attributeClass)) {
-                    Report(ValidationDiagnostics.CustomValidationAttribute, property,
-                        attributeClass.Name, property.Name);
+                    Report(ValidationDiagnostics.CustomValidationAttribute, member,
+                        attributeClass.Name, member.Name);
                 }
 
                 continue;
@@ -482,21 +603,21 @@ public sealed class AttributeFrontEnd {
 
             if (!_compileDataAnnotations) {
                 if (DataAnnotationsConstraintReader.IsConstraint(attributeClass.Name)) {
-                    Report(ValidationDiagnostics.DataAnnotationsSkipped, property,
-                        attributeClass.Name, property.Name);
+                    Report(ValidationDiagnostics.DataAnnotationsSkipped, member,
+                        attributeClass.Name, member.Name);
                 }
 
                 continue;
             }
 
-            var outcome = DataAnnotationsConstraintReader.Read(attribute, attributeClass.Name, property);
+            var outcome = DataAnnotationsConstraintReader.Read(attribute, attributeClass.Name, memberType);
             if (outcome.Constraint is not null) {
                 constraints.Add(outcome.Constraint);
             }
 
             if (outcome.Diagnostic is not null) {
                 _diagnostics.Add(Diagnostic.Create(
-                    outcome.Diagnostic, Location(property), attributeClass.Name, property.Name));
+                    outcome.Diagnostic, Location(member), attributeClass.Name, member.Name));
             }
         }
 
@@ -506,7 +627,7 @@ public sealed class AttributeFrontEnd {
     /// <summary>
     /// Resolves the reference form's member, or applies the policy to the inline form.
     /// </summary>
-    private ConstraintModel? ResolvePattern(ConstraintModel constraint, AttributeData attribute, IPropertySymbol property) {
+    private ConstraintModel? ResolvePattern(ConstraintModel constraint, AttributeData attribute, ISymbol owner) {
         var args = attribute.ConstructorArguments;
 
         if (args.Length == 2 && args[0].Value is INamedTypeSymbol provider && args[1].Value is string memberName) {
@@ -531,8 +652,8 @@ public sealed class AttributeFrontEnd {
 
             if (problem is not null) {
                 _diagnostics.Add(Diagnostic.Create(
-                    ValidationDiagnostics.RegexMemberUnusable, Location(property),
-                    provider.ToDisplayString(), memberName, problem, property.Name));
+                    ValidationDiagnostics.RegexMemberUnusable, Location(owner),
+                    provider.ToDisplayString(), memberName, problem, owner.Name));
 
                 return null;
             }
@@ -551,9 +672,9 @@ public sealed class AttributeFrontEnd {
                 : DiagnosticSeverity.Warning;
 
             _diagnostics.Add(Diagnostic.Create(
-                ValidationDiagnostics.InlinePatternUnderAot, Location(property), severity,
+                ValidationDiagnostics.InlinePatternUnderAot, Location(owner), severity,
                 additionalLocations: null, properties: null,
-                property.Name, property.ContainingType.Name));
+                owner.Name, owner.ContainingType?.Name));
 
             if (_patternPolicy == PatternPolicy.Error) {
                 return null;

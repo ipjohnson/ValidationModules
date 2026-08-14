@@ -36,6 +36,21 @@ public static class ValidationCodes {
     public const string ArrayBounds = "array_bounds";
 
     /// <summary>
+    /// A value was not an exact multiple of its divisor. OpenAPI's <c>multipleOf</c> keyword.
+    /// </summary>
+    public const string MultipleOf = "multiple_of";
+
+    /// <summary>
+    /// A collection contained the same element twice. OpenAPI's <c>uniqueItems</c> keyword.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="ArrayBounds"/> rather than folded into it: the collection's size was
+    /// never in question, and a client attaching the message to a count input would put it in the
+    /// wrong place.
+    /// </remarks>
+    public const string UniqueItems = "unique_items";
+
+    /// <summary>
     /// A value could not be read as the type it was declared as - <c>?limit=abc</c> where an integer
     /// was expected.
     /// </summary>

@@ -76,6 +76,51 @@ public static class ValidationContextExtensions {
         context.Add(field, ValidationCodes.ArrayBounds, BoundsMessage(field, min, max, "item"), severity);
 
     /// <summary>
+    /// Records that a value was not an exact multiple of its divisor.
+    /// </summary>
+    /// <remarks>
+    /// The divisor is a <c>decimal</c> whatever the member's type, because that is the domain the
+    /// check is decided in and a message quoting a different number from the one the check used
+    /// would be worse than no message. Invariant culture, as everywhere else here.
+    /// </remarks>
+    /// <param name="context">The context to record against.</param>
+    /// <param name="field">The field name.</param>
+    /// <param name="divisor">The divisor the value had to be a multiple of.</param>
+    /// <param name="severity">Defaults to <see cref="ValidationSeverity.Error"/>.</param>
+    public static void AddMultipleOf(
+        this ValidationContext context,
+        string field,
+        decimal divisor,
+        ValidationSeverity severity = ValidationSeverity.Error) =>
+        context.Add(
+            field,
+            ValidationCodes.MultipleOf,
+            string.Concat(
+                field,
+                " must be a multiple of ",
+                divisor.ToString(CultureInfo.InvariantCulture),
+                "."),
+            severity);
+
+    /// <summary>
+    /// Records that a collection contained the same element twice.
+    /// </summary>
+    /// <remarks>
+    /// The offending element is deliberately not in the message. Finding it costs a second pass, and
+    /// echoing a value the caller sent back into an error response is the habit
+    /// <see cref="AddPattern"/> avoids for the same reason.
+    /// </remarks>
+    public static void AddUniqueItems(
+        this ValidationContext context,
+        string field,
+        ValidationSeverity severity = ValidationSeverity.Error) =>
+        context.Add(
+            field,
+            ValidationCodes.UniqueItems,
+            string.Concat(field, " must not contain duplicate items."),
+            severity);
+
+    /// <summary>
     /// Records that a value fell outside its range.
     /// </summary>
     /// <remarks>
@@ -101,6 +146,43 @@ public static class ValidationContextExtensions {
                 " and ",
                 max.ToString(null, CultureInfo.InvariantCulture),
                 "."),
+            severity);
+
+    /// <summary>
+    /// Records that a value fell below its lower bound, where no upper bound was declared.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="AddRange{T}"/> rather than passing the type's extreme as the
+    /// absent bound. The extreme is not a bound anyone wrote, and composing it into the message
+    /// quotes it back to the caller - a specification setting only <c>minimum</c> produced
+    /// "must be between 1 and 7.9228162514264338E+28" in a 400 body. Same code, because the failure
+    /// is the same one and a client switching on it should not have to learn a second.
+    /// </remarks>
+    public static void AddRangeAtLeast<T>(
+        this ValidationContext context,
+        string field,
+        T min,
+        ValidationSeverity severity = ValidationSeverity.Error)
+        where T : IFormattable =>
+        context.Add(
+            field,
+            ValidationCodes.Range,
+            string.Concat(field, " must be at least ", min.ToString(null, CultureInfo.InvariantCulture), "."),
+            severity);
+
+    /// <summary>
+    /// Records that a value rose above its upper bound, where no lower bound was declared.
+    /// </summary>
+    public static void AddRangeAtMost<T>(
+        this ValidationContext context,
+        string field,
+        T max,
+        ValidationSeverity severity = ValidationSeverity.Error)
+        where T : IFormattable =>
+        context.Add(
+            field,
+            ValidationCodes.Range,
+            string.Concat(field, " must be at most ", max.ToString(null, CultureInfo.InvariantCulture), "."),
             severity);
 
     /// <summary>

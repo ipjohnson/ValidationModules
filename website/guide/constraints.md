@@ -1,19 +1,38 @@
 # Constraints
 
-Seven attributes, all in `ValidationModules.Constraints`. Each one is read at build time and
+Nine attributes, all in `ValidationModules.Constraints`. Each one is read at build time and
 becomes a branch; none of them is ever constructed at run time.
 
 ```csharp
 using ValidationModules.Constraints;
 
 public record Pet {
-    [Required]                                      public string? Name   { get; init; }
-    [StringLength(min: 1, max: 100)]                public string? Name2  { get; init; }
-    [Range(0, 30)]                                  public int     Age    { get; init; }
-    [Pattern("^[A-Z]{3}$")]                         public string? Sku    { get; init; }
-    [AllowedValues("available", "pending", "sold")] public string? Status { get; init; }
-    [ItemCount(min: 1, max: 10)]                    public List<string> Tags { get; init; } = [];
-    [ValidateNested]                                public Address? Home  { get; init; }
+    [Required]
+    public string? Name { get; init; }
+
+    [StringLength(min: 1, max: 100)]
+    public string? Name2 { get; init; }
+
+    [Range(0, 30)]
+    public int Age { get; init; }
+
+    [Pattern("^[A-Z]{3}$")]
+    public string? Sku { get; init; }
+
+    [AllowedValues("available", "pending", "sold")]
+    public string? Status { get; init; }
+
+    [ItemCount(min: 1, max: 10)]
+    public List<string> Tags { get; init; } = [];
+
+    [MultipleOf(5)]
+    public int Quantity { get; init; }
+
+    [UniqueItems]
+    public List<string> Codes { get; init; } = [];
+
+    [ValidateNested]
+    public Address? Home { get; init; }
 }
 ```
 
@@ -27,7 +46,8 @@ mark it `[GenerateValidator]`.
 Emits code `required`.
 
 ```csharp
-[Required] public string? Name { get; init; }
+[Required]
+public string? Name { get; init; }
 ```
 
 ```csharp
@@ -60,9 +80,14 @@ Emits code `string_length`. Strings only; anything else is
 [VM0001](/reference/diagnostics#vm0001).
 
 ```csharp
-[StringLength(min: 1, max: 100)] public string? Name  { get; init; }
-[StringLength(Max = 500)]        public string? Notes { get; init; }
-[StringLength(Min = 8)]          public string? Token { get; init; }
+[StringLength(min: 1, max: 100)]
+public string? Name { get; init; }
+
+[StringLength(Max = 500)]
+public string? Notes { get; init; }
+
+[StringLength(Min = 8)]
+public string? Token { get; init; }
 ```
 
 The named form exists so declaring one bound reads as declaring one bound. `Min` defaults to `0` and
@@ -78,8 +103,11 @@ Emits code `range`. Numeric and date-like types only; anything else is
 [VM0003](/reference/diagnostics#vm0003).
 
 ```csharp
-[Range(0, 30)]                         public int    Age   { get; init; }
-[Range(0.0, 1.0, ExclusiveMax = true)] public double Ratio { get; init; }
+[Range(0, 30)]
+public int Age { get; init; }
+
+[Range(0.0, 1.0, ExclusiveMax = true)]
+public double Ratio { get; init; }
 ```
 
 Bounds are inclusive unless you say otherwise:
@@ -92,15 +120,31 @@ if ((value.Age < 0 || value.Age > 30)) ctx.AddRange("age", 0, 30);
 `[Range]` to a `Nullable<T>` checks the value only when it has one; combine it with `[Required]` if
 null should also fail.
 
+Either bound may stand alone, through the named form:
+
+```csharp
+[Range(Min = 1)]
+public int Quantity { get; init; }
+```
+
+An absent bound emits no comparison and is not named in the message — `quantity must be at least 1.`
+rather than a second bound nobody wrote. A `[Range]` with neither bound can never fail, and is
+[VM0026](/reference/diagnostics#vm0026).
+
 ::: tip String bounds, for the types with no constant form
 `decimal`, `DateTime`, `DateOnly`, `TimeOnly`, `TimeSpan` and `DateTimeOffset` have no constant form
 in metadata, so their bounds are written as strings and parsed against the member's own type at
 build time:
 
 ```csharp
-[Range("2000-01-01", "2100-12-31")] public DateOnly Born  { get; init; }
-[Range("0.00", "9.99")]             public decimal Price { get; init; }
-[Range("00:00:00", "23:59:59")]     public TimeSpan Window { get; init; }
+[Range("2000-01-01", "2100-12-31")]
+public DateOnly Born { get; init; }
+
+[Range("0.00", "9.99")]
+public decimal Price { get; init; }
+
+[Range("00:00:00", "23:59:59")]
+public TimeSpan Window { get; init; }
 ```
 
 The bound is emitted as a constructor call — `new global::System.DateOnly(2000, 1, 1)` — in both the
@@ -116,7 +160,8 @@ the build machine's would make the same source mean two things.
 Emits code `pattern`. Strings only; anything else is [VM0001](/reference/diagnostics#vm0001).
 
 ```csharp
-[Pattern("^[A-Z]{3}$")] public string? Sku { get; init; }
+[Pattern("^[A-Z]{3}$")]
+public string? Sku { get; init; }
 ```
 
 Two forms, and which one you use is the single biggest decision on this page for an AOT build:
@@ -149,7 +194,8 @@ is exactly what this library exists to avoid; patterns go through `[GeneratedReg
 Emits code `enum` — named for OpenAPI's `enum` keyword, which is where the code comes from.
 
 ```csharp
-[AllowedValues("available", "pending", "sold")] public string? Status { get; init; }
+[AllowedValues("available", "pending", "sold")]
+public string? Status { get; init; }
 ```
 
 ```csharp
@@ -168,7 +214,8 @@ Emits code `array_bounds`. Collections only; anything else is
 [VM0002](/reference/diagnostics#vm0002).
 
 ```csharp
-[ItemCount(min: 1, max: 10)] public List<string> Tags { get; init; } = [];
+[ItemCount(min: 1, max: 10)]
+public List<string> Tags { get; init; } = [];
 ```
 
 `Min`/`Max` behave exactly as `[StringLength]`'s do, including the named form and the defaults.
@@ -181,15 +228,101 @@ The count is read without enumerating wherever a `Count` or `Length` exists. Whe
 bare `IEnumerable<T>` — the emitter walks it once instead, so the constraint still applies rather
 than being silently skipped.
 
+## `[MultipleOf]`
+
+Emits code `multiple_of`. OpenAPI's `multipleOf`. Numeric types only; anything else is
+[VM0021](/reference/diagnostics#vm0021).
+
+```csharp
+[MultipleOf(5)]
+public int Quantity { get; init; }
+
+[MultipleOf("0.05")]
+public decimal Price { get; init; }
+
+[MultipleOf(0.01)]
+public double Ratio { get; init; }
+```
+
+The divisor must be greater than zero — [VM0022](/reference/diagnostics#vm0022). This is an error
+rather than a dropped rule because `value % 0` is a compile error for an integral member and a
+`DivideByZeroException` for a decimal one, and both would land inside a generated file. A divisor
+with no form the member's type can be checked against is
+[VM0023](/reference/diagnostics#vm0023): a fractional divisor on an `int`, or a string that does
+not parse.
+
+`decimal` takes its divisor as a string, for the same reason `[Range]` does — it has no constant
+form in metadata.
+
+::: warning `double` and `float` are not checked with `%`
+In binary floating point `0.3 % 0.01` is `0.00999999999999998`. A naive check against
+`multipleOf: 0.01` rejects 0.3, 1.05, 99.99 and 1234.56 — every value a specification author would
+call valid.
+
+So a `double` or `float` member converts to `decimal` first, which rounds to 15 significant digits
+and cancels exactly that error:
+
+```csharp
+if (!ConstraintChecks.IsMultipleOf(value.Ratio, 0.01m)) ctx.AddMultipleOf("ratio", 0.01m);
+```
+
+Integral and `decimal` members are already exact, and compile to a plain comparison:
+
+```csharp
+if ((value.Quantity % 5 != 0)) ctx.AddMultipleOf("quantity", 5);
+```
+
+The one case with no answer is a floating-point value past `decimal`'s range, around 7.9e28. Its
+spacing there is wider than any realistic divisor, so it is reported as a failure rather than
+passed as a value that could not be evaluated.
+:::
+
+## `[UniqueItems]`
+
+Emits code `unique_items`. OpenAPI's `uniqueItems`. Collections only; anything else is
+[VM0024](/reference/diagnostics#vm0024). No arguments — presence is the constraint.
+
+```csharp
+[UniqueItems]
+public List<string> Codes { get; init; } = [];
+```
+
+This is the one constraint here that is not a comparison, so it is the one that calls into the
+runtime rather than being written inline:
+
+```csharp
+if (value.Codes is not null && !ConstraintChecks.AllUnique(value.Codes)) ctx.AddUniqueItems("codes");
+```
+
+`AllUnique` compares pairwise below sixteen elements and allocates a `HashSet<T>` above them, so a
+request body's worth of elements still costs nothing on the heap. It takes an `IEnumerable<T>`, so
+a property with no `Count` is checked like any other.
+
+::: warning Elements need equality of their own
+Comparison is `EqualityComparer<T>.Default` — value equality for records, primitives and anything
+implementing `IEquatable<T>`, and **reference equality** for a class that overrides none of it. Two
+elements with identical contents would then both pass, which is a rule succeeding for the wrong
+reason. The generator reports [VM0025](/reference/diagnostics#vm0025) rather than letting it
+through quietly.
+
+A `HashSet<T>` or a dictionary cannot fail this constraint, since its own type already guarantees
+what the rule asks for.
+:::
+
 ## `[ValidateNested]`
 
 Carries no check of its own. It tells the emitter to descend, and what descending means depends on
 the property's shape — see [Nesting and collections](/guide/nesting).
 
 ```csharp
-[ValidateNested] public Address? Home { get; init; }
-[ValidateNested] public List<Toy> Toys { get; init; } = [];
-[ValidateNested] public Dictionary<string, Toy> ToysByName { get; init; } = new();
+[ValidateNested]
+public Address? Home { get; init; }
+
+[ValidateNested]
+public List<Toy> Toys { get; init; } = [];
+
+[ValidateNested]
+public Dictionary<string, Toy> ToysByName { get; init; } = new();
 ```
 
 `[ValidateNested]` does not recurse into a value that failed `[Required]` — there is nothing to walk,
@@ -243,8 +376,10 @@ merging zero validators reports every value as valid.
 
 A record with an explicit body avoids the question:
 
+```csharp
 public record Pet {
-    [Required] public string? Name { get; init; }
+    [Required]
+    public string? Name { get; init; }
 }
 ```
 :::

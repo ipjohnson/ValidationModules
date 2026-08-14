@@ -14,6 +14,9 @@ public sealed record Reservation {
     public DateOnly Start { get; init; }
     public DateOnly End { get; init; }
     public IReadOnlyList<string>? Notes { get; init; }
+    public int Guests { get; init; }
+    public decimal Deposit { get; init; }
+    public IReadOnlyList<string>? Rooms { get; init; }
 }
 
 public static partial class ReservationPatterns {
@@ -43,6 +46,12 @@ public sealed class ReservationRules : IValidationRulesFor<Reservation> {
         rules.Pattern(x => x.Reference, ReservationPatterns.Reference);
         rules.Range(x => x.Nights, 1, 30);
         rules.Count(x => x.Notes, 0, 3);
+
+        // The same four constraints the attribute front end reads, declared here instead. Both
+        // flatten into one validator, so a rule declared either way has to mean the same thing.
+        rules.RangeAtLeast(x => x.Guests, 1);
+        rules.MultipleOf(x => x.Deposit, 0.05m);
+        rules.Unique(x => x.Rooms);
 
         rules.Ensure(x => x.Start < x.End);
         rules.Ensure(x => x.Nights <= 7 || x.Notes != null, code: "long_stay_needs_notes");

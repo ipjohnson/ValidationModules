@@ -22,7 +22,7 @@ namespace SutProject.Tests;
 /// </remarks>
 public class RulesClassTests {
 
-    private static readonly IValidatorFor<Reservation> Generated = ReservationValidator.Instance;
+    private static readonly IValidatorFor<Reservation> Generated = new ReservationValidator();
     private static readonly IValidatorFor<Reservation> Described = new DescribedValidator<Reservation>(new ReservationRules());
 
     /// <summary>
@@ -38,12 +38,34 @@ public class RulesClassTests {
         Start = new DateOnly(2026, 1, 1),
         End = new DateOnly(2026, 1, 4),
         Notes = null,
+        Guests = 2,
+        Deposit = 1.50m,
+        Rooms = ["101", "102"],
     };
 
     [Theory]
     [MemberData(nameof(BothEngines))]
     public void Validate_OnAValidValue_ReportsNothing(IValidatorFor<Reservation> validator) {
         Assert.True(validator.Validate(Valid()).IsValid, validator.GetType().Name);
+    }
+
+    /// <summary>
+    /// The three constraints declared through the fluent API rather than through attributes, on both
+    /// engines. A kind only one front end can produce is a kind whose two paths cannot be compared.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(BothEngines))]
+    public void Validate_EnforcesTheOneSidedRangeTheMultipleAndTheUniqueness(
+        IValidatorFor<Reservation> validator) {
+
+        Assert.True(validator.Validate(Valid() with { Guests = 1 }).IsValid);
+        Assert.False(validator.Validate(Valid() with { Guests = 0 }).IsValid);
+
+        Assert.True(validator.Validate(Valid() with { Deposit = 0.05m }).IsValid);
+        Assert.False(validator.Validate(Valid() with { Deposit = 0.03m }).IsValid);
+
+        Assert.True(validator.Validate(Valid() with { Rooms = ["a", "b"] }).IsValid);
+        Assert.False(validator.Validate(Valid() with { Rooms = ["a", "a"] }).IsValid);
     }
 
     [Theory]
@@ -113,6 +135,10 @@ public class RulesClassTests {
             Valid() with { Guest = "A", Reference = "nope", Nights = 99 },
             Valid() with { Notes = ["a", "b", "c", "d"], End = new DateOnly(2020, 1, 1) },
             Valid() with { Guest = "Zed", Nights = 40, Notes = null, End = new DateOnly(2020, 1, 1) },
+            Valid() with { Guests = 0 },
+            Valid() with { Deposit = 1.51m },
+            Valid() with { Rooms = ["101", "101"] },
+            Valid() with { Guests = 0, Deposit = 0.03m, Rooms = ["a", "a"] },
         ];
 
         foreach (var value in cases) {

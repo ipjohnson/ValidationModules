@@ -55,7 +55,7 @@ statically referenced and the trimmer can see all of them.
 Everything above is handled for you. This is not:
 
 ```csharp
-[Pattern("^[A-Z]{3}$")]   // roots the regex parser and interpreter — about 450 KB
+[Pattern("^[A-Z]{3}$")] // roots the regex parser and interpreter — about 450 KB
 public string? Sku { get; init; }
 ```
 

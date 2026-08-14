@@ -85,3 +85,57 @@ public sealed record Booking {
     [Range("2000-01-01", "2100-01-01", ExclusiveMax = true)]
     public DateTime Effective { get; init; }
 }
+
+/// <summary>
+/// <c>[MultipleOf]</c> across every numeric shape it accepts, and <c>[UniqueItems]</c>.
+/// </summary>
+/// <remarks>
+/// The floating-point members are the interesting ones. They are checked in the decimal domain
+/// rather than with <c>%</c>, because <c>0.3 % 0.01</c> is 0.00999999999999998 in binary floating
+/// point - so a naive check rejects almost every price a specification would call valid. Running
+/// the emitted comparison is the only way to see that, which is why these are here rather than
+/// only in the generator tests.
+/// </remarks>
+public sealed record Order {
+    [MultipleOf(5)]
+    public int Quantity { get; init; }
+
+    [MultipleOf(100)]
+    public long Cents { get; init; }
+
+    [MultipleOf("0.05")]
+    public decimal Price { get; init; }
+
+    [MultipleOf(0.01)]
+    public double Ratio { get; init; }
+
+    [MultipleOf(25)]
+    public int? Optional { get; init; }
+
+    [UniqueItems]
+    public List<string> Codes { get; init; } = new();
+
+    [UniqueItems]
+    public int[] Sizes { get; init; } = Array.Empty<int>();
+}
+
+/// <summary>
+/// A <c>[Range]</c> with one bound, and a fractional bound written as a numeric literal against a
+/// <c>decimal</c>.
+/// </summary>
+/// <remarks>
+/// Both are regressions rather than features. An absent bound used to be emitted as the type's
+/// extreme, which reached the caller as "must be between 1 and 7.9228162514264338E+28"; and
+/// <c>[Range(0.5, 9.99)]</c> on a decimal emitted <c>price &lt; 0.5</c>, which is CS0019 - an error
+/// inside generated code.
+/// </remarks>
+public sealed record Allocation {
+    [Range(Min = 1)]
+    public int AtLeastOne { get; init; }
+
+    [Range(Max = 99)]
+    public int AtMostNinetyNine { get; init; }
+
+    [Range(0.5, 9.99)]
+    public decimal Fractional { get; init; }
+}

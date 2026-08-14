@@ -51,7 +51,7 @@ public class NestedCompositionTests {
     private static ServiceProvider Provider() {
         var services = new ServiceCollection();
 
-        services.AddValidationModules(GeneratedValidators.All);
+        services.AddSutProjectValidators();
         services.AddSingleton<IValidatorFor<Address>, AddressBlocklistValidator>();
         services.AddSingleton<IValidatorFor<Toy>, ToyRecallValidator>();
         services.AddValidationRunner<Pet>();
@@ -132,14 +132,14 @@ public class NestedCompositionTests {
         // short-circuits, and nothing is allocated for it.
         var pet = Valid() with { Home = new Address { PostalCode = "BLOCKED" } };
 
-        Assert.True(PetValidator.Instance.IsValid(pet));
-        Assert.Empty(PetValidator.Instance.Validate(pet).Errors);
+        Assert.True(new PetValidator().IsValid(pet));
+        Assert.Empty(new PetValidator().Validate(pet).Errors);
     }
 
     [Fact]
     public void RunnerConstructedByHandWithoutAProvider_RunsGeneratedValidatorsOnly() {
         // What a unit test does. Composition is a property of having been resolved from a scope.
-        var runner = new ValidationRunner<Pet>([PetValidator.Instance], []);
+        var runner = new ValidationRunner<Pet>([new PetValidator()], []);
 
         Assert.True(runner.Validate(Valid() with { Home = new Address { PostalCode = "BLOCKED" } }).IsValid);
     }

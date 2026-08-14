@@ -27,6 +27,13 @@ namespace ValidationModules.Benchmarks.Comparative.Comparisons;
 [MemoryDiagnoser]
 [BenchmarkCategory(ComparativeCategories.DependencyInjection)]
 public class DependencyInjectionComparison {
+
+    // Hoisted: constructing per invocation would put an allocation on the measured path.
+    private static readonly AddressValidator AddressValidatorShared = new();
+    private static readonly BasketValidator BasketValidatorShared = new();
+    private static readonly CustomerValidator CustomerValidatorShared = new();
+    private static readonly OrderLineValidator OrderLineValidatorShared = new();
+    private static readonly OrderValidator OrderValidatorShared = new();
     private ServiceProvider _vmProvider = null!;
     private ServiceProvider _fvProvider = null!;
 
@@ -36,11 +43,11 @@ public class DependencyInjectionComparison {
     /// registering those would charge ValidationModules for types the comparison does not use.
     /// </summary>
     private static ValidatorRegistration[] Registrations() => [
-        new(typeof(IValidatorFor<Customer>), static _ => CustomerValidator.Instance),
-        new(typeof(IValidatorFor<Address>), static _ => AddressValidator.Instance),
-        new(typeof(IValidatorFor<OrderLine>), static _ => OrderLineValidator.Instance),
-        new(typeof(IValidatorFor<Order>), static _ => OrderValidator.Instance),
-        new(typeof(IValidatorFor<Basket>), static _ => BasketValidator.Instance),
+        new(typeof(IValidatorFor<Customer>), static _ => CustomerValidatorShared),
+        new(typeof(IValidatorFor<Address>), static _ => AddressValidatorShared),
+        new(typeof(IValidatorFor<OrderLine>), static _ => OrderLineValidatorShared),
+        new(typeof(IValidatorFor<Order>), static _ => OrderValidatorShared),
+        new(typeof(IValidatorFor<Basket>), static _ => BasketValidatorShared),
     ];
 
     [GlobalSetup]

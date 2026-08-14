@@ -121,18 +121,37 @@ internal sealed class RangeRule<T, TValue> : CompiledRule<T>
     where TValue : struct, IComparable<TValue>, IFormattable {
 
     private readonly Func<T, TValue?> _read;
-    private readonly TValue _min;
-    private readonly TValue _max;
+    private readonly TValue? _min;
+    private readonly TValue? _max;
 
-    public RangeRule(string field, Func<T, TValue?> read, TValue min, TValue max) : base(field) {
+    public RangeRule(string field, Func<T, TValue?> read, TValue? min, TValue? max) : base(field) {
         _read = read;
         _min = min;
         _max = max;
     }
 
+    /// <summary>
+    /// Either bound may be absent, and an absent one is not compared against and is not named in
+    /// the message - matching what the emitted path does for <c>[Range(Min = 1)]</c>.
+    /// </summary>
     public override void Apply(ref ValidationContext context, T value) {
-        if (_read(value) is { } read && (read.CompareTo(_min) < 0 || read.CompareTo(_max) > 0)) {
-            context.AddRange(Field, _min, _max);
+        if (_read(value) is not { } read) {
+            return;
+        }
+
+        var below = _min is { } lower && read.CompareTo(lower) < 0;
+        var above = _max is { } upper && read.CompareTo(upper) > 0;
+
+        if (!below && !above) {
+            return;
+        }
+
+        if (_min is { } min && _max is { } max) {
+            context.AddRange(Field, min, max);
+        } else if (_min is { } only) {
+            context.AddRangeAtLeast(Field, only);
+        } else if (_max is { } cap) {
+            context.AddRangeAtMost(Field, cap);
         }
     }
 }
@@ -200,6 +219,61 @@ internal sealed class ItemCountRule<T, TElement> : CompiledRule<T> {
     public override void Apply(ref ValidationContext context, T value) {
         if (_read(value) is { } read && (read.Count < _min || read.Count > _max)) {
             context.AddItemCount(Field, _min, _max);
+        }
+    }
+}
+
+internal sealed class UniqueItemsRule<T, TElement> : CompiledRule<T> {
+    private readonly Func<T, IEnumerable<TElement>?> _read;
+
+    public UniqueItemsRule(string field, Func<T, IEnumerable<TElement>?> read) : base(field) => _read = read;
+
+    public override void Apply(ref ValidationContext context, T value) {
+        if (_read(value) is { } read && !ConstraintChecks.AllUnique(read)) {
+            context.AddUniqueItems(Field);
+        }
+    }
+}
+
+/// <summary>
+/// <c>[MultipleOf]</c> for a value that divides exactly - anything integral, and <c>decimal</c>.
+/// </summary>
+internal sealed class MultipleOfRule<T> : CompiledRule<T> {
+    private readonly Func<T, decimal?> _read;
+    private readonly decimal _divisor;
+
+    public MultipleOfRule(string field, Func<T, decimal?> read, decimal divisor) : base(field) {
+        _read = read;
+        _divisor = divisor;
+    }
+
+    public override void Apply(ref ValidationContext context, T value) {
+        if (_read(value) is { } read && read % _divisor != 0m) {
+            context.AddMultipleOf(Field, _divisor);
+        }
+    }
+}
+
+/// <summary>
+/// <c>[MultipleOf]</c> for a binary floating-point value, which does not divide exactly.
+/// </summary>
+/// <remarks>
+/// Separate from <see cref="MultipleOfRule{T}"/> so both engines answer alike: the emitted path
+/// routes double and float through <see cref="ConstraintChecks.IsMultipleOf(double, decimal)"/> for
+/// the reason that method documents, and this is the same call.
+/// </remarks>
+internal sealed class MultipleOfApproximateRule<T> : CompiledRule<T> {
+    private readonly Func<T, double?> _read;
+    private readonly decimal _divisor;
+
+    public MultipleOfApproximateRule(string field, Func<T, double?> read, decimal divisor) : base(field) {
+        _read = read;
+        _divisor = divisor;
+    }
+
+    public override void Apply(ref ValidationContext context, T value) {
+        if (_read(value) is { } read && !ConstraintChecks.IsMultipleOf(read, _divisor)) {
+            context.AddMultipleOf(Field, _divisor);
         }
     }
 }

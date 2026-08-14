@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text;
 using ValidationModules.SourceGenerator.Impl.Models;
 
@@ -35,10 +36,8 @@ public sealed class ValidatorEmitter {
             builder.AppendLine();
         }
         builder.AppendLine($"public sealed partial class {model.ValidatorName} : IValidatorFor<{model.QualifiedTypeName}> {{");
-        builder.AppendLine($"    public static readonly {model.ValidatorName} Instance = new();");
         builder.AppendLine();
-        builder.AppendLine($"    private {model.ValidatorName}() {{ }}");
-        builder.AppendLine();
+        EmitNestedDependencies(builder, model);
 
         var body = new StringBuilder();
         foreach (var property in model.Properties) {
@@ -90,6 +89,102 @@ public sealed class ValidatorEmitter {
 
         return builder.ToString();
     }
+
+    /// <summary>
+    /// The constructor pair, and the fields holding whatever validates each nested property.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Nested validators are injected, not reached statically.</b> The container owns the graph,
+    /// so registering a second <c>IValidatorFor&lt;Address&gt;</c> composes with the generated one
+    /// wherever an Address is reached - as a property of a Pet exactly as much as on its own. The
+    /// set is resolved once when the singleton is built rather than per descent.
+    /// </para>
+    /// <para>
+    /// <b>Held as arrays rather than as the injected IEnumerable.</b> Enumerating an
+    /// interface-typed sequence boxes the enumerator, which would allocate on a clean pass at every
+    /// nested property - the one thing the runtime promises it does not do. Materialised once in
+    /// the constructor and walked with a for loop.
+    /// </para>
+    /// <para>
+    /// <b>The parameterless constructor fills in lazily, and that is not a micro-optimization.</b>
+    /// Building the defaults eagerly would recurse forever on a self-referential model - a Node
+    /// whose Child is a Node constructs a NodeValidator whose constructor constructs a
+    /// NodeValidator - and a StackOverflowException cannot be caught. Demand-driven initialisation
+    /// terminates because nothing is built until a value actually descends, at which point the
+    /// depth guard bounds it. The race on first use is benign: two threads build equivalent arrays
+    /// and one wins.
+    /// </para>
+    /// </remarks>
+    private static void EmitNestedDependencies(StringBuilder builder, ValidatedTypeModel model) {
+        var nested = model.Properties.Where(p => p.ElementValidatorName is not null).ToList();
+
+        if (nested.Count == 0) {
+            builder.AppendLine($"    public {model.ValidatorName}() {{ }}");
+            builder.AppendLine();
+            return;
+        }
+
+        foreach (var property in nested) {
+            builder.AppendLine(
+                $"    private IValidatorFor<{ElementType(property)}>[]? {Field(property)};");
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("    /// <summary>Resolved from the container: the full set for each nested type.</summary>");
+        builder.AppendLine($"    public {model.ValidatorName}(");
+
+        for (var i = 0; i < nested.Count; i++) {
+            var comma = i == nested.Count - 1 ? ") {" : ",";
+            builder.AppendLine(
+                $"        System.Collections.Generic.IEnumerable<IValidatorFor<{ElementType(nested[i])}>> {Parameter(nested[i])}{comma}");
+        }
+
+        foreach (var property in nested) {
+            builder.AppendLine(
+                $"        {Field(property)} = System.Linq.Enumerable.ToArray({Parameter(property)});");
+        }
+
+        builder.AppendLine("    }");
+        builder.AppendLine();
+        builder.AppendLine("    /// <summary>Standalone: nested types fall back to their own generated validators.</summary>");
+        builder.AppendLine($"    public {model.ValidatorName}() {{ }}");
+        builder.AppendLine();
+
+        foreach (var property in nested) {
+            // A property that nests its own type resolves to this instance rather than a new one,
+            // which is both correct and the cheapest way to terminate the common cycle.
+            var fallback = property.ElementValidatorName == $"global::{Qualify(model)}"
+                ? "this"
+                : $"new {property.ElementValidatorName}()";
+
+            builder.AppendLine(
+                $"    private IValidatorFor<{ElementType(property)}>[] {Accessor(property)} =>");
+            builder.AppendLine(
+                $"        {Field(property)} ??= new IValidatorFor<{ElementType(property)}>[] {{ {fallback} }};");
+            builder.AppendLine();
+        }
+    }
+
+    /// <summary>
+    /// The type a nested property's validators are for. A collection or dictionary carries its
+    /// element type; a plain object's element type is the property's own, which the front end
+    /// leaves null because nothing needed it before now.
+    /// </summary>
+    private static string ElementType(ValidatedPropertyModel property) =>
+        property.ElementTypeName ?? property.TypeName;
+
+    private static string Field(ValidatedPropertyModel property) => $"_{Camel(property.PropertyName)}Validators";
+
+    private static string Parameter(ValidatedPropertyModel property) => Camel(property.PropertyName);
+
+    private static string Accessor(ValidatedPropertyModel property) => $"{property.PropertyName}Validators";
+
+    private static string Camel(string name) =>
+        name.Length == 0 || char.IsLower(name[0]) ? name : char.ToLowerInvariant(name[0]) + name.Substring(1);
+
+    private static string Qualify(ValidatedTypeModel model) =>
+        model.Namespace.Length == 0 ? model.ValidatorName : $"{model.Namespace}.{model.ValidatorName}";
 
     private static void EmitProperty(
         StringBuilder builder,
@@ -151,8 +246,10 @@ public sealed class ValidatorEmitter {
             builder.AppendLine($"            foreach (var pair in {entries}) {{");
             builder.AppendLine("                if (pair.Value is not null) {");
             builder.AppendLine($"                    var entryCtx = ctx.PushKey({Quote(property.FieldName)}, pair.Key?.ToString() ?? \"\");");
-            builder.AppendLine($"                    {property.ElementValidatorName}.Instance.Validate(ref entryCtx, pair.Value);");
-            builder.AppendLine($"                    entryCtx.ValidateRegistered(pair.Value, {property.ElementValidatorName}.Instance);");
+            builder.AppendLine($"                    var entryValidators = {Accessor(property)};");
+            builder.AppendLine("                    for (var vi = 0; vi < entryValidators.Length; vi++) {");
+            builder.AppendLine("                        entryValidators[vi].Validate(ref entryCtx, pair.Value);");
+            builder.AppendLine("                    }");
             builder.AppendLine("                }");
             builder.AppendLine("            }");
             builder.AppendLine("        }");
@@ -162,8 +259,10 @@ public sealed class ValidatorEmitter {
         if (property.Shape == PropertyShape.Object) {
             builder.AppendLine($"        if ({access} is {{ }} nested{property.PropertyName}) {{");
             builder.AppendLine($"            var ctx{property.PropertyName} = ctx.Push({Quote(property.FieldName)});");
-            builder.AppendLine($"            {property.ElementValidatorName}.Instance.Validate(ref ctx{property.PropertyName}, nested{property.PropertyName});");
-            builder.AppendLine($"            ctx{property.PropertyName}.ValidateRegistered(nested{property.PropertyName}, {property.ElementValidatorName}.Instance);");
+            builder.AppendLine($"            var validators{property.PropertyName} = {Accessor(property)};");
+            builder.AppendLine($"            for (var vi = 0; vi < validators{property.PropertyName}.Length; vi++) {{");
+            builder.AppendLine($"                validators{property.PropertyName}[vi].Validate(ref ctx{property.PropertyName}, nested{property.PropertyName});");
+            builder.AppendLine("            }");
             builder.AppendLine("        }");
             return;
         }
@@ -185,8 +284,10 @@ public sealed class ValidatorEmitter {
 
         builder.AppendLine("                if (element is not null) {");
         builder.AppendLine($"                    var elementCtx = ctx.PushIndex({Quote(property.FieldName)}, {index});");
-        builder.AppendLine($"                    {property.ElementValidatorName}.Instance.Validate(ref elementCtx, element);");
-        builder.AppendLine($"                    elementCtx.ValidateRegistered(element, {property.ElementValidatorName}.Instance);");
+        builder.AppendLine($"                    var elementValidators = {Accessor(property)};");
+        builder.AppendLine("                    for (var vi = 0; vi < elementValidators.Length; vi++) {");
+        builder.AppendLine("                        elementValidators[vi].Validate(ref elementCtx, element);");
+        builder.AppendLine("                    }");
         builder.AppendLine("                }");
 
         if (!property.IsIndexable) {
@@ -251,11 +352,41 @@ public sealed class ValidatorEmitter {
                 return tests.Count == 0 ? null : $"{guard}({string.Join(" || ", tests)})";
             }
 
+            // Each bound is optional and an absent one emits nothing, so a spec that set only
+            // `minimum` compiles to one comparison rather than two, the second of which could never
+            // fail and whose bound the composed message would then quote back at the caller.
             case ConstraintKind.Range: {
-                var low = constraint.ExclusiveMin ? "<=" : "<";
-                var high = constraint.ExclusiveMax ? ">=" : ">";
-                return $"{guard}({value} {low} {constraint.Min} || {value} {high} {constraint.Max})";
+                var tests = new List<string>();
+                if (constraint.Min is { } min) {
+                    tests.Add($"{value} {(constraint.ExclusiveMin ? "<=" : "<")} {min}");
+                }
+
+                if (constraint.Max is { } max) {
+                    tests.Add($"{value} {(constraint.ExclusiveMax ? ">=" : ">")} {max}");
+                }
+
+                return tests.Count == 0 ? null : $"{guard}({string.Join(" || ", tests)})";
             }
+
+            // An integral or decimal member divides exactly, so it keeps the straight-line form the
+            // rest of this switch has. A double or float cannot: `0.3 % 0.01` is 0.00999999999999998
+            // in binary floating point, so the check goes through the runtime, which converts to
+            // decimal first. The divisor already arrives in the right denomination.
+            case ConstraintKind.MultipleOf: {
+                if (constraint.Divisor is not { } divisor) {
+                    return null;
+                }
+
+                return constraint.DecimalDomain
+                    ? $"{guard}!global::ValidationModules.ConstraintChecks.IsMultipleOf({value}, {divisor})"
+                    : $"{guard}({value} % {divisor} != 0)";
+            }
+
+            // The only constraint here that is not a comparison. Typed on IEnumerable<T>, so a
+            // property with no Count needs no separate path - the fallback the count constraints
+            // have does not arise.
+            case ConstraintKind.UniqueItems:
+                return $"{guard}!global::ValidationModules.ConstraintChecks.AllUnique({access})";
 
             case ConstraintKind.Pattern: {
                 // The reference form resolves to the consumer's own [GeneratedRegex], so nothing is
@@ -288,7 +419,9 @@ public sealed class ValidatorEmitter {
         constraint.Kind switch {
             ConstraintKind.StringLength => Add(field, constraint, "AddStringLength", Bounds(constraint)),
             ConstraintKind.ItemCount => Add(field, constraint, "AddItemCount", Bounds(constraint)),
-            ConstraintKind.Range => Add(field, constraint, "AddRange", $", {constraint.Min}, {constraint.Max}"),
+            ConstraintKind.Range => RangeAdd(field, constraint),
+            ConstraintKind.MultipleOf => Add(field, constraint, "AddMultipleOf", $", {constraint.Divisor}"),
+            ConstraintKind.UniqueItems => Add(field, constraint, "AddUniqueItems", ""),
             ConstraintKind.Pattern => Add(field, constraint, "AddPattern", ""),
             ConstraintKind.AllowedValues => Add(field, constraint, "AddAllowedValues",
                 $", {Quote(string.Join(", ", constraint.Values.Select(Unquote)))}"),
@@ -299,6 +432,19 @@ public sealed class ValidatorEmitter {
             ConstraintKind.Predicate => Add(field, constraint, "Add", ""),
             _ => Add(field, constraint, "AddRequired", ""),
         };
+
+    /// <summary>
+    /// The report call for a range, which has a different message per shape rather than one message
+    /// with a bound the author never wrote standing in for the missing side.
+    /// </summary>
+    private static string RangeAdd(string field, ConstraintModel constraint) => constraint switch {
+        { Min: { } min, Max: { } max } => Add(field, constraint, "AddRange", $", {min}, {max}"),
+        { Min: { } min } => Add(field, constraint, "AddRangeAtLeast", $", {min}"),
+        { Max: { } max } => Add(field, constraint, "AddRangeAtMost", $", {max}"),
+
+        // Unreachable: a range with neither bound is VM0026 and never reaches the emitter.
+        _ => Add(field, constraint, "AddRequired", ""),
+    };
 
     private static string Bounds(ConstraintModel constraint) =>
         $", {constraint.Min ?? "0"}, {constraint.Max ?? int.MaxValue.ToString()}";
@@ -322,6 +468,8 @@ public sealed class ValidatorEmitter {
         ConstraintKind.Range => "ValidationCodes.Range",
         ConstraintKind.Pattern => "ValidationCodes.Pattern",
         ConstraintKind.AllowedValues => "ValidationCodes.Enum",
+        ConstraintKind.MultipleOf => "ValidationCodes.MultipleOf",
+        ConstraintKind.UniqueItems => "ValidationCodes.UniqueItems",
         ConstraintKind.Predicate => "ValidationCodes.Predicate",
         _ => "ValidationCodes.ArrayBounds",
     };

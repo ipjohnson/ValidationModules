@@ -57,6 +57,24 @@ public class ValidatorEmitterGoldenTests {
 
                 [ItemCount(1, 10)]
                 public List<string> Tags { get; init; } = new();
+
+                [MultipleOf(5)]
+                public int Quantity { get; init; }
+
+                [MultipleOf("0.05")]
+                public decimal Price { get; init; }
+
+                [MultipleOf(0.01)]
+                public double Ratio { get; init; }
+
+                [UniqueItems]
+                public List<string> Codes { get; init; } = new();
+
+                [Range(Min = 1)]
+                public int AtLeastOne { get; init; }
+
+                [Range(Max = 99)]
+                public int AtMostNinetyNine { get; init; }
             }
             """));
     }

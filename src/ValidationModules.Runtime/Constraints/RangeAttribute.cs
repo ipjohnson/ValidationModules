@@ -14,9 +14,20 @@ namespace ValidationModules.Constraints;
 /// [Range(0, 30)]                                  public int Age { get; init; }
 /// [Range(0.0, 1.0, ExclusiveMax = true)]          public double Ratio { get; init; }
 /// [Range("2000-01-01", "2100-01-01")]             public DateOnly Effective { get; init; }
+/// [Range(Min = 1)]                                public int Quantity { get; init; }
 /// </code>
 /// </example>
 public sealed class RangeAttribute : ValidationConstraintAttribute {
+
+    /// <summary>
+    /// Bounds set through <see cref="Min"/> and <see cref="Max"/>, for declaring only one of them.
+    /// </summary>
+    /// <remarks>
+    /// An absent bound emits no comparison at all, rather than a comparison against the type's
+    /// extreme. The difference is visible to a caller: the composed message becomes "must be at
+    /// least 1" instead of naming an upper bound nobody declared.
+    /// </remarks>
+    public RangeAttribute() { }
 
     /// <summary>Integral bounds.</summary>
     public RangeAttribute(int min, int max) {
@@ -45,11 +56,11 @@ public sealed class RangeAttribute : ValidationConstraintAttribute {
         Max = max;
     }
 
-    /// <summary>The lower bound, as written.</summary>
-    public object Min { get; }
+    /// <summary>The lower bound, as written. Null leaves the value unbounded below.</summary>
+    public object? Min { get; init; }
 
-    /// <summary>The upper bound, as written.</summary>
-    public object Max { get; }
+    /// <summary>The upper bound, as written. Null leaves the value unbounded above.</summary>
+    public object? Max { get; init; }
 
     /// <summary>
     /// Treat <see cref="Min"/> as exclusive. OpenAPI's <c>exclusiveMinimum</c>.

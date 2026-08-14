@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using SutProject;
 using ValidationModules;
 using Xunit;
 
@@ -19,30 +18,34 @@ public class GeneratedValidatorTests {
 
     [Fact]
     public void Generator_ProducedAValidatorPerAnnotatedType() {
-        Assert.NotNull(PetValidator.Instance);
-        Assert.NotNull(AddressValidator.Instance);
-        Assert.NotNull(ToyValidator.Instance);
+        Assert.NotNull(new PetValidator());
+        Assert.NotNull(new AddressValidator());
+        Assert.NotNull(new ToyValidator());
     }
 
     [Fact]
     public void Validate_CleanValue_IsValid() {
-        Assert.True(PetValidator.Instance.IsValid(ValidPet()));
+        Assert.True(new PetValidator().IsValid(ValidPet()));
     }
 
     [Fact]
     public void Validate_CleanValue_AllocatesNothing() {
+        // The validator is held, not constructed per call — which is what a container does with a
+        // singleton, and what any caller should do. Constructing one per validation allocates the
+        // object and, on first descent, the array of nested validators behind it.
+        var validator = new PetValidator();
         var collector = new ValidationErrorCollector();
         var pet = ValidPet();
 
         for (var i = 0; i < 200; i++) {
             collector.Reset();
-            PetValidator.Instance.ValidateInto(collector, pet);
+            validator.ValidateInto(collector, pet);
         }
 
         var before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 500; i++) {
             collector.Reset();
-            PetValidator.Instance.ValidateInto(collector, pet);
+            validator.ValidateInto(collector, pet);
         }
 
         Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
@@ -50,7 +53,7 @@ public class GeneratedValidatorTests {
 
     [Fact]
     public void Validate_MissingRequired_UsesTheSharedCodeAndComposedMessage() {
-        var result = PetValidator.Instance.Validate(ValidPet() with { Name = null });
+        var result = new PetValidator().Validate(ValidPet() with { Name = null });
 
         var error = Assert.Single(result.Errors, e => e.Field == "name");
         Assert.Equal(ValidationCodes.Required, error.Code);
@@ -60,7 +63,7 @@ public class GeneratedValidatorTests {
     [Fact]
     public void Validate_FailedRequired_SuppressesTheLengthConstraintOnTheSameField() {
         // Name carries both [Required] and [StringLength]. One error, not two.
-        var result = PetValidator.Instance.Validate(ValidPet() with { Name = null });
+        var result = new PetValidator().Validate(ValidPet() with { Name = null });
 
         Assert.Single(result.Errors);
     }
@@ -69,7 +72,7 @@ public class GeneratedValidatorTests {
     public void Validate_Errors_EmitInDeclarationOrder() {
         var pet = new Pet { Home = new Address(), Toys = new List<Toy> { new() } };
 
-        var result = PetValidator.Instance.Validate(pet);
+        var result = new PetValidator().Validate(pet);
 
         Assert.Equal(
             new[] { "name", "home.postal_code", "toys[0].name" },
@@ -78,7 +81,7 @@ public class GeneratedValidatorTests {
 
     [Fact]
     public void Validate_NestedObject_IsPathedThroughItsProperty() {
-        var result = PetValidator.Instance.Validate(ValidPet() with { Home = new Address() });
+        var result = new PetValidator().Validate(ValidPet() with { Home = new Address() });
 
         // The field name comes from [JsonPropertyName], which outranks the camel-case default.
         Assert.Equal("home.postal_code", Assert.Single(result.Errors).Field);
@@ -88,14 +91,14 @@ public class GeneratedValidatorTests {
     public void Validate_CollectionElements_AreIndexed() {
         var pet = ValidPet() with { Toys = new List<Toy> { new() { Name = "ball" }, new() } };
 
-        var result = PetValidator.Instance.Validate(pet);
+        var result = new PetValidator().Validate(pet);
 
         Assert.Equal("toys[1].name", Assert.Single(result.Errors).Field);
     }
 
     [Fact]
     public void Validate_ItemCount_ReadsTheCollectionRatherThanItsElements() {
-        var result = PetValidator.Instance.Validate(ValidPet() with { Toys = new List<Toy>() });
+        var result = new PetValidator().Validate(ValidPet() with { Toys = new List<Toy>() });
 
         var error = Assert.Single(result.Errors);
         Assert.Equal(ValidationCodes.ArrayBounds, error.Code);
@@ -105,20 +108,20 @@ public class GeneratedValidatorTests {
     [Fact]
     public void Validate_Pattern_IsUnanchoredForTheNativeAttribute() {
         // [Pattern("^[A-Z]{3}$")] - the anchors are the author's, not ours.
-        Assert.True(PetValidator.Instance.IsValid(ValidPet() with { Sku = "ABC" }));
-        Assert.False(PetValidator.Instance.IsValid(ValidPet() with { Sku = "abc" }));
+        Assert.True(new PetValidator().IsValid(ValidPet() with { Sku = "ABC" }));
+        Assert.False(new PetValidator().IsValid(ValidPet() with { Sku = "abc" }));
     }
 
     [Fact]
     public void Validate_Range_ProducesTheComposedMessage() {
-        var result = PetValidator.Instance.Validate(ValidPet() with { Age = 99 });
+        var result = new PetValidator().Validate(ValidPet() with { Age = 99 });
 
         Assert.Equal("age must be between 0 and 30.", Assert.Single(result.Errors).Message);
     }
 
     [Fact]
     public void Validate_AllowedValues_ListsThePermittedSet() {
-        var result = PetValidator.Instance.Validate(ValidPet() with { Status = "unknown" });
+        var result = new PetValidator().Validate(ValidPet() with { Status = "unknown" });
 
         var error = Assert.Single(result.Errors);
         Assert.Equal(ValidationCodes.Enum, error.Code);
@@ -127,35 +130,46 @@ public class GeneratedValidatorTests {
 
     [Fact]
     public void Validate_ExplicitMessage_IsEmittedVerbatim() {
-        var result = OwnerValidator.Instance.Validate(new Owner());
+        var result = new OwnerValidator().Validate(new Owner());
 
         Assert.Equal("an owner must be named", Assert.Single(result.Errors).Message);
     }
 
     [Fact]
     public void Validate_NullableValueType_IsReadThroughItsValue() {
-        Assert.True(ReadingValidator.Instance.IsValid(new Reading { Ratio = 0.5 }));
+        Assert.True(new ReadingValidator().IsValid(new Reading { Ratio = 0.5 }));
 
-        var missing = ReadingValidator.Instance.Validate(new Reading());
+        var missing = new ReadingValidator().Validate(new Reading());
         Assert.Equal(ValidationCodes.Required, Assert.Single(missing.Errors).Code);
     }
 
     [Fact]
     public void Validate_ExclusiveUpperBound_RejectsTheBoundItself() {
-        Assert.False(ReadingValidator.Instance.IsValid(new Reading { Ratio = 1.0 }));
-        Assert.True(ReadingValidator.Instance.IsValid(new Reading { Ratio = 0.999 }));
+        Assert.False(new ReadingValidator().IsValid(new Reading { Ratio = 1.0 }));
+        Assert.True(new ReadingValidator().IsValid(new Reading { Ratio = 0.999 }));
     }
 
     [Fact]
-    public void GeneratedValidators_RegisterThroughAddValidationModules() {
-        // DependencyModules is not referenced here, so the static-table branch is what was emitted.
+    public void GeneratedValidators_RegisterThroughTheGeneratedExtension() {
+        // DependencyModules is not referenced here, so the IServiceCollection branch is what was
+        // emitted. The container constructs the validator and owns it; there is no shared static to
+        // compare against, so what is asserted is that one resolves and that it is a singleton.
         var services = new ServiceCollection();
-        services.AddValidationModules(GeneratedValidators.All);
+        services.AddSutProjectValidators();
 
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
-        Assert.Same(PetValidator.Instance, provider.GetRequiredService<IValidatorFor<Pet>>());
-        Assert.Same(AddressValidator.Instance, provider.GetRequiredService<IValidatorFor<Address>>());
+        var pet = provider.GetRequiredService<IValidatorFor<Pet>>();
+
+        Assert.IsType<PetValidator>(pet);
+        Assert.IsType<AddressValidator>(provider.GetRequiredService<IValidatorFor<Address>>());
+
+        using var first = provider.CreateScope();
+        using var second = provider.CreateScope();
+
+        Assert.Same(
+            first.ServiceProvider.GetRequiredService<IValidatorFor<Pet>>(),
+            second.ServiceProvider.GetRequiredService<IValidatorFor<Pet>>());
     }
 
     private static Pet ValidPet() =>

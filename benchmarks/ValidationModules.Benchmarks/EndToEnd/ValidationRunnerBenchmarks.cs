@@ -30,6 +30,9 @@ namespace ValidationModules.Benchmarks.EndToEnd;
 [MemoryDiagnoser]
 [BenchmarkCategory(BenchmarkCategories.EndToEnd)]
 public class ValidationRunnerBenchmarks {
+
+    // Hoisted: constructing per invocation would put an allocation on the measured path.
+    private static readonly CustomerValidator CustomerValidatorShared = new();
     private ValidationRunner<Customer> _structuralOnly = null!;
     private ValidationRunner<Customer> _withBusinessRule = null!;
 
@@ -42,16 +45,16 @@ public class ValidationRunnerBenchmarks {
         _invalid = SampleData.InvalidCustomer();
 
         _structuralOnly = new ValidationRunner<Customer>(
-            [CustomerValidator.Instance],
+            [CustomerValidatorShared],
             []);
 
         _withBusinessRule = new ValidationRunner<Customer>(
-            [CustomerValidator.Instance],
+            [CustomerValidatorShared],
             [new SynchronousBusinessRule()]);
     }
 
     [Benchmark(Baseline = true, Description = "Direct validator call, clean")]
-    public ValidationResult Direct_Validate() => CustomerValidator.Instance.Validate(_valid);
+    public ValidationResult Direct_Validate() => CustomerValidatorShared.Validate(_valid);
 
     [Benchmark(Description = "Runner, structural only, clean")]
     public ValidationResult Runner_Validate() => _structuralOnly.Validate(_valid);
