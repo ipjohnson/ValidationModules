@@ -88,7 +88,7 @@ using ValidationModules;
 using ValidationModules.Constraints;
 using Sample;
 
-var errors = PetValidator.Instance.Validate(new Pet { Toys = new List<Toy> { new() } }).Errors;
+var errors = new PetValidator().Validate(new Pet { Toys = new List<Toy> { new() } }).Errors;
 var actual = string.Join("; ", errors.Select(e => $"{e.Field}:{e.Code}"));
 var expected = "name:required; toys[0].name:required";
 
@@ -98,7 +98,7 @@ if (actual != expected) {
 }
 
 // A global-namespace type must get its validator in the global namespace, not in one of ours.
-if (GlobalPetValidator.Instance.Validate(new GlobalPet()).Errors.Count != 1) {
+if (new GlobalPetValidator().Validate(new GlobalPet()).Errors.Count != 1) {
     Console.Error.WriteLine("FAILED: global-namespace type did not validate");
     Environment.Exit(1);
 }
