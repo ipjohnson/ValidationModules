@@ -35,7 +35,11 @@ public sealed class ValidatorEmitter {
             builder.AppendLine($"namespace {model.Namespace};");
             builder.AppendLine();
         }
-        builder.AppendLine($"public sealed partial class {model.ValidatorName} : IValidatorFor<{model.QualifiedTypeName}> {{");
+        // internal for an internal model: a public class cannot take a less accessible type as a
+        // method parameter (CS0051), and the error would land inside generated code.
+        var accessibility = model.IsPublic ? "public" : "internal";
+
+        builder.AppendLine($"{accessibility} sealed partial class {model.ValidatorName} : IValidatorFor<{model.QualifiedTypeName}> {{");
         builder.AppendLine();
         EmitNestedDependencies(builder, model);
 
@@ -424,7 +428,7 @@ public sealed class ValidatorEmitter {
             ConstraintKind.UniqueItems => Add(field, constraint, "AddUniqueItems", ""),
             ConstraintKind.Pattern => Add(field, constraint, "AddPattern", ""),
             ConstraintKind.AllowedValues => Add(field, constraint, "AddAllowedValues",
-                $", {Quote(string.Join(", ", constraint.Values.Select(Unquote)))}"),
+                $", {Quote(string.Join(", ", Displays(constraint)))}"),
 
             // Always the literal branch: a predicate's message was rendered from its own source when
             // the front-end read it, so there is nothing here to compose and nothing the runtime
@@ -479,4 +483,18 @@ public sealed class ValidatorEmitter {
 
     private static string Unquote(string literal) =>
         literal.Length >= 2 && literal[0] == '"' ? literal.Substring(1, literal.Length - 2) : literal;
+
+    /// <summary>
+    /// The permitted set as a reader should see it: <c>Pro, Enterprise</c> rather than
+    /// <c>global::My.Tier.Pro, global::My.Tier.Enterprise</c>.
+    /// </summary>
+    /// <remarks>
+    /// Falls back to unquoting the literals when a front end supplied no displays, which is every
+    /// front end but the native one - their values are strings and numbers, where unquoting is the
+    /// whole of the transform.
+    /// </remarks>
+    private static IEnumerable<string> Displays(ConstraintModel constraint) =>
+        constraint.ValueDisplays.Count == constraint.Values.Count && constraint.Values.Count > 0
+            ? constraint.ValueDisplays
+            : constraint.Values.Select(Unquote);
 }

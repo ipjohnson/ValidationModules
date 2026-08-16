@@ -63,6 +63,14 @@ public enum ConstraintKind {
 /// point rejects 0.3, 1.05 and 99.99 against a divisor of 0.01.
 /// </param>
 /// <param name="Values">AllowedValues only: the permitted set, already rendered as C# literals.</param>
+/// <param name="ValueDisplays">
+/// AllowedValues only: the same set as a reader should see it, positionally matching
+/// <paramref name="Values"/>. Carried rather than derived, because the two differ for exactly one
+/// kind and cannot be told apart after the fact - an enum member compares as
+/// <c>global::My.Tier.Pro</c> and reads as <c>Pro</c>, while a string containing a dot would be
+/// mangled by any last-segment heuristic applied to it. Empty means "same as Values", which is
+/// what every front end but the native one produces.
+/// </param>
 /// <param name="Negated">AllowedValues only: set by DataAnnotations' [DeniedValues].</param>
 /// <param name="PredicateAccessor">
 /// Predicate only. The fully qualified name of the static method the predicate was lifted into -
@@ -86,5 +94,6 @@ public sealed record ConstraintModel(
     string? Divisor = null,
     bool DecimalDomain = false,
     EquatableArray<string> Values = default,
+    EquatableArray<string> ValueDisplays = default,
     bool Negated = false,
     string? PredicateAccessor = null) : IEquatable<ConstraintModel>;

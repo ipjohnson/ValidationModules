@@ -19,13 +19,21 @@ namespace ValidationModules.SourceGenerator.Impl.Models;
 /// no property, so they run after every property has been walked, in declaration order.
 /// See API-SURFACE.md §19.6 and §19.7.
 /// </param>
+/// <param name="IsPublic">
+/// Whether the validated type is visible outside its assembly, which decides whether the emitted
+/// validator is <c>public</c> or <c>internal</c>. A public validator over an internal type is
+/// CS0051 - "parameter type is less accessible than method" - reported inside generated code, which
+/// is the worst place for a consumer to meet it. Internal models are ordinary rather than exotic,
+/// so this is not an edge case.
+/// </param>
 public sealed record ValidatedTypeModel(
     string Namespace,
     string TypeName,
     string QualifiedTypeName,
     string ValidatorName,
     EquatableArray<ValidatedPropertyModel> Properties,
-    EquatableArray<string> AppliedRules = default) : IEquatable<ValidatedTypeModel>;
+    EquatableArray<string> AppliedRules = default,
+    bool IsPublic = true) : IEquatable<ValidatedTypeModel>;
 
 /// <summary>Which registration shape the assembly gets. See plan §7.3.</summary>
 public enum RegistrationMode {

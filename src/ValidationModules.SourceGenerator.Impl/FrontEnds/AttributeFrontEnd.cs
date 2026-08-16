@@ -121,7 +121,26 @@ public sealed class AttributeFrontEnd {
             type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             validatorNameFor(type),
             new EquatableArray<ValidatedPropertyModel>(Ordered(properties.ToImmutable(), order, sawAttribute)),
-            new EquatableArray<string>(ImmutableArray.CreateRange(applied ?? Array.Empty<string>())));
+            new EquatableArray<string>(ImmutableArray.CreateRange(applied ?? Array.Empty<string>())),
+            IsExternallyVisible(type));
+    }
+
+    /// <summary>
+    /// Whether the type - and every type it is nested in - is visible outside the assembly.
+    /// </summary>
+    /// <remarks>
+    /// The containing chain is walked because effective accessibility is the minimum along it: a
+    /// public type nested inside an internal one is internal in effect, and a public validator over
+    /// it is the same CS0051 as one over a plainly internal type.
+    /// </remarks>
+    private static bool IsExternallyVisible(INamedTypeSymbol type) {
+        for (INamedTypeSymbol? current = type; current is not null; current = current.ContainingType) {
+            if (current.DeclaredAccessibility != Accessibility.Public) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>

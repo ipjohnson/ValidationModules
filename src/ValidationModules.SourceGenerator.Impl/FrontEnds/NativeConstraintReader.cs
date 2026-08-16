@@ -95,14 +95,15 @@ public static class NativeConstraintReader {
             }
 
             case "AllowedValuesAttribute": {
-                var values = attribute.ConstructorArguments.Length == 1 &&
-                             attribute.ConstructorArguments[0].Kind == TypedConstantKind.Array
-                    ? attribute.ConstructorArguments[0].Values.Select(Literal).ToImmutableArray()
-                    : ImmutableArray<string>.Empty;
+                var declared = attribute.ConstructorArguments.Length == 1 &&
+                               attribute.ConstructorArguments[0].Kind == TypedConstantKind.Array
+                    ? attribute.ConstructorArguments[0].Values
+                    : ImmutableArray<TypedConstant>.Empty;
 
                 return common with {
                     Kind = ConstraintKind.AllowedValues,
-                    Values = new EquatableArray<string>(values),
+                    Values = new EquatableArray<string>(declared.Select(Literal).ToImmutableArray()),
+                    ValueDisplays = new EquatableArray<string>(declared.Select(Display).ToImmutableArray()),
                 };
             }
 
@@ -168,7 +169,71 @@ public static class NativeConstraintReader {
     }
 
     /// <summary>Renders a constant as the C# literal the emitter will write.</summary>
-    internal static string Literal(TypedConstant constant) => constant.Value switch {
+    /// <remarks>
+    /// <b>Enums are handled before <see cref="TypedConstant.Value"/> is looked at, and have to be.</b>
+    /// An enum constant carries its <i>underlying</i> value there - a boxed <see cref="int"/> in the
+    /// usual case - so the scalar switch renders <c>[AllowedValues(Tier.Pro)]</c> as <c>1</c>, and
+    /// the emitted <c>value.Plan != 1</c> is CS0019 rather than a comparison. The member has to be
+    /// named instead, and fully qualified, because the generated file carries none of the declaring
+    /// file's using directives.
+    /// </remarks>
+    internal static string Literal(TypedConstant constant) =>
+        constant.Kind == TypedConstantKind.Enum && constant.Type is not null
+            ? EnumLiteral(constant)
+            : Scalar(constant);
+
+    /// <summary>The qualified member name for an enum constant - <c>global::My.Tier.Pro</c>.</summary>
+    /// <remarks>
+    /// A constant with no matching member is legal C# - <c>(Tier)7</c>, or any combination of
+    /// <c>[Flags]</c> members - so this falls back to a cast over the underlying value, which
+    /// compiles and compares identically.
+    /// </remarks>
+    private static string EnumLiteral(TypedConstant constant) {
+        var type = constant.Type!.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+        foreach (var member in constant.Type.GetMembers()) {
+            if (member is IFieldSymbol { HasConstantValue: true } field &&
+                Equals(field.ConstantValue, constant.Value)) {
+                return type + "." + field.Name;
+            }
+        }
+
+        return "((" + type + ")" + Scalar(constant) + ")";
+    }
+
+    /// <summary>
+    /// The display form of a constant, for a message rather than a comparison: the bare enum member
+    /// name, and the unquoted text of a string.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="Literal"/> because the two genuinely differ. The comparison needs
+    /// <c>global::My.Tier.Pro</c> to bind at all; a caller told "must be one of:
+    /// global::My.Tier.Pro" has been told less than one told "must be one of: Pro".
+    /// </remarks>
+    internal static string Display(TypedConstant constant) {
+        if (constant.Kind != TypedConstantKind.Enum || constant.Type is null) {
+            var scalar = Scalar(constant);
+
+            return scalar.Length >= 2 && scalar[0] == '"'
+                ? scalar.Substring(1, scalar.Length - 2)
+                : scalar;
+        }
+
+        var qualified = EnumLiteral(constant);
+
+        // A value with no member of its own rendered as a cast, and there is no name to show. The
+        // underlying number is what a caller would have sent, so it is what the message names -
+        // "must be one of: Pro, 7" rather than leaking a cast expression into an error string.
+        if (qualified.EndsWith(")", StringComparison.Ordinal)) {
+            return Scalar(constant);
+        }
+
+        var dot = qualified.LastIndexOf('.');
+
+        return dot >= 0 ? qualified.Substring(dot + 1) : qualified;
+    }
+
+    private static string Scalar(TypedConstant constant) => constant.Value switch {
         null => "null",
         string text => SymbolDisplay.FormatLiteral(text, quote: true),
         bool flag => flag ? "true" : "false",
