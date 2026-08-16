@@ -5,7 +5,9 @@
         Release builds override PackageVersion (see .github/workflows/release.yaml, which computes
         1.0.0-rc(1000 + run number)); local and CI builds fall back to the values below.
 
-        On the 1.0.0 release-candidate line, matching DependencyModules' own 1.0.0-rc* stream.
+        On the 1.0.0 release-candidate line. This used to say "matching DependencyModules' own
+        1.0.0-rc* stream", which is no longer the reason - DM is at 1.0.0 stable and we are pinned
+        to it; what is left is our own decision about when to drop the suffix.
         Stage 4 has shipped, so IMPLEMENTATION-PLAN.md §7.5's emitted-surface promise now has
         something to promise - and RuntimeContract is what actually versions that surface, rather
         than this number.
@@ -16,20 +18,16 @@
             rc0 for a local build, so it sorts below every published rc(1000+n). A release supplies
             its own version, so this default never reaches nuget.org.
 
-            This used to say that a stable release was blocked outright, because
-            DependencyModules.SourceGenerator.Impl publishes only as 1.0.0-rc* and NU5104 rejects a
-            stable package with a prerelease dependency. Packing all four at 1.0.0 shows that is
-            true of one of them:
+            Nothing holds a stable release back any more. This used to record the problem in two
+            rounds: first that a stable version was impossible at all, because
+            DependencyModules.SourceGenerator.Impl published only as 1.0.0-rc* and NU5104 rejects a
+            stable package with a prerelease dependency; then that only SourceGenerator.Impl was
+            affected, the other three carrying the DM reference as PrivateAssets=all so it never
+            reaches their nuspec, with Impl holding a targeted NoWarn until DM went stable.
 
-              Runtime, AspNetCore, SourceGenerator   clean - the DM reference is PrivateAssets=all
-                                                     on the generator, so it is not in the nuspec
-              SourceGenerator.Impl                   NU5104, because a source-only package's
-                                                     dependencies are the point of it
-
-            The three packages a consumer installs can ship stable whenever we like. Impl carries a
-            targeted NoWarn for the one warning, since a framework author compiling those sources in
-            is opting into DM's own prerelease anyway. Drop that suppression - not the dependency -
-            once DependencyModules publishes a stable version.
+            DependencyModules 1.0.0 has now shipped. Every DM reference is pinned to it and the
+            NU5104 suppression is deleted, so all four pack clean at a stable version with nothing
+            suppressed.
         -->
         <VersionSuffix Condition="'$(VersionSuffix)' == ''">rc0</VersionSuffix>
         <AssemblyVersion>1.0.0.0</AssemblyVersion>
