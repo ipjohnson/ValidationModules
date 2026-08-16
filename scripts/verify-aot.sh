@@ -14,6 +14,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUNTIME_PROJECT="${REPO_ROOT}/src/ValidationModules.Runtime/ValidationModules.Runtime.csproj"
+GENERATOR_PROJECT="${REPO_ROOT}/src/ValidationModules.SourceGenerator/ValidationModules.SourceGenerator.csproj"
 
 if [ $# -ge 1 ]; then
     RID="$1"
@@ -42,6 +43,13 @@ cat > "${WORK_DIR}/AotProbe.csproj" <<EOF
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="${RUNTIME_PROJECT}"/>
+    <!--
+        The generator runs here too. Hand-written validators alone cannot prove the shipped
+        product is AOT-safe: what this file imitates drifts from what the emitter writes, and it
+        drifted once already - see the generated-registration section of Program.cs.
+    -->
+    <ProjectReference Include="${GENERATOR_PROJECT}"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0"/>
   </ItemGroup>
 </Project>
@@ -102,13 +110,54 @@ for (var i = 0; i < 500; i++) {
 var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 Expect(allocated == 0, $"clean pass allocated {allocated} bytes");
 
-Console.WriteLine("Native AOT publish verified: paths, async merge, and zero-allocation clean pass.");
+// The generated product, registered the way the generator tells consumers to register it, for a
+// type with NO IAsyncValidatorFor<T> - which is the ordinary case, since most types have no
+// business rule.
+//
+// This is the regression test for a fault that shipped: ValidationRunner<T> took its two
+// dependencies as constructor-injected IEnumerable<>, MS.DI satisfied the empty async one through
+// Array.CreateInstance(Type, int), and ILC had never emitted IAsyncValidatorFor<T>[] because
+// nothing named it statically. The publish reported no warning and the resolve threw
+// NotSupportedException. Everything above passed throughout, because the hand-written probe
+// registered an IAsyncValidatorFor<Pet> and that one registration hid it.
+//
+// Keep a type here that has no async rule, or this comes back.
+var generated = new ServiceCollection();
+generated.AddAotProbeValidators();
+
+using var generatedProvider = generated.BuildServiceProvider();
+using var generatedScope = generatedProvider.CreateScope();
+
+var reading = generatedScope.ServiceProvider.GetRequiredService<ValidationRunner<Reading>>();
+var readingResult = reading.Validate(new Reading { Label = null, Ratio = 5 });
+var readingFields = string.Join(", ", readingResult.Errors.Select(e => $"{e.Field}:{e.Code}"));
+Expect(readingFields == "label:required, ratio:range", $"generated runner: {readingFields}");
+
+// The same type through IValidatorFor<T> rather than the runner, since they resolve differently.
+var readingValidator = generatedScope.ServiceProvider.GetRequiredService<IValidatorFor<Reading>>();
+Expect(readingValidator.Validate(new Reading { Label = "ok", Ratio = 1 }).IsValid, "generated validator");
+
+Console.WriteLine("Native AOT publish verified: paths, async merge, zero-allocation clean pass,");
+Console.WriteLine("and the generated registration for a type with no async rule.");
 
 static void Expect(bool condition, string message) {
     if (!condition) {
         Console.Error.WriteLine($"FAILED: {message}");
         Environment.Exit(1);
     }
+}
+
+// Constraint attributes, so this one is compiled by the generator rather than written by hand.
+// Deliberately has no IAsyncValidatorFor<Reading>.
+//
+// public, not internal: the emitter always writes "public sealed partial class …Validator", so an
+// internal model yields CS0051 in generated code. Make this internal to reproduce that.
+public sealed record Reading {
+    [ValidationModules.Constraints.Required]
+    public string? Label { get; init; }
+
+    [ValidationModules.Constraints.Range(0, 1)]
+    public int Ratio { get; init; }
 }
 
 sealed record Address {
@@ -231,3 +280,96 @@ fi
 "${BINARY}"
 
 echo "Binary size: $(du -h "${BINARY}" | cut -f1)"
+
+# ---------------------------------------------------------------------------
+# Second probe: minimal, and minimal on purpose.
+#
+# ValidationRunner<T> once resolved its two IEnumerable<> dependencies through MS.DI constructor
+# injection, which builds the backing array with Array.CreateInstance(Type, int). For
+# IAsyncValidatorFor<T> nothing names that array statically - most types have no business rule -
+# so ILC never emitted it and the resolve threw NotSupportedException, after a publish that
+# reported no warning at all.
+#
+# It has to be its own binary. ILC decides what to emit from the whole program, and the probe
+# above does not reproduce the fault even with the fix reverted: one IAsyncValidatorFor<Pet>
+# anywhere in the image is enough to bring the array type in for every other T. A probe that also
+# tests paths, async merge and allocation is, for this specific fault, too rich to fail. Keep this
+# one down to one type, one registration call, one resolve - anything added here can silently
+# disarm it.
+# ---------------------------------------------------------------------------
+
+echo "Verifying the minimal generated-registration path"
+
+MIN_DIR="${WORK_DIR}/minimal"
+mkdir -p "${MIN_DIR}"
+
+cat > "${MIN_DIR}/AotMinimal.csproj" <<EOF
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="${RUNTIME_PROJECT}"/>
+    <ProjectReference Include="${GENERATOR_PROJECT}"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0"/>
+  </ItemGroup>
+</Project>
+EOF
+
+cat > "${MIN_DIR}/Program.cs" <<'EOF'
+using Microsoft.Extensions.DependencyInjection;
+using ValidationModules;
+using ValidationModules.Constraints;
+
+// Nothing here is incidental. No async validator, no second type, no other resolve.
+var services = new ServiceCollection();
+services.AddAotMinimalValidators();
+
+using var provider = services.BuildServiceProvider();
+using var scope = provider.CreateScope();
+
+var runner = scope.ServiceProvider.GetRequiredService<ValidationRunner<Thing>>();
+var result = runner.Validate(new Thing());
+
+if (result.Errors.Count != 1) {
+    Console.Error.WriteLine($"FAILED: expected 1 error, got {result.Errors.Count}");
+    Environment.Exit(1);
+}
+
+Console.WriteLine("Minimal generated-registration path verified.");
+
+public sealed record Thing {
+    [Required]
+    public string? Name { get; init; }
+}
+EOF
+
+MIN_LOG="${MIN_DIR}/publish.log"
+
+if ! dotnet publish "${MIN_DIR}/AotMinimal.csproj" -r "${RID}" -c Release --nologo > "${MIN_LOG}" 2>&1; then
+    echo "Minimal Native AOT publish failed:"
+    cat "${MIN_LOG}"
+    exit 1
+fi
+
+if grep -Eq "IL[0-9]{4}" "${MIN_LOG}"; then
+    echo "Minimal Native AOT publish produced IL warnings:"
+    grep -E "IL[0-9]{4}" "${MIN_LOG}"
+    exit 1
+fi
+
+MIN_BINARY="${MIN_DIR}/bin/Release/net10.0/${RID}/publish/AotMinimal"
+
+if [ ! -x "${MIN_BINARY}" ]; then
+    echo "Expected a published binary at ${MIN_BINARY}"
+    exit 1
+fi
+
+"${MIN_BINARY}"

@@ -53,13 +53,39 @@ public static class ValidationModulesServiceCollectionExtensions {
     /// Registers a <see cref="ValidationRunner{T}"/> for one validated type.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Closed rather than open generic, deliberately: <c>AddScoped(typeof(ValidationRunner&lt;&gt;))</c>
     /// would have MS.DI construct it reflectively. The generator emits one call per validated type.
+    /// </para>
+    /// <para>
+    /// <b>An explicit factory rather than constructor injection, and this is load-bearing under
+    /// Native AOT.</b> Letting MS.DI satisfy the constructor's two <c>IEnumerable&lt;&gt;</c>
+    /// parameters routes through <c>CallSiteRuntimeResolver.VisitIEnumerable</c>, which builds the
+    /// backing array with <c>Array.CreateInstance(Type, int)</c> - a reflective construction over a
+    /// <see cref="Type"/> known only at run time. Nothing in a typical application ever mentions
+    /// <c>IAsyncValidatorFor&lt;T&gt;[]</c> statically, because most types have no business rule and
+    /// the generator registers none, so ILC never emits that array type and the resolve throws
+    /// <see cref="NotSupportedException"/> at run time - after a publish that reported no warning.
+    /// </para>
+    /// <para>
+    /// Naming both closed types in the calls below puts them in front of ILC at compile time, which
+    /// is what makes the array available. Rooting them any other way does not work: both
+    /// <c>Array.Empty&lt;IAsyncValidatorFor&lt;T&gt;&gt;()</c> and a read <c>static readonly</c>
+    /// array field were tried and still threw, because they root the array *type* without the
+    /// reflection metadata <c>Array.CreateInstance</c> needs.
+    /// </para>
+    /// <para>
+    /// Composition is unchanged - <c>GetServices</c> returns every registration in order, exactly
+    /// as constructor injection did.
+    /// </para>
     /// </remarks>
     public static IServiceCollection AddValidationRunner<T>(this IServiceCollection services) {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.TryAddScoped<ValidationRunner<T>>();
+        services.TryAdd(ServiceDescriptor.Scoped(static provider => new ValidationRunner<T>(
+            provider.GetServices<IValidatorFor<T>>(),
+            provider.GetServices<IAsyncValidatorFor<T>>(),
+            provider)));
 
         return services;
     }
