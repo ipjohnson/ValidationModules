@@ -22,8 +22,8 @@
         DM's attribute stages, and if it did, [DependencyModule] would be processed twice here.
     -->
     <ItemGroup>
-        <PackageReference Include="DependencyModules.Runtime" Version="1.0.0-rc9230"/>
-        <PackageReference Include="DependencyModules.SourceGenerator" Version="1.0.0-rc9230" PrivateAssets="all"/>
+        <PackageReference Include="DependencyModules.Runtime" Version="1.0.0"/>
+        <PackageReference Include="DependencyModules.SourceGenerator" Version="1.0.0" PrivateAssets="all"/>
         <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0"/>
     </ItemGroup>
 

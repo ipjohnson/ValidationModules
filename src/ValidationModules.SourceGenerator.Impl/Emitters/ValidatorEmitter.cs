@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Text;
+using Microsoft.CodeAnalysis.CSharp;
 using ValidationModules.SourceGenerator.Impl.Models;
 
 namespace ValidationModules.SourceGenerator.Impl.Emitters;
@@ -180,12 +181,45 @@ public sealed class ValidatorEmitter {
 
     private static string Field(ValidatedPropertyModel property) => $"_{Camel(property.PropertyName)}Validators";
 
-    private static string Parameter(ValidatedPropertyModel property) => Camel(property.PropertyName);
+    /// <summary>
+    /// The constructor parameter carrying this property's nested validators.
+    /// </summary>
+    /// <remarks>
+    /// Escaped, and this is the case that does not need a verbatim identifier anywhere in the
+    /// consumer's source to reach: the parameter is the property name camel-cased, so an ordinary
+    /// <c>Object</c>, <c>Event</c> or <c>Default</c> property lands on <c>object</c>, <c>event</c>
+    /// or <c>default</c>. <see cref="Field"/> and <see cref="Accessor"/> need no escape because
+    /// both wrap the name in affixes, and no keyword survives having <c>_</c> or <c>Validators</c>
+    /// stuck to it.
+    /// </remarks>
+    private static string Parameter(ValidatedPropertyModel property) => Escape(Camel(property.PropertyName));
 
     private static string Accessor(ValidatedPropertyModel property) => $"{property.PropertyName}Validators";
 
     private static string Camel(string name) =>
         name.Length == 0 || char.IsLower(name[0]) ? name : char.ToLowerInvariant(name[0]) + name.Substring(1);
+
+    /// <summary>
+    /// An identifier as it has to be written to be parsed back as one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A property declared <c>@object</c> has the CLR name <c>object</c>: the <c>@</c> is C# syntax
+    /// meaning "read this as an identifier", not part of the name, so the model does not carry it
+    /// and the emitter has to put it back. <b>Only where the name is emitted as code.</b> The same
+    /// name also reaches the wire as a string literal, where an <c>@</c> would corrupt every
+    /// payload the property appears in, and reaches composite identifiers like
+    /// <c>nestedHome</c>, where it would not parse at all. That is why this is applied at the two
+    /// use sites rather than folded into the model.
+    /// </para>
+    /// <para>
+    /// Reserved keywords only. <c>value</c>, <c>record</c> and <c>var</c> are contextual and are
+    /// legal identifiers as they stand - <see cref="SyntaxFacts.GetKeywordKind"/> returns
+    /// <see cref="SyntaxKind.None"/> for them, which is the distinction being relied on.
+    /// </para>
+    /// </remarks>
+    private static string Escape(string identifier) =>
+        SyntaxFacts.GetKeywordKind(identifier) == SyntaxKind.None ? identifier : "@" + identifier;
 
     private static string Qualify(ValidatedTypeModel model) =>
         model.Namespace.Length == 0 ? model.ValidatorName : $"{model.Namespace}.{model.ValidatorName}";
@@ -196,7 +230,7 @@ public sealed class ValidatorEmitter {
         ValidatedTypeModel model,
         List<(string, ConstraintModel)> patterns) {
 
-        var access = $"value.{property.PropertyName}";
+        var access = $"value.{Escape(property.PropertyName)}";
         var field = Quote(property.FieldName);
         var required = property.Constraints.FirstOrDefault(c => c.Kind == ConstraintKind.Required);
         var wroteChain = false;

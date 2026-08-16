@@ -2,7 +2,13 @@
 
 ```shell
 dotnet add package ValidationModules.AspNetCore
+dotnet add package ValidationModules.SourceGenerator
 ```
+
+`ValidationModules.Runtime` arrives with the first. The generator is a separate reference because it
+is what emits `AddMyAppValidators()` below — without it there is nothing to register, and the call
+does not exist. See [getting started](/guide/getting-started#install) for the `PrivateAssets`
+this reference wants.
 
 One filter per endpoint, and a failed request is answered before the handler runs:
 

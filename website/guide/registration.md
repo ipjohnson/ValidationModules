@@ -118,6 +118,7 @@ dependencies.
 Once a type has more than one validator — a generated structural one plus a hand-written business
 rule — you want them run together and their results merged:
 
+<!-- verify:models -->
 ```csharp
 public class PetService {
     private readonly ValidationRunner<Pet> _validation;
@@ -125,13 +126,12 @@ public class PetService {
     public PetService(ValidationRunner<Pet> validation) => _validation = validation;
 
     public async Task<ValidationResult> CheckAsync(Pet pet, CancellationToken cancellationToken) =>
-        await _validation.ValidateAsync(pet, cancellationToken: cancellationToken);
+        await _validation.ValidateAsync(pet, cancellationToken);
 }
 ```
 
-Note the named argument. The signature is `ValidateAsync(T value, Type? profile = null,
-CancellationToken cancellationToken = default)` — the profile parameter sits between the two, so
-passing a token positionally does not compile.
+The signature is `ValidateAsync(T value, CancellationToken cancellationToken = default)`, so the
+token passes positionally.
 
 `Validate(value)` is the synchronous half, and runs the structural validators only.
 
