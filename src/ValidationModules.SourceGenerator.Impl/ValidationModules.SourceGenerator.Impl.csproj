@@ -24,7 +24,12 @@
             implementation detail to hide behind PrivateAssets. Suppressed here alone, so a stable
             release of the three packages consumers actually install is not held up by the one meant
             for framework authors - who opt into DM's prerelease by compiling these sources in
-            regardless. Remove when DependencyModules goes stable.
+            regardless.
+
+            Drop the NU5104 suppression, not the dependency, once DependencyModules publishes a
+            stable version. The integration itself is not going anywhere: the generator probes for
+            IDependencyModule and emits a module when it resolves, which is RegistrationEmitter's
+            DependencyModules branch.
         -->
         <NoWarn>$(NoWarn);NU5104;NU5128;RS2000;RS2008</NoWarn>
     </PropertyGroup>

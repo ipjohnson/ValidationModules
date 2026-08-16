@@ -28,7 +28,8 @@
 
             The three packages a consumer installs can ship stable whenever we like. Impl carries a
             targeted NoWarn for the one warning, since a framework author compiling those sources in
-            is opting into DM's own prerelease anyway.
+            is opting into DM's own prerelease anyway. Drop that suppression - not the dependency -
+            once DependencyModules publishes a stable version.
         -->
         <VersionSuffix Condition="'$(VersionSuffix)' == ''">rc0</VersionSuffix>
         <AssemblyVersion>1.0.0.0</AssemblyVersion>

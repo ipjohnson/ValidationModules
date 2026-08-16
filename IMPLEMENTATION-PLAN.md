@@ -1,10 +1,28 @@
 # ValidationModules — implementation plan
 
 **Written:** 2026-08-12
-**Status:** design settled, nothing built yet
+**Status:** built, through 1.0.0. Two sections describe features that were deliberately not shipped —
+see the note below.
 **Origin:** designed in a session against `~/Hardened` and `~/DependencyModules`. Every claim in
 §10 was verified by reading those repos, not inferred. This document is self-contained — you do
 not need that session's history.
+
+> **Read this before treating any section as current.**
+>
+> This was written as a specification when nothing existed, and it is still the reasoning behind
+> what got built — but it is no longer a description of the library on two counts.
+>
+> **§6 (Profiles) was never built, and its declaration surface has been withdrawn.** It shipped
+> ahead of the implementation, which made `[Required(FromProfile = …)]` a build error rather than a
+> restriction, and 1.0.0 removed it rather than pin members with no behaviour into a stable
+> release. §6 is retained as the design for whenever it returns.
+>
+> **Overlays went the same way**, having been read by no front end at all.
+>
+> Smaller drift is corrected in place. For what actually exists: the public surface is pinned by
+> `tests/ValidationModules.Runtime.Tests/Snapshots/PublicApiTests.RuntimeApi.verified.txt`, the
+> reasoning is in `API-SURFACE.md`, and `docs/deferred-features.md` records what was withdrawn and
+> how each part comes back additively.
 
 ---
 
@@ -41,7 +59,8 @@ These are settled. Do not reopen them, and do not ask.
 - **The service interface is `IValidatorFor<T>`, not `IValidator<T>`.** FluentValidation owns
   `IValidator<T>` and the adapter's authors will have both namespaces imported.
 - **Profiles are opt-in.** A codebase that declares no profiles must never see the concept, and
-  must generate exactly one validator per type.
+  must generate exactly one validator per type. *(Deferred past 1.0.0 — see the note at the top.
+  The stronger form now holds by construction: nobody can declare one.)*
 
 ---
 
@@ -153,9 +172,13 @@ non-collection. Generator diagnostics are roughly half the work of a generator; 
 
 ---
 
-## 6. Profiles
+## 6. Profiles — deferred past 1.0.0
 
-The design that took the longest to settle. Read this section before writing any emitter.
+> **Not built, and the declaration surface was withdrawn before 1.0.0.** Retained as the design.
+> `docs/deferred-features.md` records the reversibility analysis, and the Native AOT trap waiting
+> for whatever resolves per-profile registrations.
+
+The design that took the longest to settle.
 
 **The problem.** As a document standard moves, different rules apply to different versions of the
 same type. v1 requires `Tag`; v2 relaxes it and adds `Species`. The same shape appears as FHIR
@@ -330,21 +353,34 @@ Framework authors compiling Impl in can instead emit through DM's own `Dependenc
 shows the pattern — which inherits registration types, keyed registration and environment
 conditions for free.
 
-**When DM is absent**, emit a static table with factories:
+**When DM is absent**, emit an `IServiceCollection` extension named after the assembly:
 
 ```csharp
-public static class GeneratedValidators {
-    public static IReadOnlyList<ValidatorRegistration> All { get; } = [
-        new(typeof(IValidatorFor<Pet>), static _ => PetValidator_V1.Instance),
-    ];
+namespace Microsoft.Extensions.DependencyInjection {
+    public static class MyAppValidationExtensions {
+        public static IServiceCollection AddMyAppValidators(this IServiceCollection services) {
+            services.AddSingleton<IValidatorFor<global::MyApp.Pet>, global::MyApp.PetValidator>();
+            services.AddValidationRunner<global::MyApp.Pet>();
+            services.TryAddSingleton<IValidationFieldNamer>(CamelCaseFieldNamer.Instance);
+
+            return services;
+        }
+    }
 }
 ```
 
-plus a `services.AddValidationModules(GeneratedValidators.All)` extension. Factory delegates
-rather than `(Type, Type)` pairs, so nothing goes through `ActivatorUtilities` constructor
-reflection.
+The name carries the assembly because each one registers its own validators — two of them emitting
+`AddValidationModules()` would be CS0121 at the composition root.
 
-Both branches share one emitter for the registration body; only the wrapper differs.
+> **Amended.** This originally specified a static `GeneratedValidators.All` table of
+> `ValidatorRegistration` factory delegates. The table erased the generic, allocated an array of
+> closures at static init to iterate once, and lived in a class the consumer had to know the name
+> of; the extension replaced it. `ValidatorRegistration` and `AddValidationModules(IReadOnlyList<…>)`
+> remain in the runtime for anyone hand-building a table — nothing generates one. See
+> `API-SURFACE.md` §10.
+
+Both branches share one emitter for the registration body: the DM module is a one-line call to the
+extension rather than a second copy of it, so the two cannot drift.
 
 Add an MSBuild override — `ValidationModules_Registration=DependencyModules|ServiceCollection|None` —
 for the case where DM arrives transitively but the user does not want validators in a module.
