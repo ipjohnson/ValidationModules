@@ -42,7 +42,8 @@
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="CSharpAuthor" Version="1.1.1007">
+        <!-- Kept in step with the Impl project, which explains why 1.1.1010. -->
+        <PackageReference Include="CSharpAuthor" Version="1.1.1010">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>build</IncludeAssets>
         </PackageReference>

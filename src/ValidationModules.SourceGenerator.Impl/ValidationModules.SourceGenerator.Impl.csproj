@@ -79,7 +79,14 @@
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="CSharpAuthor" Version="1.1.1007">
+        <!--
+            1.1.1010 rather than 1.1.1007 because DependencyModules 1.0.0's InterceptorFileWriter
+            uses CSharpAuthor's ConstraintDefinition, which 1.1.1010 introduced. DM does not declare
+            a CSharpAuthor dependency - both are source-only packages compiled in side by side, so
+            the version that satisfies DM's sources is this project's problem to get right, and
+            nothing in the restore graph will raise it for us.
+        -->
+        <PackageReference Include="CSharpAuthor" Version="1.1.1010">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>build</IncludeAssets>
         </PackageReference>
