@@ -106,9 +106,12 @@ Validators are **singletons**, always.
 
 Generated validators are stateless, and building a rule graph once rather than per call is a hard
 requirement rather than a preference. This is the single largest difference from FluentValidation in
-practice: `AddValidatorsFromAssemblyContaining` registers validators **scoped**, and constructing
-one costs about 2,163 ns — so by default it rebuilds its rule graph on every request. Resolving a
-generated validator costs about 4 ns.
+practice: `AddValidatorsFromAssemblyContaining` registers validators **scoped**, so by default it
+rebuilds its rule graph on every request — about 11 KB of allocation per resolve, against 0 B and
+roughly 4 ns to reach a generated singleton. See
+[`benchmarks/RESULTS.md`](https://github.com/ipjohnson/ValidationModules/blob/main/benchmarks/RESULTS.md)
+for the measurement, including why the construction *timing* is quoted as an order of magnitude
+rather than a figure.
 
 `ValidationRunner<T>` is **scoped**, because the async validators it composes may take scoped
 dependencies.

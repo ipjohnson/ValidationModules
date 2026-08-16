@@ -152,20 +152,29 @@ foreach (var error in result.Errors) {
 
 ## What it costs
 
-Measured against the same rules expressed in FluentValidation and in DataAnnotations, on .NET 10.
-The full method and the four choices made in FluentValidation's favour are in
-[`benchmarks/README.md`](https://github.com/ipjohnson/ValidationModules/blob/main/benchmarks/README.md).
+Measured against the same rules expressed in FluentValidation and in DataAnnotations, on .NET 10,
+Apple M3 Pro. The full method and the four choices made in FluentValidation's favour are in
+[`benchmarks/README.md`](https://github.com/ipjohnson/ValidationModules/blob/main/benchmarks/README.md);
+the run these came from, and what is and is not stable in it, is in
+[`benchmarks/RESULTS.md`](https://github.com/ipjohnson/ValidationModules/blob/main/benchmarks/RESULTS.md).
 
 | | ValidationModules | FluentValidation | DataAnnotations |
 |---|---|---|---|
-| Flat model, valid | **39.6 ns** / 472 B | 194 ns / 664 B | 1,056 ns / 2,696 B |
-| Nested model, valid | **119 ns** / 472 B | 1,675 ns / 5,224 B | 545 ns *(top level only)* |
-| 1,000 elements | **15.0 µs** / 49 KB | 242 µs / 846 KB | *does not descend* |
-| Resolve from DI | **4.1 ns** | 2,269 ns | — |
+| Flat model, valid | **26.4 ns** / 40 B | 196 ns / 664 B | 1,031 ns / 2,696 B |
+| Nested model, valid | **104 ns** / 40 B | 1,804 ns / 5,224 B | 588 ns *(top level only)* |
+| 1,000 elements | **12.0 µs** / 40 B | 250 µs / 846 KB | *does not descend* |
+| Resolve from DI | **4 ns** / **0 B** | ~4–6 µs / 11 KB | — |
 
-That last row is the one worth reading twice. `AddValidatorsFromAssemblyContaining` registers
-validators **scoped**, and constructing a FluentValidation validator costs about 2,163 ns — so by
-default it rebuilds its rule graph on every request.
+The allocation column is the one worth reading twice, because it is counted rather than timed and so
+does not move between runs. **40 bytes is the whole cost of a passing validation** — one result
+object, the same for a flat model, a nested one, and a thousand elements, because the walk itself
+allocates nothing.
+
+The last row is a range rather than a figure deliberately. `AddValidatorsFromAssemblyContaining`
+registers validators **scoped**, so by default FluentValidation rebuilds its rule graph on every
+request. That costs about 11 KB per resolve, which is exact, and a few microseconds, which is
+dominated by garbage collection and moves too much between runs on our hardware to quote more
+precisely than that.
 
 </div>
 
