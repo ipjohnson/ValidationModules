@@ -23,7 +23,6 @@ VM0025 | ValidationModules.Usage | Warning | [UniqueItems] will compare elements
 VM0026 | ValidationModules.Usage | Warning | [Range] declares neither bound and can never fail.
 VM0017 | ValidationModules.Usage | Warning | An inline pattern roots the regex engine in an AOT-facing project.
 VM0018 | ValidationModules.Usage | Error | A referenced regex member is missing, not static, inaccessible or not a Regex.
-VM0019 | ValidationModules.Usage | Error | Profile attribution is declared but profiles are not implemented.
 VM0040 | ValidationModules.Usage | Error | The referenced ValidationModules.Runtime is older than the emitted code requires.
 VM0051 | ValidationModules.Usage | Warning | A constraint on a record parameter is missing the property: target.
 VM0060 | ValidationModules.Usage | Warning | A custom ValidationAttribute subclass cannot be compiled.

@@ -35,8 +35,29 @@ public class FlatValidationComparison {
     private Models.Annotated.Customer _validAnnotated = null!;
     private Models.Annotated.Customer _invalidAnnotated = null!;
 
+    /// <summary>Set when DataAnnotations is not validating on this runtime. See EngineParity.</summary>
+    private string? _dataAnnotationsDivergence;
+
+    /// <summary>
+    /// The payload, or a throw naming why DataAnnotations cannot be measured here.
+    /// </summary>
+    /// <remarks>
+    /// Throwing from the benchmark rather than the setup costs only the DataAnnotations rows: they
+    /// report NA with the reason in the log, and the two engines that still work keep their numbers.
+    /// </remarks>
+    private T CheckedAnnotations<T>(T payload) =>
+        _dataAnnotationsDivergence is null
+            ? payload
+            : throw new InvalidOperationException(_dataAnnotationsDivergence);
+
     [GlobalSetup]
     public void Setup() {
+        // In the measured process, not just the host: under Native AOT this class runs in its
+        // own AOT-compiled binary, and an engine that quietly stopped validating there would
+        // otherwise be reported as fast. See EngineParity's remarks.
+        EngineParity.Verify();
+        _dataAnnotationsDivergence = EngineParity.DataAnnotationsDivergence();
+
         _valid = SampleData.ValidCustomer();
         _invalid = SampleData.InvalidCustomer();
         _validAnnotated = SampleData.ValidAnnotatedCustomer();
@@ -59,7 +80,7 @@ public class FlatValidationComparison {
     public bool Fv_Clean() => CustomerFluentValidator.Instance.Validate(_valid).IsValid;
 
     [Benchmark(Description = "DataAnnotations - clean")]
-    public bool Da_Clean() => DataAnnotationsEngine.TryValidate(_validAnnotated, _annotationResults);
+    public bool Da_Clean() => DataAnnotationsEngine.TryValidate(CheckedAnnotations(_validAnnotated), _annotationResults);
 
     // ---- Failing payload: every rule violated ---------------------------------------------------
 
@@ -70,7 +91,7 @@ public class FlatValidationComparison {
     public bool Fv_Failing() => CustomerFluentValidator.Instance.Validate(_invalid).IsValid;
 
     [Benchmark(Description = "DataAnnotations - 5 failures")]
-    public bool Da_Failing() => DataAnnotationsEngine.TryValidate(_invalidAnnotated, _annotationResults);
+    public bool Da_Failing() => DataAnnotationsEngine.TryValidate(CheckedAnnotations(_invalidAnnotated), _annotationResults);
 
     // ---- Clean payload, with each engine's errors materialized -----------------------------------
 

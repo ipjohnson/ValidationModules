@@ -143,11 +143,4 @@ public class ValidationErrorCollectorTests {
             Enumerable.Range(0, branches).Select(i => $"toys[{i}].name").OrderBy(field => field, StringComparer.Ordinal),
             collector.ToResult().Errors.Select(error => error.Field).OrderBy(field => field, StringComparer.Ordinal));
     }
-
-    [Fact]
-    public void Profile_IsCarriedThroughToTheContext() {
-        var collector = ValidationErrorCollector.CreateSynchronized(typeof(Strict));
-
-        Assert.Equal(typeof(Strict), collector.Profile);
-    }
 }

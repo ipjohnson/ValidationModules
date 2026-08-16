@@ -35,7 +35,21 @@ public class DependencyInjectionComparison {
     private static readonly OrderLineValidator OrderLineValidatorShared = new();
     private static readonly OrderValidator OrderValidatorShared = new();
     private ServiceProvider _vmProvider = null!;
-    private ServiceProvider _fvProvider = null!;
+    private ServiceProvider? _fvProvider;
+
+    /// <summary>
+    /// Why FluentValidation's container could not be built, or null when it could.
+    /// </summary>
+    /// <remarks>
+    /// <b>Under Native AOT it cannot be, and that is a result rather than an accident.</b>
+    /// <c>AddValidatorsFromAssemblyContaining</c> discovers validators by scanning, so nothing
+    /// statically references their constructors and the trimmer has no reason to keep them -
+    /// resolving one throws "a suitable constructor could not be located". Recorded instead of
+    /// thrown from setup, because a <c>[GlobalSetup]</c> that throws takes every benchmark in the
+    /// class down with it, and the first AOT run of this suite reported NA for all five rows
+    /// including the two that work perfectly well.
+    /// </remarks>
+    private Exception? _fluentValidationUnavailable;
 
     /// <summary>
     /// Registered explicitly rather than from <c>GeneratedValidators.All</c>: this assembly also
@@ -56,22 +70,42 @@ public class DependencyInjectionComparison {
         vmServices.AddValidationModules(Registrations());
         _vmProvider = vmServices.BuildServiceProvider();
 
-        var fvServices = new ServiceCollection();
-        fvServices.AddValidatorsFromAssemblyContaining<CustomerFluentValidator>();
-        _fvProvider = fvServices.BuildServiceProvider();
-
-        // Warm the first resolution out of the measured path in both containers: MS.DI compiles a
-        // call site on first use, and measuring that once would say nothing about steady state.
+        // Warm the first resolution out of the measured path: MS.DI compiles a call site on first
+        // use, and measuring that once would say nothing about steady state.
         _ = _vmProvider.GetRequiredService<IValidatorFor<Customer>>();
-        using var scope = _fvProvider.CreateScope();
-        _ = scope.ServiceProvider.GetRequiredService<IValidator<Customer>>();
+
+        try {
+            var fvServices = new ServiceCollection();
+            fvServices.AddValidatorsFromAssemblyContaining<CustomerFluentValidator>();
+            var provider = fvServices.BuildServiceProvider();
+
+            using var scope = provider.CreateScope();
+            _ = scope.ServiceProvider.GetRequiredService<IValidator<Customer>>();
+
+            _fvProvider = provider;
+        } catch (Exception exception) {
+            _fluentValidationUnavailable = exception;
+        }
     }
 
     [GlobalCleanup]
     public void Cleanup() {
         _vmProvider.Dispose();
-        _fvProvider.Dispose();
+        _fvProvider?.Dispose();
     }
+
+    /// <summary>
+    /// The FluentValidation container, or a rethrow naming why there isn't one.
+    /// </summary>
+    /// <remarks>
+    /// Rethrown from the benchmark rather than swallowed, so BenchmarkDotNet reports NA for the
+    /// FluentValidation rows and the log carries the real reason - rather than a fast, meaningless
+    /// number for a path that does not run.
+    /// </remarks>
+    private ServiceProvider FluentValidationProvider =>
+        _fvProvider ?? throw new InvalidOperationException(
+            "FluentValidation's container could not be built on this runtime.",
+            _fluentValidationUnavailable);
 
     // ---- Startup ---------------------------------------------------------------------------------
 
@@ -126,7 +160,7 @@ public class DependencyInjectionComparison {
     /// </summary>
     [Benchmark(Description = "FluentValidation - scope + resolve IValidator<T> (scoped)")]
     public IValidator<Customer> Fv_Resolve() {
-        using var scope = _fvProvider.CreateScope();
+        using var scope = FluentValidationProvider.CreateScope();
 
         return scope.ServiceProvider.GetRequiredService<IValidator<Customer>>();
     }

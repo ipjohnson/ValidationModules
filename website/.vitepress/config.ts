@@ -77,6 +77,7 @@ export default defineConfig({
           items: [
             { text: 'The error model', link: '/guide/errors' },
             { text: 'Registration and DI', link: '/guide/registration' },
+            { text: 'ASP.NET Core', link: '/guide/aspnetcore' },
             { text: 'Async and business rules', link: '/guide/async' },
           ],
         },

@@ -210,7 +210,5 @@ public partial class DescribedValidatorTests {
 
     private sealed class StubProvider(IValidatorFor<Booking> booking) : IValidatorProvider {
         public IValidatorFor<TValue>? GetValidator<TValue>() => booking as IValidatorFor<TValue>;
-        public IValidatorFor<TValue>? GetValidator<TValue>(Type profile) => GetValidator<TValue>();
-        public IReadOnlyList<Type> GetProfiles<TValue>() => [];
     }
 }

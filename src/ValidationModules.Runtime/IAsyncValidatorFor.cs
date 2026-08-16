@@ -7,9 +7,10 @@ namespace ValidationModules;
 /// <remarks>
 /// <para>
 /// Takes the same <see cref="ValidationContext"/> as the synchronous side, by value. That works
-/// because the context is a plain <c>readonly struct</c> over an append-only path log: it survives
-/// awaits, and it can be captured by a closure and used from a concurrent branch. See
-/// <see cref="ValidationContext"/> for the one rule that comes with the latter.
+/// because the context is a plain <c>readonly struct</c> carrying its own path: it survives awaits,
+/// and it can be captured by a closure and used from a concurrent branch, because descending writes
+/// nothing anyone else can see. Only <i>adding</i> touches shared state - see
+/// <see cref="ValidationContext"/> for the one rule that comes with fanning out.
 /// </para>
 /// <para>
 /// <see cref="ValidationRunner{T}"/> runs these only when structural validation produced no error,

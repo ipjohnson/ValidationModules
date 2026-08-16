@@ -45,30 +45,31 @@ review.
 
 ## Status
 
-Pre-1.0, and under construction. Built so far:
+Release candidate for 1.0.0. Built so far:
 
 | Stage | | |
 |---|---|---|
 | 1 | Runtime — contracts, context, error model, constraint attributes, naming | **done** |
 | 2 | Generator, no profiles | **done** |
-| 3 | Profiles | not started |
+| 3 | Profiles | deferred past 1.0.0 |
 | 4 | `Impl` packaging for framework authors | **done** |
 | 5 | Hardened integration | substantially done |
 | 6 | FluentValidation adapter and conformance suite | not started |
+| — | ASP.NET Core integration | **done** |
 
 Also built since the plan was written, and not in its staging: a declarative rule-class front end
 (`IValidationRulesFor<T>`, `API-SURFACE.md` §19) and a DataAnnotations front end (§18).
 
-Two known gaps remain:
+**Profiles and overlays are deferred past 1.0.0, and their declaration surfaces have been
+withdrawn.** Both shipped before the features behind them: using a profile argument was `VM0019`, an
+error, and `[ValidationOverlayFor<T>]` was read by nothing at all. A 1.0.0 pins the public surface,
+and members whose only behaviour is a build failure — or no behaviour whatsoever — are the wrong
+thing to pin. Every removal is additively reversible; `docs/deferred-features.md` records the
+analysis, including the one member set that needs default interface methods to come back without
+breaking implementers.
 
-- **Profiles are not built**, and their declaration surface shipped ahead of them —
-  `FromProfile`/`UntilProfile`/`Profiles` on every constraint, and `IValidationProfile` in the
-  runtime. Using one is `VM0019`, an error, because the arguments are ignored rather than inert: a
-  rule written to apply only from V2 would be enforced under V1 as well. Removing that diagnostic is
-  the first thing Stage 3 does.
-- **VM0007 is declared and never reported.** `[ValidateNested]` on a type with no rules of its own
-  descends into nothing and says nothing. `DiagnosticCatalogueTests` records it as the one dead
-  descriptor and fails in both directions.
+Every declared diagnostic now has a report site. `DiagnosticCatalogueTests` fails in both
+directions, so a new descriptor without one cannot ship.
 
 ## Documentation
 
@@ -99,9 +100,10 @@ and what makes a context safe to hold across an await or hand to a concurrent br
 |---|---|---|
 | `ValidationModules.Runtime` | `lib/` | application code |
 | `ValidationModules.SourceGenerator` | `analyzers/dotnet/cs` | application code, `PrivateAssets=all` |
+| `ValidationModules.AspNetCore` | `lib/` | web applications |
 | `ValidationModules.SourceGenerator.Impl` | source-only | framework authors |
-| `ValidationModules.FluentValidation` | `lib/` | optional adapter |
-| `ValidationModules.Testing` | `lib/` | conformance suite |
+| `ValidationModules.FluentValidation` | `lib/` | planned adapter |
+| `ValidationModules.Testing` | `lib/` | planned conformance suite |
 
 `ValidationModules.Runtime` depends only on `Microsoft.Extensions.DependencyInjection.Abstractions`,
 framework-matched per TFM. It does **not** reference `DependencyModules.Runtime` — the library is
@@ -124,6 +126,19 @@ an intended change:
 ```bash
 UPDATE_SNAPSHOTS=1 dotnet test tests/ValidationModules.Runtime.Tests
 ```
+
+## ASP.NET Core
+
+```csharp
+builder.Services.AddMyAppValidators();
+
+app.MapPost("/orders", (CreateOrder order) => Results.Ok())
+   .Validate<CreateOrder>();
+```
+
+A failure answers with RFC 9457 before the handler runs, carrying the field paths and the stable
+codes. The type argument is named rather than inferred, which is what keeps the request path free of
+reflection — `website/guide/aspnetcore.md` covers why, and what the response looks like.
 
 ## Benchmarks
 

@@ -18,9 +18,9 @@ What registration code to emit alongside the validators.
 
 | Value | Effect |
 |---|---|
-| *(unset)* | auto — a module if `IDependencyModule` resolves, otherwise the static table |
+| *(unset)* | auto — a module if `IDependencyModule` resolves, otherwise the extension |
 | `DependencyModules` | always emit an `IDependencyModule` |
-| `ServiceCollection` | always emit `GeneratedValidators.All` |
+| `ServiceCollection` | always emit the `Add…Validators()` extension |
 | `None` | emit no registration at all |
 
 Auto-detection probes the compilation for
@@ -114,15 +114,15 @@ Worth enabling in a repository where the emitted code is part of what you review
 
 ## The assembly name
 
-Not a property you set, but it decides where `GeneratedValidators` lands: the namespace is derived
-from `AssemblyName`, sanitized, because an assembly name is not necessarily a valid namespace.
+Not a property you set, but it names the registration method: `AddMyAppValidators()` is derived from
+`AssemblyName`, sanitized, because an assembly name is not necessarily a valid identifier.
 
-| `AssemblyName` | Namespace |
+| `AssemblyName` | Registration method |
 |---|---|
-| `MyApp` | `MyApp` |
-| `My-App` | `My_App` |
-| `7Eleven` | `_7Eleven` |
-| `My..App` | `My.App` |
+| `MyApp` | `AddMyAppValidators()` |
+| `My.App` | `AddMyAppValidators()` |
+| `My-App` | `AddMy_AppValidators()` |
+| `7Eleven` | `Add_7ElevenValidators()` |
 | *(empty)* | `Generated` |
 
 ## Diagnostic severity

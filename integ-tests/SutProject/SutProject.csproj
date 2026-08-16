@@ -14,6 +14,15 @@
         <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)generated</CompilerGeneratedFilesOutputPath>
     </PropertyGroup>
 
+    <!--
+        The internal-model tests live in the test assembly, and an internal validator is only
+        reachable from there with this. That the tests need it at all is the point: without it they
+        fail to compile, which is what proves the emitted class really is internal.
+    -->
+    <ItemGroup>
+        <InternalsVisibleTo Include="SutProject.Tests"/>
+    </ItemGroup>
+
     <ItemGroup>
         <ProjectReference Include="..\..\src\ValidationModules.Runtime\ValidationModules.Runtime.csproj"/>
         <ProjectReference Include="..\..\src\ValidationModules.SourceGenerator\ValidationModules.SourceGenerator.csproj"

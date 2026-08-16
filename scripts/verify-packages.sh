@@ -18,7 +18,7 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "${FEED}" "${WORK}"' EXIT
 
 echo "Packing ${VERSION}"
-for project in Runtime SourceGenerator SourceGenerator.Impl; do
+for project in Runtime AspNetCore SourceGenerator SourceGenerator.Impl; do
     dotnet pack "${REPO_ROOT}/src/ValidationModules.${project}/ValidationModules.${project}.csproj" \
         --configuration Release --output "${FEED}" --nologo \
         "/p:PackageVersion=${VERSION}" > /dev/null
@@ -56,6 +56,21 @@ expect "${IMPL_FILES}" "src/ValidationModules.SourceGenerator.Impl/" \
 # a second generator alongside ours and every validator is emitted twice.
 reject "${IMPL_FILES}" "ValidationSourceGenerator.cs" \
     "the [Generator] entry point is packed into Impl"
+
+# The ASP.NET Core integration is an ordinary library and must ship as one, on both TFMs. Checked
+# rather than assumed because it is the only package carrying a FrameworkReference, and getting
+# that wrong yields a package that restores cleanly and then cannot resolve a type.
+ASPNETCORE_FILES="$(unzip -l "${FEED}/ValidationModules.AspNetCore.${VERSION}.nupkg")"
+
+expect "${ASPNETCORE_FILES}" "lib/net8.0/ValidationModules.AspNetCore.dll" \
+    "the ASP.NET Core assembly is missing from lib/net8.0"
+expect "${ASPNETCORE_FILES}" "lib/net10.0/ValidationModules.AspNetCore.dll" \
+    "the ASP.NET Core assembly is missing from lib/net10.0"
+
+# It must not carry an analyzer: a consumer referencing this and the generator would otherwise run
+# two of them and get every validator emitted twice.
+reject "${ASPNETCORE_FILES}" "analyzers/dotnet/cs" \
+    "the ASP.NET Core package ships an analyzer"
 
 echo "Consuming from a clean project"
 cat > "${WORK}/nuget.config" <<EOF

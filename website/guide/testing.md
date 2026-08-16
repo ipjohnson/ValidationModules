@@ -5,7 +5,7 @@ A generated validator is an ordinary class with a static `Instance`. Testing one
 ```csharp
 [Fact]
 public void Name_IsRequired() {
-    var result = PetValidator.Instance.Validate(new Pet { Name = null });
+    var result = new PetValidator().Validate(new Pet { Name = null });
 
     var error = Assert.Single(result.Errors);
     Assert.Equal("name", error.Field);
@@ -21,7 +21,7 @@ that may legitimately be reworded.
 ```csharp
 [Fact]
 public void WellFormedPet_IsValid() {
-    Assert.True(PetValidator.Instance.IsValid(ValidPet()));
+    Assert.True(new PetValidator().IsValid(ValidPet()));
 }
 ```
 
@@ -32,7 +32,7 @@ private static Pet ValidPet(Action<PetBuilder>? mutate = null) { … }
 
 [Fact]
 public void Name_TooLong_IsRejected() {
-    var result = PetValidator.Instance.Validate(ValidPet(p => p.Name = new string('a', 101)));
+    var result = new PetValidator().Validate(ValidPet(p => p.Name = new string('a', 101)));
 
     Assert.Equal(ValidationCodes.StringLength, Assert.Single(result.Errors).Code);
 }
@@ -50,14 +50,14 @@ Nested and collection errors are where a path assertion earns its place:
 public void NestedFailure_IsPathed() {
     var pet = ValidPet(p => p.Home = new Address { PostalCode = null });
 
-    Assert.Equal("home.postalCode", Assert.Single(PetValidator.Instance.Validate(pet).Errors).Field);
+    Assert.Equal("home.postalCode", Assert.Single(new PetValidator().Validate(pet).Errors).Field);
 }
 
 [Fact]
 public void ElementFailure_CarriesItsIndex() {
     var pet = ValidPet(p => p.Toys = [new Toy { Name = "ok" }, new Toy { Name = null }]);
 
-    Assert.Equal("toys[1].name", Assert.Single(PetValidator.Instance.Validate(pet).Errors).Field);
+    Assert.Equal("toys[1].name", Assert.Single(new PetValidator().Validate(pet).Errors).Field);
 }
 ```
 
@@ -73,7 +73,7 @@ Two semantics worth a test of their own, because they are easy to break and quie
 [Fact]
 public void FailedRequired_SuppressesTheRestOfItsField() {
     // Name carries [Required] and [StringLength(1, 100)]. A null value fails one of them, not both.
-    var result = PetValidator.Instance.Validate(ValidPet(p => p.Name = null));
+    var result = new PetValidator().Validate(ValidPet(p => p.Name = null));
 
     Assert.Equal(ValidationCodes.Required, Assert.Single(result.Errors).Code);
 }
@@ -82,7 +82,7 @@ public void FailedRequired_SuppressesTheRestOfItsField() {
 public void Errors_ArriveInDeclarationOrder() {
     var pet = ValidPet(p => { p.Name = null; p.Age = 99; });
 
-    Assert.Equal(["name", "age"], PetValidator.Instance.Validate(pet).Errors.Select(e => e.Field));
+    Assert.Equal(["name", "age"], new PetValidator().Validate(pet).Errors.Select(e => e.Field));
 }
 ```
 
@@ -111,7 +111,7 @@ takes its validators as constructor arguments, so no container is needed:
 
 ```csharp
 var runner = new ValidationRunner<Pet>(
-    [PetValidator.Instance],
+    [new PetValidator()],
     [new PetUniquenessValidator(pets)]);
 
 var result = await runner.ValidateAsync(pet);
@@ -126,7 +126,7 @@ validator was never called.
 [Fact]
 public void GeneratedTable_RegistersAValidatorForEveryModel() {
     var provider = new ServiceCollection()
-        .AddValidationModules(GeneratedValidators.All)
+        .AddSampleValidators()
         .BuildServiceProvider();
 
     Assert.NotNull(provider.GetService<IValidatorFor<Pet>>());

@@ -19,6 +19,19 @@ public sealed class PetRules : IValidationRulesFor<Pet> {
 }
 ```
 
+A version of that you can paste, against the guide's `Pet`:
+
+<!-- verify:models -->
+```csharp
+public sealed class PetRules : IValidationRulesFor<Pet> {
+    public void Describe(ValidationRules<Pet> rules) {
+        rules.Required(x => x.Name).Length(1, 100);
+        rules.Range(x => x.Age, 0, 30);
+        rules.Count(x => x.Toys, 1, 10).Each();
+    }
+}
+```
+
 It exists for two cases attributes cannot reach:
 
 - **`Pet` comes from a package nobody here owns.** You cannot edit the model to add an attribute.
@@ -92,14 +105,24 @@ rules.Range(x => x.Nights + 1, 1, 30); // VM0071
 
 The first call carries the selector; the rest inherit it.
 
+<!-- verify:models -->
 ```csharp
-rules.Required(x => x.Name).Length(1, 100);
+public sealed class AnchoredRules : IValidationRulesFor<Pet> {
+    public void Describe(ValidationRules<Pet> rules) {
+        rules.Required(x => x.Name).Length(1, 100);
+    }
+}
 ```
 
 `For` exists for when the anchor reads better stated on its own:
 
+<!-- verify:models -->
 ```csharp
-rules.For(x => x.Name).Required().Length(1, 100);
+public sealed class ForRules : IValidationRulesFor<Pet> {
+    public void Describe(ValidationRules<Pet> rules) {
+        rules.For(x => x.Name).Required().Length(1, 100);
+    }
+}
 ```
 
 The vocabulary mirrors the attributes, and produces the same codes and messages — a rule declared

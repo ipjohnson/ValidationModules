@@ -1,0 +1,36 @@
+namespace Microsoft.AspNetCore.Builder
+{
+    public static class ValidationModulesEndpointExtensions
+    {
+        public static Microsoft.AspNetCore.Builder.RouteHandlerBuilder Validate<T>(this Microsoft.AspNetCore.Builder.RouteHandlerBuilder builder)
+            where T :  class { }
+        public static Microsoft.AspNetCore.Routing.RouteGroupBuilder Validate<T>(this Microsoft.AspNetCore.Routing.RouteGroupBuilder builder)
+            where T :  class { }
+    }
+}
+namespace Microsoft.Extensions.DependencyInjection
+{
+    public static class ValidationModulesAspNetCoreExtensions
+    {
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValidationProblemDetails(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.Action<ValidationModules.AspNetCore.ValidationProblemOptions>? configure = null) { }
+    }
+}
+namespace ValidationModules.AspNetCore
+{
+    public static class ValidationProblem
+    {
+        public static System.Collections.Generic.Dictionary<string, string[]> ToCodeDictionary(ValidationModules.ValidationResult result, ValidationModules.AspNetCore.ValidationProblemOptions? options = null) { }
+        public static System.Collections.Generic.Dictionary<string, string[]> ToDictionary(ValidationModules.ValidationResult result, ValidationModules.AspNetCore.ValidationProblemOptions? options = null) { }
+        public static Microsoft.AspNetCore.Mvc.ValidationProblemDetails ToProblemDetails(ValidationModules.ValidationResult result, ValidationModules.AspNetCore.ValidationProblemOptions? options = null) { }
+        public static Microsoft.AspNetCore.Http.IResult ToResult(ValidationModules.ValidationResult result, ValidationModules.AspNetCore.ValidationProblemOptions? options = null) { }
+    }
+    public sealed class ValidationProblemOptions
+    {
+        public ValidationProblemOptions() { }
+        public bool IncludeCodes { get; set; }
+        public bool IncludeNonErrors { get; set; }
+        public int StatusCode { get; set; }
+        public string Title { get; set; }
+        public string Type { get; set; }
+    }
+}

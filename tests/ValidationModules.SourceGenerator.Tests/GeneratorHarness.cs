@@ -29,7 +29,19 @@ public static class GeneratorHarness {
     /// Worth varying: an assembly name is not necessarily a valid namespace.
     /// </param>
     public static Result Run(
-        string source, string assemblyName, params (string Key, string Value)[] buildProperties) {
+        string source, string assemblyName, params (string Key, string Value)[] buildProperties) =>
+        Run(source, assemblyName, OutputKind.DynamicallyLinkedLibrary, buildProperties);
+
+    /// <param name="outputKind">
+    /// <c>ConsoleApplication</c> for a source with top-level statements, which is what the
+    /// documentation samples mostly are. A library compilation reports CS8805 for those, and a
+    /// console one reports CS5001 for a source that only declares types, so the caller picks.
+    /// </param>
+    public static Result Run(
+        string source,
+        string assemblyName,
+        OutputKind outputKind,
+        params (string Key, string Value)[] buildProperties) {
         // Touch the types first: GetAssemblies returns only what is already loaded, and nothing in
         // a test has any reason to have loaded the runtime or the regex library before this point.
         // Without them the attributes do not bind, the front end sees an unannotated type, and every
@@ -48,6 +60,12 @@ public static class GeneratorHarness {
             // so the abstractions have to be bound or every registration test reports a missing
             // type rather than whatever it was actually asserting.
             typeof(Microsoft.Extensions.DependencyInjection.IServiceCollection).Assembly,
+
+            // The concrete container, not just the abstractions: the documentation samples build a
+            // provider and resolve from it, which is what a reader is going to do. Named through
+            // ServiceCollectionContainerBuilderExtensions rather than ServiceCollection, because
+            // the latter lives in the abstractions and BuildServiceProvider does not.
+            typeof(Microsoft.Extensions.DependencyInjection.ServiceCollectionContainerBuilderExtensions).Assembly,
             typeof(object).Assembly,
 
             // System.ComponentModel carries the type-forward for IServiceProvider, which the emitted
@@ -70,7 +88,7 @@ public static class GeneratorHarness {
             assemblyName,
             new[] { CSharpSyntaxTree.ParseText(source) },
             references,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
+            new CSharpCompilationOptions(outputKind, nullableContextOptions: NullableContextOptions.Enable));
 
         var driver = CSharpGeneratorDriver
             .Create(new ValidationSourceGenerator())

@@ -13,28 +13,17 @@ Every constraint derives from `ValidationConstraintAttribute` and inherits:
 |---|---|---|
 | `Code` | `string?` | overrides the machine-readable code |
 | `Message` | `string?` | overrides the composed message |
-| `FromProfile` | `Type?` | **not implemented** — [VM0019](/reference/diagnostics#vm0019) |
-| `UntilProfile` | `Type?` | **not implemented** — VM0019 |
-| `Profiles` | `Type[]?` | **not implemented** — VM0019 |
 
 There is no `Severity` on a constraint. Severity is reachable from
 [`rules.Ensure(…, severity:)`](/reference/rules-api#ensure) and from `context.Add` in a
 hand-written validator.
 
-::: danger Profile attribution is declared but not implemented
-Profiles are Stage 3 of the plan and are **not built**. The declaration surface shipped ahead of the
-implementation, so this compiles and reads exactly as the design describes:
+::: tip Profile attribution is deferred, and its surface has been withdrawn
+`FromProfile`, `UntilProfile` and `Profiles` were on this type before profiles were built, so
+setting one was an error rather than a restriction. They were removed rather than pinned into the
+first stable release — writing one is now an ordinary "no such member" from the compiler.
 
-```csharp
-[Required(FromProfile = typeof(V2))] // VM0019, an error
-public string? Tag { get; init; }
-```
-
-Were it accepted, the rule would be enforced **unconditionally** — including under V1, rejecting
-data the caller was entitled to send. So it is [VM0019](/reference/diagnostics#vm0019), an error
-rather than a warning, and the same for assembly-level `[DefaultValidationProfile]`.
-
-Declaring `IValidationProfile` types is harmless. Attaching a rule to one is what does not work.
+Every removal is additively reversible, and the analysis is in `docs/deferred-features.md`.
 :::
 
 ## `[Required]`

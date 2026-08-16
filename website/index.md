@@ -65,11 +65,19 @@ features:
 
   - title: Registers itself
     details: >-
-      With DependencyModules referenced the generator emits a complete module. Without it, a static
-      table of factory delegates and one AddValidationModules call. Both branches avoid constructor
-      reflection entirely.
+      One generated call named after your assembly, so two of them compose without ceremony. With
+      DependencyModules referenced you get a module wrapping the same body instead. Validators are
+      singletons; resolving one costs about 4ns.
     link: /guide/registration
     linkText: Registration and DI
+
+  - title: Answers a request
+    details: >-
+      An endpoint filter validates a minimal API argument before the handler runs and answers with
+      RFC 9457, carrying the field paths and the stable codes rather than only English. Published
+      Native AOT and served, not just unit tested.
+    link: /guide/aspnetcore
+    linkText: ASP.NET Core
 ---
 
 <div class="vm-sample">
@@ -123,7 +131,7 @@ public sealed partial class PetValidator : IValidatorFor<Pet> {
 
         if (value.Home is { } nestedHome) {
             var ctxHome = ctx.Push("home");
-            AddressValidator.Instance.Validate(ref ctxHome, nestedHome);
+            HomeValidators[0].Validate(ref ctxHome, nestedHome);
         }
     }
 }
@@ -132,7 +140,7 @@ public sealed partial class PetValidator : IValidatorFor<Pet> {
 Then run it:
 
 ```csharp
-var result = PetValidator.Instance.Validate(pet);
+var result = new PetValidator().Validate(pet);
 
 foreach (var error in result.Errors) {
     Console.WriteLine($"{error.Field}: {error.Code}");

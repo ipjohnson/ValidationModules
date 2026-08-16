@@ -44,7 +44,7 @@ finds a constructor reflectively. So the generator emits **factory delegates** i
 validators are parameterless with a static `Instance` for the delegate to return.
 
 **Nested validators.** Injecting them would require the same activation. They are referenced
-statically instead — `AddressValidator.Instance.Validate(ref ctxHome, nestedHome)`.
+from an array the constructor materialised — `validatorsHome[vi].Validate(ref ctxHome, nestedHome)`.
 
 **Runtime type dispatch.** "Give me the validator for this `Type`" is `MakeGenericType` territory.
 Where that is needed the generator emits a switch over closed types instead, so every type is

@@ -13,12 +13,6 @@ namespace ValidationModules.Runtime.Tests.Infrastructure;
 /// suppressing the rest of its field through an else-if. That is deliberate: these tests pin the
 /// semantics the generator will have to reproduce, so they double as the emitter's spec.
 /// </remarks>
-public sealed class V1 : IValidationProfile;
-
-public sealed class V2 : IValidationProfile<V1>;
-
-public sealed class Strict : IValidationProfile;
-
 public sealed record Address {
     [Required] public string? PostalCode { get; init; }
 
@@ -34,10 +28,10 @@ public sealed record Pet {
     [StringLength(min: 1, max: 10)]
     public string? Name { get; init; }
 
-    [Required(FromProfile = typeof(V2))]
+    [Required]
     public string? Tag { get; init; }
 
-    [Pattern("^[A-Z]{3}$", Profiles = [typeof(Strict)])]
+    [Pattern("^[A-Z]{3}$")]
     public string? Sku { get; init; }
 
     [ValidateNested]

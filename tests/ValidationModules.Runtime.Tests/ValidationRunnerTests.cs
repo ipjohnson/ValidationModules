@@ -66,16 +66,6 @@ public class ValidationRunnerTests {
     }
 
     [Fact]
-    public void Validate_UnderAProfile_PassesItToTheContext() {
-        var recording = new ProfileRecordingValidator();
-        var runner = new ValidationRunner<Pet>([recording], []);
-
-        runner.Validate(ValidPet(), typeof(V2));
-
-        Assert.Equal(typeof(V2), recording.SeenProfile);
-    }
-
-    [Fact]
     public void Validate_CleanValue_ReturnsTheSharedValidInstance() {
         var runner = new ValidationRunner<Pet>([PetValidator.Instance], []);
 
@@ -100,6 +90,44 @@ public class ValidationRunnerTests {
         }
     }
 
+    [Fact]
+    public void Validate_CleanValue_DoesNotBoxAnEnumerator() {
+        // The runner held both dependencies as IEnumerable<T> and foreach'd them. Iterating an
+        // array through the interface boxes its enumerator - 32 bytes per call, and the async path
+        // paid it twice - which is what HANDOFF.md §2.3 measured and what holding arrays fixes.
+        //
+        // Asserted through the runner rather than by reading the field, because the promise is
+        // about what a caller is charged, not about the storage that delivers it.
+        var runner = new ValidationRunner<Pet>([new CleanValidator()], []);
+        var pet = ValidPet();
+
+        for (var i = 0; i < 200; i++) {
+            runner.Validate(pet);
+        }
+
+        var best = long.MaxValue;
+
+        for (var window = 0; window < 5 && best != 0; window++) {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+
+            for (var i = 0; i < 500; i++) {
+                runner.Validate(pet);
+            }
+
+            best = Math.Min(best, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        // A clean pass still allocates the collector itself, which is 48 bytes and deliberate -
+        // see ValidationErrorCollector's remarks on why pooling was dropped. What must not be here
+        // is a per-call enumerator on top of it.
+        Assert.Equal(40 * 500, best);
+    }
+
+    /// <summary>A validator that finds nothing, so the pass stays on its clean path.</summary>
+    private sealed class CleanValidator : IValidatorFor<Pet> {
+        public void Validate(ref ValidationContext context, Pet value) { }
+    }
+
     private sealed class NestedAsyncValidator : IAsyncValidatorFor<Pet> {
         public async ValueTask ValidateAsync(ValidationContext context, Pet value, CancellationToken cancellationToken) {
             var home = context.Push("home");
@@ -117,14 +145,6 @@ public class ValidationRunnerTests {
             await Task.Yield();
 
             context.Add("name", code, "x");
-        }
-    }
-
-    private sealed class ProfileRecordingValidator : IValidatorFor<Pet> {
-        public Type? SeenProfile { get; private set; }
-
-        public void Validate(ref ValidationContext context, Pet value) {
-            SeenProfile = context.Profile;
         }
     }
 }

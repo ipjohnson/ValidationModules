@@ -67,24 +67,6 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             }
         });
 
-        // [DefaultValidationProfile] redirects the bare IValidatorFor<T> registration to a named
-        // profile, and profiles are not built - so the promise is not kept and the bare validator
-        // carries every rule instead. Projected to a count rather than to locations so the stage
-        // caches on the answer; reported at Location.None, as VM0040 above is, because an assembly
-        // attribute's position is not where the reader needs to look anyway.
-        var defaultProfileDeclarations = context.CompilationProvider.Select(static (compilation, _) =>
-            compilation.Assembly.GetAttributes()
-                .Count(attribute =>
-                    attribute.AttributeClass?.ToDisplayString() == KnownTypes.DefaultValidationProfileAttribute));
-
-        context.RegisterSourceOutput(defaultProfileDeclarations, static (production, declared) => {
-            for (var i = 0; i < declared; i++) {
-                production.ReportDiagnostic(Diagnostic.Create(
-                    ValidationDiagnostics.ProfileAttributionNotImplemented, Location.None,
-                    "DefaultValidationProfile", compilationAssemblyLabel));
-            }
-        });
-
         // An assembly name is not necessarily a valid namespace: "My-App" emitted `namespace My-App;`
         // and broke the consumer's build in generated code.
         var assemblyNamespace = context.CompilationProvider.Select(static (compilation, _) =>
@@ -224,11 +206,17 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             }
         }
 
+        // Snapshotted before the loop below starts removing from byTarget, because VM0007 asks
+        // whether a *nested* type has rules declared anywhere - a question whose answer must not
+        // depend on how far through the candidates we happen to be.
+        var ruleTargets = new HashSet<INamedTypeSymbol>(byTarget.Keys, SymbolEqualityComparer.Default);
+        bool HasRulesClass(INamedTypeSymbol type) => ruleTargets.Contains(type);
+
         foreach (var candidate in plain) {
             byTarget.TryGetValue(candidate, out var declared);
             byTarget.Remove(candidate);
 
-            if (Build(candidate, declared, options) is { } result) {
+            if (Build(candidate, declared, options, HasRulesClass) is { } result) {
                 results.Add(result);
             }
         }
@@ -236,7 +224,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         // Whatever is left targets a type this compilation does not declare - the case the feature
         // exists for. Its model has no attributes to merge with, only the rules class's own.
         foreach (var pair in byTarget) {
-            if (Build((INamedTypeSymbol)pair.Key, pair.Value, options) is { } result) {
+            if (Build((INamedTypeSymbol)pair.Key, pair.Value, options, HasRulesClass) is { } result) {
                 results.Add(result);
             }
         }
@@ -248,7 +236,10 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
     }
 
     private static ModelResult? Build(
-        INamedTypeSymbol target, List<RulesDeclaration>? declared, GeneratorOptions options) {
+        INamedTypeSymbol target,
+        List<RulesDeclaration>? declared,
+        GeneratorOptions options,
+        Func<INamedTypeSymbol, bool> hasRulesClass) {
 
         var frontEnd = new AttributeFrontEnd(options.CompileDataAnnotations, options.FieldNamer, options.ResolvedPatternPolicy);
 
@@ -256,7 +247,8 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             target,
             static type => $"{type.Name}Validator",
             declared?.SelectMany(static declaration => declaration.Rules).ToArray(),
-            declared?.SelectMany(static declaration => declaration.AppliedRules).ToArray());
+            declared?.SelectMany(static declaration => declaration.AppliedRules).ToArray(),
+            hasRulesClass);
 
         var diagnostics = frontEnd.Diagnostics.ToImmutableArray();
 

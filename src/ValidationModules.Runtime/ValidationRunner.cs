@@ -18,44 +18,41 @@ namespace ValidationModules;
 /// </remarks>
 /// <typeparam name="T">The type being validated.</typeparam>
 public sealed class ValidationRunner<T> {
-    private readonly IEnumerable<IValidatorFor<T>> _structural;
-    private readonly IEnumerable<IAsyncValidatorFor<T>> _business;
 
     /// <summary>
-    /// The scope this runner was resolved from, handed to every context it starts so that
-    /// descending into a nested object can pick up validators registered for that type.
+    /// Materialised once, and held as arrays rather than as the injected sequences.
     /// </summary>
-    private readonly IServiceProvider? _services;
+    /// <remarks>
+    /// <c>foreach</c> over an array typed as <see cref="IEnumerable{T}"/> boxes its enumerator -
+    /// measured at exactly 32 bytes per call, and the async path pays it twice. A runner is built
+    /// once per scope and used per request, so copying here is paid once and the per-call
+    /// allocation goes to zero. The generated validators already hold their nested sets this way,
+    /// for the same reason.
+    /// </remarks>
+    private readonly IValidatorFor<T>[] _structural;
+    private readonly IAsyncValidatorFor<T>[] _business;
 
     /// <summary>
     /// Creates a runner over the validators registered for <typeparamref name="T"/>.
     /// </summary>
     /// <param name="structural">Generated constraint validators. Usually one.</param>
     /// <param name="business">Hand-written rules that need I/O. Often none.</param>
-    /// <param name="services">
-    /// The scope, so nested types compose the same way the top-level one does. Optional, and
-    /// omitting it is what a directly-constructed runner in a test does - the pass then runs the
-    /// generated validators alone, which is the pre-composition behaviour.
-    /// </param>
     public ValidationRunner(
         IEnumerable<IValidatorFor<T>> structural,
-        IEnumerable<IAsyncValidatorFor<T>> business,
-        IServiceProvider? services = null) {
+        IEnumerable<IAsyncValidatorFor<T>> business) {
         ArgumentNullException.ThrowIfNull(structural);
         ArgumentNullException.ThrowIfNull(business);
 
-        _structural = structural;
-        _business = business;
-        _services = services;
+        _structural = structural as IValidatorFor<T>[] ?? System.Linq.Enumerable.ToArray(structural);
+        _business = business as IAsyncValidatorFor<T>[] ?? System.Linq.Enumerable.ToArray(business);
     }
 
     /// <summary>
     /// Runs the structural validators only. Allocation-free when the value is clean.
     /// </summary>
     /// <param name="value">The value to validate.</param>
-    /// <param name="profile">The profile to validate under, or <see langword="null"/> for the default.</param>
-    public ValidationResult Validate(T value, Type? profile = null) {
-        var collector = new ValidationErrorCollector(profile);
+    public ValidationResult Validate(T value) {
+        var collector = new ValidationErrorCollector();
 
         RunStructural(collector, value);
 
@@ -77,22 +74,20 @@ public sealed class ValidationRunner<T> {
     /// </para>
     /// </remarks>
     /// <param name="value">The value to validate.</param>
-    /// <param name="profile">The profile to validate under, or <see langword="null"/> for the default.</param>
     /// <param name="cancellationToken">Cancels any I/O the business rules perform.</param>
     public async ValueTask<ValidationResult> ValidateAsync(
         T value,
-        Type? profile = null,
         CancellationToken cancellationToken = default) {
 
-        var collector = new ValidationErrorCollector(profile);
+        var collector = new ValidationErrorCollector();
 
         RunStructural(collector, value);
 
         if (!collector.HasErrors) {
-            var context = new ValidationContext(collector, _services);
+            var context = new ValidationContext(collector);
 
-            foreach (var validator in _business) {
-                await validator.ValidateAsync(context, value, cancellationToken).ConfigureAwait(false);
+            for (var i = 0; i < _business.Length; i++) {
+                await _business[i].ValidateAsync(context, value, cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -100,10 +95,10 @@ public sealed class ValidationRunner<T> {
     }
 
     private void RunStructural(ValidationErrorCollector collector, T value) {
-        foreach (var validator in _structural) {
-            var context = new ValidationContext(collector, _services);
+        for (var i = 0; i < _structural.Length; i++) {
+            var context = new ValidationContext(collector);
 
-            validator.Validate(ref context, value);
+            _structural[i].Validate(ref context, value);
         }
     }
 }

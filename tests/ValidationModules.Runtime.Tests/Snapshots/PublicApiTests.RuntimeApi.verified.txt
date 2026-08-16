@@ -16,12 +16,6 @@ namespace ValidationModules
         public static bool IsMultipleOf(double value, decimal divisor) { }
         public static bool IsMultipleOf(float value, decimal divisor) { }
     }
-    [System.AttributeUsage(System.AttributeTargets.Assembly)]
-    public sealed class DefaultValidationProfileAttribute : System.Attribute
-    {
-        public DefaultValidationProfileAttribute(System.Type profile) { }
-        public System.Type Profile { get; }
-    }
     public sealed class DescribedValidator<T> : ValidationModules.IValidatorFor<T>
     {
         public DescribedValidator(ValidationModules.IValidationRulesFor<T> rules, ValidationModules.IValidatorProvider? nested = null, ValidationModules.Naming.IValidationFieldNamer? namer = null) { }
@@ -31,9 +25,6 @@ namespace ValidationModules
     {
         System.Threading.Tasks.ValueTask ValidateAsync(ValidationModules.ValidationContext context, T value, System.Threading.CancellationToken cancellationToken = default);
     }
-    public interface IValidationProfile { }
-    public interface IValidationProfile<TPredecessor> : ValidationModules.IValidationProfile
-        where TPredecessor : ValidationModules.IValidationProfile { }
     public interface IValidationRulesFor<T>
     {
         void Describe(ValidationModules.ValidationRules<T> rules);
@@ -44,13 +35,7 @@ namespace ValidationModules
     }
     public interface IValidatorProvider
     {
-        System.Collections.Generic.IReadOnlyList<System.Type> GetProfiles<T>();
         ValidationModules.IValidatorFor<T>? GetValidator<T>();
-        ValidationModules.IValidatorFor<T>? GetValidator<T>(System.Type profile);
-    }
-    public static class NestedValidation
-    {
-        public static void ValidateRegistered<T>(this ValidationModules.ValidationContext context, T value, ValidationModules.IValidatorFor<T>? generated = null) { }
     }
     public static class PropertyRulesExtensions
     {
@@ -103,11 +88,9 @@ namespace ValidationModules
     }
     public readonly struct ValidationContext
     {
-        public ValidationContext(ValidationModules.ValidationErrorCollector collector, System.IServiceProvider? services = null) { }
+        public ValidationContext(ValidationModules.ValidationErrorCollector collector) { }
         public int ErrorCount { get; }
         public bool HasErrors { get; }
-        public System.Type? Profile { get; }
-        public System.IServiceProvider? Services { get; }
         public void Add(string field, string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
         public void AddHere(string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
         public ValidationModules.ValidationContext Push(string segment) { }
@@ -142,25 +125,17 @@ namespace ValidationModules
     {
         public const int MaxDepth = 64;
         public ValidationErrorCollector() { }
-        public ValidationErrorCollector(System.Type? profile) { }
         public int Count { get; }
         public bool HasErrors { get; }
-        public System.Type? Profile { get; }
         public void Add(in ValidationModules.ValidationError error) { }
         public void Reset() { }
         public ValidationModules.ValidationResult ToResult() { }
-        public static ValidationModules.ValidationErrorCollector CreateSynchronized(System.Type? profile = null) { }
+        public static ValidationModules.ValidationErrorCollector CreateSynchronized() { }
     }
     public sealed class ValidationException : System.Exception
     {
         public ValidationException(ValidationModules.ValidationResult result) { }
         public ValidationModules.ValidationResult Result { get; }
-    }
-    [System.AttributeUsage(System.AttributeTargets.Class)]
-    public sealed class ValidationOverlayForAttribute<TTarget> : System.Attribute
-    {
-        public ValidationOverlayForAttribute() { }
-        public System.Type[]? Profiles { get; init; }
     }
     public sealed class ValidationResult
     {
@@ -203,9 +178,9 @@ namespace ValidationModules
     }
     public sealed class ValidationRunner<T>
     {
-        public ValidationRunner(System.Collections.Generic.IEnumerable<ValidationModules.IValidatorFor<T>> structural, System.Collections.Generic.IEnumerable<ValidationModules.IAsyncValidatorFor<T>> business, System.IServiceProvider? services = null) { }
-        public ValidationModules.ValidationResult Validate(T value, System.Type? profile = null) { }
-        public System.Threading.Tasks.ValueTask<ValidationModules.ValidationResult> ValidateAsync(T value, System.Type? profile = null, System.Threading.CancellationToken cancellationToken = default) { }
+        public ValidationRunner(System.Collections.Generic.IEnumerable<ValidationModules.IValidatorFor<T>> structural, System.Collections.Generic.IEnumerable<ValidationModules.IAsyncValidatorFor<T>> business) { }
+        public ValidationModules.ValidationResult Validate(T value) { }
+        public System.Threading.Tasks.ValueTask<ValidationModules.ValidationResult> ValidateAsync(T value, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public enum ValidationSeverity
     {
@@ -215,16 +190,15 @@ namespace ValidationModules
     }
     public static class ValidatorForExtensions
     {
-        public static bool IsValid<T>(this ValidationModules.IValidatorFor<T> validator, T value, System.Type? profile = null) { }
-        public static ValidationModules.ValidationResult Validate<T>(this ValidationModules.IValidatorFor<T> validator, T value, System.Type? profile = null) { }
-        public static void ValidateAndThrow<T>(this ValidationModules.IValidatorFor<T> validator, T value, System.Type? profile = null) { }
+        public static bool IsValid<T>(this ValidationModules.IValidatorFor<T> validator, T value) { }
+        public static ValidationModules.ValidationResult Validate<T>(this ValidationModules.IValidatorFor<T> validator, T value) { }
+        public static void ValidateAndThrow<T>(this ValidationModules.IValidatorFor<T> validator, T value) { }
         public static void ValidateInto<T>(this ValidationModules.IValidatorFor<T> validator, ValidationModules.ValidationErrorCollector collector, T value) { }
     }
     public readonly struct ValidatorRegistration : System.IEquatable<ValidationModules.ValidatorRegistration>
     {
-        public ValidatorRegistration(System.Type ServiceType, System.Func<System.IServiceProvider, object> Factory, System.Type? Profile = null) { }
+        public ValidatorRegistration(System.Type ServiceType, System.Func<System.IServiceProvider, object> Factory) { }
         public System.Func<System.IServiceProvider, object> Factory { get; init; }
-        public System.Type? Profile { get; init; }
         public System.Type ServiceType { get; init; }
     }
 }
@@ -240,7 +214,6 @@ namespace ValidationModules.Constraints
     public sealed class GenerateValidatorAttribute : System.Attribute
     {
         public GenerateValidatorAttribute() { }
-        public System.Type[]? Profiles { get; init; }
     }
     public sealed class ItemCountAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
     {
@@ -304,10 +277,7 @@ namespace ValidationModules.Constraints
     {
         protected ValidationConstraintAttribute() { }
         public string? Code { get; init; }
-        public System.Type? FromProfile { get; init; }
         public string? Message { get; init; }
-        public System.Type[]? Profiles { get; init; }
-        public System.Type? UntilProfile { get; init; }
     }
 }
 namespace ValidationModules.Naming

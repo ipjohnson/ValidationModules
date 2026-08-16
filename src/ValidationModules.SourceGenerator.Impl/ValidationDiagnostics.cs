@@ -33,9 +33,31 @@ public static class ValidationDiagnostics {
         "VM0006", "Pattern is not a valid regular expression",
         "The pattern on '{0}' is not a valid regular expression: {1}", DiagnosticSeverity.Error);
 
+    /// <summary>
+    /// <c>[ValidateNested]</c> pointing at a type that has no rules, so the descent finds nothing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The failure is silent, which is the whole reason to report it: the attribute compiles, the
+    /// property is walked, and nothing is ever checked. A model that reads as validated and
+    /// validates nothing is the exact shape this library exists to make impossible.
+    /// </para>
+    /// <para>
+    /// <b>Warning rather than error, unlike the neighbouring rules.</b> The result is a rule that
+    /// does not run, not one that runs where it should not - nothing is rejected that should have
+    /// been accepted. It is also legitimately transitional: adding <c>[ValidateNested]</c> before
+    /// the nested type's own constraints is an ordinary order to work in.
+    /// </para>
+    /// <para>
+    /// Only reported for types this compilation declares. A nested type from a referenced assembly
+    /// may carry a validator generated over there, which we cannot see and must not second-guess -
+    /// a false negative, which is the safe direction.
+    /// </para>
+    /// </remarks>
     public static readonly DiagnosticDescriptor NestedTypeHasNoRules = Descriptor(
         "VM0007", "[ValidateNested] target has no rules",
-        "'{0}' declares no constraints and no [GenerateValidator], so [ValidateNested] on '{1}' validates nothing",
+        "'{0}' declares no constraints and no [GenerateValidator], so [ValidateNested] on '{1}' " +
+        "descends into it and validates nothing",
         DiagnosticSeverity.Warning);
 
     public static readonly DiagnosticDescriptor MinExceedsMax = Descriptor(
@@ -118,35 +140,14 @@ public static class ValidationDiagnostics {
         "Set ValidationModules_PatternPolicy to Allow to keep the inline form",
         DiagnosticSeverity.Warning);
 
-    /// <summary>
-    /// The guard on a declaration surface that shipped ahead of its implementation.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <c>ValidationConstraintAttribute</c> carries <c>FromProfile</c>, <c>UntilProfile</c> and
-    /// <c>Profiles</c>, all three documented at length on the attribute itself, and
-    /// <c>IValidationProfile</c> exists in the runtime. Profiles are plan Stage 3 and are not built,
-    /// so the generator reads none of it: one validator is emitted rather than one per profile, and
-    /// every profiled rule is enforced in every profile.
-    /// </para>
-    /// <para>
-    /// <b>An error rather than a warning, because of which way it fails.</b> An unimplemented rule
-    /// that never fires costs a caller nothing. This is the opposite - a rule written to apply only
-    /// from V2 is enforced under V1 as well, rejecting data the caller was entitled to send - and a
-    /// warning is a thing a build ships with.
-    /// </para>
-    /// <para>
-    /// Deliberately outside VM0011-VM0015 and VM0020, which plan §11 reserves for profile
-    /// <i>semantics</i>: a profile argument that is not a profile, a range that admits nothing, a
-    /// cyclic chain. Those describe a feature that exists. This one says it does not.
-    /// </para>
-    /// </remarks>
-    public static readonly DiagnosticDescriptor ProfileAttributionNotImplemented = Descriptor(
-        "VM0019", "Profile attribution is not implemented",
-        "'{0}' declares a profile on '{1}', and profiles are not implemented - profile arguments " +
-        "are ignored, so every rule is enforced in every profile including the ones it excludes. " +
-        "Remove the profile argument until the feature ships",
-        DiagnosticSeverity.Error);
+    // VM0019 held the guard on the profile declaration surface: FromProfile, UntilProfile and
+    // Profiles shipped before the feature behind them, so setting one had to be an error rather
+    // than a silent no-op. Those properties were withdrawn for 1.0.0, so writing one is now
+    // CS0117 from the compiler and there is nothing left for this to say.
+    //
+    // VM0011-VM0015 and VM0020 stay reserved for profile *semantics* - a profile argument that is
+    // not a profile, a range that admits nothing, a cyclic chain. VM0019 is not reserved: it
+    // described the feature's absence, and the feature returning is what retires the id for good.
 
     public static readonly DiagnosticDescriptor RegexMemberUnusable = Descriptor(
         "VM0018", "Referenced regex member is unusable",

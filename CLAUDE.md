@@ -3,8 +3,11 @@
 Compile-time validation for .NET. Rules declared as attributes, flattened into straight-line C# by
 a source generator at build time. Native AOT is a hard requirement.
 
-**Read `IMPLEMENTATION-PLAN.md` before starting any work.** It is a specification, not a
-discussion document — the design is settled and the traps in §7.2 were found the expensive way.
+**Read `IMPLEMENTATION-PLAN.md` before starting any work.** It is the reasoning behind what was
+built, and the traps in §7.2 were found the expensive way. It is no longer a description of the
+library: §6 (profiles) and overlays were deliberately not shipped, and both say so at their head.
+For what actually exists, the public surface is pinned by
+`tests/ValidationModules.Runtime.Tests/Snapshots/PublicApiTests.RuntimeApi.verified.txt`.
 
 Sibling working directories, both editable and both relevant:
 - `~/DependencyModules` — the package this builds on. Copy its project layout, packaging and CI.
@@ -39,7 +42,8 @@ From `IMPLEMENTATION-PLAN.md` §2, repeated because they are easy to violate by 
 - `[GeneratedRegex]`, never `new Regex(..., RegexOptions.Compiled)`.
 - Rule graphs are built once, never per validation call.
 - The service interface is `IValidatorFor<T>` — `IValidator<T>` belongs to FluentValidation.
-- Profiles are opt-in; a codebase declaring none must never encounter the concept.
+- Registration is emitted per assembly as `Add<Assembly>Validators()`; there is no cross-assembly
+  scanning, deliberately.
 
 `ValidationModules.Runtime` carries `IsAotCompatible` and escalates `IL2026;IL2055;IL2067;IL2072;
 IL2075;IL2087;IL3050` to errors, so the compiler enforces the above rather than review.

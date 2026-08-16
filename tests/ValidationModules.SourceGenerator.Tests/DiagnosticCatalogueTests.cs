@@ -26,17 +26,18 @@ public class DiagnosticCatalogueTests {
     /// Declared, released, and never constructed anywhere in the product.
     /// </summary>
     /// <remarks>
-    /// VM0051 and VM0065 were here and are now wired up; VM0007 is what is left. It fires when
-    /// <c>[ValidateNested]</c> targets a type with no rules, which today descends into nothing and
-    /// says nothing — a real gap, and the mildest of the three, because the result is a rule that
-    /// does not run rather than one that runs where it should not.
+    /// <b>Empty, and keeping it empty is the point.</b> VM0051 and VM0065 were here and were wired
+    /// up; VM0007 was the last entry and its descriptor was deleted rather than implemented -
+    /// <c>[ValidateNested]</c> on a type with no rules still says nothing, but a descriptor nothing
+    /// constructs is a promise the catalogue does not keep, and deleting it is honest where
+    /// carrying it was not.
     ///
-    /// Listed rather than asserted-unreachable: removing an entry here should mean writing its
-    /// coverage, and this test says so out loud.
+    /// So every declared descriptor is now reachable. A new one added without a report site fails
+    /// <see cref="DescriptorsThatAreNeverReported_AreExactlyTheOnesRecordedAsSuch"/> immediately,
+    /// which is a stronger gate than this list ever was. Add an entry only to record a deliberate,
+    /// temporary gap - and expect to justify it.
     /// </remarks>
-    private static readonly HashSet<string> NeverReported = new() {
-        "VM0007",   // NestedTypeHasNoRules
-    };
+    private static readonly HashSet<string> NeverReported = [];
 
     [Fact]
     public void EveryDescriptor_HasATestReferencingItsId() {
@@ -54,8 +55,9 @@ public class DiagnosticCatalogueTests {
 
     [Fact]
     public void DescriptorsThatAreNeverReported_AreExactlyTheOnesRecordedAsSuch() {
-        // Fails in both directions: implementing one of the three without deleting its entry here
-        // fails, and letting a fourth descriptor go unreported fails too.
+        // Fails in both directions: implementing a recorded gap without deleting its entry here
+        // fails, and letting a new descriptor go unreported fails too. With the list empty, the
+        // second direction is the whole test - every descriptor must have a report site.
         var reported = ProductSourceIds();
 
         var actuallyDead = Declared

@@ -135,6 +135,38 @@ They are shown because "what does the free in-box option cover" is worth an answ
 that gap is the same one §10.4 of the plan found in a shipping framework. It is absent from
 `CollectionScalingComparison` entirely, where a flat line across the sweep would say nothing.
 
+### DataAnnotations does not work under Native AOT at all
+
+Measured 2026-08-16, and it is worth stating plainly because the failure is silent.
+
+`Validator.TryValidateObject` reflects over property metadata to find the attributes. Published with
+`PublishAot`, that metadata is trimmed, and the call returns **`true` with zero failures** for an
+object violating five constraints. Not slower, not partial — it reports the object valid.
+
+The compiler does warn: the call is annotated `RequiresUnreferencedCode` and a publish emits IL2026
+for it. What it does not do is fail.
+
+This first showed up here as a benchmark result that made no sense — DataAnnotations was **4.6×
+faster** on the failing payload under AOT than under the JIT, because it had stopped validating and
+was timing an empty walk. `EngineParity` exists to catch exactly that, and it did not, because it
+ran in the JIT host process while BenchmarkDotNet compiled and ran the AOT job in a separate binary.
+It now runs from `[GlobalSetup]`, inside whichever process is being measured, and the DataAnnotations
+rows fail on their own so the ValidationModules-versus-FluentValidation numbers survive.
+
+### FluentValidation registers under Native AOT and then cannot resolve
+
+`AddValidatorsFromAssemblyContaining` discovers validators by scanning, so nothing statically
+references their constructors and the trimmer has no reason to keep them. Registration succeeds —
+4.6× slower than under the JIT — and the first resolve throws:
+
+```
+System.InvalidOperationException: A suitable constructor for type 'CustomerFluentValidator'
+could not be located.
+```
+
+So `DependencyInjectionComparison` reports NA for that one row under AOT. Explicit registration
+through factory delegates works fine, which is the shape the same class measures alongside it.
+
 ---
 
 ## Reading the numbers

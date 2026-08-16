@@ -13,11 +13,23 @@
     <PropertyGroup>
         <VersionPrefix>1.0.0</VersionPrefix>
         <!--
-            Prerelease is not optional yet: DependencyModules.SourceGenerator.Impl is published only
-            as 1.0.0-rc*, and NU5104 rejects a stable package with a prerelease dependency. Drop the
-            suffix when DependencyModules goes stable.
+            rc0 for a local build, so it sorts below every published rc(1000+n). A release supplies
+            its own version, so this default never reaches nuget.org.
 
-            rc0 for a local build, so it sorts below every published rc(1000+n).
+            This used to say that a stable release was blocked outright, because
+            DependencyModules.SourceGenerator.Impl publishes only as 1.0.0-rc* and NU5104 rejects a
+            stable package with a prerelease dependency. Packing all four at 1.0.0 shows that is
+            true of one of them:
+
+              Runtime, AspNetCore, SourceGenerator   clean - the DM reference is PrivateAssets=all
+                                                     on the generator, so it is not in the nuspec
+              SourceGenerator.Impl                   NU5104, because a source-only package's
+                                                     dependencies are the point of it
+
+            The three packages a consumer installs can ship stable whenever we like. Impl carries a
+            targeted NoWarn for the one warning, since a framework author compiling those sources in
+            is opting into DM's own prerelease anyway. Drop that suppression - not the dependency -
+            once DependencyModules publishes a stable version.
         -->
         <VersionSuffix Condition="'$(VersionSuffix)' == ''">rc0</VersionSuffix>
         <AssemblyVersion>1.0.0.0</AssemblyVersion>

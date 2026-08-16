@@ -84,20 +84,11 @@ public sealed class ValidationErrorCollector {
     private List<string>? _requiredFields;
 
     /// <summary>
-    /// Creates an unsynchronized collector for the default profile.
+    /// Creates an unsynchronized collector.
     /// </summary>
     public ValidationErrorCollector() { }
 
-    /// <summary>
-    /// Creates an unsynchronized collector for a specific profile.
-    /// </summary>
-    /// <param name="profile">The profile this pass runs under, or <see langword="null"/> for the default.</param>
-    public ValidationErrorCollector(Type? profile) {
-        Profile = profile;
-    }
-
-    private ValidationErrorCollector(Type? profile, object gate) {
-        Profile = profile;
+    private ValidationErrorCollector(object gate) {
         _gate = gate;
     }
 
@@ -110,8 +101,7 @@ public sealed class ValidationErrorCollector {
     /// The default collector does not synchronize because generated straight-line code never needs
     /// it and the lock would sit on the hot path. Opt in here rather than paying for it everywhere.
     /// </remarks>
-    /// <param name="profile">The profile this pass runs under, or <see langword="null"/> for the default.</param>
-    public static ValidationErrorCollector CreateSynchronized(Type? profile = null) => new(profile, new object());
+    public static ValidationErrorCollector CreateSynchronized() => new(new object());
 
     /// <summary>
     /// Whether this pass has recorded any failure, at any severity.
@@ -137,11 +127,6 @@ public sealed class ValidationErrorCollector {
             return count;
         }
     }
-
-    /// <summary>
-    /// The profile this pass runs under, or <see langword="null"/> for the default profile.
-    /// </summary>
-    public Type? Profile { get; }
 
     /// <summary>
     /// Adds an error whose field path is already resolved. Used by adapters that receive a flat
