@@ -10,9 +10,4 @@ namespace ValidationModules.Constraints;
 /// </remarks>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Interface)]
 public sealed class GenerateValidatorAttribute : Attribute {
-
-    /// <summary>
-    /// Restricts generation to these profiles. Null means every profile the type's rules mention.
-    /// </summary>
-    public Type[]? Profiles { get; init; }
 }

@@ -14,11 +14,10 @@ public static class ValidatorForExtensions {
     /// </summary>
     /// <param name="validator">The validator to run.</param>
     /// <param name="value">The value to validate.</param>
-    /// <param name="profile">The profile to validate under, or <see langword="null"/> for the default.</param>
-    public static ValidationResult Validate<T>(this IValidatorFor<T> validator, T value, Type? profile = null) {
+    public static ValidationResult Validate<T>(this IValidatorFor<T> validator, T value) {
         ArgumentNullException.ThrowIfNull(validator);
 
-        var collector = new ValidationErrorCollector(profile);
+        var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
 
         validator.Validate(ref context, value);
@@ -33,10 +32,10 @@ public static class ValidatorForExtensions {
     /// Still runs every constraint - there is no first-failure exit - but nothing is allocated
     /// when the value is clean.
     /// </remarks>
-    public static bool IsValid<T>(this IValidatorFor<T> validator, T value, Type? profile = null) {
+    public static bool IsValid<T>(this IValidatorFor<T> validator, T value) {
         ArgumentNullException.ThrowIfNull(validator);
 
-        var collector = new ValidationErrorCollector(profile);
+        var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
 
         validator.Validate(ref context, value);
@@ -48,8 +47,8 @@ public static class ValidatorForExtensions {
     /// Runs the validator and throws <see cref="ValidationException"/> if the value is invalid.
     /// </summary>
     /// <exception cref="ValidationException">The value failed validation.</exception>
-    public static void ValidateAndThrow<T>(this IValidatorFor<T> validator, T value, Type? profile = null) {
-        var result = validator.Validate(value, profile);
+    public static void ValidateAndThrow<T>(this IValidatorFor<T> validator, T value) {
+        var result = validator.Validate(value);
 
         if (!result.IsValid) {
             throw new ValidationException(result);

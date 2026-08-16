@@ -20,18 +20,11 @@ namespace ValidationModules;
 /// <code>
 /// [ValidationOverlayFor&lt;Pet&gt;]
 /// public sealed partial class PetOverlay {
-///     [Required(FromProfile = typeof(V2))]
+///     [Required]
 ///     public string? Tag { get; }
 /// }
 /// </code>
 /// </example>
 /// <typeparam name="TTarget">The type these rules apply to.</typeparam>
 [AttributeUsage(AttributeTargets.Class)]
-public sealed class ValidationOverlayForAttribute<TTarget> : Attribute {
-
-    /// <summary>
-    /// Restricts this overlay to specific profiles. Null means every profile, matching the rule for
-    /// unattributed constraints.
-    /// </summary>
-    public Type[]? Profiles { get; init; }
-}
+public sealed class ValidationOverlayForAttribute<TTarget> : Attribute;

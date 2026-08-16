@@ -66,16 +66,6 @@ public class ValidationRunnerTests {
     }
 
     [Fact]
-    public void Validate_UnderAProfile_PassesItToTheContext() {
-        var recording = new ProfileRecordingValidator();
-        var runner = new ValidationRunner<Pet>([recording], []);
-
-        runner.Validate(ValidPet(), typeof(V2));
-
-        Assert.Equal(typeof(V2), recording.SeenProfile);
-    }
-
-    [Fact]
     public void Validate_CleanValue_ReturnsTheSharedValidInstance() {
         var runner = new ValidationRunner<Pet>([PetValidator.Instance], []);
 
@@ -117,14 +107,6 @@ public class ValidationRunnerTests {
             await Task.Yield();
 
             context.Add("name", code, "x");
-        }
-    }
-
-    private sealed class ProfileRecordingValidator : IValidatorFor<Pet> {
-        public Type? SeenProfile { get; private set; }
-
-        public void Validate(ref ValidationContext context, Pet value) {
-            SeenProfile = context.Profile;
         }
     }
 }

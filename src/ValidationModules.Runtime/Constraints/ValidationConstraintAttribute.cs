@@ -1,7 +1,7 @@
 namespace ValidationModules.Constraints;
 
 /// <summary>
-/// The base every constraint derives from. Carries profile attribution and per-rule overrides.
+/// The base every constraint derives from. Carries the per-rule overrides.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -13,9 +13,12 @@ namespace ValidationModules.Constraints;
 /// both can.
 /// </para>
 /// <para>
-/// <b>Profile attribution.</b> A constraint with none of <see cref="FromProfile"/>,
-/// <see cref="UntilProfile"/> or <see cref="Profiles"/> applies in <i>every</i> profile including
-/// the default. Setting any of them restricts it, and excludes it from the default profile.
+/// <b>Profile attribution is not here, and its absence is deliberate.</b> <c>FromProfile</c>,
+/// <c>UntilProfile</c> and <c>Profiles</c> shipped on this type before the feature behind them
+/// existed, so setting one was a build error rather than a restriction. They were withdrawn for
+/// 1.0.0 rather than pinned into the first stable surface. Adding init-only properties back is
+/// additive in both source and binary, so this closes nothing - see <c>docs/profiles-deferral.md</c>
+/// for the full reversibility analysis.
 /// </para>
 /// </remarks>
 [AttributeUsage(
@@ -23,30 +26,6 @@ namespace ValidationModules.Constraints;
     AllowMultiple = true,
     Inherited = true)]
 public abstract class ValidationConstraintAttribute : Attribute {
-
-    /// <summary>
-    /// The first profile on the chain this rule applies to, inclusive. Walks the
-    /// <see cref="IValidationProfile{TPredecessor}"/> ordering, so a rule introduced in V2 needs no
-    /// edit when V4 lands.
-    /// </summary>
-    public Type? FromProfile { get; init; }
-
-    /// <summary>
-    /// The first profile on the chain this rule stops applying to, exclusive. This is how a
-    /// relaxation is expressed - by the rule no longer admitting the later profile, rather than by
-    /// a counter-rule that removes it.
-    /// </summary>
-    public Type? UntilProfile { get; init; }
-
-    /// <summary>
-    /// An explicit profile set, for profiles that are not on a chain - <c>Strict</c>,
-    /// <c>TenantA</c>, <c>Draft</c>.
-    /// </summary>
-    /// <remarks>
-    /// Collection expressions are legal here: <c>Profiles = [typeof(Strict)]</c>. The
-    /// <c>new[] { ... }</c> form also works, for consumers pinned to an older language version.
-    /// </remarks>
-    public Type[]? Profiles { get; init; }
 
     /// <summary>
     /// Overrides the machine-readable code this constraint emits. Defaults to the constraint's own

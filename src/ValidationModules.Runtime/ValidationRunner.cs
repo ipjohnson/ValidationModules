@@ -53,9 +53,8 @@ public sealed class ValidationRunner<T> {
     /// Runs the structural validators only. Allocation-free when the value is clean.
     /// </summary>
     /// <param name="value">The value to validate.</param>
-    /// <param name="profile">The profile to validate under, or <see langword="null"/> for the default.</param>
-    public ValidationResult Validate(T value, Type? profile = null) {
-        var collector = new ValidationErrorCollector(profile);
+    public ValidationResult Validate(T value) {
+        var collector = new ValidationErrorCollector();
 
         RunStructural(collector, value);
 
@@ -77,14 +76,12 @@ public sealed class ValidationRunner<T> {
     /// </para>
     /// </remarks>
     /// <param name="value">The value to validate.</param>
-    /// <param name="profile">The profile to validate under, or <see langword="null"/> for the default.</param>
     /// <param name="cancellationToken">Cancels any I/O the business rules perform.</param>
     public async ValueTask<ValidationResult> ValidateAsync(
         T value,
-        Type? profile = null,
         CancellationToken cancellationToken = default) {
 
-        var collector = new ValidationErrorCollector(profile);
+        var collector = new ValidationErrorCollector();
 
         RunStructural(collector, value);
 

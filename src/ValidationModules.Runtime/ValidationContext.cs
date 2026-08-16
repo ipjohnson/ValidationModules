@@ -169,11 +169,6 @@ public readonly struct ValidationContext {
     public int ErrorCount => _collector.Count;
 
     /// <summary>
-    /// The profile this pass is running under, or <see langword="null"/> for the default profile.
-    /// </summary>
-    public Type? Profile => _collector.Profile;
-
-    /// <summary>
     /// The scope this pass is running in, or <see langword="null"/> when it was started without one.
     /// </summary>
     /// <remarks>

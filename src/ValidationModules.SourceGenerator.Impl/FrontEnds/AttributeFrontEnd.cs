@@ -234,42 +234,6 @@ public sealed class AttributeFrontEnd {
             .Concat(constraints.Where(constraint => constraint.Kind != ConstraintKind.Required));
 
     /// <summary>
-    /// Reports a constraint carrying profile attribution, which nothing here reads.
-    /// </summary>
-    /// <remarks>
-    /// Reported per constraint rather than once per type: the author has to remove each argument,
-    /// and a single diagnostic on the type would not say which rule to look at.
-    /// </remarks>
-    private void ReportProfileAttribution(
-        AttributeData attribute, INamedTypeSymbol attributeClass, ISymbol member) {
-
-        foreach (var argument in attribute.NamedArguments) {
-            if (argument.Key is not ("FromProfile" or "UntilProfile" or "Profiles")) {
-                continue;
-            }
-
-            // A null or empty argument restricts nothing, so it is not silently changing behaviour.
-            if (argument.Value.IsNull ||
-                (argument.Key == "Profiles" && argument.Value.Kind == TypedConstantKind.Array &&
-                 argument.Value.Values.Length == 0)) {
-                continue;
-            }
-
-            var location = attribute.ApplicationSyntaxReference is { } reference
-                ? Microsoft.CodeAnalysis.Location.Create(reference.SyntaxTree, reference.Span)
-                : Location(member);
-
-            _diagnostics.Add(Diagnostic.Create(
-                ValidationDiagnostics.ProfileAttributionNotImplemented,
-                location,
-                Unsuffixed(attributeClass.Name),
-                member.Name));
-
-            return;
-        }
-    }
-
-    /// <summary>
     /// Reports a constraint written on a record's positional parameter without the
     /// <c>property:</c> target.
     /// </summary>
@@ -577,8 +541,6 @@ public sealed class AttributeFrontEnd {
             var ns = attributeClass.ContainingNamespace?.ToDisplayString();
 
             if (ns == KnownTypes.ConstraintsNamespace) {
-                ReportProfileAttribution(attribute, attributeClass, member);
-
                 var native = NativeConstraintReader.Read(attribute, attributeClass.Name);
 
                 if (native is { Kind: ConstraintKind.Pattern }) {

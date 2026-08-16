@@ -51,7 +51,7 @@ Pre-1.0, and under construction. Built so far:
 |---|---|---|
 | 1 | Runtime — contracts, context, error model, constraint attributes, naming | **done** |
 | 2 | Generator, no profiles | **done** |
-| 3 | Profiles | not started |
+| 3 | Profiles | deferred past 1.0.0 |
 | 4 | `Impl` packaging for framework authors | **done** |
 | 5 | Hardened integration | substantially done |
 | 6 | FluentValidation adapter and conformance suite | not started |
@@ -61,11 +61,13 @@ Also built since the plan was written, and not in its staging: a declarative rul
 
 Two known gaps remain:
 
-- **Profiles are not built**, and their declaration surface shipped ahead of them —
-  `FromProfile`/`UntilProfile`/`Profiles` on every constraint, and `IValidationProfile` in the
-  runtime. Using one is `VM0019`, an error, because the arguments are ignored rather than inert: a
-  rule written to apply only from V2 would be enforced under V1 as well. Removing that diagnostic is
-  the first thing Stage 3 does.
+- **Profiles are deferred past 1.0.0, and their declaration surface has been withdrawn.**
+  `FromProfile`/`UntilProfile`/`Profiles`, `IValidationProfile` and `[DefaultValidationProfile]`
+  shipped before the feature behind them, so using one was `VM0019` — an error, because the
+  arguments were ignored rather than inert. A 1.0.0 pins the public surface, and members whose only
+  behaviour is a build failure are the wrong thing to pin. Every removal is additively reversible;
+  `docs/profiles-deferral.md` records the analysis, including the one member set that needs default
+  interface methods to come back without breaking implementers.
 - **VM0007 is declared and never reported.** `[ValidateNested]` on a type with no rules of its own
   descends into nothing and says nothing. `DiagnosticCatalogueTests` records it as the one dead
   descriptor and fails in both directions.

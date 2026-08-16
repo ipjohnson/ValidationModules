@@ -205,15 +205,6 @@ public class ValidationContextTests {
     }
 
     [Fact]
-    public void Profile_FlowsFromTheCollector() {
-        var collector = new ValidationErrorCollector(typeof(V2));
-
-        var context = new ValidationContext(collector);
-
-        Assert.Equal(typeof(V2), context.Profile);
-    }
-
-    [Fact]
     public void Constructor_NullCollector_Throws() {
         Assert.Throws<ArgumentNullException>(() => new ValidationContext(null!));
     }

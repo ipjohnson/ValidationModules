@@ -67,24 +67,6 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             }
         });
 
-        // [DefaultValidationProfile] redirects the bare IValidatorFor<T> registration to a named
-        // profile, and profiles are not built - so the promise is not kept and the bare validator
-        // carries every rule instead. Projected to a count rather than to locations so the stage
-        // caches on the answer; reported at Location.None, as VM0040 above is, because an assembly
-        // attribute's position is not where the reader needs to look anyway.
-        var defaultProfileDeclarations = context.CompilationProvider.Select(static (compilation, _) =>
-            compilation.Assembly.GetAttributes()
-                .Count(attribute =>
-                    attribute.AttributeClass?.ToDisplayString() == KnownTypes.DefaultValidationProfileAttribute));
-
-        context.RegisterSourceOutput(defaultProfileDeclarations, static (production, declared) => {
-            for (var i = 0; i < declared; i++) {
-                production.ReportDiagnostic(Diagnostic.Create(
-                    ValidationDiagnostics.ProfileAttributionNotImplemented, Location.None,
-                    "DefaultValidationProfile", compilationAssemblyLabel));
-            }
-        });
-
         // An assembly name is not necessarily a valid namespace: "My-App" emitted `namespace My-App;`
         // and broke the consumer's build in generated code.
         var assemblyNamespace = context.CompilationProvider.Select(static (compilation, _) =>
