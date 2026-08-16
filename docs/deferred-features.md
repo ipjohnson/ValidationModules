@@ -125,3 +125,72 @@ rules for a type from outside it, works today, and is tested — see `website/gu
 What it does not offer is the overlay's per-member mirroring, where the declaration site names the
 target's properties and the generator checks each one exists. That check is the part worth building
 if overlays return; the declaration surface is not the interesting half.
+
+---
+
+## ASP.NET Core convention registration
+
+`ValidationModules.AspNetCore` ships in 1.0.0. What is deferred is **automatic discovery** — today
+each endpoint names its own type:
+
+```csharp
+app.MapPost("/orders", (CreateOrder order) => …).Validate<CreateOrder>();
+```
+
+The type appears twice, and next to .NET 10's in-box `AddValidation()`, which wires itself up, that
+reads as friction. The goal is to make it opt-out at the group level instead:
+
+```csharp
+var api = app.MapGroup("").ValidateAll();
+
+app.MapPost("/orders", (CreateOrder order) => …);   // validated, nothing named
+```
+
+### The mechanism, and it is verified rather than assumed
+
+`AddEndpointFilterFactory` hands you `EndpointFilterFactoryContext` **once per endpoint at startup**,
+carrying the handler's `MethodInfo`. Walk its parameter types, look each one up in a **generated**
+`Type` → filter-factory table, and attach the closed-generic filter where it hits. The table is what
+avoids `MakeGenericType`: the generator already knows every validated type, so it can bake the closed
+generics in.
+
+The load-bearing question was whether that survives Native AOT, where minimal APIs go through the
+RequestDelegateGenerator specifically to avoid reflecting over handlers. **It does.** Measured
+2026-08-16 with a published AOT binary, zero IL warnings:
+
+```
+[factory] sees 2 parameter(s): CreateOrder order, CancellationToken ct
+[factory]   -> attaching closed-generic filter for CreateOrder
+[filter] matched CreateOrder at argument 0        →  HTTP 400
+                                     /plain       →  HTTP 200
+```
+
+Full parameter metadata, table lookup hits, filter short-circuits, and an endpoint with no
+validatable parameter is untouched. **So C# interceptors are not needed** — which is the expensive
+alternative, and what `AddValidation()` uses.
+
+### Why shipping now does not close the door
+
+Everything the design needs is additive: a new `ValidateAll()` extension, a new table type, and a
+generator that emits it. `Validate<T>()` returning concrete builder types is safe alongside a later
+generic overload, because C# infers all type arguments or none.
+
+**The one real hazard was constructor shape**, and it is closed. `ValidationEndpointFilter<T>` and
+`ValidationExceptionHandler` are `internal`: a consumer reaches both through `Validate<T>()` and
+`AddValidationProblemDetails()`, so neither constructor is frozen, and the convention design is free
+to hand the filter a table entry or a pre-resolved validator instead of options.
+`tests/ValidationModules.AspNetCore.Tests/Snapshots/PublicApiTests.AspNetCoreApi.verified.txt` pins
+what is left; if either type appears there, someone has widened it.
+
+### Two constraints to carry into the implementation
+
+**The generated table must not reference ASP.NET.** The generator cannot assume
+`ValidationModules.AspNetCore` is present, so a `Type`-keyed table of closed-generic closures has to
+live somewhere ASP.NET-agnostic — the runtime, or a separate generated call the ASP.NET package
+consumes. Deciding that late would mean moving emitted code between packages.
+
+**`WebApplication` is not an `IEndpointConventionBuilder`.** The factory hangs off one, so this is
+`app.MapGroup("").ValidateAll()` rather than `app.ValidateAll()`, and endpoints mapped directly on
+`app` are not covered. Scoping to a group is arguably better than the in-box global switch — an
+unvalidated admin group needs no per-endpoint opt-out — but it is a documented convention rather
+than magic, and it is the first thing anyone comparing the two will notice.

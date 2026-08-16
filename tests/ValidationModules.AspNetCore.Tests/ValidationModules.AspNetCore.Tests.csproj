@@ -38,6 +38,28 @@
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <PackageReference Include="xunit.v3" Version="3.2.2"/>
+        <PackageReference Include="PublicApiGenerator" Version="11.5.4"/>
+    </ItemGroup>
+
+    <!--
+        The snapshot helper is linked rather than duplicated: two copies of an approval harness
+        agree only until somebody edits one. Same reason RuleText.cs is linked into the generator.
+    -->
+    <ItemGroup>
+        <Compile Include="..\ValidationModules.Runtime.Tests\Infrastructure\Snapshot.cs"
+                 Link="Infrastructure\Snapshot.cs"/>
+    </ItemGroup>
+
+    <!-- See ValidationModules.Runtime.Tests: read from the output, updated through the source path. -->
+    <ItemGroup>
+        <Content Include="Snapshots\**\*.verified.txt" CopyToOutputDirectory="PreserveNewest" LinkBase="Snapshots"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+            <_Parameter1>SnapshotDirectory</_Parameter1>
+            <_Parameter2>$(MSBuildProjectDirectory)/Snapshots</_Parameter2>
+        </AssemblyAttribute>
     </ItemGroup>
 
     <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">

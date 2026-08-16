@@ -19,11 +19,23 @@ namespace ValidationModules.AspNetCore;
 /// failures are shaped one way when caught early and another way when thrown late is a service
 /// whose clients need two parsers.
 /// </para>
+/// <para>
+/// <b>Internal for the same reason as the filter</b> - it is registered by
+/// <c>AddValidationProblemDetails()</c> and never named by a consumer, so its constructor is not
+/// worth pinning into 1.0.0.
+/// </para>
 /// </remarks>
-public sealed class ValidationExceptionHandler : IExceptionHandler {
+internal sealed class ValidationExceptionHandler : IExceptionHandler {
     private readonly ValidationProblemOptions _options;
 
-    /// <summary>Creates the handler with options resolved from the container.</summary>
+    /// <summary>
+    /// Creates the handler with options resolved from the container.
+    /// </summary>
+    /// <remarks>
+    /// public on an internal type for the same reason as the filter: the container constructs it
+    /// through <c>ActivatorUtilities</c>, which only considers public constructors. The type is
+    /// internal, so this pins nothing.
+    /// </remarks>
     public ValidationExceptionHandler(IOptions<ValidationProblemOptions> options) {
         ArgumentNullException.ThrowIfNull(options);
 

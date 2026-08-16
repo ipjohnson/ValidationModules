@@ -29,12 +29,29 @@ namespace ValidationModules.AspNetCore;
 /// null has nothing to validate. Either way the filter stands aside rather than inventing an error
 /// whose field name it would have to guess.
 /// </para>
+/// <para>
+/// <b>Internal, and deliberately.</b> It is only ever constructed by <c>Validate&lt;T&gt;()</c>, and
+/// a public constructor is a shape 1.0.0 would pin. The convention registration sketched in
+/// <c>docs/deferred-features.md</c> may well want this to take a table entry or a pre-resolved
+/// validator rather than options; keeping the type internal leaves that free. Nothing a consumer
+/// can write today needs it by name.
+/// </para>
 /// </remarks>
 /// <typeparam name="T">The type to validate.</typeparam>
-public sealed class ValidationEndpointFilter<T> : IEndpointFilter where T : class {
+internal sealed class ValidationEndpointFilter<T> : IEndpointFilter where T : class {
     private readonly ValidationProblemOptions _options;
 
-    /// <summary>Creates the filter with options resolved from the container.</summary>
+    /// <summary>
+    /// Creates the filter with options resolved from the container.
+    /// </summary>
+    /// <remarks>
+    /// <b>public on an internal type, which is not a contradiction.</b>
+    /// <c>AddEndpointFilter&lt;TBuilder, TFilter&gt;</c> constructs through
+    /// <c>ActivatorUtilities.CreateFactory</c>, which only considers public constructors - an
+    /// internal one fails at startup with "a suitable constructor could not be located". Since the
+    /// type itself is internal, this is still unreachable from outside the assembly, so nothing is
+    /// pinned by it.
+    /// </remarks>
     public ValidationEndpointFilter(IOptions<ValidationProblemOptions> options) {
         ArgumentNullException.ThrowIfNull(options);
 
