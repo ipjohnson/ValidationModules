@@ -26,7 +26,7 @@ public record Pet {
 ```csharp
 if (value.Home is { } nestedHome) {
     var ctxHome = ctx.Push("home");
-    AddressValidator.Instance.Validate(ref ctxHome, nestedHome);
+    validatorsHome[vi].Validate(ref ctxHome, nestedHome);
 }
 ```
 
@@ -71,7 +71,7 @@ if (value.Toys is { } itemsToys) {
         var element = itemsToys[iToys];
         if (element is not null) {
             var elementCtx = ctx.PushIndex("toys", iToys);
-            global::Sample.ToyValidator.Instance.Validate(ref elementCtx, element);
+            elementValidators[vi].Validate(ref elementCtx, element);
         }
     }
 }
@@ -101,7 +101,7 @@ if (value.Toys is { } itemsToys) {
     foreach (var element in itemsToys) {
         if (element is not null) {
             var elementCtx = ctx.PushIndex("toys", iToys);
-            global::Sample.ToyValidator.Instance.Validate(ref elementCtx, element);
+            elementValidators[vi].Validate(ref elementCtx, element);
         }
         iToys++;
     }
@@ -126,7 +126,7 @@ if (value.ToysByName is { } entriesToysByName) {
     foreach (var pair in entriesToysByName) {
         if (pair.Value is not null) {
             var entryCtx = ctx.PushKey("toysByName", pair.Key?.ToString() ?? "");
-            global::Sample.ToyValidator.Instance.Validate(ref entryCtx, pair.Value);
+            entryValidators[vi].Validate(ref entryCtx, pair.Value);
         }
     }
 }
@@ -225,7 +225,7 @@ takes the process down with it.
 var head = new MutableNode { Label = "head" };
 head.Child = head;
 
-MutableNodeValidator.Instance.Validate(head);   // InvalidOperationException
+new MutableNodeValidator().Validate(head);   // InvalidOperationException
 ```
 
 Note that a `record` cannot hold a cycle — `a with { Child = b }` copies — so this needs a mutable

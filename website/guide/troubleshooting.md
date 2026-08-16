@@ -45,14 +45,6 @@ did not run at all; if the files are there, the problem is downstream.
 `ValidationModules_DataAnnotations` is `Ignore`, no validator is emitted — but every skipped
 constraint reports [VM0010](/reference/diagnostics#vm0010), so check your warnings.
 
-## `VM0019: profile attribution is not implemented`
-
-Profiles are Stage 3 and are not built. The declaration surface shipped ahead of the implementation,
-so a rule written to apply only from V2 would be enforced everywhere — which is why this is an error
-rather than a warning. Remove the profile argument until the feature lands.
-
-Declaring `IValidationProfile` types is harmless; attaching a rule to one is what does not work.
-
 ## The validator exists but a rule never fires
 
 **`[Required]` on a non-nullable value type.** `int Age` is always present, so `[Required]` can never
@@ -66,9 +58,9 @@ Schema and are unanchored. Write `^abc$`.
 null collection has no element count. Add `[Required]` if absence should fail too.
 
 **`[ValidateNested]` on a type with no rules.** Nothing was generated for the nested type, so there
-is nothing to call. Mark it `[GenerateValidator]` if its rules come from a
-[rule class](/guide/rule-classes). [VM0007](/reference/diagnostics#vm0007) covers this and is the one
-diagnostic still not wired up, so it is currently silent.
+is nothing to call. [VM0007](/reference/diagnostics#vm0007) warns about exactly this. If the rules
+come from a [rule class](/guide/rule-classes) the warning stays quiet, because the generator knows
+about it; mark the type `[GenerateValidator]` if they come from somewhere it cannot see.
 
 ## Generated code does not compile
 
@@ -89,17 +81,18 @@ worth reporting.
 **Registration was not called.** Without DependencyModules you need the one call:
 
 ```csharp
-services.AddValidationModules(GeneratedValidators.All);
+services.AddMyAppValidators();
 ```
 
-`GeneratedValidators` sits in a namespace derived from the assembly name, sanitized — `My-App`
-becomes `My_App`.
+The method is named after the assembly with the dots removed, so `My.App` emits
+`AddMyAppValidators()`. If you would rather read the name than derive it, it is at the bottom of
+`obj/Debug/<tfm>/generated/…/GeneratedValidatorRegistration.g.cs`.
 
 **Registration was suppressed.** Check for
 `<ValidationModules_Registration>None</ValidationModules_Registration>`.
 
 **The validator is in another assembly.** Each assembly emits and registers its own validators;
-there is no cross-assembly scanning, deliberately. Call that assembly's `AddValidationModules`, or
+there is no cross-assembly scanning, deliberately. Call that assembly's own `Add…Validators()`, or
 load its module, from your composition root.
 
 **No validator was generated at all.** See the first section — this is usually that in disguise.
@@ -171,9 +164,8 @@ dotnet_analyzer_diagnostic.category-ValidationModules.Usage.severity = suggestio
 Prefer silencing one id over the whole category. Several of them are errors because the alternative
 is generated code that does not compile.
 
-## One diagnostic that never fires
+## Every diagnostic in the reference is wired up
 
-[VM0007](/reference/diagnostics#vm0007) is declared and released but never reported:
-`[ValidateNested]` on a type with no rules of its own descends into nothing and says nothing. It is
-listed in the reference and marked, so a rule you expected to catch something may simply not be
-wired up yet.
+There is no longer a "declared but never reported" list. `DiagnosticCatalogueTests` fails in both
+directions — a descriptor with no report site fails, and a report site with no test fails — so a
+rule you expected to catch something either did, or is genuinely not the rule you wanted.

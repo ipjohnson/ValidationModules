@@ -110,9 +110,8 @@ Set `EmitCompilerGeneratedFiles` and look:
 #nullable enable
 
 public sealed partial class PetValidator : IValidatorFor<global::MyApp.Pet> {
-    public static readonly PetValidator Instance = new();
 
-    private PetValidator() { }
+    public PetValidator() { }
 
     public void Validate(ref ValidationContext ctx, global::MyApp.Pet value) {
         if (string.IsNullOrWhiteSpace(value.Name)) ctx.AddRequired("name");
@@ -127,12 +126,15 @@ public sealed partial class PetValidator : IValidatorFor<global::MyApp.Pet> {
 Three things in that file are worth noticing, because each is a deliberate constraint rather than an
 implementation detail:
 
-- **A parameterless private constructor and a static `Instance`.** That is what lets registration be
-  a factory delegate rather than a type pair, which is what keeps `ActivatorUtilities` and its
-  constructor reflection out of the path entirely.
+- **A public parameterless constructor, and no state.** The validator is registered as a singleton
+  and holds nothing, so constructing one costs an allocation and no work. A type with nested
+  properties gets a second constructor taking the nested types' validators, which is how a
+  hand-written validator for a nested type composes — see [nesting](/guide/nesting).
 - **The `else if` after a `required` check is an optimization, not the mechanism.** Suppressing the
   rest of a field after `[Required]` fails is enforced by the collector, so every engine gets it —
   see [the error model](/guide/errors#suppression).
+- **The class is `internal` if your model is.** A public validator taking a less accessible
+  parameter is CS0051, so the emitter matches the model's accessibility.
 - **No attributes on the generated type.** Source generators cannot see each other's output, so an
   attribute here would be read by nothing. Registration is emitted by the same generator instead.
 
@@ -140,8 +142,10 @@ implementation detail:
 
 The simplest call takes the value and hands back an immutable result:
 
+<!-- verify:models -->
 ```csharp
-var result = PetValidator.Instance.Validate(pet);
+var pet = new Pet();
+var result = new PetValidator().Validate(pet);
 
 if (!result.IsValid) {
     foreach (var error in result.Errors) {
@@ -167,14 +171,28 @@ answer:
 
 ## Wiring it into DI
 
-If you use `IServiceCollection` directly, the generator emitted a table alongside the validators:
+The generator emits an `IServiceCollection` extension named after your assembly:
 
+<!-- verify:models -->
 ```csharp
-services.AddValidationModules(GeneratedValidators.All);
+var services = new ServiceCollection();
+
+services.AddSampleValidators();
 ```
 
+The name carries the assembly because each one registers its own validators — `MyApp` gets
+`AddMyAppValidators()`, `MyApp.Contracts` gets `AddMyAppContractsValidators()`. Two assemblies both
+emitting `AddValidationModules()` would be ambiguous at the composition root; this composes without
+ceremony.
+
+::: tip Finding the name
+It is your assembly name with the dots removed, wrapped in `Add…Validators`. If you would rather
+read it than derive it, it is in
+`obj/Debug/<tfm>/generated/…/GeneratedValidatorRegistration.g.cs`.
+:::
+
 If your project references [DependencyModules](https://github.com/ipjohnson/DependencyModules), the
-generator emits a complete module instead, and you load it the usual way:
+generator emits a module wrapping the same call instead, and you load it the usual way:
 
 ```csharp
 services.AddModule<ValidationModule>();
@@ -191,4 +209,5 @@ fits. [Registration and DI](/guide/registration) covers forcing the choice, and 
 - [The error model](/guide/errors) — ordering, codes, field paths, severity.
 - [Rule classes](/guide/rule-classes) — declaring rules for a type you do not own, and cross-field
   rules that no attribute can express.
+- [ASP.NET Core](/guide/aspnetcore) — validating a request before the handler runs.
 - [Trimming and AOT](/guide/aot) — what is enforced, and the one thing that needs your attention.

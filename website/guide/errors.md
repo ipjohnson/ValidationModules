@@ -15,12 +15,13 @@ mentally transposed.
 
 ## `ValidationResult`
 
+<!-- verify:models -->
 ```csharp
-var result = PetValidator.Instance.Validate(pet);
+var result = new PetValidator().Validate(new Pet());
 
-result.IsValid;    // no error has Severity == Error
-result.HasErrors;  // Errors is non-empty at any severity
-result.Errors;     // IReadOnlyList<ValidationError>
+bool valid = result.IsValid;                            // no error has Severity == Error
+bool anything = result.HasErrors;                       // non-empty at any severity
+IReadOnlyList<ValidationError> errors = result.Errors;
 ```
 
 It is **immutable**, and that is a deliberate correction rather than a default. A shared
@@ -153,13 +154,13 @@ the whole list rather than one item at a time.
 `IsValid` is the exception, and only because it does not need the list:
 
 ```csharp
-if (!PetValidator.Instance.IsValid(pet)) { … }
+if (!new PetValidator().IsValid(pet)) { … }
 ```
 
 ## Throwing
 
 ```csharp
-PetValidator.Instance.ValidateAndThrow(pet);
+new PetValidator().ValidateAndThrow(pet);
 ```
 
 Throws `ValidationException` carrying the `ValidationResult`. Nothing else in the library throws on

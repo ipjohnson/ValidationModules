@@ -44,6 +44,9 @@
 
     <ItemGroup>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.10.0"/>
+
+        <!-- The concrete container, so the documentation samples can build a provider like a reader would. -->
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0"/>
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0"/>
         <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
             <PrivateAssets>all</PrivateAssets>
@@ -54,6 +57,17 @@
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
+    </ItemGroup>
+
+    <!--
+        The documentation samples are compiled from source, so the tests need to find website/.
+        Injected rather than walked up from the binary, because deterministic builds rewrite paths.
+    -->
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+            <_Parameter1>RepositoryRoot</_Parameter1>
+            <_Parameter2>$(MSBuildProjectDirectory)/../..</_Parameter2>
+        </AssemblyAttribute>
     </ItemGroup>
 
 </Project>

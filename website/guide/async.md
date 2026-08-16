@@ -14,6 +14,7 @@ public interface IAsyncValidatorFor<in T> {
 }
 ```
 
+<!-- verify:models -->
 ```csharp
 public sealed class PetUniquenessValidator : IAsyncValidatorFor<Pet> {
     private readonly IPetRepository _pets;
@@ -21,17 +22,29 @@ public sealed class PetUniquenessValidator : IAsyncValidatorFor<Pet> {
     public PetUniquenessValidator(IPetRepository pets) => _pets = pets;
 
     public async ValueTask ValidateAsync(
-        ValidationContext context, Pet value, CancellationToken cancellationToken) {
+        ValidationContext context, Pet value, CancellationToken cancellationToken = default) {
 
         if (await _pets.ExistsAsync(value.Sku!, cancellationToken)) {
             context.Add("sku", "duplicate", "sku is already in use.");
         }
     }
 }
+
+public interface IPetRepository {
+    ValueTask<bool> ExistsAsync(string sku, CancellationToken cancellationToken);
+}
 ```
 
+<!-- verify:models -->
 ```csharp
+var services = new ServiceCollection();
+
 services.AddScoped<IAsyncValidatorFor<Pet>, PetUniquenessValidator>();
+
+public sealed class PetUniquenessValidator : IAsyncValidatorFor<Pet> {
+    public ValueTask ValidateAsync(
+        ValidationContext context, Pet value, CancellationToken cancellationToken = default) => default;
+}
 ```
 
 Scoped, not singleton — unlike generated validators, these take dependencies.

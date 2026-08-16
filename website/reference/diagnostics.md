@@ -42,7 +42,6 @@ silently does not is worse than one you know is missing.
 | [VM0026](#vm0026) | Warning | `[Range]` declares neither bound |
 | [VM0017](#vm0017) | *policy* | an inline pattern roots the regex engine |
 | [VM0018](#vm0018) | Error | referenced regex member is unusable |
-| [VM0019](#vm0019) | Error | profile attribution is declared, and profiles are not implemented |
 | [VM0040](#vm0040) | Error | `ValidationModules.Runtime` is too old |
 | [VM0051](#vm0051) | Warning | constraint on a record parameter without `property:` |
 | [VM0060](#vm0060) | Warning | a custom `ValidationAttribute` is not compiled |
@@ -122,11 +121,18 @@ parser already says.
 
 **Warning** — *`'Address' declares no constraints and no [GenerateValidator], so [ValidateNested] on 'Home' validates nothing`*
 
-::: danger Not reported
-This descriptor is declared and released, and nothing constructs it. `[ValidateNested]` on a type
-with no rules is currently silent — no validator exists for the nested type, so the descent is
-skipped and nothing tells you.
-:::
+The descent finds nothing: no validator exists for the nested type, so the property is walked and
+not one thing is checked. A model that reads as validated and validates nothing is the failure this
+library exists to make impossible, which is why a silent skip is not good enough.
+
+**Warning rather than error**, unlike its neighbours — the result is a rule that does not run rather
+than one that runs where it should not, and writing `[ValidateNested]` before the nested type's own
+constraints is an ordinary order to work in.
+
+It stays quiet when the target's rules come from a [rule class](/guide/rule-classes), when the
+target carries `[GenerateValidator]`, when the target itself carries `[ValidateNested]` and so gets
+a validator that descends further, and when the target comes from another assembly — which may
+carry a validator generated over there that this compilation cannot see.
 
 Mark the nested type `[GenerateValidator]` when its rules arrive from a
 [rule class](/guide/rule-classes) rather than from its own attributes.
@@ -221,35 +227,6 @@ and be visible to the generated validator. The message names which of those fail
 | `does not return Regex` / `is not a Regex` |
 | `is not accessible` |
 | `is not a method, property or field` |
-
-### VM0019 {#vm0019}
-
-**Error** — *`'Required' declares a profile on 'Tag', and profiles are not implemented — profile arguments are ignored, so every rule is enforced in every profile including the ones it excludes`*
-
-```csharp
-[Required(FromProfile = typeof(V2))] // VM0019
-public string? Tag { get; init; }
-```
-
-Also fires on assembly-level `[DefaultValidationProfile]`.
-
-Profiles are Stage 3 of the plan and are not built. The declaration surface shipped ahead of the
-implementation — `ValidationConstraintAttribute` carries `FromProfile`, `UntilProfile` and
-`Profiles`, and `IValidationProfile` exists in the runtime — so the code compiles, reads exactly as
-the design describes, and does something else.
-
-**An error rather than a warning, because of which way it fails.** A rule that never fires costs a
-caller nothing. This is the opposite: a rule written to apply only from V2 is enforced under V1 as
-well, rejecting data the caller was entitled to send. A warning is a thing a build ships with.
-
-Remove the profile argument until the feature lands. Declaring `IValidationProfile` types is
-harmless; attaching a rule to one is what does not work.
-
-::: tip Why not VM0011–VM0015
-Plan §11 reserves those for profile *semantics* — a profile argument that is not a profile, a range
-that admits nothing, a cyclic chain. Those describe a feature that exists. This one says it does
-not, so it sits with VM0016–VM0018, the "this does not do what you think" family.
-:::
 
 ### VM0021 {#vm0021}
 

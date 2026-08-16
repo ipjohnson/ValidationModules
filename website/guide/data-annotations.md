@@ -3,6 +3,7 @@
 `System.ComponentModel.DataAnnotations` attributes are read as a second vocabulary and compiled into
 the same validators. A model that already carries them needs no edits:
 
+<!-- verify:bare -->
 ```csharp
 using System.ComponentModel.DataAnnotations;
 

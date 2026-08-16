@@ -3,6 +3,7 @@
 Nine attributes, all in `ValidationModules.Constraints`. Each one is read at build time and
 becomes a branch; none of them is ever constructed at run time.
 
+<!-- verify -->
 ```csharp
 using ValidationModules.Constraints;
 
@@ -33,6 +34,11 @@ public record Pet {
 
     [ValidateNested]
     public Address? Home { get; init; }
+}
+
+public record Address {
+    [Required]
+    public string? PostalCode { get; init; }
 }
 ```
 
