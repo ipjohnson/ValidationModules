@@ -45,14 +45,14 @@ internal sealed class ValidationEndpointFilter<T> : IEndpointFilter where T : cl
     /// Creates the filter with options resolved from the container.
     /// </summary>
     /// <remarks>
-    /// <b>public on an internal type, which is not a contradiction.</b>
+    /// This was public on an internal type until the filter grew a factory:
     /// <c>AddEndpointFilter&lt;TBuilder, TFilter&gt;</c> constructs through
-    /// <c>ActivatorUtilities.CreateFactory</c>, which only considers public constructors - an
-    /// internal one fails at startup with "a suitable constructor could not be located". Since the
-    /// type itself is internal, this is still unreachable from outside the assembly, so nothing is
-    /// pinned by it.
+    /// <c>ActivatorUtilities.CreateFactory</c>, which only considers public constructors, and an
+    /// internal one failed at startup with "a suitable constructor could not be located".
+    /// <see cref="ValidationEndpointFilterFactory"/> calls this directly, so the accessibility can
+    /// now say what it means.
     /// </remarks>
-    public ValidationEndpointFilter(IOptions<ValidationProblemOptions> options) {
+    internal ValidationEndpointFilter(IOptions<ValidationProblemOptions> options) {
         ArgumentNullException.ThrowIfNull(options);
 
         _options = options.Value;
