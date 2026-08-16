@@ -42,13 +42,46 @@ public class GeneratedValidatorTests {
             validator.ValidateInto(collector, pet);
         }
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 500; i++) {
-            collector.Reset();
-            validator.ValidateInto(collector, pet);
+        // The best of several windows rather than one, because tiered JIT can rejit inside a window
+        // and the rejit itself allocates. That made this flaky under the full suite — it failed at
+        // 784 and 1,568 bytes on separate runs and passed every time in isolation, which is the
+        // signature of a measurement artefact rather than a leak.
+        //
+        // Taking the minimum does not weaken the assertion. A validator that genuinely allocated
+        // per call would allocate in *every* window; only a one-off can be escaped by looking at
+        // more than one. Steady state is what the promise is about, and this is how you observe it.
+        Assert.Equal(0, BestOf(windows: 5, () => {
+            for (var i = 0; i < 500; i++) {
+                collector.Reset();
+                validator.ValidateInto(collector, pet);
+            }
+        }));
+    }
+
+    /// <summary>
+    /// The smallest number of bytes <paramref name="work"/> allocated across
+    /// <paramref name="windows"/> runs.
+    /// </summary>
+    private static long BestOf(int windows, Action work) {
+        var best = long.MaxValue;
+
+        for (var window = 0; window < windows; window++) {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+
+            work();
+
+            var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            if (allocated < best) {
+                best = allocated;
+            }
+
+            if (best == 0) {
+                return 0;
+            }
         }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        return best;
     }
 
     [Fact]
