@@ -84,8 +84,7 @@ public static class ValidationModulesServiceCollectionExtensions {
 
         services.TryAdd(ServiceDescriptor.Scoped(static provider => new ValidationRunner<T>(
             provider.GetServices<IValidatorFor<T>>(),
-            provider.GetServices<IAsyncValidatorFor<T>>(),
-            provider)));
+            provider.GetServices<IAsyncValidatorFor<T>>())));
 
         return services;
     }

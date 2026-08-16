@@ -29,6 +29,17 @@ public static class RuntimeContract {
     // descent, so that a validator registered for the nested type composes the same way one
     // registered for the top-level type always has. A runtime at contract 1 has no such method, and
     // the failure would land inside generated code - which is what VM0040 exists to prevent.
+    //
+    //   Superseded, and NestedValidation is gone. The emitter now takes the nested type's
+    //   validators as an IEnumerable<IValidatorFor<Nested>> constructor parameter and holds them as
+    //   an array, which composes the same set without a per-descent container lookup. Nothing has
+    //   emitted a ValidateRegistered call since, so no generated code referenced the method when it
+    //   was removed, and ValidationContext.Services went with it - it had no other reader.
+    //
+    //   This is the one removal the additive-only rule below does not cover, and it is deliberate:
+    //   a framework author who compiled Impl at contract 2 would emit calls to a method a current
+    //   runtime no longer has. No stable Impl has shipped, so nobody is in that position - but the
+    //   number cannot express a removal, which is why this is written down rather than encoded.
 
     // 2 -> 3: [MultipleOf] and [UniqueItems] arrived, and neither compiles to a comparison the way
     // every constraint before them did. Both call into ConstraintChecks, and both report through an

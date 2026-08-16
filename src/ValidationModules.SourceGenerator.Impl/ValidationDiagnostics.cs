@@ -33,11 +33,6 @@ public static class ValidationDiagnostics {
         "VM0006", "Pattern is not a valid regular expression",
         "The pattern on '{0}' is not a valid regular expression: {1}", DiagnosticSeverity.Error);
 
-    public static readonly DiagnosticDescriptor NestedTypeHasNoRules = Descriptor(
-        "VM0007", "[ValidateNested] target has no rules",
-        "'{0}' declares no constraints and no [GenerateValidator], so [ValidateNested] on '{1}' validates nothing",
-        DiagnosticSeverity.Warning);
-
     public static readonly DiagnosticDescriptor MinExceedsMax = Descriptor(
         "VM0008", "Lower bound exceeds upper bound",
         "The bounds on '{0}' are inverted, so the constraint can never be satisfied", DiagnosticSeverity.Error);

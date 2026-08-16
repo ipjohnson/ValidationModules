@@ -25,28 +25,20 @@ public sealed class ValidationRunner<T> {
     /// The scope this runner was resolved from, handed to every context it starts so that
     /// descending into a nested object can pick up validators registered for that type.
     /// </summary>
-    private readonly IServiceProvider? _services;
 
     /// <summary>
     /// Creates a runner over the validators registered for <typeparamref name="T"/>.
     /// </summary>
     /// <param name="structural">Generated constraint validators. Usually one.</param>
     /// <param name="business">Hand-written rules that need I/O. Often none.</param>
-    /// <param name="services">
-    /// The scope, so nested types compose the same way the top-level one does. Optional, and
-    /// omitting it is what a directly-constructed runner in a test does - the pass then runs the
-    /// generated validators alone, which is the pre-composition behaviour.
-    /// </param>
     public ValidationRunner(
         IEnumerable<IValidatorFor<T>> structural,
-        IEnumerable<IAsyncValidatorFor<T>> business,
-        IServiceProvider? services = null) {
+        IEnumerable<IAsyncValidatorFor<T>> business) {
         ArgumentNullException.ThrowIfNull(structural);
         ArgumentNullException.ThrowIfNull(business);
 
         _structural = structural;
         _business = business;
-        _services = services;
     }
 
     /// <summary>
@@ -86,7 +78,7 @@ public sealed class ValidationRunner<T> {
         RunStructural(collector, value);
 
         if (!collector.HasErrors) {
-            var context = new ValidationContext(collector, _services);
+            var context = new ValidationContext(collector);
 
             foreach (var validator in _business) {
                 await validator.ValidateAsync(context, value, cancellationToken).ConfigureAwait(false);
@@ -98,7 +90,7 @@ public sealed class ValidationRunner<T> {
 
     private void RunStructural(ValidationErrorCollector collector, T value) {
         foreach (var validator in _structural) {
-            var context = new ValidationContext(collector, _services);
+            var context = new ValidationContext(collector);
 
             validator.Validate(ref context, value);
         }

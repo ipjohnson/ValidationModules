@@ -37,10 +37,6 @@ namespace ValidationModules
     {
         ValidationModules.IValidatorFor<T>? GetValidator<T>();
     }
-    public static class NestedValidation
-    {
-        public static void ValidateRegistered<T>(this ValidationModules.ValidationContext context, T value, ValidationModules.IValidatorFor<T>? generated = null) { }
-    }
     public static class PropertyRulesExtensions
     {
         public static ValidationModules.PropertyRules<T, TValue> AllowedValues<T, TValue>(this ValidationModules.PropertyRules<T, TValue> rules, params TValue[] allowed) { }
@@ -92,10 +88,9 @@ namespace ValidationModules
     }
     public readonly struct ValidationContext
     {
-        public ValidationContext(ValidationModules.ValidationErrorCollector collector, System.IServiceProvider? services = null) { }
+        public ValidationContext(ValidationModules.ValidationErrorCollector collector) { }
         public int ErrorCount { get; }
         public bool HasErrors { get; }
-        public System.IServiceProvider? Services { get; }
         public void Add(string field, string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
         public void AddHere(string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
         public ValidationModules.ValidationContext Push(string segment) { }
@@ -142,11 +137,6 @@ namespace ValidationModules
         public ValidationException(ValidationModules.ValidationResult result) { }
         public ValidationModules.ValidationResult Result { get; }
     }
-    [System.AttributeUsage(System.AttributeTargets.Class)]
-    public sealed class ValidationOverlayForAttribute<TTarget> : System.Attribute
-    {
-        public ValidationOverlayForAttribute() { }
-    }
     public sealed class ValidationResult
     {
         public System.Collections.Generic.IReadOnlyList<ValidationModules.ValidationError> Errors { get; }
@@ -188,7 +178,7 @@ namespace ValidationModules
     }
     public sealed class ValidationRunner<T>
     {
-        public ValidationRunner(System.Collections.Generic.IEnumerable<ValidationModules.IValidatorFor<T>> structural, System.Collections.Generic.IEnumerable<ValidationModules.IAsyncValidatorFor<T>> business, System.IServiceProvider? services = null) { }
+        public ValidationRunner(System.Collections.Generic.IEnumerable<ValidationModules.IValidatorFor<T>> structural, System.Collections.Generic.IEnumerable<ValidationModules.IAsyncValidatorFor<T>> business) { }
         public ValidationModules.ValidationResult Validate(T value) { }
         public System.Threading.Tasks.ValueTask<ValidationModules.ValidationResult> ValidateAsync(T value, System.Threading.CancellationToken cancellationToken = default) { }
     }

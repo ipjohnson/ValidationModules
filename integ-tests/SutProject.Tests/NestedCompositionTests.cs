@@ -144,23 +144,4 @@ public class NestedCompositionTests {
         Assert.True(runner.Validate(Valid() with { Home = new Address { PostalCode = "BLOCKED" } }).IsValid);
     }
 
-    [Fact]
-    public void ContextStartedWithAProvider_CarriesItThroughEveryDescent() {
-        // The mechanism, asserted directly rather than through its effect: Push must not drop it,
-        // or composition would work at depth 1 and stop.
-        using var provider = Provider();
-        var collector = new ValidationErrorCollector();
-        var context = new ValidationContext(collector, provider);
-
-        Assert.Same(provider, context.Services);
-        Assert.Same(provider, context.Push("home").Services);
-        Assert.Same(provider, context.Push("home").PushIndex("toys", 2).Services);
-        Assert.Same(provider, context.PushKey("map", "k").Push("a").Push("b").Services);
-    }
-
-    [Fact]
-    public void ContextStartedWithoutAProvider_HasNoServices() {
-        Assert.Null(new ValidationContext(new ValidationErrorCollector()).Services);
-        Assert.Null(new ValidationContext(new ValidationErrorCollector()).Push("home").Services);
-    }
 }
