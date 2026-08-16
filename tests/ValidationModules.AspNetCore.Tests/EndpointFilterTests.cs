@@ -49,13 +49,15 @@ public class EndpointFilterTests {
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
     private static CreateOrder Valid() => new() { Reference = "ORD-100", Quantity = 3 };
 
     [Fact]
     public async Task ValidRequest_ReachesTheHandler() {
         using var client = Server();
 
-        var response = await client.PostAsJsonAsync("/orders", Valid());
+        var response = await client.PostAsJsonAsync("/orders", Valid(), Ct);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
@@ -64,7 +66,7 @@ public class EndpointFilterTests {
     public async Task InvalidRequest_NeverReachesTheHandler() {
         using var client = Server();
 
-        var response = await client.PostAsJsonAsync("/orders", new CreateOrder { Reference = null, Quantity = 9999 });
+        var response = await client.PostAsJsonAsync("/orders", new CreateOrder { Reference = null, Quantity = 9999 }, Ct);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
@@ -74,8 +76,8 @@ public class EndpointFilterTests {
     public async Task InvalidRequest_ReportsFieldsAndMessagesInTheStandardShape() {
         using var client = Server();
 
-        var response = await client.PostAsJsonAsync("/orders", new CreateOrder { Reference = null, Quantity = 9999 });
-        var problem = await response.Content.ReadFromJsonAsync<Problem>(Json);
+        var response = await client.PostAsJsonAsync("/orders", new CreateOrder { Reference = null, Quantity = 9999 }, Ct);
+        var problem = await response.Content.ReadFromJsonAsync<Problem>(Json, Ct);
 
         Assert.NotNull(problem);
         Assert.Equal(400, problem.Status);
@@ -90,9 +92,10 @@ public class EndpointFilterTests {
         // stable vocabulary, and dropping them at the HTTP boundary leaves a client parsing English.
         using var client = Server();
 
-        var response = await client.PostAsJsonAsync("/orders", new CreateOrder { Reference = null, Quantity = 9999 });
-        var problem = await response.Content.ReadFromJsonAsync<Problem>(Json);
+        var response = await client.PostAsJsonAsync("/orders", new CreateOrder { Reference = null, Quantity = 9999 }, Ct);
+        var problem = await response.Content.ReadFromJsonAsync<Problem>(Json, Ct);
 
+        Assert.NotNull(problem);
         Assert.NotNull(problem.ValidationCodes);
         Assert.Equal([ValidationCodes.Required], problem.ValidationCodes["reference"]);
         Assert.Equal([ValidationCodes.Range], problem.ValidationCodes["quantity"]);
@@ -103,10 +106,11 @@ public class EndpointFilterTests {
         using var client = Server(services =>
             services.AddValidationProblemDetails(options => options.IncludeCodes = false));
 
-        var response = await client.PostAsJsonAsync("/orders", new CreateOrder { Reference = null, Quantity = 1 });
-        var problem = await response.Content.ReadFromJsonAsync<Problem>(Json);
+        var response = await client.PostAsJsonAsync("/orders", new CreateOrder { Reference = null, Quantity = 1 }, Ct);
+        var problem = await response.Content.ReadFromJsonAsync<Problem>(Json, Ct);
 
-        Assert.Null(problem!.ValidationCodes);
+        Assert.NotNull(problem);
+        Assert.Null(problem.ValidationCodes);
         Assert.NotEmpty(problem.Errors);
     }
 
@@ -118,11 +122,12 @@ public class EndpointFilterTests {
                 options.StatusCode = 422;
             }));
 
-        var response = await client.PostAsJsonAsync("/orders", new CreateOrder { Reference = null, Quantity = 1 });
-        var problem = await response.Content.ReadFromJsonAsync<Problem>(Json);
+        var response = await client.PostAsJsonAsync("/orders", new CreateOrder { Reference = null, Quantity = 1 }, Ct);
+        var problem = await response.Content.ReadFromJsonAsync<Problem>(Json, Ct);
 
+        Assert.NotNull(problem);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
-        Assert.Equal("Nope", problem!.Title);
+        Assert.Equal("Nope", problem.Title);
     }
 
     [Fact]
@@ -135,11 +140,12 @@ public class EndpointFilterTests {
             Quantity = 1,
             ShipTo = new Address { Postcode = null },
             Lines = [new OrderLine { Sku = "OK" }, new OrderLine { Sku = null }],
-        });
+        }, Ct);
 
-        var problem = await response.Content.ReadFromJsonAsync<Problem>(Json);
+        var problem = await response.Content.ReadFromJsonAsync<Problem>(Json, Ct);
 
-        Assert.Contains("shipTo.postcode", problem!.Errors.Keys);
+        Assert.NotNull(problem);
+        Assert.Contains("shipTo.postcode", problem.Errors.Keys);
         Assert.Contains("lines[1].sku", problem.Errors.Keys);
     }
 
@@ -148,7 +154,7 @@ public class EndpointFilterTests {
         // The filter is opt-in per endpoint, so an unvalidated route must still accept junk.
         using var client = Server();
 
-        var response = await client.PostAsJsonAsync("/orders/unvalidated", new CreateOrder { Reference = null });
+        var response = await client.PostAsJsonAsync("/orders/unvalidated", new CreateOrder { Reference = null }, Ct);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
@@ -160,7 +166,7 @@ public class EndpointFilterTests {
         using var client = Server(services =>
             services.AddSingleton<IValidatorFor<Coupon>, WarnOnlyCouponValidator>());
 
-        var response = await client.PostAsJsonAsync("/coupons", new Coupon { Code = "SAVE" });
+        var response = await client.PostAsJsonAsync("/coupons", new Coupon { Code = "SAVE" }, Ct);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
@@ -173,11 +179,12 @@ public class EndpointFilterTests {
         using var client = Server(services =>
             services.AddScoped<IAsyncValidatorFor<CreateOrder>, RejectingBusinessRule>());
 
-        var response = await client.PostAsJsonAsync("/orders", Valid());
-        var problem = await response.Content.ReadFromJsonAsync<Problem>(Json);
+        var response = await client.PostAsJsonAsync("/orders", Valid(), Ct);
+        var problem = await response.Content.ReadFromJsonAsync<Problem>(Json, Ct);
 
+        Assert.NotNull(problem);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Equal(["reference is already taken."], problem!.Errors["reference"]);
+        Assert.Equal(["reference is already taken."], problem.Errors["reference"]);
     }
 
     private sealed class RejectingBusinessRule : IAsyncValidatorFor<CreateOrder> {

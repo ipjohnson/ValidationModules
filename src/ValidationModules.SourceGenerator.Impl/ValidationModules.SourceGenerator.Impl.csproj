@@ -17,8 +17,16 @@
             RS2000 for the DM#### rules. DependencyModules' diagnostics arrive with its source
             import and are tracked in that project's own AnalyzerReleases files; listing them in
             ours would claim them as this package's. The VM#### rules are tracked normally.
+
+            NU5104 because this is the one package that cannot avoid a prerelease dependency. It
+            ships sources compiled against DependencyModules.SourceGenerator.Impl, published only as
+            1.0.0-rc*, and a source-only package's dependencies are the point of it rather than an
+            implementation detail to hide behind PrivateAssets. Suppressed here alone, so a stable
+            release of the three packages consumers actually install is not held up by the one meant
+            for framework authors - who opt into DM's prerelease by compiling these sources in
+            regardless. Remove when DependencyModules goes stable.
         -->
-        <NoWarn>$(NoWarn);NU5128;RS2000;RS2008</NoWarn>
+        <NoWarn>$(NoWarn);NU5104;NU5128;RS2000;RS2008</NoWarn>
     </PropertyGroup>
 
     <!--

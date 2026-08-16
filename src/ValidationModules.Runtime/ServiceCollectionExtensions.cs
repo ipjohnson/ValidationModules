@@ -7,26 +7,36 @@ using ValidationModules.Naming;
 namespace Microsoft.Extensions.DependencyInjection;
 
 /// <summary>
-/// Registers generated validators when DependencyModules is not in play.
+/// The registration calls generated code makes, and the ones a consumer makes by hand.
 /// </summary>
 /// <remarks>
-/// When DependencyModules <i>is</i> referenced, the generator emits a complete
-/// <c>IDependencyModule</c> instead and this is not needed. Which branch is taken is decided at
+/// The generator emits an <c>IServiceCollection</c> extension named after the assembly -
+/// <c>services.AddMyAppValidators()</c> - which registers each validator and calls
+/// <see cref="AddValidationRunner{T}"/> once per validated type. When DependencyModules is
+/// referenced it emits a module wrapping the same body instead; which branch is taken is decided at
 /// generation time and can be forced with the <c>ValidationModules_Registration</c> MSBuild
 /// property.
 /// </remarks>
 public static class ValidationModulesServiceCollectionExtensions {
 
     /// <summary>
-    /// Registers every validator in a generated table, plus the field namer.
+    /// Registers every validator in a table, plus the field namer.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Each entry registers through its factory delegate, so nothing goes through
     /// <c>ActivatorUtilities</c> constructor reflection. Validators are singletons: generated ones
     /// are stateless, and building the rule graph once rather than per call is a hard requirement.
+    /// </para>
+    /// <para>
+    /// <b>Nothing generates one of these tables.</b> The generator emits an extension method instead
+    /// - see <c>RegistrationEmitter</c> for why the table lost - so this is for a caller assembling
+    /// registrations themselves, which in practice means another generator built on
+    /// <c>ValidationModules.SourceGenerator.Impl</c>.
+    /// </para>
     /// </remarks>
     /// <param name="services">The collection to add to.</param>
-    /// <param name="registrations">Typically <c>GeneratedValidators.All</c> from the consuming assembly.</param>
+    /// <param name="registrations">The validators to register.</param>
     public static IServiceCollection AddValidationModules(
         this IServiceCollection services,
         IReadOnlyList<ValidatorRegistration> registrations) {

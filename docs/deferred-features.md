@@ -1,4 +1,10 @@
-# Profiles: withdrawn from 1.0.0, and what keeps the door open
+# Deferred features: withdrawn from 1.0.0, and what keeps the door open
+
+Two features were specified, had their declaration surface shipped, and were never built. Both
+surfaces were withdrawn before 1.0.0 pinned them. Profiles are the long half of this document;
+overlays are a short note at the end.
+
+## Profiles
 
 **Decided:** 2026-08-16, before the 1.0.0 surface was pinned.
 
@@ -102,3 +108,20 @@ about the error model constrains the design.
 `RuntimeContract.Version` was not bumped. The generator never emitted anything profile-related — no
 emitter referenced a profile — so no generated code changed and no consumer's emitted output is
 invalidated by this removal.
+
+---
+
+## Overlays
+
+`[ValidationOverlayFor<TTarget>]` declared rules for a type you do not own, from outside it. It was
+in the runtime's public surface and **read by no front end** — applying it compiled and did nothing
+at all, which is the profiles problem without even a diagnostic to say so.
+
+Withdrawn on the same reasoning, and the reversibility argument is simpler: it was one attribute
+with one property, and re-adding an attribute is purely additive.
+
+**Rule classes already cover most of what overlays were for.** `IValidationRulesFor<T>` declares
+rules for a type from outside it, works today, and is tested — see `website/guide/rule-classes.md`.
+What it does not offer is the overlay's per-member mirroring, where the declaration site names the
+target's properties and the generator checks each one exists. That check is the part worth building
+if overlays return; the declaration surface is not the interesting half.

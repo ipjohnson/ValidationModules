@@ -20,7 +20,7 @@ namespace ValidationModules;
 /// before profiles existed. Because a consumer <i>implements</i> this interface, restoring them
 /// naively in 1.1 would break every implementer - so restore them as default interface members
 /// (returning <see langword="null"/> and an empty list), which net8.0 supports and which breaks
-/// nobody. <c>docs/profiles-deferral.md</c> records why that is the one member set here needing a
+/// nobody. <c>docs/deferred-features.md</c> records why that is the one member set here needing a
 /// technique rather than a plain re-add.
 /// </para>
 /// </remarks>
