@@ -53,6 +53,6 @@ public sealed partial class PetValidator : IValidatorFor<global::Sample.Pet> {
     public void Validate(ref ValidationContext ctx, global::Sample.Pet value) {
         if (value.Age is null) ctx.AddRequired("age");
         if (value.Weight is not null && (value.Weight.Value < 0 || value.Weight.Value > 30)) ctx.AddRange("weight", 0, 30);
-        if ((value.Ratio < 0 || value.Ratio >= 1)) ctx.AddRange("ratio", 0, 1);
+        if ((value.Ratio < 0d || value.Ratio >= 1d)) ctx.AddRange("ratio", 0d, 1d);
     }
 }

@@ -48,39 +48,34 @@ public static class RangeBoundReader {
             ? ((INamedTypeSymbol)type).TypeArguments[0]
             : type;
 
-        // A numeric literal usually already has a type the comparison accepts - an int bound against
-        // a double member widens, and against a decimal member it converts implicitly. `decimal`
-        // against a *fractional* bound is the exception: C# has no implicit conversion from double
-        // or float to decimal, so `[Range(0.5, 9.99)] decimal Price` emitted `price < 0.5` and the
-        // consumer's build failed on CS0019 inside generated code - §7.5's worst place for an error.
+        var suffix = SuffixFor(underlying);
+
+        // An unquoted bound arrives having lost its type. NativeConstraintReader renders an integral
+        // constant with Convert.ToString, so a `long` bound of 0 is emitted as the text `0` - and C#
+        // re-reads that literal by its *value*, making it `int`, while `4294967295` becomes `uint`.
+        //
+        // The comparison tolerates that and the report call does not, which is why it went unnoticed:
+        //
+        //     if (value.Limit < 0 || value.Limit > 4294967295)   // both widen to long - fine
+        //         ctx.AddRange("limit", 0, 4294967295);          // AddRange<T>(T, T) - CS0411
+        //
+        // Inference does not widen. It needs one T for both arguments, and neither int nor uint
+        // converts implicitly to the other. So a bound is re-emitted carrying the member's own type
+        // rather than trusted to keep it, which is the same normalisation the quoted path below does
+        // and for the same reason.
         if (!IsQuoted(literal)) {
-            return underlying.SpecialType != SpecialType.System_Decimal || Redenominate(literal, out expression);
+            return Retype(underlying, suffix, literal, out expression);
         }
 
         var text = Unquote(literal);
 
+        if (suffix is not null) {
+            return IsIntegral(underlying)
+                ? Integral(text, suffix, out expression)
+                : Numeric(text, suffix, out expression);
+        }
+
         switch (underlying.SpecialType) {
-            case SpecialType.System_Decimal:
-                return Numeric(text, "m", out expression);
-
-            case SpecialType.System_Double:
-                return Numeric(text, string.Empty, out expression);
-
-            case SpecialType.System_Single:
-                return Numeric(text, "f", out expression);
-
-            case SpecialType.System_Byte:
-            case SpecialType.System_SByte:
-            case SpecialType.System_Int16:
-            case SpecialType.System_UInt16:
-            case SpecialType.System_Int32:
-            case SpecialType.System_UInt32:
-                return Integral(text, string.Empty, out expression);
-
-            case SpecialType.System_Int64:
-            case SpecialType.System_UInt64:
-                return Integral(text, "L", out expression);
-
             case SpecialType.System_DateTime:
                 return DateTimeBound(text, out expression);
         }
@@ -103,23 +98,110 @@ public static class RangeBoundReader {
     }
 
     /// <summary>
-    /// Rewrites an already-typed numeric literal as a <c>decimal</c> one.
+    /// The literal suffix that pins a bound to <paramref name="underlying"/>, or null when the
+    /// member is not a numeric type and there is nothing to pin it to.
     /// </summary>
     /// <remarks>
-    /// Parsed rather than suffixed textually: a bound outside decimal's range, or one written as
-    /// <c>double.PositiveInfinity</c>, has no decimal form at all, and returning false here routes
-    /// it to VM0065 instead of emitting something that does not compile.
+    /// <para>
+    /// Every numeric type gets one that makes its bounds unambiguous, because the point is that both
+    /// bounds of a range agree with each other - and a bound is resolved one at a time, with no
+    /// sight of its sibling, so agreement has to come from the member rather than from comparing the
+    /// two. <c>u</c>, <c>L</c> and <c>UL</c> are what stop a pair straddling int/uint or long/ulong.
+    /// </para>
+    /// <para>
+    /// The int family takes no suffix: every value those types can hold is already an <c>int</c>
+    /// literal, so the pair agrees without one and the emitted text stays as it reads in the source.
+    /// </para>
     /// </remarks>
-    private static bool Redenominate(string literal, out string expression) {
-        expression = string.Empty;
+    private static string? SuffixFor(ITypeSymbol underlying) {
+        switch (underlying.SpecialType) {
+            case SpecialType.System_Decimal:
+                return "m";
 
-        var text = literal.TrimEnd('d', 'D', 'f', 'F', 'm', 'M');
+            case SpecialType.System_Double:
+                return "d";
 
-        if (!decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)) {
-            return false;
+            case SpecialType.System_Single:
+                return "f";
+
+            case SpecialType.System_Byte:
+            case SpecialType.System_SByte:
+            case SpecialType.System_Int16:
+            case SpecialType.System_UInt16:
+            case SpecialType.System_Int32:
+                return string.Empty;
+
+            case SpecialType.System_UInt32:
+                return "u";
+
+            case SpecialType.System_Int64:
+                return "L";
+
+            case SpecialType.System_UInt64:
+                return "UL";
+
+            default:
+                return null;
+        }
+    }
+
+    private static bool IsIntegral(ITypeSymbol underlying) {
+        switch (underlying.SpecialType) {
+            case SpecialType.System_Byte:
+            case SpecialType.System_SByte:
+            case SpecialType.System_Int16:
+            case SpecialType.System_UInt16:
+            case SpecialType.System_Int32:
+            case SpecialType.System_UInt32:
+            case SpecialType.System_Int64:
+            case SpecialType.System_UInt64:
+                return true;
+
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Re-emits an unquoted numeric bound carrying <paramref name="suffix"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Parsed rather than suffixed textually: a bound outside the target's range, or one written as
+    /// <c>double.PositiveInfinity</c>, has no form in that type at all. For <c>decimal</c> that has
+    /// to be reported - C# has no implicit conversion from double or float, so
+    /// <c>[Range(0.5, 9.99)] decimal Price</c> emitting <c>price &lt; 0.5</c> failed the consumer's
+    /// build on CS0019 - and returning false routes it to VM0065 instead.
+    /// </para>
+    /// <para>
+    /// Everywhere else an unparseable bound is left exactly as written, which is what it was before
+    /// and still compiles: <c>double.PositiveInfinity</c> is already an expression of the member's
+    /// type. A fractional bound on an integral member is left alone for a blunter reason - there is
+    /// no such thing as <c>0.5L</c>.
+    /// </para>
+    /// </remarks>
+    private static bool Retype(ITypeSymbol underlying, string? suffix, string literal, out string expression) {
+        expression = literal;
+
+        if (suffix is null) {
+            return true;
         }
 
-        expression = value.ToString(CultureInfo.InvariantCulture) + "m";
+        var text = literal.TrimEnd('d', 'D', 'f', 'F', 'm', 'M', 'l', 'L', 'u', 'U');
+
+        if (IsIntegral(underlying)) {
+            if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var whole)) {
+                expression = whole.ToString(CultureInfo.InvariantCulture) + suffix;
+            }
+
+            return true;
+        }
+
+        if (!decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)) {
+            return underlying.SpecialType != SpecialType.System_Decimal;
+        }
+
+        expression = value.ToString(CultureInfo.InvariantCulture) + suffix;
         return true;
     }
 
