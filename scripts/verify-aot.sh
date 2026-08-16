@@ -15,6 +15,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUNTIME_PROJECT="${REPO_ROOT}/src/ValidationModules.Runtime/ValidationModules.Runtime.csproj"
 GENERATOR_PROJECT="${REPO_ROOT}/src/ValidationModules.SourceGenerator/ValidationModules.SourceGenerator.csproj"
+ASPNETCORE_PROJECT="${REPO_ROOT}/src/ValidationModules.AspNetCore/ValidationModules.AspNetCore.csproj"
 
 if [ $# -ge 1 ]; then
     RID="$1"
@@ -148,10 +149,7 @@ static void Expect(bool condition, string message) {
 }
 
 // Constraint attributes, so this one is compiled by the generator rather than written by hand.
-// Deliberately has no IAsyncValidatorFor<Reading>.
-//
-// public, not internal: the emitter always writes "public sealed partial class …Validator", so an
-// internal model yields CS0051 in generated code. Make this internal to reproduce that.
+// Deliberately has no IAsyncValidatorFor<Reading> — see the comment above the registration.
 public sealed record Reading {
     [ValidationModules.Constraints.Required]
     public string? Label { get; init; }
@@ -373,3 +371,160 @@ if [ ! -x "${MIN_BINARY}" ]; then
 fi
 
 "${MIN_BINARY}"
+
+# ---------------------------------------------------------------------------
+# Third probe: the ASP.NET Core integration, published and actually served.
+#
+# ValidationEndpointFilter returned Results.Problem(problem), which serialises through the
+# application's configured JsonSerializerOptions. In a published AOT app those resolve through the
+# consumer's own JsonSerializerContext — which knows the consumer's DTOs and has never heard of
+# ProblemDetails — so the write threw NotSupportedException and every validation failure came back
+# as an empty 500. Under the JIT the reflection fallback hides it completely.
+#
+# So the probe has to publish, run, and post a bad body. The consumer context below deliberately
+# declares only its own types, because declaring ProblemDetails would paper over the exact fault.
+# ---------------------------------------------------------------------------
+
+echo "Verifying the ASP.NET Core integration under Native AOT"
+
+API_DIR="${WORK_DIR}/api"
+mkdir -p "${API_DIR}"
+
+cat > "${API_DIR}/AotApi.csproj" <<EOF
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="${RUNTIME_PROJECT}"/>
+    <ProjectReference Include="${ASPNETCORE_PROJECT}"/>
+    <ProjectReference Include="${GENERATOR_PROJECT}"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
+  </ItemGroup>
+</Project>
+EOF
+
+cat > "${API_DIR}/Program.cs" <<'EOF'
+using System.Text.Json.Serialization;
+using ValidationModules;
+using ValidationModules.Constraints;
+
+var builder = WebApplication.CreateSlimBuilder(args);
+
+// Only the app's own types, which is what a real AOT app does and what breaks a naive filter.
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.TypeInfoResolverChain.Insert(0, ApiJson.Default));
+
+builder.Services.AddAotApiValidators();
+builder.Services.AddValidationProblemDetails();
+
+var app = builder.Build();
+
+app.MapPost("/orders", (CreateOrder order) => Results.Ok(new Accepted(true))).Validate<CreateOrder>();
+
+app.MapPost("/throwing", (CreateOrder order, IValidatorFor<CreateOrder> validator) => {
+    validator.ValidateAndThrow(order);
+    return Results.Ok(new Accepted(true));
+});
+
+app.UseExceptionHandler(_ => { });
+
+app.Run();
+
+public sealed record Accepted(bool Ok);
+
+public sealed record CreateOrder {
+    [Required, StringLength(min: 3, max: 40)] public string? Reference { get; init; }
+    [Range(1, 500)] public int Quantity { get; init; }
+    [ValidateNested] public Address? ShipTo { get; init; }
+}
+
+public sealed record Address {
+    [Required] public string? Postcode { get; init; }
+}
+
+[JsonSerializable(typeof(CreateOrder))]
+[JsonSerializable(typeof(Accepted))]
+internal sealed partial class ApiJson : JsonSerializerContext;
+EOF
+
+API_LOG="${API_DIR}/publish.log"
+
+if ! dotnet publish "${API_DIR}/AotApi.csproj" -r "${RID}" -c Release --nologo > "${API_LOG}" 2>&1; then
+    echo "ASP.NET Core Native AOT publish failed:"
+    cat "${API_LOG}"
+    exit 1
+fi
+
+if grep -Eq "IL[0-9]{4}" "${API_LOG}"; then
+    echo "ASP.NET Core Native AOT publish produced IL warnings:"
+    grep -E "IL[0-9]{4}" "${API_LOG}"
+    exit 1
+fi
+
+API_BINARY="${API_DIR}/bin/Release/net10.0/${RID}/publish/AotApi"
+API_PORT=5187
+
+ASPNETCORE_URLS="http://127.0.0.1:${API_PORT}" "${API_BINARY}" > "${API_DIR}/run.log" 2>&1 &
+API_PID=$!
+trap 'kill "${API_PID}" 2>/dev/null || true; rm -rf "${WORK_DIR}"' EXIT
+
+for _ in $(seq 1 40); do
+    if curl -fsS -o /dev/null "http://127.0.0.1:${API_PORT}/orders" \
+        -X POST -H 'Content-Type: application/json' \
+        -d '{"reference":"ORD-100","quantity":3}' 2>/dev/null; then
+        break
+    fi
+    sleep 0.25
+done
+
+check_api() {
+    local path="$1" body="$2" expected="$3" label="$4"
+    local response status payload
+
+    response="$(curl -sS -w '\n%{http_code}' "http://127.0.0.1:${API_PORT}${path}" \
+        -X POST -H 'Content-Type: application/json' -d "${body}")"
+    status="${response##*$'\n'}"
+    payload="${response%$'\n'*}"
+
+    if [ "${status}" != "${expected}" ]; then
+        echo "FAILED: ${label} answered ${status}, expected ${expected}"
+        echo "  body: ${payload}"
+        cat "${API_DIR}/run.log"
+        exit 1
+    fi
+
+    echo "${payload}"
+}
+
+check_api /orders '{"reference":"ORD-100","quantity":3}' 200 "a valid request" > /dev/null
+
+INVALID="$(check_api /orders '{"reference":null,"quantity":9999,"shipTo":{"postcode":null}}' 400 "the endpoint filter")"
+
+# An empty 500 was the symptom; these assert a body arrived and carries what it should.
+case "${INVALID}" in
+    *'"reference"'*) ;;
+    *) echo "FAILED: filter response named no field: ${INVALID}"; exit 1 ;;
+esac
+
+case "${INVALID}" in
+    *'"shipTo.postcode"'*) ;;
+    *) echo "FAILED: filter response lost the nested path: ${INVALID}"; exit 1 ;;
+esac
+
+case "${INVALID}" in
+    *'"validationCodes"'*) ;;
+    *) echo "FAILED: filter response carried no codes: ${INVALID}"; exit 1 ;;
+esac
+
+check_api /throwing '{"reference":"x","quantity":1}' 400 "the exception handler" > /dev/null
+
+kill "${API_PID}" 2>/dev/null || true
+
+echo "ASP.NET Core integration verified under Native AOT: filter, nested paths, codes, and the"
+echo "exception handler."

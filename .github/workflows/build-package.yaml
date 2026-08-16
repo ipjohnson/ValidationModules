@@ -78,6 +78,7 @@ jobs:
         run: |
           for project in \
             src/ValidationModules.Runtime/ValidationModules.Runtime.csproj \
+            src/ValidationModules.AspNetCore/ValidationModules.AspNetCore.csproj \
             src/ValidationModules.SourceGenerator/ValidationModules.SourceGenerator.csproj \
             src/ValidationModules.SourceGenerator.Impl/ValidationModules.SourceGenerator.Impl.csproj; do
             dotnet pack "$project" --configuration Release --no-build \
