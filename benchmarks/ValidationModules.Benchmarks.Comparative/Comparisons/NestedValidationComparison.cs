@@ -37,8 +37,29 @@ public class NestedValidationComparison {
     private Models.Annotated.Order _validAnnotated = null!;
     private Models.Annotated.Order _invalidAnnotated = null!;
 
+    /// <summary>Set when DataAnnotations is not validating on this runtime. See EngineParity.</summary>
+    private string? _dataAnnotationsDivergence;
+
+    /// <summary>
+    /// The payload, or a throw naming why DataAnnotations cannot be measured here.
+    /// </summary>
+    /// <remarks>
+    /// Throwing from the benchmark rather than the setup costs only the DataAnnotations rows: they
+    /// report NA with the reason in the log, and the two engines that still work keep their numbers.
+    /// </remarks>
+    private T CheckedAnnotations<T>(T payload) =>
+        _dataAnnotationsDivergence is null
+            ? payload
+            : throw new InvalidOperationException(_dataAnnotationsDivergence);
+
     [GlobalSetup]
     public void Setup() {
+        // In the measured process, not just the host: under Native AOT this class runs in its
+        // own AOT-compiled binary, and an engine that quietly stopped validating there would
+        // otherwise be reported as fast. See EngineParity's remarks.
+        EngineParity.Verify();
+        _dataAnnotationsDivergence = EngineParity.DataAnnotationsDivergence();
+
         _valid = SampleData.ValidOrder();
         _invalid = SampleData.InvalidOrder();
         _validAnnotated = SampleData.ValidAnnotatedOrder();
@@ -56,7 +77,7 @@ public class NestedValidationComparison {
     public bool Fv_Clean() => OrderFluentValidator.Instance.Validate(_valid).IsValid;
 
     [Benchmark(Description = "DataAnnotations - clean, TOP LEVEL ONLY (does not descend)")]
-    public bool Da_Clean() => DataAnnotationsEngine.TryValidate(_validAnnotated, _annotationResults);
+    public bool Da_Clean() => DataAnnotationsEngine.TryValidate(CheckedAnnotations(_validAnnotated), _annotationResults);
 
     [Benchmark(Description = "ValidationModules - clean, pooled collector")]
     public bool Vm_Clean_Pooled() {
@@ -79,5 +100,5 @@ public class NestedValidationComparison {
         OrderFluentValidator.Instance.Validate(_invalid);
 
     [Benchmark(Description = "DataAnnotations - failing, TOP LEVEL ONLY (finds 1 of 4)")]
-    public bool Da_Failing() => DataAnnotationsEngine.TryValidate(_invalidAnnotated, _annotationResults);
+    public bool Da_Failing() => DataAnnotationsEngine.TryValidate(CheckedAnnotations(_invalidAnnotated), _annotationResults);
 }
