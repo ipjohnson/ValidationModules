@@ -10,6 +10,7 @@ VM0002 | ValidationModules.Usage | Error | [ItemCount] was applied to a non-coll
 VM0003 | ValidationModules.Usage | Error | [Range] was applied to a member with no ordering.
 VM0004 | ValidationModules.Usage | Warning | [Required] on a non-nullable value type can never fail.
 VM0006 | ValidationModules.Usage | Error | A pattern is not a valid regular expression.
+VM0007 | ValidationModules.Usage | Warning | A [ValidateNested] target declares no rules.
 VM0008 | ValidationModules.Usage | Error | A constraint's lower bound exceeds its upper bound.
 VM0009 | ValidationModules.Usage | Error | A constrained property has no accessible getter.
 VM0010 | ValidationModules.Usage | Warning | A DataAnnotations constraint was skipped because the front-end is off.

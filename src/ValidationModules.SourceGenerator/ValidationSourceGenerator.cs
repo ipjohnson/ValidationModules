@@ -206,11 +206,17 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             }
         }
 
+        // Snapshotted before the loop below starts removing from byTarget, because VM0007 asks
+        // whether a *nested* type has rules declared anywhere - a question whose answer must not
+        // depend on how far through the candidates we happen to be.
+        var ruleTargets = new HashSet<INamedTypeSymbol>(byTarget.Keys, SymbolEqualityComparer.Default);
+        bool HasRulesClass(INamedTypeSymbol type) => ruleTargets.Contains(type);
+
         foreach (var candidate in plain) {
             byTarget.TryGetValue(candidate, out var declared);
             byTarget.Remove(candidate);
 
-            if (Build(candidate, declared, options) is { } result) {
+            if (Build(candidate, declared, options, HasRulesClass) is { } result) {
                 results.Add(result);
             }
         }
@@ -218,7 +224,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         // Whatever is left targets a type this compilation does not declare - the case the feature
         // exists for. Its model has no attributes to merge with, only the rules class's own.
         foreach (var pair in byTarget) {
-            if (Build((INamedTypeSymbol)pair.Key, pair.Value, options) is { } result) {
+            if (Build((INamedTypeSymbol)pair.Key, pair.Value, options, HasRulesClass) is { } result) {
                 results.Add(result);
             }
         }
@@ -230,7 +236,10 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
     }
 
     private static ModelResult? Build(
-        INamedTypeSymbol target, List<RulesDeclaration>? declared, GeneratorOptions options) {
+        INamedTypeSymbol target,
+        List<RulesDeclaration>? declared,
+        GeneratorOptions options,
+        Func<INamedTypeSymbol, bool> hasRulesClass) {
 
         var frontEnd = new AttributeFrontEnd(options.CompileDataAnnotations, options.FieldNamer, options.ResolvedPatternPolicy);
 
@@ -238,7 +247,8 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             target,
             static type => $"{type.Name}Validator",
             declared?.SelectMany(static declaration => declaration.Rules).ToArray(),
-            declared?.SelectMany(static declaration => declaration.AppliedRules).ToArray());
+            declared?.SelectMany(static declaration => declaration.AppliedRules).ToArray(),
+            hasRulesClass);
 
         var diagnostics = frontEnd.Diagnostics.ToImmutableArray();
 

@@ -33,6 +33,33 @@ public static class ValidationDiagnostics {
         "VM0006", "Pattern is not a valid regular expression",
         "The pattern on '{0}' is not a valid regular expression: {1}", DiagnosticSeverity.Error);
 
+    /// <summary>
+    /// <c>[ValidateNested]</c> pointing at a type that has no rules, so the descent finds nothing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The failure is silent, which is the whole reason to report it: the attribute compiles, the
+    /// property is walked, and nothing is ever checked. A model that reads as validated and
+    /// validates nothing is the exact shape this library exists to make impossible.
+    /// </para>
+    /// <para>
+    /// <b>Warning rather than error, unlike the neighbouring rules.</b> The result is a rule that
+    /// does not run, not one that runs where it should not - nothing is rejected that should have
+    /// been accepted. It is also legitimately transitional: adding <c>[ValidateNested]</c> before
+    /// the nested type's own constraints is an ordinary order to work in.
+    /// </para>
+    /// <para>
+    /// Only reported for types this compilation declares. A nested type from a referenced assembly
+    /// may carry a validator generated over there, which we cannot see and must not second-guess -
+    /// a false negative, which is the safe direction.
+    /// </para>
+    /// </remarks>
+    public static readonly DiagnosticDescriptor NestedTypeHasNoRules = Descriptor(
+        "VM0007", "[ValidateNested] target has no rules",
+        "'{0}' declares no constraints and no [GenerateValidator], so [ValidateNested] on '{1}' " +
+        "descends into it and validates nothing",
+        DiagnosticSeverity.Warning);
+
     public static readonly DiagnosticDescriptor MinExceedsMax = Descriptor(
         "VM0008", "Lower bound exceeds upper bound",
         "The bounds on '{0}' are inverted, so the constraint can never be satisfied", DiagnosticSeverity.Error);

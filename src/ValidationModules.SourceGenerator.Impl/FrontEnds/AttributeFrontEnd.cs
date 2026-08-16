@@ -20,6 +20,12 @@ public sealed class AttributeFrontEnd {
     private readonly Func<string, string> _fieldNamer;
     private readonly PatternPolicy _patternPolicy;
 
+    /// <summary>
+    /// Set per <see cref="Build"/> call rather than injected, because the caller collects the rules
+    /// declarations across every candidate and a front end is constructed per type.
+    /// </summary>
+    private Func<INamedTypeSymbol, bool>? _hasRulesClass;
+
     public AttributeFrontEnd(bool compileDataAnnotations, Func<string, string> fieldNamer, PatternPolicy patternPolicy) {
         _compileDataAnnotations = compileDataAnnotations;
         _fieldNamer = fieldNamer;
@@ -43,11 +49,20 @@ public sealed class AttributeFrontEnd {
     /// and the reason both live in one model rather than in two validators for one type.
     /// </param>
     /// <param name="applied">Hand-written rules attached with <c>rules.Apply</c>.</param>
+    /// <param name="hasRulesClass">
+    /// Whether a type is the target of a rules class somewhere in this compilation. Supplied by the
+    /// caller because a front end sees one type at a time and the declarations are collected across
+    /// all of them; without it, VM0007 would fire on a nested type whose rules are declared
+    /// externally, which is a false accusation rather than a missed one.
+    /// </param>
     public ValidatedTypeModel? Build(
         INamedTypeSymbol type,
         Func<INamedTypeSymbol, string> validatorNameFor,
         IReadOnlyList<DeclaredRule>? declared = null,
-        IReadOnlyList<string>? applied = null) {
+        IReadOnlyList<string>? applied = null,
+        Func<INamedTypeSymbol, bool>? hasRulesClass = null) {
+
+        _hasRulesClass = hasRulesClass;
 
         // Before anything reads a property, because the situation this reports is precisely one
         // where no property carries anything and the type would otherwise look unconstrained.
@@ -96,6 +111,10 @@ public sealed class AttributeFrontEnd {
                 continue;
             }
 
+            if (validateNested) {
+                ReportRulelessNestedTarget(property);
+            }
+
             properties.Add(BuildProperty(property, constraints, validateNested, validatorNameFor, overriddenField));
             order.Add(FirstMentionOf(property, declared));
         }
@@ -123,6 +142,67 @@ public sealed class AttributeFrontEnd {
             new EquatableArray<ValidatedPropertyModel>(Ordered(properties.ToImmutable(), order, sawAttribute)),
             new EquatableArray<string>(ImmutableArray.CreateRange(applied ?? Array.Empty<string>())),
             IsExternallyVisible(type));
+    }
+
+    /// <summary>
+    /// Reports <c>[ValidateNested]</c> pointing at a type with nothing to check.
+    /// </summary>
+    /// <remarks>
+    /// The target is whatever the descent will actually reach: a dictionary's value type, a
+    /// collection's element type, or the property's own type. Anything not declared in this
+    /// compilation is left alone - it may carry a validator generated in its own assembly, which is
+    /// invisible from here.
+    /// </remarks>
+    private void ReportRulelessNestedTarget(IPropertySymbol property) {
+        var target =
+            TypeFacts.DictionaryTypesOf(property.Type) is { } entry ? entry.Value
+            : TypeFacts.ElementTypeOf(property.Type) ?? property.Type;
+
+        if (target is not INamedTypeSymbol named || named.DeclaringSyntaxReferences.Length == 0) {
+            return;
+        }
+
+        if (ProducesAValidator(named)) {
+            return;
+        }
+
+        Report(ValidationDiagnostics.NestedTypeHasNoRules, property, named.Name, property.Name);
+    }
+
+    /// <summary>
+    /// Whether anything about <paramref name="type"/> asks for a validator to be generated.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately the same three things <see cref="Build"/> itself treats as "saw something" -
+    /// a constraint on a member, <c>[GenerateValidator]</c>, or a rules class - plus
+    /// <c>[ValidateNested]</c>, which produces a validator that descends even with no constraints
+    /// of its own. Any narrower test would warn about a type that does get one.
+    /// </remarks>
+    private bool ProducesAValidator(INamedTypeSymbol type) {
+        if (HasGenerateValidator(type) || _hasRulesClass?.Invoke(type) == true) {
+            return true;
+        }
+
+        foreach (var member in type.GetMembers()) {
+            if (member is not IPropertySymbol property) {
+                continue;
+            }
+
+            if (HasValidateNested(property)) {
+                return true;
+            }
+
+            foreach (var attribute in property.GetAttributes()) {
+                var ns = attribute.AttributeClass?.ContainingNamespace?.ToDisplayString();
+
+                if (ns == KnownTypes.ConstraintsNamespace ||
+                    (_compileDataAnnotations && ns == KnownTypes.DataAnnotationsNamespace)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
