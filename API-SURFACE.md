@@ -334,8 +334,8 @@ because it is already on the wire and renaming it would break existing API consu
   This is enforced by `ValidationErrorCollector`, not by generated control flow — see §4.3.
 - Nothing else short-circuits. All errors are collected; there is no first-failure exit.
 - `[ValidateNested]` does not recurse into a value that failed `[Required]`. That is the emitter's
-  job, not the collector's: suppression matches whole field paths and is deliberately not a prefix
-  match, so a failed `[Required]` on `home` does not silence `home.postalCode`.
+  job, not the collector's: suppression matches a field's structural identity and is deliberately
+  not a prefix match, so a failed `[Required]` on `home` does not silence `home.postalCode`.
 - Field paths are dotted with bracketed indices: `home.postalCode`, `toys[3].name`. Chosen over JSON
   Pointer because FluentValidation already produces this shape, which keeps the adapter's job to a
   case conversion.
@@ -363,7 +363,13 @@ Three properties, each chosen against a plausible alternative:
   order two independent validators happened to run in, which is worse to reason about than an
   occasional duplicate. This is what makes the evaluation-order rule in §4.2 load-bearing rather
   than cosmetic.
-- **Exact path match, not prefix.** `home.postalCode` and `work.postalCode` are different fields.
+- **Exact identity match, not prefix.** `home.postalCode` and `work.postalCode` are different
+  fields. Identity is folded from the coordinates walked to reach the field — the member names and
+  indices — not from the rendered path. The rendered path is deliberately bounded (§4.1), so two
+  different positions can print the same string; keyed on that string, suppression treated them as
+  one field and dropped real failures. Errors arriving already pathed through
+  `ValidationErrorCollector.Add(in ValidationError)` have no coordinates to fold and are keyed on
+  their finished path instead, in a separate identity space.
 - **Error severity only.** A `required` reported as a warning is advisory; silencing the field on
   the strength of it would drop a real failure.
 

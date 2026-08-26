@@ -57,6 +57,9 @@ public readonly struct ValidationContext {
     /// </summary>
     private readonly int _depth;
 
+    /// <summary>Identity of this position, folded from the coordinates walked to reach it.</summary>
+    private readonly ulong _id;
+
     /// <summary>
     /// Starts a validation pass at the root of the path.
     /// </summary>
@@ -67,6 +70,7 @@ public readonly struct ValidationContext {
         _collector = collector;
         _outermostIndex = NoIndex;
         _parentIndex = NoIndex;
+        _id = StructuralId.Seed;
     }
 
     private ValidationContext(
@@ -77,7 +81,8 @@ public readonly struct ValidationContext {
         string? parent,
         string? parentKey,
         int parentIndex,
-        int depth) {
+        int depth,
+        ulong id) {
         _collector = collector;
         _outermost = outermost;
         _outermostKey = outermostKey;
@@ -86,6 +91,7 @@ public readonly struct ValidationContext {
         _parentKey = parentKey;
         _parentIndex = parentIndex;
         _depth = depth;
+        _id = id;
     }
 
     /// <summary>
@@ -125,7 +131,7 @@ public readonly struct ValidationContext {
         ValidationSeverity severity = ValidationSeverity.Error) {
         var error = new ValidationError(BuildPath(field), code, message) { Severity = severity };
 
-        _collector.Add(in error);
+        _collector.Add(in error, StructuralId.Mix(_id, StructuralId.Hash(field)));
     }
 
     /// <summary>
@@ -140,7 +146,7 @@ public readonly struct ValidationContext {
         ValidationSeverity severity = ValidationSeverity.Error) {
         var error = new ValidationError(BuildPath(null), code, message) { Severity = severity };
 
-        _collector.Add(in error);
+        _collector.Add(in error, _id);
     }
 
     /// <summary>
@@ -168,11 +174,22 @@ public readonly struct ValidationContext {
                 $"'{BuildPath(segment)}'. This normally means the object graph contains a cycle.");
         }
 
+        // Identity folds every coordinate, including the ones BuildPath elides out of the string.
+        var id = StructuralId.Mix(_id, StructuralId.Hash(segment));
+
+        if (key is not null) {
+            id = StructuralId.Mix(id, StructuralId.Hash(key));
+        }
+        else if (index >= 0) {
+            // Mix avalanches a zero input, so items[0] stays distinct from items itself.
+            id = StructuralId.Mix(id, (ulong)index);
+        }
+
         return _depth == 0
-            ? new ValidationContext(_collector, segment, key, index, null, null, NoIndex, 1)
+            ? new ValidationContext(_collector, segment, key, index, null, null, NoIndex, 1, id)
             : new ValidationContext(
                 _collector, _outermost, _outermostKey, _outermostIndex,
-                segment, key, index, _depth + 1);
+                segment, key, index, _depth + 1, id);
     }
 
     /// <summary>

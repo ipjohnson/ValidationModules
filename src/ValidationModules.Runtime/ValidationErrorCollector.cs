@@ -28,7 +28,7 @@ namespace ValidationModules;
 /// </para>
 /// <para>
 /// Not thread-safe by default. Use <see cref="CreateSynchronized"/> when concurrent branches add
-/// errors in parallel. The lock now guards only <see cref="Add"/>, so a clean pass never touches it
+/// errors in parallel. The lock now guards only <see cref="Add(in ValidationError, ulong)"/>, so a clean pass never touches it
 /// and descending no longer contends for it whether it is there or not.
 /// </para>
 /// </remarks>
@@ -81,7 +81,7 @@ public sealed class ValidationErrorCollector {
     /// severity. Allocated only once something is actually missing, and short in every realistic
     /// pass, so the membership test below stays a linear scan rather than a set.
     /// </summary>
-    private List<string>? _requiredFields;
+    private List<ulong>? _requiredFields;
 
     /// <summary>
     /// Creates an unsynchronized collector.
@@ -132,14 +132,23 @@ public sealed class ValidationErrorCollector {
     /// Adds an error whose field path is already resolved. Used by adapters that receive a flat
     /// field name from another engine rather than walking a path.
     /// </summary>
-    public void Add(in ValidationError error) {
+    public void Add(in ValidationError error) =>
+        Add(in error, StructuralId.Mix(StructuralId.AdapterSeed, StructuralId.Hash(error.Field)));
+
+    /// <summary>
+    /// Adds an error whose field identity is already known. <see cref="ValidationContext"/> folds
+    /// that identity from the coordinates it walked, so suppression compares positions in the graph
+    /// rather than the rendered path - which is bounded, and so cannot tell two positions apart
+    /// once the middle of a path has been elided.
+    /// </summary>
+    internal void Add(in ValidationError error, ulong fieldId) {
         if (_gate is null) {
-            AddCore(in error);
+            AddCore(in error, fieldId);
             return;
         }
 
         lock (_gate) {
-            AddCore(in error);
+            AddCore(in error, fieldId);
         }
     }
 
@@ -206,8 +215,8 @@ public sealed class ValidationErrorCollector {
     /// failed Required in the first place, so there is nothing there to suppress.
     /// </para>
     /// </remarks>
-    private void AddCore(in ValidationError error) {
-        if (_requiredFields is { Count: > 0 } && IsSuppressed(error.Field)) {
+    private void AddCore(in ValidationError error, ulong fieldId) {
+        if (_requiredFields is { Count: > 0 } && IsSuppressed(fieldId)) {
             return;
         }
 
@@ -217,7 +226,7 @@ public sealed class ValidationErrorCollector {
         // silencing the rest of the field on the strength of it would be wrong.
         if (error.Severity == ValidationSeverity.Error &&
             string.Equals(error.Code, ValidationCodes.Required, StringComparison.Ordinal)) {
-            (_requiredFields ??= []).Add(error.Field);
+            (_requiredFields ??= []).Add(fieldId);
         }
     }
 
@@ -228,11 +237,11 @@ public sealed class ValidationErrorCollector {
     private void Record(in ValidationError error) =>
         _head = new ErrorNode { Error = error, Next = _head };
 
-    private bool IsSuppressed(string field) {
+    private bool IsSuppressed(ulong fieldId) {
         var fields = _requiredFields!;
 
         for (var i = 0; i < fields.Count; i++) {
-            if (string.Equals(fields[i], field, StringComparison.Ordinal)) {
+            if (fields[i] == fieldId) {
                 return true;
             }
         }

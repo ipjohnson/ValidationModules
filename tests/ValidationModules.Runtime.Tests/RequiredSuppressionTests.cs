@@ -170,6 +170,86 @@ public class RequiredSuppressionTests {
         Assert.Equal(20, collector.ToResult().Errors.Count);
     }
 
+    // ---- identity is structural, not the rendered path -------------------------------------
+
+    /// <summary>
+    /// The regression this change exists for. Three different items each miss the same field.
+    /// Their paths render identically because the middle segment is elided - that bound is
+    /// deliberate - but they are three different positions and must produce three errors.
+    /// </summary>
+    [Fact]
+    public void Suppression_DoesNotCollapseSiblingsWhoseRenderedPathsElideToTheSameString() {
+        var collector = new ValidationErrorCollector();
+        var context = new ValidationContext(collector);
+
+        for (var i = 0; i < 3; i++) {
+            context.Push("two").Push("three").PushIndex("items", i).Push("five").AddRequired("req");
+        }
+
+        var errors = collector.ToResult().Errors;
+
+        Assert.Equal(3, errors.Count);
+
+        // Rendering is bounded by design; identity is what tells them apart.
+        Assert.All(errors, error => Assert.Equal("two...five.req", error.Field));
+    }
+
+    /// <summary>
+    /// The same collapse, reached through a dictionary rather than a list.
+    /// </summary>
+    [Fact]
+    public void Suppression_DoesNotCollapseKeyedSiblingsThatElideToTheSameString() {
+        var collector = new ValidationErrorCollector();
+        var context = new ValidationContext(collector);
+
+        foreach (var key in (string[])["alpha", "beta", "gamma"]) {
+            context.Push("two").Push("three").PushKey("items", key).Push("five").AddRequired("req");
+        }
+
+        Assert.Equal(3, collector.ToResult().Errors.Count);
+    }
+
+    /// <summary>
+    /// Index zero has to fold to something other than the container it sits in, or an error on a
+    /// collection and an error on its first element would share an identity.
+    /// </summary>
+    [Fact]
+    public void Suppression_TreatsIndexZeroAsDistinctFromItsContainer() {
+        var collector = new ValidationErrorCollector();
+        var context = new ValidationContext(collector);
+
+        context.Push("a").Push("b").Push("items").AddRequired("x");
+        context.Push("a").Push("b").PushIndex("items", 0).AddRequired("x");
+
+        Assert.Equal(2, collector.ToResult().Errors.Count);
+    }
+
+    /// <summary>
+    /// Identity is a property of the position, not of the object that occupied it, so the same
+    /// shape validated twice suppresses identically. Nothing here depends on GC timing.
+    /// </summary>
+    [Fact]
+    public void Suppression_IsReproducibleAcrossPasses() {
+        static string[] Run() {
+            var collector = new ValidationErrorCollector();
+            var context = new ValidationContext(collector);
+
+            for (var i = 0; i < 3; i++) {
+                var item = context.Push("root").PushIndex("items", i);
+                item.AddRequired("name");
+                item.AddStringLength("name", max: 5);
+                item.AddStringLength("other", max: 5);
+            }
+
+            return collector.ToResult().Errors.Select(error => error.Code).ToArray();
+        }
+
+        Assert.Equal(Run(), Run());
+
+        // Per item: required kept, the second constraint on that field suppressed, other kept.
+        Assert.Equal(6, Run().Length);
+    }
+
     private sealed class RequiredOnly : IValidatorFor<Pet> {
         public static readonly RequiredOnly Instance = new();
 
