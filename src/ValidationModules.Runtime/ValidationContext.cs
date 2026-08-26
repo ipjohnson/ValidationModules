@@ -125,7 +125,7 @@ public readonly struct ValidationContext {
         ValidationSeverity severity = ValidationSeverity.Error) {
         var error = new ValidationError(BuildPath(field), code, message) { Severity = severity };
 
-        _collector.Add(in error);
+        _collector.AddDirect(in error);
     }
 
     /// <summary>
@@ -140,13 +140,16 @@ public readonly struct ValidationContext {
         ValidationSeverity severity = ValidationSeverity.Error) {
         var error = new ValidationError(BuildPath(null), code, message) { Severity = severity };
 
-        _collector.Add(in error);
+        _collector.AddDirect(in error);
     }
 
     /// <summary>
     /// Whether anything in this pass has failed. Pass-wide, not scoped to this subtree.
     /// </summary>
     public bool HasErrors => _collector.HasErrors;
+
+    /// <summary>O(1) token for "has anything been recorded since"; see the collector.</summary>
+    internal object? ChangeToken => _collector.ChangeToken;
 
     /// <summary>
     /// How many failures this pass has recorded. Snapshot it before and after a block to find out

@@ -129,6 +129,30 @@ public sealed class ValidationErrorCollector {
     }
 
     /// <summary>
+    /// An O(1) token that changes whenever an error is recorded. Compared by reference around a
+    /// block to answer "did that add anything", which <see cref="Count"/> would answer in linear
+    /// time - and a rule chain asks it once per field, so linear would compound.
+    /// </summary>
+    internal object? ChangeToken => _head;
+
+    /// <summary>
+    /// Records an error without consulting the Required suppression rule. Used by
+    /// <see cref="ValidationContext"/>, whose engines short-circuit a failed Required per field
+    /// themselves - the emitter with an <c>else if</c>, the rule builder with a field chain - so a
+    /// second, path-keyed rule here would only ever fire when two positions rendered alike.
+    /// </summary>
+    internal void AddDirect(in ValidationError error) {
+        if (_gate is null) {
+            Record(in error);
+            return;
+        }
+
+        lock (_gate) {
+            Record(in error);
+        }
+    }
+
+    /// <summary>
     /// Adds an error whose field path is already resolved. Used by adapters that receive a flat
     /// field name from another engine rather than walking a path.
     /// </summary>

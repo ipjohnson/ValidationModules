@@ -330,8 +330,10 @@ because it is already on the wire and renaming it would break existing API consu
 - Within a property, **`[Required]` is evaluated first**, whatever order the attributes are written
   in. Every other constraint follows attribute order. This is the one place declaration order is
   overridden, and the next rule is why.
-- A failed `[Required]` **suppresses** every other error on the same field for the rest of the pass.
-  This is enforced by `ValidationErrorCollector`, not by generated control flow — see §4.3.
+- A failed `[Required]` **suppresses** every other error on the same field, within the engine that
+  found it. Generated code short-circuits with an `else if`; the rule builder groups a field's rules
+  into a chain that stops after a failed `Required`; errors arriving already pathed through
+  `ValidationErrorCollector.Add(in ValidationError)` are suppressed there — see §4.3.
 - Nothing else short-circuits. All errors are collected; there is no first-failure exit.
 - `[ValidateNested]` does not recurse into a value that failed `[Required]`. That is the emitter's
   job, not the collector's: suppression matches whole field paths and is deliberately not a prefix
@@ -340,7 +342,7 @@ because it is already on the wire and renaming it would break existing API consu
   Pointer because FluentValidation already produces this shape, which keeps the adapter's job to a
   case conversion.
 
-### 4.3 Suppression lives in the collector
+### 4.3 Suppression is local to the engine that finds it
 
 The obvious home for "a failed `[Required]` suppresses the rest of the field" is the emitter, as an
 `else if` chain — and that is where the plan puts it. It only works for engines that generate code.

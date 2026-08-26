@@ -43,6 +43,52 @@ internal abstract class CompiledRule<T> : ICompiledRule<T> {
 }
 
 /// <summary>Whitespace counts as missing unless the declaration opted out - §12 Q5.</summary>
+/// <summary>
+/// One field's rules, run in order, stopping if a <c>Required</c> among them fails.
+/// </summary>
+/// <remarks>
+/// <para>
+/// This is the rule engine's equivalent of the <c>else if</c> the emitter writes. Generated code
+/// short-circuits a failed Required lexically, at compile time; a described validator applies a
+/// flat array and has no <c>else</c> to put it in, so the short-circuit lives here instead - local
+/// to the field it concerns, rather than as a rule the collector applies to every engine.
+/// </para>
+/// <para>
+/// <see cref="ValidationRules{T}.Build"/> already groups a field's rules together and hoists its
+/// Required rules to the front, so the chain is contiguous and the required ones are the prefix.
+/// Failure is detected by comparing the collector's change token rather than its count, which is
+/// linear - a chain per field would compound that across a model.
+/// </para>
+/// </remarks>
+internal sealed class FieldChainRule<T> : CompiledRule<T> {
+    private readonly ICompiledRule<T>[] _chain;
+    private readonly int _requiredCount;
+
+    public FieldChainRule(string field, ICompiledRule<T>[] chain, int requiredCount) : base(field) {
+        _chain = chain;
+        _requiredCount = requiredCount;
+    }
+
+    public override bool IsRequired => _requiredCount > 0;
+
+    public override void Apply(ref ValidationContext context, T value) {
+        var token = context.ChangeToken;
+
+        for (var i = 0; i < _requiredCount; i++) {
+            _chain[i].Apply(ref context, value);
+
+            // A Required that failed suppresses the rest of its own field, and nothing else.
+            if (!ReferenceEquals(token, context.ChangeToken)) {
+                return;
+            }
+        }
+
+        for (var i = _requiredCount; i < _chain.Length; i++) {
+            _chain[i].Apply(ref context, value);
+        }
+    }
+}
+
 internal sealed class RequiredStringRule<T> : CompiledRule<T> {
     private readonly Func<T, string?> _read;
     private readonly bool _allowEmptyStrings;

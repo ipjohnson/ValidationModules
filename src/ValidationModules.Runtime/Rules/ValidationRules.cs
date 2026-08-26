@@ -425,8 +425,9 @@ public sealed class ValidationRules<T> {
     /// </para>
     /// <para>
     /// Within a field, <c>Required</c> moves to the front whatever order it was written in - §4.2's
-    /// one exception, and load-bearing: the collector's suppression is forward-only, so a
-    /// <c>Required</c> declared after a length check would otherwise fail to suppress it.
+    /// one exception, and load-bearing: <see cref="Rules.FieldChainRule{T}"/> stops at the first
+    /// failed <c>Required</c> in the chain, so a <c>Required</c> declared after a length check would
+    /// otherwise fail to suppress it.
     /// </para>
     /// <para>
     /// <c>Apply</c> rules own no field and stay last, in declaration order (§19.7).
@@ -458,7 +459,16 @@ public sealed class ValidationRules<T> {
         var ordered = new List<ICompiledRule<T>>(_rules.Count);
 
         foreach (var field in fields) {
-            ordered.AddRange(grouped[field]);
+            var group = grouped[field];
+            var required = CountOfRequired(group);
+
+            // Only a field that can short-circuit needs the wrapper; everything else stays a plain
+            // rule, so a model with no Required pays nothing for this.
+            if (required > 0 && group.Count > required) {
+                ordered.Add(new FieldChainRule<T>(field, group.ToArray(), required));
+            } else {
+                ordered.AddRange(group);
+            }
         }
 
         ordered.AddRange(applied);
