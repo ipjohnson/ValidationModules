@@ -105,7 +105,7 @@ attributes were written in. The next section is why.
 A failed `[Required]` suppresses every other error on the same field for the rest of the pass.
 
 ```csharp
-public record Pet {
+public sealed record Pet {
     [Required]
     [StringLength(min: 1, max: 100)]
     public string? Name { get; init; }

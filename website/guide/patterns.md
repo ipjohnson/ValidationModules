@@ -88,7 +88,7 @@ Set `Error` explicitly in a library that ships to AOT consumers, so the failure 
 Under `Error`, the offending constraint is dropped and the rest of the type is still emitted:
 
 ```csharp
-public record Pet {
+public sealed record Pet {
     [Required]
     public string? Name { get; init; }
 

@@ -308,7 +308,7 @@ No members. Emits a validator for a type that carries no constraints of its own 
 
 ```csharp
 [GenerateValidator]
-public record Address { … }
+public sealed record Address { … }
 ```
 
 ## Attributes read from elsewhere

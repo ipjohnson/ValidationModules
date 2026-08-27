@@ -14,8 +14,8 @@ using ValidationModules.Constraints;   // not ValidationModules
 [VM0051](/reference/diagnostics#vm0051) — so check your warnings before reading further:
 
 ```csharp
-public record Pet([Required] string Name);              // VM0051
-public record Pet([property: Required] string Name);    // works
+public sealed record Pet([Required] string Name);              // VM0051
+public sealed record Pet([property: Required] string Name);    // works
 ```
 
 The attribute binds to the constructor parameter, so the property carries no metadata and the type
