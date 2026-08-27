@@ -59,3 +59,38 @@ public sealed class ReservationRules : IValidationRulesFor<Reservation> {
         rules.Apply(ReservationChecks.GuestInitialMatchesReference);
     }
 }
+
+/// <summary>
+/// Two <c>Ensure</c> rules anchored to the same property, one renaming its field and one reporting
+/// as a warning. Both are what the generator used to drop.
+/// </summary>
+public sealed record Filing {
+    public string? Reference { get; init; }
+
+    public string? Attachment { get; init; }
+
+    public int DaysLate { get; init; }
+}
+
+public sealed class FilingRules : IValidationRulesFor<Filing> {
+    public void Describe(ValidationRules<Filing> rules) {
+        rules.Required(x => x.Reference);
+
+        // Anchored to Reference, reported under attachment. The property already carries a rule, so
+        // a per-property field name would have kept the first one and lost this.
+        rules.Ensure(
+            x => x.Reference == null || x.Attachment != null,
+            field: "attachment",
+            code: "attachment_required",
+            message: "an attachment is required once a reference is set.");
+
+        // Advisory: surfaced, but the filing is still valid.
+        rules.Ensure(
+            x => x.DaysLate <= 30,
+            field: "daysLate",
+            code: "late_notice",
+            message: "filed more than 30 days after the period end.",
+            severity: ValidationSeverity.Warning);
+    }
+}
+

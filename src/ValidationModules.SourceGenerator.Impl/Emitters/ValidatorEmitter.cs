@@ -290,12 +290,19 @@ public sealed class ValidatorEmitter {
             // is not it.
             var standalone = constraint.Kind == ConstraintKind.Predicate;
             var keyword = wroteChain && !standalone ? "        else if" : "        if";
-            builder.AppendLine($"{keyword} ({test}) {AddFor(field, constraint, property)}");
+            var reportedField = constraint.Field is { } renamed ? Quote(renamed) : field;
+            builder.AppendLine($"{keyword} ({test}) {AddFor(reportedField, constraint, property)}");
 
             // No else-if here: a failure has already returned, so the next test is only reached
             // when the previous one passed. The chain in Validate exists to avoid evaluating a
             // length test against a value known to be null; returning gets that for free.
-            fast.AppendLine($"        if ({test}) return false;");
+            //
+            // A warning or an info does not make a value invalid, so the boolean path skips it
+            // rather than testing it: running the check and ignoring the answer would be the same
+            // result at a cost, and returning false on it would be wrong.
+            if (constraint.Severity is null) {
+                fast.AppendLine($"        if ({test}) return false;");
+            }
 
             // A standalone predicate also ends the chain, rather than merely not joining it: a
             // following `else if` would otherwise bind to the predicate's `if` and be skipped
@@ -566,12 +573,16 @@ public sealed class ValidatorEmitter {
     /// the text is one the author chose rather than one the runtime owns.
     /// </summary>
     private static string Add(string field, ConstraintModel constraint, string helper, string arguments) {
+        // Omitted entirely at the default rather than passed as ValidationSeverity.Error, so the
+        // emitted line stays the one a reader would have written by hand.
+        var severity = constraint.Severity is { } member ? $", ValidationSeverity.{member}" : string.Empty;
+
         if (constraint.Message is { } message) {
             var code = constraint.Code is { } custom ? Quote(custom) : CodeConstant(constraint.Kind);
-            return $"ctx.Add({field}, {code}, {Quote(message)});";
+            return $"ctx.Add({field}, {code}, {Quote(message)}{severity});";
         }
 
-        return $"ctx.{helper}({field}{arguments});";
+        return $"ctx.{helper}({field}{arguments}{severity});";
     }
 
     private static string CodeConstant(ConstraintKind kind) => kind switch {

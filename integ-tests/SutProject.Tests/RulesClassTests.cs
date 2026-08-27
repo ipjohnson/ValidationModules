@@ -147,4 +147,53 @@ public class RulesClassTests {
                 Described.Validate(value).Errors.Select(error => (error.Field, error.Code, error.Message)));
         }
     }
+
+    /// <summary>
+    /// <c>field:</c> renames the error. The rule is still anchored to the property it reads, so the
+    /// two engines agree on ordering, but the name it reports under is its own - and a property
+    /// carrying several rules must not collapse them onto the first one's name.
+    /// </summary>
+    [Fact]
+    public void Ensure_WithAnExplicitField_ReportsUnderThatField() {
+        var filing = new Filing { Reference = "R-1", Attachment = null, DaysLate = 0 };
+
+        var generated = new FilingValidator().Validate(filing);
+        var described = new DescribedValidator<Filing>(new FilingRules()).Validate(filing);
+
+        var error = Assert.Single(generated.Errors);
+        Assert.Equal("attachment", error.Field);
+        Assert.Equal("attachment_required", error.Code);
+
+        Assert.Equal(
+            described.Errors.Select(e => (e.Field, e.Code)).OrderBy(x => x.Field),
+            generated.Errors.Select(e => (e.Field, e.Code)).OrderBy(x => x.Field));
+    }
+
+    /// <summary>
+    /// A warning is surfaced and the value stays valid. The generator dropped <c>severity:</c>, so
+    /// the same rules class reported Error through generated code and Warning through the runtime -
+    /// the two engines disagreeing on whether a value was acceptable.
+    /// </summary>
+    [Fact]
+    public void Ensure_WithAWarning_SurfacesWithoutFailingTheValue() {
+        var filing = new Filing { Reference = "R-1", Attachment = "a.pdf", DaysLate = 45 };
+
+        var generated = new FilingValidator().Validate(filing);
+        var described = new DescribedValidator<Filing>(new FilingRules()).Validate(filing);
+
+        var error = Assert.Single(generated.Errors);
+        Assert.Equal(ValidationSeverity.Warning, error.Severity);
+        Assert.Equal("daysLate", error.Field);
+
+        Assert.True(generated.IsValid);
+        Assert.True(generated.HasErrors);
+        Assert.Equal(described.IsValid, generated.IsValid);
+        Assert.Equal(described.Errors.Single().Severity, error.Severity);
+    }
+
+    /// <summary>The boolean fast path agrees: a warning is not a failure.</summary>
+    [Fact]
+    public void IsValid_IgnoresAWarning() =>
+        Assert.True(new FilingValidator().IsValid(
+            new Filing { Reference = "R-1", Attachment = "a.pdf", DaysLate = 45 }));
 }

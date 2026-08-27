@@ -324,7 +324,12 @@ public sealed class RulesFrontEnd {
                     Code: Literal(arguments, "code"),
                     Message: Literal(arguments, "message")
                         ?? RuleText.RenderPredicate(text, _owner._fieldNamer),
-                    PredicateAccessor: accessor),
+                    PredicateAccessor: accessor,
+                    // Carried on the constraint, not the property: several rules can anchor to one
+                    // property and each name a different field, so a per-property name would let
+                    // the first one silently win.
+                    Field: ExplicitField(arguments),
+                    Severity: SeverityOf(arguments)),
                 Nesting.None));
         }
 
@@ -419,6 +424,24 @@ public sealed class RulesFrontEnd {
 
         private string? ExplicitField(IReadOnlyDictionary<string, ExpressionSyntax> arguments) =>
             Literal(arguments, "field");
+
+        /// <summary>
+        /// The severity member named by a <c>severity:</c> argument, or null for the default.
+        /// </summary>
+        /// <remarks>
+        /// Read as the enum's underlying constant rather than as source text, so
+        /// <c>ValidationSeverity.Warning</c>, an alias and a cast of the literal all resolve the
+        /// same. Anything that is not a member of the enum is left as null rather than guessed at.
+        /// </remarks>
+        private string? SeverityOf(IReadOnlyDictionary<string, ExpressionSyntax> arguments) {
+            if (!arguments.TryGetValue("severity", out var expression)) {
+                return null;
+            }
+
+            return _model.GetConstantValue(expression) is { HasValue: true, Value: int value }
+                ? value switch { 1 => "Warning", 2 => "Info", _ => null }
+                : null;
+        }
 
         private string? Literal(IReadOnlyDictionary<string, ExpressionSyntax> arguments, string parameter) =>
             arguments.TryGetValue(parameter, out var expression) &&
