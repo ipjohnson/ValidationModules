@@ -311,6 +311,18 @@ public static class ValidationDiagnostics {
     /// this firing, and the old wording sent the reader round the loop a second time.
     /// </summary>
     /// <summary>
+    /// A condition that folds to a constant is either noise or a rule that can never fire.
+    /// </summary>
+    /// <remarks>
+    /// The one analysis here that no runtime library can offer: a described engine sees a delegate
+    /// and cannot know what it returns without calling it, where the generator has the expression.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor ConstantCondition = Descriptor(
+        "VM0034", "Condition is constant",
+        "This condition always evaluates to {0}, so {1}",
+        DiagnosticSeverity.Warning);
+
+    /// <summary>
     /// Continues the rules-DSL block that ends at VM0075.
     /// </summary>
     public static readonly DiagnosticDescriptor EmptyConditionalBlock = Descriptor(

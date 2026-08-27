@@ -126,6 +126,80 @@ Two constraints, both build errors:
 The code defaults to `predicate` and does not derive from the expression. See
 [Error codes](/reference/codes#why-ensure-does-not-derive-its-code).
 
+## `When` and `Unless`
+
+Two shapes: chained onto a statement, and opening a block.
+
+```csharp
+// Chained: guards every constraint this statement declared.
+rules.Required(x => x.Reason).Length(max: 500).When(x => x.Expedited);
+
+// Block: guards everything its body declares.
+rules.When(x => x.IsAuto, () => {
+    rules.Required(x => x.PlateNumber);
+}).Otherwise(() => {
+    rules.Required(x => x.Notes);
+});
+```
+
+Arity is what separates them — one argument terminates a statement, two open a block.
+
+`Unless` is the negated form of each. `Otherwise` reuses its block's own condition negated rather
+than taking a second predicate, so the two halves cannot drift apart.
+
+Nested blocks conjoin, with no depth limit. A chained `When` written inside a block means both.
+
+### Scope is the statement
+
+**A chained `When` conditions every constraint declared in the statement it terminates**, and
+nothing past the semicolon. To guard less, write two statements:
+
+```csharp
+rules.Required(x => x.Reason);                              // always
+rules.For(x => x.Reason).Length(max: 500)
+     .When(x => x.Expedited);                               // only when expedited
+```
+
+::: tip Porting from FluentValidation
+FluentValidation's `.When()` defaults to `ApplyConditionTo.AllValidators` — it applies to every
+validator in the chain, including ones written before it — and takes a parameter to opt out of that.
+Scoping to the statement gives the same result for the common case without the default, so there is
+nothing to opt out of and no parameter.
+
+A validator that used `ApplyConditionTo.CurrentValidator` has to become two statements. That is a
+mechanical edit the compiler does not catch, so it is worth grepping for. Every other conditional
+spelling ports across unchanged; `WhenAsync`/`UnlessAsync` and `DependentRules` have no counterpart
+here.
+:::
+
+### Once per pass
+
+A condition is evaluated **once per validation pass**, not once per rule that names it. Conditions
+may read live static state, so the two are different results rather than two spellings of one, and
+both engines owe the same one:
+
+- the generated validator hoists each distinct condition into a local above the method body;
+- `DescribedValidator<T>` evaluates them into a stack-allocated span before testing any rule.
+
+A guarded clean pass allocates what an unguarded one does, which is nothing.
+
+One consequence: hoisting means an inner condition runs even when the block it sits in is false, so
+`x => x.Auto.Wheels > 0` nested under `x => x.Auto != null` will throw rather than short-circuit.
+Write the null check into the inner condition.
+
+### Rules
+
+- A condition is vetted by the same self-containment check an `Ensure` predicate is —
+  [VM0072](/reference/diagnostics#vm0072).
+- It must be a lambda. A method group has no body to lift and is
+  [VM0070](/reference/diagnostics#vm0070) rather than a condition that silently always holds.
+- A condition that folds to a constant is [VM0034](/reference/diagnostics#vm0034).
+- An empty block is [VM0076](/reference/diagnostics#vm0076); a chained `When` covering no rules is
+  [VM0077](/reference/diagnostics#vm0077).
+
+A guarded `Required` suppresses the rest of its field only when it actually runs. With the condition
+false it records nothing, so it suppresses nothing.
+
 ## `Apply`
 
 ```csharp

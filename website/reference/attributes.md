@@ -13,6 +13,8 @@ Every constraint derives from `ValidationConstraintAttribute` and inherits:
 |---|---|---|
 | `Code` | `string?` | overrides the machine-readable code |
 | `Message` | `string?` | overrides the composed message |
+| `When` | `string?` | names a predicate; the constraint is checked only when it holds |
+| `Unless` | `string?` | the negation of `When` |
 
 There is no `Severity` on a constraint. Severity is reachable from
 [`rules.Ensure(…, severity:)`](/reference/rules-api#ensure) and from `context.Add` in a
@@ -25,6 +27,45 @@ first stable release — writing one is now an ordinary "no such member" from th
 
 Every removal is additively reversible, and the analysis is in `docs/deferred-features.md`.
 :::
+
+### Conditions
+
+`When` and `Unless` name a member of the type being validated. Three shapes are accepted:
+
+```csharp
+public bool IsAuto { get; init; }                 // a bool property
+public bool IsAuto() => …;                        // a parameterless bool method
+public static bool IsAuto(Claim value) => …;      // a static bool method taking the model
+```
+
+```csharp
+[Required(When = nameof(IsAuto))]
+public string? PlateNumber { get; init; }
+
+[Required(Unless = nameof(IsDraft))]
+public string? Reference { get; init; }
+```
+
+Setting both on one constraint is [VM0033](/reference/diagnostics#vm0033); write two constraints, or
+one negated condition.
+
+Because it lives on the base, every constraint has it — `[ValidateNested]` included, which is the
+discriminated-union case: the half of a model its discriminator says to ignore reports nothing.
+
+::: tip A condition is evaluated once per validation pass
+Not once per constraint that names it. Conditions may read live static state, so the two are
+different answers rather than two spellings of one. The generated validator hoists each distinct
+condition into a local above the method body; `DescribedValidator<T>` evaluates them into a
+stack-allocated span before testing any rule.
+
+One consequence worth knowing: hoisting means a condition runs even when a condition it is nested
+inside is false, so `x => x.Auto.Wheels > 0` under `x => x.Auto != null` will throw rather than
+short-circuit. Write the null check into the inner condition.
+:::
+
+Three shapes that cannot capture anything is not an accident — it is what makes the self-containment
+[VM0072](/reference/diagnostics#vm0072) enforces for `Ensure` predicates hold here by construction.
+There is no `WhenType`; shared logic is reached through a one-line forwarder on the model.
 
 ## `[Required]`
 
@@ -214,10 +255,51 @@ is [VM0025](/reference/diagnostics#vm0025).
 
 ## `[ValidateNested]`
 
-No members. Tells the emitter to descend — into an object, into each element of a collection, or
-into each value of a dictionary. See [Nesting and collections](/guide/nesting).
+| Member | Type | |
+|---|---|---|
+| `Polymorphism` | `Polymorphism` | how the descent treats subtypes; constructor argument |
+
+Tells the emitter to descend — into an object, into each element of a collection, or into each value
+of a dictionary. See [Nesting and collections](/guide/nesting).
 
 Does not recurse into a value that failed `[Required]`.
+
+### `Polymorphism` {#polymorphism}
+
+A descent dispatches on the **declared** type, so a subtype's own rules are not reached unless you
+ask for them. Which is what this asks for:
+
+```csharp
+[ValidateNested(Polymorphism.CompileTime)]
+public Payment? Payment { get; init; }
+```
+
+| Mode | | |
+|---|---|---|
+| `DeclaredOnly` | the declared type's rules and nothing else | no switch emitted, zero cost |
+| `CompileTime` | a type switch over the subtypes visible at build time | no allocation, no container |
+| `Runtime` | resolves a validator for the value's runtime type | a `GetType()` and a dictionary lookup |
+
+`CompileTime` emits a type switch, most-derived first, and exactly one arm runs. The declared type's
+validator sits in the `default` arm rather than after the switch — each subtype validator already
+checks everything it inherits, so running both would report the base's failures twice.
+
+`Runtime` resolves through the provider on the validation pass, which means it **composes**: a
+separately registered `IValidatorFor<Card>` runs alongside the generated one, where `CompileTime`
+consults no container and so cannot. It needs `Add<Assembly>Validators()` to have been called, and
+there is no fallback — a missing provider throws rather than quietly checking less.
+
+::: warning Never inferred
+Dispatching automatically over whatever subtypes the generator happened to see would make coverage
+depend on physical assembly layout: it would work while `Payment`, `Card` and `Bank` sat together
+and shrink silently the day one moved to a package — no code change, no warning, no failing test.
+Unearned confidence is worse than no feature, so the mode is always named.
+[VM0031](/reference/diagnostics#vm0031) prompts for one on an unsealed target.
+:::
+
+Subtypes are found by inverting the base chain over the compilation. Types in referenced assemblies
+are not enumerated, so a subtype declared in another assembly is not currently a `CompileTime`
+dispatch target — use `Runtime` for a hierarchy that spans assemblies.
 
 ## `[GenerateValidator]`
 

@@ -44,3 +44,4 @@ VM0031 | ValidationModules.Usage | Warning | A [ValidateNested] target is not se
 VM0076 | ValidationModules.Usage | Warning | A conditional block declares no rules.
 VM0077 | ValidationModules.Usage | Warning | A chained When/Unless applies to no rules.
 VM0032 | ValidationModules.Usage | Error | Polymorphism.Runtime was applied to a sealed or value type.
+VM0034 | ValidationModules.Usage | Warning | A When/Unless condition folds to a constant.

@@ -427,6 +427,8 @@ public sealed class RulesFrontEnd {
                 return;
             }
 
+            ReportIfConstant(predicate, call, negated);
+
             if (statementStart >= _rules.Count) {
                 _owner.Report(
                     ValidationDiagnostics.ConditionAppliesToNoRules, call, negated ? "Unless" : "When");
@@ -457,6 +459,8 @@ public sealed class RulesFrontEnd {
             if (!IsLambda(predicate, call) || !IsSelfContained(predicate)) {
                 return;
             }
+
+            ReportIfConstant(predicate, call, negated);
 
             var lifted = LiftCall(predicate);
 
@@ -514,6 +518,36 @@ public sealed class RulesFrontEnd {
             if (_rules.Count == start) {
                 _owner.Report(ValidationDiagnostics.EmptyConditionalBlock, call, what, _rulesClass.Name);
             }
+        }
+
+        /// <summary>
+        /// Reports a condition whose body the compiler can fold to a constant.
+        /// </summary>
+        /// <remarks>
+        /// The one check here no runtime library could offer: a described engine holds a delegate
+        /// and cannot know what it returns without calling it, where the generator has the
+        /// expression in hand. Roslyn does the folding, so <c>x =&gt; 1 &gt; 2</c> is caught along
+        /// with the literal.
+        /// </remarks>
+        private void ReportIfConstant(ExpressionSyntax predicate, InvocationExpressionSyntax call, bool negated) {
+            var body = predicate switch {
+                SimpleLambdaExpressionSyntax { ExpressionBody: { } expression } => expression,
+                ParenthesizedLambdaExpressionSyntax { ExpressionBody: { } expression } => expression,
+                _ => null,
+            };
+
+            if (body is null || _model.GetConstantValue(body) is not { HasValue: true, Value: bool folded }) {
+                return;
+            }
+
+            var holds = negated ? !folded : folded;
+
+            _owner.Report(
+                ValidationDiagnostics.ConstantCondition, call,
+                holds ? "true" : "false",
+                holds
+                    ? "the guard is noise - the rules it covers always apply"
+                    : "the rules it covers can never fire");
         }
 
         /// <summary>
