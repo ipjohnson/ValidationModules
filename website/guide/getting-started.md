@@ -27,7 +27,7 @@ The second problem is quieter still. A constraint that never fires looks exactly
 that passes:
 
 ```csharp
-public record Pet([Required] string Name);   // the attribute lands on the parameter, not the property
+public sealed record Pet([Required] string Name);   // the attribute lands on the parameter, not the property
 ```
 
 Nothing tells you. The model reads as validated and validates nothing.
@@ -73,7 +73,7 @@ using ValidationModules.Constraints;
 
 namespace MyApp;
 
-public record Pet {
+public sealed record Pet {
     [Required]
     [StringLength(min: 1, max: 100)]
     public string? Name { get; init; }

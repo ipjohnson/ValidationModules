@@ -291,7 +291,7 @@ collection would turn this into a check for repeated characters.
 ```csharp
 public class Tag { public string? Value { get; init; } }
 
-public record Order {
+public sealed record Order {
     [UniqueItems] // VM0025
     public List<Tag> Tags { get; init; } = [];
 }
@@ -392,7 +392,7 @@ An `override` is one property with two declarations rather than two properties, 
 **Warning** — *`'Address' is not sealed, so a value of a more derived type may reach 'Home'`*
 
 ```csharp
-public record Address { … }
+public record Address { … }        // not sealed
 
 public sealed record Person {
     [ValidateNested] // VM0031
@@ -458,8 +458,8 @@ Update the `ValidationModules.Runtime` package reference to match the generator.
 **Warning** — *`'Required' is on a record parameter without the property: target, so it lands on the parameter and is never evaluated. Write [property: Required]`*
 
 ```csharp
-public record Pet([Required] string Name);              // VM0051
-public record Pet([property: Required] string Name);    // correct
+public sealed record Pet([Required] string Name);              // VM0051
+public sealed record Pet([property: Required] string Name);    // correct
 ```
 
 Without this the failure is silent in every direction. The attribute binds to the primary
@@ -478,7 +478,7 @@ equally inert, but `[property:]` is not legal there, so this advice would be wro
 Write `[property: Required]`, or use a record with an explicit body:
 
 ```csharp
-public record Pet {
+public sealed record Pet {
     [Required]
     public string? Name { get; init; }
 }

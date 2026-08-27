@@ -7,7 +7,7 @@ becomes a branch; none of them is ever constructed at run time.
 ```csharp
 using ValidationModules.Constraints;
 
-public record Pet {
+public sealed record Pet {
     [Required]
     public string? Name { get; init; }
 
@@ -36,7 +36,7 @@ public record Pet {
     public Address? Home { get; init; }
 }
 
-public record Address {
+public sealed record Address {
     [Required]
     public string? PostalCode { get; init; }
 }
@@ -370,8 +370,8 @@ A positional record parameter needs the `property:` target, or the attribute lan
 and is never read:
 
 ```csharp
-public record Pet([property: Required] string Name);   // correct
-public record Pet([Required] string Name);             // silently validates nothing
+public sealed record Pet([property: Required] string Name);   // correct
+public sealed record Pet([Required] string Name);             // silently validates nothing
 ```
 
 ::: warning The wrong form is caught, and it is worth knowing why it needs catching
@@ -383,7 +383,7 @@ merging zero validators reports every value as valid.
 A record with an explicit body avoids the question:
 
 ```csharp
-public record Pet {
+public sealed record Pet {
     [Required]
     public string? Name { get; init; }
 }

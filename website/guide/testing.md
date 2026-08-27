@@ -156,7 +156,7 @@ var result = GeneratorHarness.Run("""
 
     namespace Sample;
 
-    public record Pet {
+    public sealed record Pet {
         [StringLength(1, 10)]
         public int Age { get; init; }
     }

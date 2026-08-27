@@ -17,7 +17,7 @@ public Dictionary<string, Toy> ByName { get; init; } // a dictionary
 ## Objects
 
 ```csharp
-public record Pet {
+public sealed record Pet {
     [ValidateNested]
     public Address? Home { get; init; }
 }
@@ -55,7 +55,7 @@ inside `Address`. Suppression is a whole-path match, so `home` failing does not 
 ## Collections
 
 ```csharp
-public record Pet {
+public sealed record Pet {
     [ItemCount(min: 1, max: 10)]
     [ValidateNested]
     public List<Toy> Toys { get; init; } = [];
@@ -154,12 +154,12 @@ elements as `List<Toy>` — which has no validator, so nothing happens. Model th
 property of a type instead:
 
 ```csharp
-public record Shelf {
+public sealed record Shelf {
     [ValidateNested]
     public List<Toy> Toys { get; init; } = [];
 }
 
-public record Room {
+public sealed record Room {
     [ValidateNested]
     public List<Shelf> Shelves { get; init; } = [];
 }
@@ -265,7 +265,7 @@ for the sake of *its* nested properties, mark it:
 
 ```csharp
 [GenerateValidator]
-public record Address {
+public sealed record Address {
     // no constraints here; rules arrive from AddressRules
 }
 ```

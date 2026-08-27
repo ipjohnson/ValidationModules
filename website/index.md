@@ -104,7 +104,7 @@ Declare the constraint on the property. The check is written for you during the 
 ```csharp
 using ValidationModules.Constraints;
 
-public record Pet {
+public sealed record Pet {
     [Required]
     [StringLength(min: 1, max: 100)]
     public string? Name { get; init; }
