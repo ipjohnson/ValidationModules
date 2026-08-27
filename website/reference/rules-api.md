@@ -190,7 +190,9 @@ Write the null check into the inner condition.
 ### Rules
 
 - A condition is vetted by the same self-containment check an `Ensure` predicate is —
-  [VM0072](/reference/diagnostics#vm0072).
+  [VM0072](/reference/diagnostics#vm0072) — and lifted the same way, so a `private` member of the
+  rules class is [VM0078](/reference/diagnostics#vm0078). Non-private members are qualified
+  automatically.
 - It must be a lambda. A method group has no body to lift and is
   [VM0070](/reference/diagnostics#vm0070) rather than a condition that silently always holds.
 - A condition that folds to a constant is [VM0034](/reference/diagnostics#vm0034).

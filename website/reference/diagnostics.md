@@ -64,6 +64,7 @@ silently does not is worse than one you know is missing.
 | [VM0075](#vm0075) | Error | an `Ensure` has no field |
 | [VM0076](#vm0076) | Warning | a conditional block declares no rules |
 | [VM0077](#vm0077) | Warning | a chained `When`/`Unless` applies to no rules |
+| [VM0078](#vm0078) | Error | a lifted predicate references a private member of the rules class |
 
 ---
 
@@ -679,3 +680,38 @@ rules.For(x => x.Reason).When(x => x.IsExpedited);  // VM0077
 
 A chained `When` conditions every constraint its own statement declared. `For` anchors without
 declaring anything, so there is nothing for the condition to cover.
+
+### VM0078 {#vm0078}
+
+**Error** — *`'ModelRules.Max' is private, and this predicate is compiled into a separate class that cannot reach it`*
+
+```csharp
+public sealed class ModelRules : IValidationRulesFor<Model> {
+    private static readonly int Max = 10;
+
+    public void Describe(ValidationRules<Model> rules) {
+        rules.Ensure(x => x.Count <= Max);   // VM0078
+    }
+}
+```
+
+A predicate is compiled into `{RulesClass}_Rules`, a separate static class carrying the declaring
+file's `using` directives — that is what lets `x => x.Status == Status.Active` resolve at all. The
+cost is that the lifted method is not inside the rules class, so a `private` member is out of reach.
+
+Make it `internal`. A non-private member is qualified automatically and read as itself:
+
+```csharp
+internal static readonly int Max = 10;   // becomes ModelRules.Max in the lifted method
+```
+
+A `private const` of any type needs no change. C# bakes a constant into every use site already, so
+carrying the value across is what the language does anyway — the literal is written back with the
+suffix and precision that preserve both its value and its type (`1.50m` keeps its scale, a `double`
+keeps all seventeen digits, an enum comes back as a cast, and `NaN` and the infinities are named).
+
+::: tip This is not an accessibility rule
+A bare `Max` failed here whatever its accessibility, `public` included, because the name resolved in
+the rules class's scope and the lifted method is not in it. Qualification is what fixes that; VM0078
+is the residue — the case qualification cannot reach.
+:::

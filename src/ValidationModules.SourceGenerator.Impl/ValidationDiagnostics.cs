@@ -323,6 +323,22 @@ public static class ValidationDiagnostics {
         DiagnosticSeverity.Warning);
 
     /// <summary>
+    /// A lifted predicate cannot reach a <c>private</c> member of the rules class.
+    /// </summary>
+    /// <remarks>
+    /// Lifting is what lets a predicate keep its declaring file's using directives, and the cost is
+    /// that the method ends up in a different class. A non-private member is reached by qualifying
+    /// it; a private one cannot be reached at all, and a compile-time constant is the only thing
+    /// that can be carried across by value. Reported here rather than left to surface as CS0122
+    /// inside generated code.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor PredicateReferencesPrivateMember = Descriptor(
+        "VM0078", "Predicate references a private member of the rules class",
+        "'{0}' is private, and this predicate is compiled into a separate class that cannot reach " +
+        "it. Make it internal, or declare it as a const",
+        DiagnosticSeverity.Error);
+
+    /// <summary>
     /// Continues the rules-DSL block that ends at VM0075.
     /// </summary>
     public static readonly DiagnosticDescriptor EmptyConditionalBlock = Descriptor(
