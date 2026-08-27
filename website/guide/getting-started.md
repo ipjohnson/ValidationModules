@@ -86,11 +86,16 @@ public record Pet {
 That is the whole declaration. There is no `PetValidator` to write and no registration call to
 remember — the generator finds any type carrying a constraint and emits a validator for it.
 
-::: tip Import `ValidationModules.Constraints`, not `ValidationModules`
-The constraint attributes live in their own namespace on purpose. Five of the names — `Required`,
-`StringLength`, `Range`, `AllowedValues` and the length family — collide with
-`System.ComponentModel.DataAnnotations`. Keeping them separate means the ambiguity is only reachable
-from a file that explicitly asks for both, and your service code never trips it.
+::: tip Two namespaces, and you will want both — in different files
+The constraint attributes live in `ValidationModules.Constraints`, on purpose: five of the names —
+`Required`, `StringLength`, `Range`, `AllowedValues` and the length family — collide with
+`System.ComponentModel.DataAnnotations`, and keeping them apart means the ambiguity is only
+reachable from a file that asks for both.
+
+A file that *declares* a model needs `ValidationModules.Constraints`, as above. A file that *runs* a
+validator needs `ValidationModules`, where `Validate`, `IsValid`, `ValidateAndThrow` and
+`ValidateInto` live. Miss the second one and the call does not compile — see
+[Running it](#running-it).
 :::
 
 ## What was generated
@@ -139,6 +144,21 @@ implementation detail:
   attribute here would be read by nothing. Registration is emitted by the same generator instead.
 
 ## Running it
+
+The entry points are extension methods in `ValidationModules`, so the file calling them needs that
+import — the constraints namespace alone is not enough:
+
+```csharp
+using ValidationModules;
+```
+
+Without it the call binds to the generated validator's own `Validate(ref ValidationContext, T)` and
+the compiler reports a missing argument rather than a missing using:
+
+```
+error CS7036: There is no argument given that corresponds to the required parameter 'value'
+of 'PetValidator.Validate(ref ValidationContext, Pet)'
+```
 
 The simplest call takes the value and hands back an immutable result:
 

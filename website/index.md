@@ -137,9 +137,12 @@ public sealed partial class PetValidator : IValidatorFor<Pet> {
 }
 ```
 
-Then run it:
+Then run it. The entry points are extension methods, so the calling file imports
+`ValidationModules` — the constraints namespace is for the model:
 
 ```csharp
+using ValidationModules;
+
 var result = new PetValidator().Validate(pet);
 
 foreach (var error in result.Errors) {
