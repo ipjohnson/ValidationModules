@@ -43,7 +43,7 @@ public class AttributeConditionTests {
             """);
 
         Assert.Contains("var c0 = value.IsAuto;", body);
-        Assert.Contains("if (c0 && (string.IsNullOrWhiteSpace(value.PolicyNumber))) ctx.AddRequired(\"policyNumber\");", body);
+        Assert.Contains("if (c0 && (string.IsNullOrWhiteSpace(value.PolicyNumber)) && ctx.ReportRequired(\"policyNumber\").ShouldStop) return ValidationFlow.Stop;", body);
     }
 
     [Fact]
@@ -107,7 +107,7 @@ public class AttributeConditionTests {
                 public int Priority { get; init; }
             """);
 
-        var validate = Method(body, "public void Validate");
+        var validate = Method(body, "public ValidationFlow Validate");
 
         Assert.Equal(1, Occurrences(validate, "var c0 = value.IsAuto;"));
         Assert.DoesNotContain("var c1 =", validate);
@@ -149,7 +149,7 @@ public class AttributeConditionTests {
                 public string? PolicyNumber { get; init; }
             """);
 
-        var validate = Method(body, "public void Validate");
+        var validate = Method(body, "public ValidationFlow Validate");
         var isValid = Method(body, "public bool IsValid");
 
         Assert.Equal(1, Occurrences(validate, "var c0 = value.IsAuto;"));
@@ -191,7 +191,7 @@ public class AttributeConditionTests {
                 public string? PolicyNumber { get; init; }
             """);
 
-        Assert.Contains("if (missingPolicyNumber) ctx.AddRequired(\"policyNumber\");", body);
+        Assert.Contains("if (missingPolicyNumber && ctx.ReportRequired(\"policyNumber\").ShouldStop) return ValidationFlow.Stop;", body);
         Assert.Contains("if (c0 && !missingPolicyNumber && (", body);
     }
 

@@ -35,12 +35,12 @@ internal interface ICompiledRule<in T> {
     /// </remarks>
     int ConditionIndex { get; set; }
 
-    void Apply(ref ValidationContext context, T value);
+    ValidationFlow Apply(ref ValidationContext context, T value);
 
     /// <summary>
     /// The same, for a rule that holds children of its own and must gate them itself.
     /// </summary>
-    void Apply(ref ValidationContext context, T value, ConditionValues conditions);
+    ValidationFlow Apply(ref ValidationContext context, T value, ConditionValues conditions);
 }
 
 /// <summary>
@@ -109,14 +109,14 @@ internal abstract class CompiledRule<T> : ICompiledRule<T> {
 
     public int ConditionIndex { get; set; } = -1;
 
-    public abstract void Apply(ref ValidationContext context, T value);
+    public abstract ValidationFlow Apply(ref ValidationContext context, T value);
 
     /// <summary>
     /// A leaf rule has nothing of its own to gate - the caller has already decided this rule runs -
     /// so it ignores the values and defers to the two-argument form. Only a rule holding children
     /// overrides this.
     /// </summary>
-    public virtual void Apply(ref ValidationContext context, T value, ConditionValues conditions) =>
+    public virtual ValidationFlow Apply(ref ValidationContext context, T value, ConditionValues conditions) =>
         Apply(ref context, value);
 }
 
@@ -149,10 +149,10 @@ internal sealed class FieldChainRule<T> : CompiledRule<T> {
 
     public override bool IsRequired => _requiredCount > 0;
 
-    public override void Apply(ref ValidationContext context, T value) =>
+    public override ValidationFlow Apply(ref ValidationContext context, T value) =>
         Apply(ref context, value, default);
 
-    public override void Apply(ref ValidationContext context, T value, ConditionValues conditions) {
+    public override ValidationFlow Apply(ref ValidationContext context, T value, ConditionValues conditions) {
         var token = context.ChangeToken;
 
         for (var i = 0; i < _requiredCount; i++) {
@@ -160,21 +160,27 @@ internal sealed class FieldChainRule<T> : CompiledRule<T> {
                 continue;
             }
 
-            _chain[i].Apply(ref context, value, conditions);
+            if (_chain[i].Apply(ref context, value, conditions).ShouldStop) {
+                return ValidationFlow.Stop;
+            }
 
             // A Required that failed suppresses the rest of its own field, and nothing else. A
             // guarded Required that did not run has recorded nothing, so it suppresses nothing -
-            // which falls out of skipping it rather than needing a case of its own.
+            // which falls out of skipping it rather than needing a case of its own. The pass itself
+            // carries on: only the collector decides otherwise, and it already had its say above.
             if (!ReferenceEquals(token, context.ChangeToken)) {
-                return;
+                return ValidationFlow.Continue;
             }
         }
 
         for (var i = _requiredCount; i < _chain.Length; i++) {
-            if (conditions.Holds(_chain[i].ConditionIndex)) {
-                _chain[i].Apply(ref context, value, conditions);
+            if (conditions.Holds(_chain[i].ConditionIndex) &&
+                _chain[i].Apply(ref context, value, conditions).ShouldStop) {
+                return ValidationFlow.Stop;
             }
         }
+
+        return ValidationFlow.Continue;
     }
 }
 
@@ -189,13 +195,11 @@ internal sealed class RequiredStringRule<T> : CompiledRule<T> {
 
     public override bool IsRequired => true;
 
-    public override void Apply(ref ValidationContext context, T value) {
+    public override ValidationFlow Apply(ref ValidationContext context, T value) {
         var read = _read(value);
         var missing = _allowEmptyStrings ? read is null : string.IsNullOrWhiteSpace(read);
 
-        if (missing) {
-            context.AddRequired(Field);
-        }
+        return missing ? context.ReportRequired(Field) : ValidationFlow.Continue;
     }
 }
 
@@ -210,10 +214,8 @@ internal sealed class RequiredReferenceRule<T, TValue> : CompiledRule<T> where T
 
     public override bool IsRequired => true;
 
-    public override void Apply(ref ValidationContext context, T value) {
-        if (_read(value) is null) {
-            context.AddRequired(Field);
-        }
+    public override ValidationFlow Apply(ref ValidationContext context, T value) {
+        return _read(value) is null ? context.ReportRequired(Field) : ValidationFlow.Continue;
     }
 }
 
@@ -224,10 +226,8 @@ internal sealed class RequiredNullableRule<T, TValue> : CompiledRule<T> where TV
 
     public override bool IsRequired => true;
 
-    public override void Apply(ref ValidationContext context, T value) {
-        if (!_read(value).HasValue) {
-            context.AddRequired(Field);
-        }
+    public override ValidationFlow Apply(ref ValidationContext context, T value) {
+        return _read(value).HasValue ? ValidationFlow.Continue : context.ReportRequired(Field);
     }
 }
 
@@ -242,13 +242,13 @@ internal sealed class StringLengthRule<T> : CompiledRule<T> {
         _max = max;
     }
 
-    public override void Apply(ref ValidationContext context, T value) {
+    public override ValidationFlow Apply(ref ValidationContext context, T value) {
         // A null value is Required's business. Reporting a length failure for it as well would be
         // the duplicate the collector's suppression exists to stop, and only stops when a Required
         // was actually declared.
-        if (_read(value) is { } read && (read.Length < _min || read.Length > _max)) {
-            context.AddStringLength(Field, _min, _max);
-        }
+        return _read(value) is { } read && (read.Length < _min || read.Length > _max)
+            ? context.ReportStringLength(Field, _min, _max)
+            : ValidationFlow.Continue;
     }
 }
 
@@ -269,25 +269,27 @@ internal sealed class RangeRule<T, TValue> : CompiledRule<T>
     /// Either bound may be absent, and an absent one is not compared against and is not named in
     /// the message - matching what the emitted path does for <c>[Range(Min = 1)]</c>.
     /// </summary>
-    public override void Apply(ref ValidationContext context, T value) {
+    public override ValidationFlow Apply(ref ValidationContext context, T value) {
         if (_read(value) is not { } read) {
-            return;
+            return ValidationFlow.Continue;
         }
 
         var below = _min is { } lower && read.CompareTo(lower) < 0;
         var above = _max is { } upper && read.CompareTo(upper) > 0;
 
         if (!below && !above) {
-            return;
+            return ValidationFlow.Continue;
         }
 
         if (_min is { } min && _max is { } max) {
-            context.AddRange(Field, min, max);
-        } else if (_min is { } only) {
-            context.AddRangeAtLeast(Field, only);
-        } else if (_max is { } cap) {
-            context.AddRangeAtMost(Field, cap);
+            return context.ReportRange(Field, min, max);
         }
+
+        if (_min is { } only) {
+            return context.ReportRangeAtLeast(Field, only);
+        }
+
+        return _max is { } cap ? context.ReportRangeAtMost(Field, cap) : ValidationFlow.Continue;
     }
 }
 
@@ -305,10 +307,10 @@ internal sealed class PatternRule<T> : CompiledRule<T> {
         _pattern = pattern;
     }
 
-    public override void Apply(ref ValidationContext context, T value) {
-        if (_read(value) is { } read && !_pattern.IsMatch(read)) {
-            context.AddPattern(Field);
-        }
+    public override ValidationFlow Apply(ref ValidationContext context, T value) {
+        return _read(value) is { } read && !_pattern.IsMatch(read)
+            ? context.ReportPattern(Field)
+            : ValidationFlow.Continue;
     }
 }
 
@@ -323,20 +325,20 @@ internal sealed class AllowedValuesRule<T, TValue> : CompiledRule<T> {
         _rendered = string.Join(", ", allowed);
     }
 
-    public override void Apply(ref ValidationContext context, T value) {
+    public override ValidationFlow Apply(ref ValidationContext context, T value) {
         var read = _read(value);
 
         if (read is null) {
-            return;
+            return ValidationFlow.Continue;
         }
 
         for (var i = 0; i < _allowed.Length; i++) {
             if (EqualityComparer<TValue>.Default.Equals(read, _allowed[i])) {
-                return;
+                return ValidationFlow.Continue;
             }
         }
 
-        context.AddAllowedValues(Field, _rendered);
+        return context.ReportAllowedValues(Field, _rendered);
     }
 }
 
@@ -351,10 +353,10 @@ internal sealed class ItemCountRule<T, TElement> : CompiledRule<T> {
         _max = max;
     }
 
-    public override void Apply(ref ValidationContext context, T value) {
-        if (_read(value) is { } read && (read.Count < _min || read.Count > _max)) {
-            context.AddItemCount(Field, _min, _max);
-        }
+    public override ValidationFlow Apply(ref ValidationContext context, T value) {
+        return _read(value) is { } read && (read.Count < _min || read.Count > _max)
+            ? context.ReportItemCount(Field, _min, _max)
+            : ValidationFlow.Continue;
     }
 }
 
@@ -363,10 +365,10 @@ internal sealed class UniqueItemsRule<T, TElement> : CompiledRule<T> {
 
     public UniqueItemsRule(string field, Func<T, IEnumerable<TElement>?> read) : base(field) => _read = read;
 
-    public override void Apply(ref ValidationContext context, T value) {
-        if (_read(value) is { } read && !ConstraintChecks.AllUnique(read)) {
-            context.AddUniqueItems(Field);
-        }
+    public override ValidationFlow Apply(ref ValidationContext context, T value) {
+        return _read(value) is { } read && !ConstraintChecks.AllUnique(read)
+            ? context.ReportUniqueItems(Field)
+            : ValidationFlow.Continue;
     }
 }
 
@@ -382,10 +384,10 @@ internal sealed class MultipleOfRule<T> : CompiledRule<T> {
         _divisor = divisor;
     }
 
-    public override void Apply(ref ValidationContext context, T value) {
-        if (_read(value) is { } read && read % _divisor != 0m) {
-            context.AddMultipleOf(Field, _divisor);
-        }
+    public override ValidationFlow Apply(ref ValidationContext context, T value) {
+        return _read(value) is { } read && read % _divisor != 0m
+            ? context.ReportMultipleOf(Field, _divisor)
+            : ValidationFlow.Continue;
     }
 }
 
@@ -406,10 +408,10 @@ internal sealed class MultipleOfApproximateRule<T> : CompiledRule<T> {
         _divisor = divisor;
     }
 
-    public override void Apply(ref ValidationContext context, T value) {
-        if (_read(value) is { } read && !ConstraintChecks.IsMultipleOf(read, _divisor)) {
-            context.AddMultipleOf(Field, _divisor);
-        }
+    public override ValidationFlow Apply(ref ValidationContext context, T value) {
+        return _read(value) is { } read && !ConstraintChecks.IsMultipleOf(read, _divisor)
+            ? context.ReportMultipleOf(Field, _divisor)
+            : ValidationFlow.Continue;
     }
 }
 
@@ -422,11 +424,14 @@ internal sealed class NestedRule<T, TValue> : CompiledRule<T> where TValue : cla
         _validator = validator;
     }
 
-    public override void Apply(ref ValidationContext context, T value) {
-        if (_read(value) is { } read) {
-            var nested = context.Push(Field);
-            _validator.Validate(ref nested, read);
+    public override ValidationFlow Apply(ref ValidationContext context, T value) {
+        if (_read(value) is not { } read) {
+            return ValidationFlow.Continue;
         }
+
+        var nested = context.Push(Field);
+
+        return _validator.Validate(ref nested, read);
     }
 }
 
@@ -440,9 +445,9 @@ internal sealed class EachRule<T, TElement> : CompiledRule<T> where TElement : c
         _validator = validator;
     }
 
-    public override void Apply(ref ValidationContext context, T value) {
+    public override ValidationFlow Apply(ref ValidationContext context, T value) {
         if (_read(value) is not { } items) {
-            return;
+            return ValidationFlow.Continue;
         }
 
         // Indexed rather than foreach: enumerating an interface-typed collection boxes the struct
@@ -451,9 +456,14 @@ internal sealed class EachRule<T, TElement> : CompiledRule<T> where TElement : c
         for (var i = 0; i < items.Count; i++) {
             if (items[i] is { } element) {
                 var elementContext = context.PushIndex(Field, i);
-                _validator.Validate(ref elementContext, element);
+
+                if (_validator.Validate(ref elementContext, element).ShouldStop) {
+                    return ValidationFlow.Stop;
+                }
             }
         }
+
+        return ValidationFlow.Continue;
     }
 }
 
@@ -475,10 +485,10 @@ internal sealed class PredicateRule<T> : CompiledRule<T> {
         _severity = severity;
     }
 
-    public override void Apply(ref ValidationContext context, T value) {
-        if (!_predicate(value)) {
-            context.Add(Field, _code, _message, _severity);
-        }
+    public override ValidationFlow Apply(ref ValidationContext context, T value) {
+        return _predicate(value)
+            ? ValidationFlow.Continue
+            : context.Report(Field, _code, _message, _severity);
     }
 }
 
@@ -488,5 +498,5 @@ internal sealed class ActionRule<T> : CompiledRule<T> {
 
     public ActionRule(RuleAction<T> action) : base(string.Empty) => _action = action;
 
-    public override void Apply(ref ValidationContext context, T value) => _action(ref context, value);
+    public override ValidationFlow Apply(ref ValidationContext context, T value) => _action(ref context, value);
 }

@@ -129,7 +129,13 @@ public sealed class ValidationRunner<T> {
         for (var i = 0; i < _structural.Length; i++) {
             var context = new ValidationContext(collector, path);
 
-            _structural[i].Validate(ref context, value);
+            // One validator asking to stop ends the pass, not just its own walk. Every registered
+            // validator for a type contributes to one result, so carrying on into the next after a
+            // StopOnFirstError pass has its error would collect the second validator's findings
+            // too - which is the outcome that mode exists to avoid.
+            if (_structural[i].Validate(ref context, value).ShouldStop) {
+                return;
+            }
         }
     }
 }

@@ -51,4 +51,10 @@ public interface IValidationRulesFor<T> {
 /// </remarks>
 /// <param name="context">Accumulates failures and carries the current field path.</param>
 /// <param name="value">The value being validated.</param>
-public delegate void RuleAction<in T>(ref ValidationContext context, T value);
+/// <returns>
+/// Whether the pass carries on. Return what <c>context.Report(...)</c> handed back to honour
+/// <see cref="ValidationStopMode.StopOnFirstError"/>; returning
+/// <see cref="ValidationFlow.Continue"/> unconditionally is legal and simply means this rule never
+/// ends a pass early.
+/// </returns>
+public delegate ValidationFlow RuleAction<in T>(ref ValidationContext context, T value);

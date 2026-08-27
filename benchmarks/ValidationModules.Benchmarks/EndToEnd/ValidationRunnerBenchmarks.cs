@@ -85,7 +85,7 @@ public sealed class SynchronousBusinessRule : IAsyncValidatorFor<Customer> {
 
     public ValueTask ValidateAsync(ValidationContext context, Customer value, CancellationToken cancellationToken) {
         if (value.Tier == "gold" && value.DiscountRate > 0.5) {
-            context.AddHere("conflict", "a gold customer cannot exceed a 50% discount.");
+            context.ReportHere("conflict", "a gold customer cannot exceed a 50% discount.");
         }
 
         return default;

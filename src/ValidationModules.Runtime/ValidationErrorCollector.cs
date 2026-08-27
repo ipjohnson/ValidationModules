@@ -141,6 +141,27 @@ public sealed class ValidationErrorCollector {
     public ValidationPathMode PathMode { get; }
 
     /// <summary>
+    /// Whether this pass stops at its first Error-severity failure. Defaults to
+    /// <see cref="ValidationStopMode.CollectAll"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Here rather than on the validator or the context.</b> Validators are stateless
+    /// singletons, so a mode on one would be shared by every caller at once. The context is a
+    /// readonly struct copied on every <see cref="ValidationContext.Push(string)"/>, so a field
+    /// there would be paid on every descent of every pass. This object already exists per pass and
+    /// already owns one semantic rule - Required suppression - so fail-fast being a second rule of
+    /// the same kind keeps both in one place.
+    /// </para>
+    /// <para>
+    /// <b>Init-only, and <see cref="Reset"/> keeps it</b>, for the same reason
+    /// <see cref="PathMode"/> and <see cref="Services"/> are: it describes the unit of work rather
+    /// than what the pass has found so far.
+    /// </para>
+    /// </remarks>
+    public ValidationStopMode StopMode { get; init; }
+
+    /// <summary>
     /// Whether this pass has recorded any failure, at any severity.
     /// </summary>
     public bool HasErrors => _head is not null;
@@ -201,14 +222,20 @@ public sealed class ValidationErrorCollector {
     /// themselves - the emitter with an <c>else if</c>, the rule builder with a field chain - so a
     /// second, path-keyed rule here would only ever fire when two positions rendered alike.
     /// </summary>
-    internal void AddDirect(in ValidationError error) => Record(in error);
+    internal ValidationFlow AddDirect(in ValidationError error) {
+        Record(in error);
+
+        return Flow(in error);
+    }
 
     /// <summary>
     /// Adds an error whose field path is already resolved. Used by adapters that receive a flat
     /// field name from another engine rather than walking a path.
     /// </summary>
-    public void Add(in ValidationError error) {
+    public ValidationFlow Add(in ValidationError error) {
         AddCore(in error);
+
+        return Flow(in error);
     }
 
     /// <summary>
@@ -288,6 +315,29 @@ public sealed class ValidationErrorCollector {
             (_requiredFields ??= []).Add(error.Field);
         }
     }
+
+    /// <summary>
+    /// Whether the pass that just recorded <paramref name="error"/> should stop.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Reads the severity of the error in hand rather than asking whether the pass has any
+    /// blocking error, which would walk the chain on every add. The two agree: a pass in
+    /// <see cref="ValidationStopMode.StopOnFirstError"/> returns at the first Error, so there is
+    /// never a second one to find.
+    /// </para>
+    /// <para>
+    /// A suppressed error reaches here having recorded nothing, and answers
+    /// <see cref="ValidationFlow.Continue"/> on its severity alone. That is unreachable in
+    /// practice - suppression needs an earlier failed Required on the same field, which would
+    /// already have stopped the pass - and continuing is the harmless direction if it ever is.
+    /// </para>
+    /// </remarks>
+    private ValidationFlow Flow(in ValidationError error) =>
+        StopMode == ValidationStopMode.StopOnFirstError &&
+        error.Severity == ValidationSeverity.Error
+            ? ValidationFlow.Stop
+            : ValidationFlow.Continue;
 
     /// <summary>
     /// Links the failure in at the head. Storage order is the reverse of declaration order;

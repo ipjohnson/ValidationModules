@@ -4,7 +4,8 @@ namespace ValidationModules;
 
 /// <summary>
 /// One helper per code in <see cref="ValidationCodes"/>, composing the standard message so that
-/// the generator does not have to emit it as a literal at every constraint site.
+/// the generator does not have to emit it as a literal at every constraint site. Each returns the
+/// <see cref="ValidationFlow"/> its collector answered with, so a rule site can stop on it.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -21,27 +22,27 @@ namespace ValidationModules;
 /// </para>
 /// <para>
 /// <b>Why extensions rather than methods on the context.</b> A consumer with a custom code can add
-/// their own <c>AddSomething</c> in the same shape and it reads identically to the built-ins, which
+/// their own <c>ReportSomething</c> in the same shape and it reads identically to the built-ins, which
 /// would not be true of instance methods. They take the context by value because an <c>in</c> or
-/// <c>ref</c> receiver would refuse <c>context.Push("home").AddRequired(...)</c> - the result of a
+/// <c>ref</c> receiver would refuse <c>context.Push("home").ReportRequired(...)</c> - the result of a
 /// call is not addressable. The copy is wider than it looks (the context is seven words, not the
 /// two it was when it held a node index), but every one of these runs on the failure path, where a
 /// register shuffle is lost against composing the message that follows it.
 /// </para>
 /// <para>
 /// A constraint carrying an explicit <c>Message</c> bypasses all of this - the generator emits
-/// <see cref="ValidationContext.Add"/> with the literal, because at that point the text is one the
+/// <see cref="ValidationContext.Report(string,string,string,ValidationSeverity)"/> with the literal, because at that point the text is one the
 /// author chose rather than one this file owns.
 /// </para>
 /// </remarks>
 public static class ValidationContextExtensions {
 
     /// <summary>Records that a required value was missing.</summary>
-    public static void AddRequired(
+    public static ValidationFlow ReportRequired(
         this ValidationContext context,
         string field,
         ValidationSeverity severity = ValidationSeverity.Error) =>
-        context.Add(field, ValidationCodes.Required, string.Concat(field, " is required."), severity);
+        context.Report(field, ValidationCodes.Required, string.Concat(field, " is required."), severity);
 
     /// <summary>
     /// Records that a string fell outside its length bounds.
@@ -51,13 +52,13 @@ public static class ValidationContextExtensions {
     /// <param name="min">The lower bound; zero means unbounded below.</param>
     /// <param name="max">The upper bound; <see cref="int.MaxValue"/> means unbounded above.</param>
     /// <param name="severity">Defaults to <see cref="ValidationSeverity.Error"/>.</param>
-    public static void AddStringLength(
+    public static ValidationFlow ReportStringLength(
         this ValidationContext context,
         string field,
         int min = 0,
         int max = int.MaxValue,
         ValidationSeverity severity = ValidationSeverity.Error) =>
-        context.Add(field, ValidationCodes.StringLength, BoundsMessage(field, min, max, "character"), severity);
+        context.Report(field, ValidationCodes.StringLength, BoundsMessage(field, min, max, "character"), severity);
 
     /// <summary>
     /// Records that a collection fell outside its element-count bounds.
@@ -67,13 +68,13 @@ public static class ValidationContextExtensions {
     /// <param name="min">The lower bound; zero means unbounded below.</param>
     /// <param name="max">The upper bound; <see cref="int.MaxValue"/> means unbounded above.</param>
     /// <param name="severity">Defaults to <see cref="ValidationSeverity.Error"/>.</param>
-    public static void AddItemCount(
+    public static ValidationFlow ReportItemCount(
         this ValidationContext context,
         string field,
         int min = 0,
         int max = int.MaxValue,
         ValidationSeverity severity = ValidationSeverity.Error) =>
-        context.Add(field, ValidationCodes.ArrayBounds, BoundsMessage(field, min, max, "item"), severity);
+        context.Report(field, ValidationCodes.ArrayBounds, BoundsMessage(field, min, max, "item"), severity);
 
     /// <summary>
     /// Records that a value was not an exact multiple of its divisor.
@@ -87,12 +88,12 @@ public static class ValidationContextExtensions {
     /// <param name="field">The field name.</param>
     /// <param name="divisor">The divisor the value had to be a multiple of.</param>
     /// <param name="severity">Defaults to <see cref="ValidationSeverity.Error"/>.</param>
-    public static void AddMultipleOf(
+    public static ValidationFlow ReportMultipleOf(
         this ValidationContext context,
         string field,
         decimal divisor,
         ValidationSeverity severity = ValidationSeverity.Error) =>
-        context.Add(
+        context.Report(
             field,
             ValidationCodes.MultipleOf,
             string.Concat(
@@ -108,13 +109,13 @@ public static class ValidationContextExtensions {
     /// <remarks>
     /// The offending element is deliberately not in the message. Finding it costs a second pass, and
     /// echoing a value the caller sent back into an error response is the habit
-    /// <see cref="AddPattern"/> avoids for the same reason.
+    /// <see cref="ReportPattern"/> avoids for the same reason.
     /// </remarks>
-    public static void AddUniqueItems(
+    public static ValidationFlow ReportUniqueItems(
         this ValidationContext context,
         string field,
         ValidationSeverity severity = ValidationSeverity.Error) =>
-        context.Add(
+        context.Report(
             field,
             ValidationCodes.UniqueItems,
             string.Concat(field, " must not contain duplicate items."),
@@ -129,14 +130,14 @@ public static class ValidationContextExtensions {
     /// <c>int</c> or <c>DateTime</c> bound formats without boxing. Invariant culture, because an
     /// error code's message is a wire format rather than prose.
     /// </remarks>
-    public static void AddRange<T>(
+    public static ValidationFlow ReportRange<T>(
         this ValidationContext context,
         string field,
         T min,
         T max,
         ValidationSeverity severity = ValidationSeverity.Error)
         where T : IFormattable =>
-        context.Add(
+        context.Report(
             field,
             ValidationCodes.Range,
             string.Concat(
@@ -152,19 +153,19 @@ public static class ValidationContextExtensions {
     /// Records that a value fell below its lower bound, where no upper bound was declared.
     /// </summary>
     /// <remarks>
-    /// Separate from <see cref="AddRange{T}"/> rather than passing the type's extreme as the
+    /// Separate from <see cref="ReportRange{T}"/> rather than passing the type's extreme as the
     /// absent bound. The extreme is not a bound anyone wrote, and composing it into the message
     /// quotes it back to the caller - a specification setting only <c>minimum</c> produced
     /// "must be between 1 and 7.9228162514264338E+28" in a 400 body. Same code, because the failure
     /// is the same one and a client switching on it should not have to learn a second.
     /// </remarks>
-    public static void AddRangeAtLeast<T>(
+    public static ValidationFlow ReportRangeAtLeast<T>(
         this ValidationContext context,
         string field,
         T min,
         ValidationSeverity severity = ValidationSeverity.Error)
         where T : IFormattable =>
-        context.Add(
+        context.Report(
             field,
             ValidationCodes.Range,
             string.Concat(field, " must be at least ", min.ToString(null, CultureInfo.InvariantCulture), "."),
@@ -173,13 +174,13 @@ public static class ValidationContextExtensions {
     /// <summary>
     /// Records that a value rose above its upper bound, where no lower bound was declared.
     /// </summary>
-    public static void AddRangeAtMost<T>(
+    public static ValidationFlow ReportRangeAtMost<T>(
         this ValidationContext context,
         string field,
         T max,
         ValidationSeverity severity = ValidationSeverity.Error)
         where T : IFormattable =>
-        context.Add(
+        context.Report(
             field,
             ValidationCodes.Range,
             string.Concat(field, " must be at most ", max.ToString(null, CultureInfo.InvariantCulture), "."),
@@ -193,11 +194,11 @@ public static class ValidationContextExtensions {
     /// contract rather than something a caller can act on, and echoing it back leaks the shape of
     /// the validation to anyone probing the endpoint.
     /// </remarks>
-    public static void AddPattern(
+    public static ValidationFlow ReportPattern(
         this ValidationContext context,
         string field,
         ValidationSeverity severity = ValidationSeverity.Error) =>
-        context.Add(
+        context.Report(
             field,
             ValidationCodes.Pattern,
             string.Concat(field, " is not in the required format."),
@@ -214,12 +215,12 @@ public static class ValidationContextExtensions {
     /// than joining an array on every failure.
     /// </param>
     /// <param name="severity">Defaults to <see cref="ValidationSeverity.Error"/>.</param>
-    public static void AddAllowedValues(
+    public static ValidationFlow ReportAllowedValues(
         this ValidationContext context,
         string field,
         string allowedValues,
         ValidationSeverity severity = ValidationSeverity.Error) =>
-        context.Add(
+        context.Report(
             field,
             ValidationCodes.Enum,
             string.Concat(field, " must be one of: ", allowedValues, "."),

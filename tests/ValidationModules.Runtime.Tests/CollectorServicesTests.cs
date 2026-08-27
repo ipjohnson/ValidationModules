@@ -90,7 +90,7 @@ public class CollectorServicesTests {
 
         static void Rule(ref ValidationContext context, string value) {
             if (context.Services?.GetService(typeof(string)) is string expected && value != expected) {
-                context.Add("value", "mismatch", $"expected '{expected}'.");
+                context.Report("value", "mismatch", $"expected '{expected}'.");
             }
         }
 

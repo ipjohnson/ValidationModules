@@ -129,7 +129,7 @@ public class ValidationRunnerTests {
 
     /// <summary>A validator that finds nothing, so the pass stays on its clean path.</summary>
     private sealed class CleanValidator : IValidatorFor<Pet> {
-        public void Validate(ref ValidationContext context, Pet value) { }
+        public ValidationFlow Validate(ref ValidationContext context, Pet value) => ValidationFlow.Continue;
     }
 
     private sealed class NestedAsyncValidator : IAsyncValidatorFor<Pet> {
@@ -140,7 +140,7 @@ public class ValidationRunnerTests {
             // express at all.
             await Task.Yield();
 
-            home.Add("postalCode", "unknown", "postal code not recognised.");
+            home.Report("postalCode", "unknown", "postal code not recognised.");
         }
     }
 
@@ -148,7 +148,7 @@ public class ValidationRunnerTests {
         public async ValueTask ValidateAsync(ValidationContext context, Pet value, CancellationToken cancellationToken) {
             await Task.Yield();
 
-            context.Add("name", code, "x");
+            context.Report("name", code, "x");
         }
     }
 
@@ -180,22 +180,22 @@ public class ValidationRunnerTests {
     private sealed class WarnsOnly : IValidatorFor<Pet> {
         public static readonly WarnsOnly Instance = new();
 
-        public void Validate(ref ValidationContext context, Pet value) =>
-            context.Add("name", "advisory", "worth a look", ValidationSeverity.Warning);
+        public ValidationFlow Validate(ref ValidationContext context, Pet value) =>
+            context.Report("name", "advisory", "worth a look", ValidationSeverity.Warning);
     }
 
     private sealed class FailsOnly : IValidatorFor<Pet> {
         public static readonly FailsOnly Instance = new();
 
-        public void Validate(ref ValidationContext context, Pet value) =>
-            context.Add("name", "blocked", "no", ValidationSeverity.Error);
+        public ValidationFlow Validate(ref ValidationContext context, Pet value) =>
+            context.Report("name", "blocked", "no", ValidationSeverity.Error);
     }
 
     private sealed class RecordsThatItRan : IAsyncValidatorFor<Pet> {
         public static readonly RecordsThatItRan Instance = new();
 
         public ValueTask ValidateAsync(ValidationContext context, Pet value, CancellationToken cancellationToken) {
-            context.Add("policy", "async_ran", "the business rule ran");
+            context.Report("policy", "async_ran", "the business rule ran");
             return default;
         }
     }

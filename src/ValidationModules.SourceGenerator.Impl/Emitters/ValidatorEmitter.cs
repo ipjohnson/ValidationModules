@@ -14,10 +14,10 @@ namespace ValidationModules.SourceGenerator.Impl.Emitters;
 /// Every front-end feeds this, so a rule's origin cannot change the code that comes out.
 /// </para>
 /// <para>
-/// Messages are composed by the runtime through the <c>ctx.Add*</c> helpers rather than emitted as
+/// Messages are composed by the runtime through the <c>ctx.Report*</c> helpers rather than emitted as
 /// literals here. That is worth 107 of the 313 native bytes a constraint site would otherwise cost,
 /// because every message embeds its field name and so nothing deduplicates in the string heap. A
-/// constraint carrying an explicit message is the exception and emits a literal <c>ctx.Add</c>.
+/// constraint carrying an explicit message is the exception and emits a literal <c>ctx.Report</c>.
 /// </para>
 /// </remarks>
 public sealed class ValidatorEmitter {
@@ -142,7 +142,7 @@ public sealed class ValidatorEmitter {
         // them last rather than at their declaration point is §19.7: they are the only rules whose
         // position in the body says nothing about which field they concern.
         foreach (var rule in model.AppliedRules) {
-            body.AppendLine($"        {rule}(ref ctx, value);");
+            body.AppendLine($"        if ({rule}(ref ctx, value).ShouldStop) return ValidationFlow.Stop;");
         }
 
         foreach (var (field, constraint) in patterns) {
@@ -185,9 +185,11 @@ public sealed class ValidatorEmitter {
             builder.AppendLine();
         }
 
-        builder.AppendLine($"    public void Validate(ref ValidationContext ctx, {model.QualifiedTypeName} value) {{");
+        builder.AppendLine($"    public ValidationFlow Validate(ref ValidationContext ctx, {model.QualifiedTypeName} value) {{");
         bodyConditions.Declare(builder);
         builder.Append(body);
+        builder.AppendLine();
+        builder.AppendLine("        return ValidationFlow.Continue;");
         builder.AppendLine("    }");
 
         // An applied rule is handed the context and owns what it records, so there is no condition
@@ -273,13 +275,17 @@ public sealed class ValidatorEmitter {
         builder.AppendLine("            global::Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions");
         builder.AppendLine($"                .GetServices<IValidatorFor<{type}>>(_services));");
         builder.AppendLine();
-        builder.AppendLine("    public void Validate(ref ValidationContext context, object value) {");
+        builder.AppendLine("    public ValidationFlow Validate(ref ValidationContext context, object value) {");
         builder.AppendLine($"        var typed = ({type})value;");
         builder.AppendLine("        var validators = Validators;");
         builder.AppendLine();
         builder.AppendLine("        for (var i = 0; i < validators.Length; i++) {");
-        builder.AppendLine("            validators[i].Validate(ref context, typed);");
+        builder.AppendLine("            if (validators[i].Validate(ref context, typed).ShouldStop) {");
+        builder.AppendLine("                return ValidationFlow.Stop;");
+        builder.AppendLine("            }");
         builder.AppendLine("        }");
+        builder.AppendLine();
+        builder.AppendLine("        return ValidationFlow.Continue;");
         builder.AppendLine("    }");
         builder.AppendLine();
         builder.AppendLine("    public bool IsValid(object value) {");
@@ -488,7 +494,8 @@ public sealed class ValidatorEmitter {
                 guard = missing;
             }
 
-            builder.AppendLine($"        if ({guard}) {Add(field, required, "AddRequired", "")}");
+            builder.AppendLine(
+                $"        if ({Conjoin(guard, Report(field, required, "ReportRequired", ""))}) return ValidationFlow.Stop;");
             fast.AppendLine(
                 $"        if ({Guarded(fastConditions, required.Condition, RequiredTest(access, property, required))}) return false;");
         }
@@ -521,7 +528,8 @@ public sealed class ValidatorEmitter {
             var reportedField = constraint.Field is { } renamed ? Quote(renamed) : field;
 
             builder.AppendLine(
-                $"        if ({string.Join(" && ", conjuncts)}) {AddFor(reportedField, constraint, property)}");
+                $"        if ({Conjoin(string.Join(" && ", conjuncts), ReportFor(reportedField, constraint, property))})" +
+                " return ValidationFlow.Stop;");
 
             // No guard on the boolean path: a failed Required has already returned, so anything
             // still running has a value to test.
@@ -571,8 +579,9 @@ public sealed class ValidatorEmitter {
             // quietly get a services-less lookup.
             if (!boolean) {
                 builder.AppendLine(
-                    $"{indent}global::ValidationModules.DynamicValidation.Validate(" +
-                    $"ref {context}, {value}, {Quote(property.FieldName)}, {Quote(owner)});");
+                    $"{indent}if (global::ValidationModules.DynamicValidation.Validate(" +
+                    $"ref {context}, {value}, {Quote(property.FieldName)}, {Quote(owner)})" +
+                    ".ShouldStop) return ValidationFlow.Stop;");
             }
 
             return;
@@ -597,7 +606,8 @@ public sealed class ValidatorEmitter {
 
             var call = boolean
                 ? $"if (!(_dispatch{index} ??= new()).IsValid(__typed)) return false;"
-                : $"(_dispatch{index} ??= new()).Validate(ref {context}, __typed);";
+                : $"if ((_dispatch{index} ??= new()).Validate(ref {context}, __typed).ShouldStop) " +
+                  "return ValidationFlow.Stop;";
 
             builder.AppendLine($"{indent}    case {subtype.QualifiedTypeName} __typed: {call} break;");
         }
@@ -624,7 +634,7 @@ public sealed class ValidatorEmitter {
 
         builder.AppendLine(boolean
             ? $"{indent}    if (!{validators}[vi].IsValid({value})) return false;"
-            : $"{indent}    {validators}[vi].Validate(ref {context}, {value});");
+            : $"{indent}    if ({validators}[vi].Validate(ref {context}, {value}).ShouldStop) return ValidationFlow.Stop;");
 
         builder.AppendLine($"{indent}}}");
     }
@@ -865,42 +875,70 @@ public sealed class ValidatorEmitter {
         }
     }
 
-    private static string AddFor(string field, ConstraintModel constraint, ValidatedPropertyModel property) =>
+    /// <summary>
+    /// Joins a rule's test to its report so the pair reads as one condition, and the report only
+    /// runs when the test failed.
+    /// </summary>
+    /// <remarks>
+    /// Everything reaching here is already an <c>&amp;&amp;</c> chain, so the join usually needs no
+    /// brackets. A test carrying a top-level <c>||</c> is the exception and is wrapped: appending
+    /// <c>&amp;&amp; report</c> to <c>a || b</c> would bind as <c>a || (b &amp;&amp; report)</c> and
+    /// silently skip the report for half the failures - the same class of quiet wrong answer the
+    /// conjunct bracketing above exists to remove.
+    /// </remarks>
+    private static string Conjoin(string test, string report) =>
+        (HasTopLevelOr(test) ? $"({test})" : test) + $" && {report}.ShouldStop";
+
+    private static bool HasTopLevelOr(string text) {
+        var depth = 0;
+
+        for (var i = 0; i < text.Length; i++) {
+            switch (text[i]) {
+                case '(': depth++; break;
+                case ')': depth--; break;
+                case '|' when depth == 0 && i + 1 < text.Length && text[i + 1] == '|': return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string ReportFor(string field, ConstraintModel constraint, ValidatedPropertyModel property) =>
         constraint.Kind switch {
-            ConstraintKind.StringLength => Add(field, constraint, "AddStringLength", Bounds(constraint)),
-            ConstraintKind.ItemCount => Add(field, constraint, "AddItemCount", Bounds(constraint)),
-            ConstraintKind.Range => RangeAdd(field, constraint),
-            ConstraintKind.MultipleOf => Add(field, constraint, "AddMultipleOf", $", {constraint.Divisor}"),
-            ConstraintKind.UniqueItems => Add(field, constraint, "AddUniqueItems", ""),
-            ConstraintKind.Pattern => Add(field, constraint, "AddPattern", ""),
-            ConstraintKind.AllowedValues => Add(field, constraint, "AddAllowedValues",
+            ConstraintKind.StringLength => Report(field, constraint, "ReportStringLength", Bounds(constraint)),
+            ConstraintKind.ItemCount => Report(field, constraint, "ReportItemCount", Bounds(constraint)),
+            ConstraintKind.Range => RangeReport(field, constraint),
+            ConstraintKind.MultipleOf => Report(field, constraint, "ReportMultipleOf", $", {constraint.Divisor}"),
+            ConstraintKind.UniqueItems => Report(field, constraint, "ReportUniqueItems", ""),
+            ConstraintKind.Pattern => Report(field, constraint, "ReportPattern", ""),
+            ConstraintKind.AllowedValues => Report(field, constraint, "ReportAllowedValues",
                 $", {Quote(string.Join(", ", Displays(constraint)))}"),
             // A flags value is a combination, so "must be one of" would be wrong about what the
             // type accepts. Says which flags exist instead.
             ConstraintKind.EnumDefined when constraint.FlagsMask is not null =>
-                $"ctx.Add({field}, ValidationCodes.Enum, " +
-                $"{Quote($"{Unquote(field)} must be a combination of: {string.Join(", ", Displays(constraint))}.")});",
-            ConstraintKind.EnumDefined => Add(field, constraint, "AddAllowedValues",
+                $"ctx.Report({field}, ValidationCodes.Enum, " +
+                $"{Quote($"{Unquote(field)} must be a combination of: {string.Join(", ", Displays(constraint))}.")})",
+            ConstraintKind.EnumDefined => Report(field, constraint, "ReportAllowedValues",
                 $", {Quote(string.Join(", ", Displays(constraint)))}"),
 
             // Always the literal branch: a predicate's message was rendered from its own source when
             // the front-end read it, so there is nothing here to compose and nothing the runtime
             // could compose it from.
-            ConstraintKind.Predicate => Add(field, constraint, "Add", ""),
-            _ => Add(field, constraint, "AddRequired", ""),
+            ConstraintKind.Predicate => Report(field, constraint, "Report", ""),
+            _ => Report(field, constraint, "ReportRequired", ""),
         };
 
     /// <summary>
     /// The report call for a range, which has a different message per shape rather than one message
     /// with a bound the author never wrote standing in for the missing side.
     /// </summary>
-    private static string RangeAdd(string field, ConstraintModel constraint) => constraint switch {
-        { Min: { } min, Max: { } max } => Add(field, constraint, "AddRange", $", {min}, {max}"),
-        { Min: { } min } => Add(field, constraint, "AddRangeAtLeast", $", {min}"),
-        { Max: { } max } => Add(field, constraint, "AddRangeAtMost", $", {max}"),
+    private static string RangeReport(string field, ConstraintModel constraint) => constraint switch {
+        { Min: { } min, Max: { } max } => Report(field, constraint, "ReportRange", $", {min}, {max}"),
+        { Min: { } min } => Report(field, constraint, "ReportRangeAtLeast", $", {min}"),
+        { Max: { } max } => Report(field, constraint, "ReportRangeAtMost", $", {max}"),
 
         // Unreachable: a range with neither bound is VM0026 and never reaches the emitter.
-        _ => Add(field, constraint, "AddRequired", ""),
+        _ => Report(field, constraint, "ReportRequired", ""),
     };
 
     private static string Bounds(ConstraintModel constraint) =>
@@ -910,17 +948,17 @@ public sealed class ValidatorEmitter {
     /// A constraint carrying an explicit message falls back to the literal overload: at that point
     /// the text is one the author chose rather than one the runtime owns.
     /// </summary>
-    private static string Add(string field, ConstraintModel constraint, string helper, string arguments) {
+    private static string Report(string field, ConstraintModel constraint, string helper, string arguments) {
         // Omitted entirely at the default rather than passed as ValidationSeverity.Error, so the
         // emitted line stays the one a reader would have written by hand.
         var severity = constraint.Severity is { } member ? $", ValidationSeverity.{member}" : string.Empty;
 
         if (constraint.Message is { } message) {
             var code = constraint.Code is { } custom ? Quote(custom) : CodeConstant(constraint.Kind);
-            return $"ctx.Add({field}, {code}, {Quote(message)}{severity});";
+            return $"ctx.Report({field}, {code}, {Quote(message)}{severity})";
         }
 
-        return $"ctx.{helper}({field}{arguments}{severity});";
+        return $"ctx.{helper}({field}{arguments}{severity})";
     }
 
     private static string CodeConstant(ConstraintKind kind) => kind switch {

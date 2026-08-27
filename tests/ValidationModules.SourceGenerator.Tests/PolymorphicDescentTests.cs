@@ -294,7 +294,8 @@ public class PolymorphicDescentTests {
         var body = Run("[ValidateNested(Polymorphism.Runtime)]").Checkout;
 
         Assert.Contains(
-            "global::ValidationModules.DynamicValidation.Validate(ref ctxPayment, nestedPayment, \"payment\", \"Checkout\");",
+            "if (global::ValidationModules.DynamicValidation.Validate(ref ctxPayment, nestedPayment, " +
+            "\"payment\", \"Checkout\").ShouldStop) return ValidationFlow.Stop;",
             body);
 
         Assert.DoesNotContain("switch (", body);

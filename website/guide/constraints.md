@@ -57,7 +57,7 @@ public string? Name { get; init; }
 ```
 
 ```csharp
-if (string.IsNullOrWhiteSpace(value.Name)) ctx.AddRequired("name");
+if (string.IsNullOrWhiteSpace(value.Name)) ctx.ReportRequired("name");
 ```
 
 What counts as missing depends on the type:
@@ -119,7 +119,7 @@ public double Ratio { get; init; }
 Bounds are inclusive unless you say otherwise:
 
 ```csharp
-if ((value.Age < 0 || value.Age > 30)) ctx.AddRange("age", 0, 30);
+if ((value.Age < 0 || value.Age > 30)) ctx.ReportRange("age", 0, 30);
 ```
 
 `ExclusiveMin` and `ExclusiveMax` turn the corresponding comparison into `<=` / `>=`. Applying
@@ -207,7 +207,7 @@ public string? Status { get; init; }
 ```csharp
 if (value.Status is not null &&
     (value.Status != "available" && value.Status != "pending" && value.Status != "sold"))
-    ctx.AddAllowedValues("status", "available, pending, sold");
+    ctx.ReportAllowedValues("status", "available, pending, sold");
 ```
 
 Comparison is `StringComparison.Ordinal` by default; `Comparison` changes it. The permitted set is
@@ -269,13 +269,13 @@ So a `double` or `float` member converts to `decimal` first, which rounds to 15 
 and cancels exactly that error:
 
 ```csharp
-if (!ConstraintChecks.IsMultipleOf(value.Ratio, 0.01m)) ctx.AddMultipleOf("ratio", 0.01m);
+if (!ConstraintChecks.IsMultipleOf(value.Ratio, 0.01m)) ctx.ReportMultipleOf("ratio", 0.01m);
 ```
 
 Integral and `decimal` members are already exact, and compile to a plain comparison:
 
 ```csharp
-if ((value.Quantity % 5 != 0)) ctx.AddMultipleOf("quantity", 5);
+if ((value.Quantity % 5 != 0)) ctx.ReportMultipleOf("quantity", 5);
 ```
 
 The one case with no answer is a floating-point value past `decimal`'s range, around 7.9e28. Its
@@ -297,7 +297,7 @@ This is the one constraint here that is not a comparison, so it is the one that 
 runtime rather than being written inline:
 
 ```csharp
-if (value.Codes is not null && !ConstraintChecks.AllUnique(value.Codes)) ctx.AddUniqueItems("codes");
+if (value.Codes is not null && !ConstraintChecks.AllUnique(value.Codes)) ctx.ReportUniqueItems("codes");
 ```
 
 `AllUnique` compares pairwise below sixteen elements and allocates a `HashSet<T>` above them, so a
@@ -410,7 +410,7 @@ against them:
 
 ```csharp
 if ((value.Method != PaymentMethod.Card && value.Method != PaymentMethod.Cash &&
-     value.Method != PaymentMethod.Transfer)) ctx.AddAllowedValues("method", "Card, Cash, Transfer");
+     value.Method != PaymentMethod.Transfer)) ctx.ReportAllowedValues("method", "Card, Cash, Transfer");
 ```
 
 Never `Enum.IsDefined`, which boxes, searches, and needs the enum's metadata kept alive under
@@ -424,7 +424,7 @@ whether any bit outside the declared ones is set:
 
 ```csharp
 if (((value.Rights & ~(Access.None | Access.Read | Access.Write | Access.Delete)) != 0))
-    ctx.Add("rights", ValidationCodes.Enum, "rights must be a combination of: None, Read, Write, Delete.");
+    ctx.Report("rights", ValidationCodes.Enum, "rights must be a combination of: None, Read, Write, Delete.");
 ```
 
 `Read | Delete` passes. `(Access)64` does not.

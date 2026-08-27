@@ -64,7 +64,7 @@ public sealed record Pet {
 
 ```csharp
 if (value.Toys is not null && (value.Toys.Count < 1 || value.Toys.Count > 10))
-    ctx.AddItemCount("toys", 1, 10);
+    ctx.ReportItemCount("toys", 1, 10);
 
 if (value.Toys is { } itemsToys) {
     for (var iToys = 0; iToys < itemsToys.Count; iToys++) {

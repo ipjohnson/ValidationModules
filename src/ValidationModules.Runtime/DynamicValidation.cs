@@ -23,7 +23,7 @@ public static class DynamicValidation {
     /// <param name="value">The nested value.</param>
     /// <param name="property">The property being descended into, for the exception message.</param>
     /// <param name="owner">The type declaring that property, for the exception message.</param>
-    public static void Validate(ref ValidationContext context, object value, string property, string owner) =>
+    public static ValidationFlow Validate(ref ValidationContext context, object value, string property, string owner) =>
         Resolve(context.Services, value, property, owner).Validate(ref context, value);
 
     /// <summary>The boolean form, for a caller that already holds the services.</summary>

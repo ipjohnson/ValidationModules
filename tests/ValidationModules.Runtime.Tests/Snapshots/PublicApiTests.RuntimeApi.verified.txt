@@ -23,12 +23,12 @@ namespace ValidationModules
     public sealed class DescribedValidator<T> : ValidationModules.IValidatorFor<T>
     {
         public DescribedValidator(ValidationModules.IValidationRulesFor<T> rules, ValidationModules.IValidatorProvider? nested = null, ValidationModules.Naming.IValidationFieldNamer? namer = null) { }
-        public void Validate(ref ValidationModules.ValidationContext context, T value) { }
+        public ValidationModules.ValidationFlow Validate(ref ValidationModules.ValidationContext context, T value) { }
     }
     public static class DynamicValidation
     {
         public static bool IsValid(System.IServiceProvider? services, object value, string property, string owner) { }
-        public static void Validate(ref ValidationModules.ValidationContext context, object value, string property, string owner) { }
+        public static ValidationModules.ValidationFlow Validate(ref ValidationModules.ValidationContext context, object value, string property, string owner) { }
     }
     public sealed class DynamicValidatorRegistry
     {
@@ -43,7 +43,7 @@ namespace ValidationModules
     {
         System.Type ValidatedType { get; }
         bool IsValid(object value);
-        void Validate(ref ValidationModules.ValidationContext context, object value);
+        ValidationModules.ValidationFlow Validate(ref ValidationModules.ValidationContext context, object value);
     }
     public interface IValidationRulesFor<T>
     {
@@ -52,7 +52,7 @@ namespace ValidationModules
     public interface IValidatorFor<in T>
     {
         bool IsValid(T value);
-        void Validate(ref ValidationModules.ValidationContext context, T value);
+        ValidationModules.ValidationFlow Validate(ref ValidationModules.ValidationContext context, T value);
     }
     public interface IValidatorProvider
     {
@@ -91,10 +91,10 @@ namespace ValidationModules
     {
         public ValidationModules.ValidationRules<T> And { get; }
     }
-    public delegate void RuleAction<in T>(ref ValidationModules.ValidationContext context, T value);
+    public delegate ValidationModules.ValidationFlow RuleAction<in T>(ref ValidationModules.ValidationContext context, T value);
     public static class RuntimeContract
     {
-        public const int Version = 4;
+        public const int Version = 5;
     }
     public static class ValidationCodes
     {
@@ -115,27 +115,28 @@ namespace ValidationModules
         public int ErrorCount { get; }
         public bool HasErrors { get; }
         public System.IServiceProvider? Services { get; }
-        public void Add(string field, string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
-        public void AddHere(string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
+        public ValidationModules.ValidationStopMode StopMode { get; }
         public ValidationModules.ValidationContext Push(string segment) { }
         public ValidationModules.ValidationContext PushIndex(string segment, int index) { }
         public ValidationModules.ValidationContext PushKey(string segment, string key) { }
+        public ValidationModules.ValidationFlow Report(string field, string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
+        public ValidationModules.ValidationFlow ReportHere(string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
     }
     public static class ValidationContextExtensions
     {
-        public static void AddAllowedValues(this ValidationModules.ValidationContext context, string field, string allowedValues, ValidationModules.ValidationSeverity severity = 0) { }
-        public static void AddItemCount(this ValidationModules.ValidationContext context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0) { }
-        public static void AddMultipleOf(this ValidationModules.ValidationContext context, string field, decimal divisor, ValidationModules.ValidationSeverity severity = 0) { }
-        public static void AddPattern(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0) { }
-        public static void AddRange<T>(this ValidationModules.ValidationContext context, string field, T min, T max, ValidationModules.ValidationSeverity severity = 0)
+        public static ValidationModules.ValidationFlow ReportAllowedValues(this ValidationModules.ValidationContext context, string field, string allowedValues, ValidationModules.ValidationSeverity severity = 0) { }
+        public static ValidationModules.ValidationFlow ReportItemCount(this ValidationModules.ValidationContext context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0) { }
+        public static ValidationModules.ValidationFlow ReportMultipleOf(this ValidationModules.ValidationContext context, string field, decimal divisor, ValidationModules.ValidationSeverity severity = 0) { }
+        public static ValidationModules.ValidationFlow ReportPattern(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0) { }
+        public static ValidationModules.ValidationFlow ReportRange<T>(this ValidationModules.ValidationContext context, string field, T min, T max, ValidationModules.ValidationSeverity severity = 0)
             where T : System.IFormattable { }
-        public static void AddRangeAtLeast<T>(this ValidationModules.ValidationContext context, string field, T min, ValidationModules.ValidationSeverity severity = 0)
+        public static ValidationModules.ValidationFlow ReportRangeAtLeast<T>(this ValidationModules.ValidationContext context, string field, T min, ValidationModules.ValidationSeverity severity = 0)
             where T : System.IFormattable { }
-        public static void AddRangeAtMost<T>(this ValidationModules.ValidationContext context, string field, T max, ValidationModules.ValidationSeverity severity = 0)
+        public static ValidationModules.ValidationFlow ReportRangeAtMost<T>(this ValidationModules.ValidationContext context, string field, T max, ValidationModules.ValidationSeverity severity = 0)
             where T : System.IFormattable { }
-        public static void AddRequired(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0) { }
-        public static void AddStringLength(this ValidationModules.ValidationContext context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0) { }
-        public static void AddUniqueItems(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0) { }
+        public static ValidationModules.ValidationFlow ReportRequired(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0) { }
+        public static ValidationModules.ValidationFlow ReportStringLength(this ValidationModules.ValidationContext context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0) { }
+        public static ValidationModules.ValidationFlow ReportUniqueItems(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0) { }
     }
     public readonly struct ValidationError : System.IEquatable<ValidationModules.ValidationError>
     {
@@ -156,7 +157,8 @@ namespace ValidationModules
         public bool HasErrors { get; }
         public ValidationModules.ValidationPathMode PathMode { get; }
         public System.IServiceProvider? Services { get; }
-        public void Add(in ValidationModules.ValidationError error) { }
+        public ValidationModules.ValidationStopMode StopMode { get; init; }
+        public ValidationModules.ValidationFlow Add(in ValidationModules.ValidationError error) { }
         public void Reset() { }
         public ValidationModules.ValidationResult ToResult() { }
     }
@@ -164,6 +166,18 @@ namespace ValidationModules
     {
         public ValidationException(ValidationModules.ValidationResult result) { }
         public ValidationModules.ValidationResult Result { get; }
+    }
+    public readonly struct ValidationFlow : System.IEquatable<ValidationModules.ValidationFlow>
+    {
+        public bool ShouldStop { get; }
+        public static ValidationModules.ValidationFlow Continue { get; }
+        public static ValidationModules.ValidationFlow Stop { get; }
+        public bool Equals(ValidationModules.ValidationFlow other) { }
+        public override bool Equals(object? obj) { }
+        public override int GetHashCode() { }
+        public override string ToString() { }
+        public static bool operator !=(ValidationModules.ValidationFlow left, ValidationModules.ValidationFlow right) { }
+        public static bool operator ==(ValidationModules.ValidationFlow left, ValidationModules.ValidationFlow right) { }
     }
     public enum ValidationPathMode
     {
@@ -225,11 +239,17 @@ namespace ValidationModules
         Warning = 1,
         Info = 2,
     }
+    public enum ValidationStopMode
+    {
+        CollectAll = 0,
+        StopOnFirstError = 1,
+    }
     public static class ValidatorForExtensions
     {
         public static bool IsValid<T>(this ValidationModules.IValidatorFor<T> validator, T value) { }
         public static ValidationModules.ValidationResult Validate<T>(this ValidationModules.IValidatorFor<T> validator, T value) { }
         public static void ValidateAndThrow<T>(this ValidationModules.IValidatorFor<T> validator, T value) { }
+        public static ValidationModules.ValidationResult ValidateFirst<T>(this ValidationModules.IValidatorFor<T> validator, T value) { }
         public static void ValidateInto<T>(this ValidationModules.IValidatorFor<T> validator, ValidationModules.ValidationErrorCollector collector, T value) { }
     }
     public readonly struct ValidatorRegistration : System.IEquatable<ValidationModules.ValidatorRegistration>

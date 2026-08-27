@@ -33,19 +33,17 @@ public class NestedCompositionTests {
     /// failed. The runtime cannot check this: reading the attribute at run time is reflection.
     /// </remarks>
     private sealed class AddressBlocklistValidator : IValidatorFor<Address> {
-        public void Validate(ref ValidationContext context, Address value) {
-            if (value.PostalCode == "BLOCKED") {
-                context.Add("postal_code", "blocked", "postal code is blocked.");
-            }
-        }
+        public ValidationFlow Validate(ref ValidationContext context, Address value) =>
+            value.PostalCode == "BLOCKED"
+                ? context.Report("postal_code", "blocked", "postal code is blocked.")
+                : ValidationFlow.Continue;
     }
 
     private sealed class ToyRecallValidator : IValidatorFor<Toy> {
-        public void Validate(ref ValidationContext context, Toy value) {
-            if (value.Name == "recalled") {
-                context.Add("name", "recalled", "toy is recalled.");
-            }
-        }
+        public ValidationFlow Validate(ref ValidationContext context, Toy value) =>
+            value.Name == "recalled"
+                ? context.Report("name", "recalled", "toy is recalled.")
+                : ValidationFlow.Continue;
     }
 
     private static ServiceProvider Provider() {

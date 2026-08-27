@@ -52,10 +52,21 @@ public static class RuntimeContract {
     // reads ctx.Services, which it also does not have. Both would fail inside generated code, which
     // is what VM0040 exists to prevent.
 
+    // 4 -> 5: IValidatorFor<T>.Validate returns ValidationFlow instead of void, and the report
+    // helpers are Report* rather than Add* and return it too. The emitter now writes
+    // `if (test && ctx.ReportX(...).ShouldStop) return ValidationFlow.Stop;` and returns a flow from
+    // every generated Validate, none of which a contract-4 runtime can supply or accept.
+    //
+    // Unlike every bump before it this is not additive - the old members are gone rather than
+    // joined. The additive-only rule below is what makes a bump sufficient for a framework author
+    // compiling Impl themselves, and it does not cover this; the version gate turns what would be
+    // an error inside generated code into VM0040 at the call site, which is the best available
+    // outcome. Taken before 1.0.0 pins the surface, which is the only time it is cheap.
+
     /// <summary>
     /// The contract this runtime implements. Compared against
     /// <c>EmitterContract.RequiredRuntimeContract</c> by the generator, and against
     /// <c>$(ValidationModulesRuntimeContract)</c> by build tasks driving the emitter.
     /// </summary>
-    public const int Version = 4;
+    public const int Version = 5;
 }

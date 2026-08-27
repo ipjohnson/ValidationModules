@@ -38,6 +38,44 @@ public static class ValidatorForExtensions {
 
 
     /// <summary>
+    /// Runs the validator in <see cref="ValidationStopMode.StopOnFirstError"/> and returns a result
+    /// holding at most the first blocking failure.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Between <see cref="Validate{T}"/>, which evaluates everything, and
+    /// <see cref="IsValid{T}"/>, which evaluates nothing beyond the first failure but cannot say
+    /// what failed. This skips the same work <see cref="IsValid{T}"/> skips - remaining
+    /// constraints, nested descents, collection elements - and still reports the one error it
+    /// found, which is what a caller wanting a single message per request needs.
+    /// </para>
+    /// <para>
+    /// The result is not a prefix of what <see cref="Validate{T}"/> would have returned in any
+    /// sense stronger than its first element: rules after the first failure never ran, so nothing
+    /// is known about them.
+    /// </para>
+    /// </remarks>
+    /// <param name="validator">The validator to run.</param>
+    /// <param name="value">The value to validate.</param>
+    public static ValidationResult ValidateFirst<T>(this IValidatorFor<T> validator, T value) {
+        ArgumentNullException.ThrowIfNull(validator);
+
+        var collector = new ValidationErrorCollector { StopMode = ValidationStopMode.StopOnFirstError };
+        var path = ArrayPool<PathSegment>.Shared.Rent(ValidationErrorCollector.DefaultDepthLimit);
+
+        try {
+            var context = new ValidationContext(collector, path);
+
+            validator.Validate(ref context, value);
+
+            return collector.ToResult();
+        }
+        finally {
+            ArrayPool<PathSegment>.Shared.Return(path);
+        }
+    }
+
+    /// <summary>
     /// Whether the value passes, without building the reasons it did not.
     /// </summary>
     /// <remarks>

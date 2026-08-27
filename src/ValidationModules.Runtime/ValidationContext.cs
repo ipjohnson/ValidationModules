@@ -137,20 +137,27 @@ public readonly struct ValidationContext {
     public ValidationContext PushKey(string segment, string key) => Descend(segment, NoIndex, key);
 
     /// <summary>
-    /// Records a failure against a field of the current object.
+    /// Records a failure against a field of the current object, and answers whether the pass
+    /// carries on.
     /// </summary>
+    /// <remarks>
+    /// The returned <see cref="ValidationFlow"/> is <see cref="ValidationFlow.Stop"/> when the
+    /// collector is in <see cref="ValidationStopMode.StopOnFirstError"/> and this was a blocking
+    /// failure. A caller that discards it simply keeps validating, which is what every
+    /// <see cref="ValidationStopMode.CollectAll"/> pass does anyway.
+    /// </remarks>
     /// <param name="field">The field name, appended to the current path.</param>
     /// <param name="code">A stable machine-readable code - see the vocabulary in API-SURFACE.md §4.1.</param>
     /// <param name="message">The human-readable message.</param>
     /// <param name="severity">Defaults to <see cref="ValidationSeverity.Error"/>.</param>
-    public void Add(
+    public ValidationFlow Report(
         string field,
         string code,
         string message,
         ValidationSeverity severity = ValidationSeverity.Error) {
         var error = new ValidationError(BuildPath(field), code, message) { Severity = severity };
 
-        _collector.AddDirect(in error);
+        return _collector.AddDirect(in error);
     }
 
     /// <summary>
@@ -159,13 +166,13 @@ public readonly struct ValidationContext {
     /// <param name="code">A stable machine-readable code.</param>
     /// <param name="message">The human-readable message.</param>
     /// <param name="severity">Defaults to <see cref="ValidationSeverity.Error"/>.</param>
-    public void AddHere(
+    public ValidationFlow ReportHere(
         string code,
         string message,
         ValidationSeverity severity = ValidationSeverity.Error) {
         var error = new ValidationError(BuildPath(null), code, message) { Severity = severity };
 
-        _collector.AddDirect(in error);
+        return _collector.AddDirect(in error);
     }
 
     /// <summary>
@@ -175,6 +182,13 @@ public readonly struct ValidationContext {
 
     /// <summary>O(1) token for "has anything been recorded since"; see the collector.</summary>
     internal object? ChangeToken => _collector.ChangeToken;
+
+    /// <summary>
+    /// Whether this pass stops at its first blocking failure. Forwarded from the collector, which
+    /// owns the decision; generated code reads the <see cref="ValidationFlow"/> that
+    /// <see cref="Report(string,string,string,ValidationSeverity)"/> returns rather than this.
+    /// </summary>
+    public ValidationStopMode StopMode => _collector.StopMode;
 
     /// <summary>
     /// How many failures this pass has recorded. Snapshot it before and after a block to find out

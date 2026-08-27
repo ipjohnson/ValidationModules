@@ -297,13 +297,13 @@ public class EndpointFilterTests {
             ValidationContext context, CreateOrder value, CancellationToken cancellationToken = default) {
             await Task.Yield();
 
-            context.Add("reference", "conflict", "reference is already taken.");
+            context.Report("reference", "conflict", "reference is already taken.");
         }
     }
 
     private sealed class WarnOnlyCouponValidator : IValidatorFor<Coupon> {
-        public void Validate(ref ValidationContext context, Coupon value) =>
-            context.Add("code", "deprecated", "this coupon format is being retired.", ValidationSeverity.Warning);
+        public ValidationFlow Validate(ref ValidationContext context, Coupon value) =>
+            context.Report("code", "deprecated", "this coupon format is being retired.", ValidationSeverity.Warning);
     }
 
     private sealed record Problem {

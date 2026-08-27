@@ -128,10 +128,9 @@ public class RuntimePolymorphismTests {
     }
 
     private sealed class ExtraCardRule : IValidatorFor<Card> {
-        public void Validate(ref ValidationContext context, Card value) {
-            if (value.Pan?.StartsWith('9') == false) {
-                context.Add("pan", "issuer", "cards must be issued in the 9 range.");
-            }
-        }
+        public ValidationFlow Validate(ref ValidationContext context, Card value) =>
+            value.Pan?.StartsWith('9') == false
+                ? context.Report("pan", "issuer", "cards must be issued in the 9 range.")
+                : ValidationFlow.Continue;
     }
 }

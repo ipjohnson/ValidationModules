@@ -25,7 +25,7 @@ public sealed class PetUniquenessValidator : IAsyncValidatorFor<Pet> {
         ValidationContext context, Pet value, CancellationToken cancellationToken = default) {
 
         if (await _pets.ExistsAsync(value.Sku!, cancellationToken)) {
-            context.Add("sku", "duplicate", "sku is already in use.");
+            context.Report("sku", "duplicate", "sku is already in use.");
         }
     }
 }
@@ -74,7 +74,7 @@ public async ValueTask ValidateAsync(
         var stock = await _inventory.LevelAsync(value.Lines[i].Sku, cancellationToken);
 
         if (stock < value.Lines[i].Quantity) {               // still correct after the await
-            line.Add("quantity", "insufficient_stock", "not enough stock.");
+            line.Report("quantity", "insufficient_stock", "not enough stock.");
         }
     }
 }
@@ -144,11 +144,11 @@ Business rules are awaited **sequentially**, so error ordering across validators
 
 ## Reporting on the object itself
 
-Not every rule belongs to a field. `AddHere` reports against the current object:
+Not every rule belongs to a field. `ReportHere` reports against the current object:
 
 ```csharp
 if (value.Start > value.End) {
-    context.AddHere("date_order", "start must not be after end.");
+    context.ReportHere("date_order", "start must not be after end.");
 }
 ```
 

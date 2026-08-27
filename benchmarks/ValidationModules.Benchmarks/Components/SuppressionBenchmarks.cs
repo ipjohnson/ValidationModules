@@ -50,7 +50,7 @@ public class SuppressionBenchmarks {
 
         var context = new ValidationContext(_collector);
         for (var i = 0; i < _fields.Length; i++) {
-            context.AddRequired(_fields[i]);
+            context.ReportRequired(_fields[i]);
         }
 
         return _collector.Count;
@@ -67,11 +67,11 @@ public class SuppressionBenchmarks {
 
         var context = new ValidationContext(_collector);
         for (var i = 0; i < _fields.Length; i++) {
-            context.AddRequired(_fields[i]);
+            context.ReportRequired(_fields[i]);
         }
 
         for (var i = 0; i < _fields.Length; i++) {
-            context.AddPattern(_fields[i]);
+            context.ReportPattern(_fields[i]);
         }
 
         return _collector.Count;
@@ -87,7 +87,7 @@ public class SuppressionBenchmarks {
 
         var context = new ValidationContext(_collector);
         for (var i = 0; i < _fields.Length; i++) {
-            context.AddPattern(_fields[i]);
+            context.ReportPattern(_fields[i]);
         }
 
         return _collector.Count;

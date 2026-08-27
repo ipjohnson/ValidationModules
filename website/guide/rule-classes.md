@@ -230,11 +230,10 @@ For anything the DSL cannot express at all:
 
 ```csharp
 public static class PetChecks {
-    public static void SkuChecksum(ref ValidationContext context, Pet value) {
-        if (value.Sku is { } sku && !ChecksumIsValid(sku)) {
-            context.Add("sku", "checksum", "sku checksum does not match.");
-        }
-    }
+    public static ValidationFlow SkuChecksum(ref ValidationContext context, Pet value) =>
+        value.Sku is { } sku && !ChecksumIsValid(sku)
+            ? context.Report("sku", "checksum", "sku checksum does not match.")
+            : ValidationFlow.Continue;
 }
 ```
 

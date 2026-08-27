@@ -50,8 +50,10 @@ public sealed partial class PetValidator : IValidatorFor<global::Sample.Pet> {
 
     public PetValidator() { }
 
-    public void Validate(ref ValidationContext ctx, global::Sample.Pet value) {
-        if (value.Sku is not null && !global::Sample.PetPatterns.Sku().IsMatch(value.Sku)) ctx.AddPattern("sku");
+    public ValidationFlow Validate(ref ValidationContext ctx, global::Sample.Pet value) {
+        if (value.Sku is not null && !global::Sample.PetPatterns.Sku().IsMatch(value.Sku) && ctx.ReportPattern("sku").ShouldStop) return ValidationFlow.Stop;
+
+        return ValidationFlow.Continue;
     }
 
     /// <summary>

@@ -181,21 +181,19 @@ sealed record Pet {
 sealed class AddressValidator : IValidatorFor<Address> {
     public AddressValidator() { }
 
-    public void Validate(ref ValidationContext context, Address value) {
-        if (string.IsNullOrWhiteSpace(value.PostalCode)) {
-            context.Add("postalCode", "required", "postalCode is required.");
-        }
-    }
+    public ValidationFlow Validate(ref ValidationContext context, Address value) =>
+        string.IsNullOrWhiteSpace(value.PostalCode)
+            ? context.Report("postalCode", "required", "postalCode is required.")
+            : ValidationFlow.Continue;
 }
 
 sealed class ToyValidator : IValidatorFor<Toy> {
     public ToyValidator() { }
 
-    public void Validate(ref ValidationContext context, Toy value) {
-        if (string.IsNullOrWhiteSpace(value.Name)) {
-            context.Add("name", "required", "name is required.");
-        }
-    }
+    public ValidationFlow Validate(ref ValidationContext context, Toy value) =>
+        string.IsNullOrWhiteSpace(value.Name)
+            ? context.Report("name", "required", "name is required.")
+            : ValidationFlow.Continue;
 }
 
 sealed class PetValidator : IValidatorFor<Pet> {
@@ -215,30 +213,31 @@ sealed class PetValidator : IValidatorFor<Pet> {
     private IValidatorFor<Toy>[] ToysValidators =>
         _toys ??= new IValidatorFor<Toy>[] { new ToyValidator() };
 
-    public void Validate(ref ValidationContext context, Pet value) {
-        if (string.IsNullOrWhiteSpace(value.Name)) {
-            context.Add("name", "required", "name is required.");
-        }
+    public ValidationFlow Validate(ref ValidationContext context, Pet value) {
+        if (string.IsNullOrWhiteSpace(value.Name) &&
+            context.Report("name", "required", "name is required.").ShouldStop) return ValidationFlow.Stop;
 
         if (value.Home is { } home) {
             var nested = context.Push("home");
             var hv = HomeValidators;
-            for (var v = 0; v < hv.Length; v++) hv[v].Validate(ref nested, home);
+            for (var v = 0; v < hv.Length; v++)
+                if (hv[v].Validate(ref nested, home).ShouldStop) return ValidationFlow.Stop;
         }
 
-        if (!ConstraintChecks.AllUnique(value.Codes)) {
-            context.AddUniqueItems("codes");
-        }
+        if (!ConstraintChecks.AllUnique(value.Codes) &&
+            context.ReportUniqueItems("codes").ShouldStop) return ValidationFlow.Stop;
 
-        if (!ConstraintChecks.IsMultipleOf(value.Ratio, 0.01m)) {
-            context.AddMultipleOf("ratio", 0.01m);
-        }
+        if (!ConstraintChecks.IsMultipleOf(value.Ratio, 0.01m) &&
+            context.ReportMultipleOf("ratio", 0.01m).ShouldStop) return ValidationFlow.Stop;
 
         for (var i = 0; i < value.Toys.Count; i++) {
             var item = context.PushIndex("toys", i);
             var tv = ToysValidators;
-            for (var v = 0; v < tv.Length; v++) tv[v].Validate(ref item, value.Toys[i]);
+            for (var v = 0; v < tv.Length; v++)
+                if (tv[v].Validate(ref item, value.Toys[i]).ShouldStop) return ValidationFlow.Stop;
         }
+
+        return ValidationFlow.Continue;
     }
 }
 
@@ -248,7 +247,7 @@ sealed class PetBusinessRule : IAsyncValidatorFor<Pet> {
 
         await Task.Yield();
 
-        home.Add("postalCode", "unknown", "postal code not recognised.");
+        home.Report("postalCode", "unknown", "postal code not recognised.");
     }
 }
 EOF

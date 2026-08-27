@@ -176,9 +176,10 @@ var runner = scope.ServiceProvider.GetRequiredService<ValidationRunner<Pet>>();
 var result = runner.Validate(new Pet { Home = new Address { PostalCode = "SW1" } });
 
 public sealed class AddressBlocklistValidator : IValidatorFor<Address> {
-    public void Validate(ref ValidationContext context, Address value) {
-        if (value.PostalCode == "SW1") context.Add("postalCode", "blocked", "postal code is blocked.");
-    }
+    public ValidationFlow Validate(ref ValidationContext context, Address value) =>
+        value.PostalCode == "SW1"
+            ? context.Report("postalCode", "blocked", "postal code is blocked.")
+            : ValidationFlow.Continue;
 }
 ```
 
@@ -212,7 +213,7 @@ policy. A hand-written validator has to say the same thing — if the model carr
 `[JsonPropertyName("postal_code")]`, write:
 
 ```csharp
-context.Add("postal_code", "blocked", "postal code is blocked.");   // not "postalCode"
+context.Report("postal_code", "blocked", "postal code is blocked.");   // not "postalCode"
 ```
 
 Otherwise one field arrives under two names depending on which rule failed. The runtime cannot check

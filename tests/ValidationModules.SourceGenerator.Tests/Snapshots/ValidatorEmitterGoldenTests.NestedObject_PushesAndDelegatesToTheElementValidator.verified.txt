@@ -52,8 +52,10 @@ public sealed partial class AddressValidator : IValidatorFor<global::Sample.Addr
 
     public AddressValidator() { }
 
-    public void Validate(ref ValidationContext ctx, global::Sample.Address value) {
-        if (string.IsNullOrWhiteSpace(value.Street)) ctx.AddRequired("street");
+    public ValidationFlow Validate(ref ValidationContext ctx, global::Sample.Address value) {
+        if (string.IsNullOrWhiteSpace(value.Street) && ctx.ReportRequired("street").ShouldStop) return ValidationFlow.Stop;
+
+        return ValidationFlow.Continue;
     }
 
     /// <summary>
@@ -93,15 +95,17 @@ public sealed partial class PetValidator : IValidatorFor<global::Sample.Pet> {
     private IValidatorFor<global::Sample.Address>[] HomeValidators =>
         _homeValidators ??= new IValidatorFor<global::Sample.Address>[] { new global::Sample.AddressValidator() };
 
-    public void Validate(ref ValidationContext ctx, global::Sample.Pet value) {
-        if (string.IsNullOrWhiteSpace(value.Name)) ctx.AddRequired("name");
+    public ValidationFlow Validate(ref ValidationContext ctx, global::Sample.Pet value) {
+        if (string.IsNullOrWhiteSpace(value.Name) && ctx.ReportRequired("name").ShouldStop) return ValidationFlow.Stop;
         if (value.Home is { } nestedHome) {
             var ctxHome = ctx.Push("home");
             var validatorsHome = HomeValidators;
             for (var vi = 0; vi < validatorsHome.Length; vi++) {
-                validatorsHome[vi].Validate(ref ctxHome, nestedHome);
+                if (validatorsHome[vi].Validate(ref ctxHome, nestedHome).ShouldStop) return ValidationFlow.Stop;
             }
         }
+
+        return ValidationFlow.Continue;
     }
 
     /// <summary>

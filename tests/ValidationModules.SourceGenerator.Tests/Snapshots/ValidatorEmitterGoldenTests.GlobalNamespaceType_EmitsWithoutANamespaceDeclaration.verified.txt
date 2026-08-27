@@ -48,8 +48,10 @@ public sealed partial class PetValidator : IValidatorFor<global::Pet> {
 
     public PetValidator() { }
 
-    public void Validate(ref ValidationContext ctx, global::Pet value) {
-        if (string.IsNullOrWhiteSpace(value.Name)) ctx.AddRequired("name");
+    public ValidationFlow Validate(ref ValidationContext ctx, global::Pet value) {
+        if (string.IsNullOrWhiteSpace(value.Name) && ctx.ReportRequired("name").ShouldStop) return ValidationFlow.Stop;
+
+        return ValidationFlow.Continue;
     }
 
     /// <summary>
