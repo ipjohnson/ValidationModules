@@ -196,7 +196,15 @@ public sealed class AttributeFrontEnd {
             if (validateNested) {
                 ReportRulelessNestedTarget(property);
 
-                if (!stated && NestedTargetOf(property) is { } target && CanHaveSubtypes(target)) {
+                var target = NestedTargetOf(property);
+
+                if (target is not null && !CanHaveSubtypes(target)) {
+                    if (polymorphism == PolymorphismMode.Runtime) {
+                        Report(
+                            ValidationDiagnostics.RuntimePolymorphismOnClosedType, property,
+                            target.Name, target.IsValueType ? "a value type" : "sealed");
+                    }
+                } else if (!stated && target is not null) {
                     Report(
                         ValidationDiagnostics.UnsealedNestedTargetHasNoMode, property,
                         target.Name, property.Name);

@@ -91,13 +91,23 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             .Select(static (input, _) => BuildModels(input.Left.Left, input.Left.Right, input.Right));
 
         context.RegisterSourceOutput(models, static (production, results) => {
+            // An IDynamicValidator adapter is only worth emitting for an assembly that actually
+            // dispatches dynamically. Registering one per validated type roots every adapter, so
+            // ILC cannot trim them - which would charge every consumer for a mode most never use.
+            // Emitted for all of this assembly's types once any of them needs it, so that a miss
+            // still means "this assembly never registered" rather than "this type had no rules".
+            var dispatchesDynamically = results.Any(result =>
+                result.Model is { } model
+                && model.Properties.Any(property => property.Polymorphism == PolymorphismMode.Runtime));
+
             foreach (var result in results) {
                 foreach (var diagnostic in result.Diagnostics) {
                     production.ReportDiagnostic(diagnostic);
                 }
 
                 if (result.Model is { } model) {
-                    production.AddSource(HintNameFor(model), new ValidatorEmitter().Emit(model));
+                    production.AddSource(
+                        HintNameFor(model), new ValidatorEmitter().Emit(model, dispatchesDynamically));
                 }
 
                 if (result.Predicates is { } predicates) {
@@ -134,7 +144,11 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
                 .ThenBy(model => model.ValidatorName, StringComparer.Ordinal)
                 .ToArray();
 
-            if (new RegistrationEmitter().Emit(ordered, mode, ns, generatorOptions.Naming) is { } source) {
+            var withAdapters = ordered.Any(model =>
+                model.Properties.Any(property => property.Polymorphism == PolymorphismMode.Runtime));
+
+            if (new RegistrationEmitter().Emit(
+                    ordered, mode, ns, generatorOptions.Naming, withAdapters) is { } source) {
                 production.AddSource("GeneratedValidatorRegistration.g.cs", source);
             }
         });

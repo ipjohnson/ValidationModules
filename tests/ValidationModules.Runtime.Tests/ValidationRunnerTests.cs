@@ -117,12 +117,14 @@ public class ValidationRunnerTests {
             best = Math.Min(best, GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        // A clean pass still allocates the collector itself, which is 48 bytes and deliberate -
+        // A clean pass still allocates the collector itself, which is 56 bytes and deliberate -
         // see ValidationErrorCollector's remarks on why pooling was dropped. It carries the
-        // monotonic path stamp that lets a context detect an overwritten path, which is what took
-        // it from 40 to 48. What must not be here is a per-call enumerator on top of it, or the
-        // path buffer - that is rented, not allocated.
-        Assert.Equal(48 * 500, best);
+        // monotonic path stamp that lets a context detect an overwritten path, which took it from
+        // 40 to 48, and the IServiceProvider a Runtime-polymorphic descent resolves through, which
+        // took it from 48 to 56. Constructor-only is what makes that field the scope's, so a
+        // collector cannot be re-armed for a different one. What must not be here is a per-call
+        // enumerator on top of it, or the path buffer - that is rented, not allocated.
+        Assert.Equal(56 * 500, best);
     }
 
     /// <summary>A validator that finds nothing, so the pass stays on its clean path.</summary>

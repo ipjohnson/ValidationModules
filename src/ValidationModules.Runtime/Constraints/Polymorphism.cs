@@ -42,9 +42,26 @@ public enum Polymorphism {
     /// </remarks>
     CompileTime,
 
-    // Runtime - resolve a validator for the value's runtime type from the container - lands with
-    // the machinery behind it rather than ahead of it. Adding an enum member is source- and
-    // binary-compatible, so there is nothing to gain by publishing one now whose only behaviour
-    // would be a build error, and that is a failure mode IMPLEMENTATION-PLAN.md §17 calls out by
-    // name. See docs/design/CONDITIONS-AND-POLYMORPHISM.md, phase 6.
+    /// <summary>
+    /// Resolve a validator for the value's runtime type from the container.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A <c>GetType()</c> and a dictionary lookup - a method-table read and a handle compare. No
+    /// <c>MakeGenericType</c>, no <c>Activator</c>, no scanning: the assembly that declares a type
+    /// knows it statically and registers an adapter for it, so this stays AOT- and trim-clean.
+    /// </para>
+    /// <para>
+    /// Unlike <see cref="CompileTime"/> this composes - a separately registered
+    /// <c>IValidatorFor&lt;T&gt;</c> for the runtime type runs alongside the generated one, because
+    /// the adapter takes the injected set rather than constructing its own.
+    /// </para>
+    /// <para>
+    /// There is no fallback, deliberately - not to <see cref="CompileTime"/>, not to the declared
+    /// type. A validator that behaved one way with a container and another way without one would be
+    /// another context-dependent silent change. A missing provider throws, naming the property and
+    /// the fix.
+    /// </para>
+    /// </remarks>
+    Runtime,
 }

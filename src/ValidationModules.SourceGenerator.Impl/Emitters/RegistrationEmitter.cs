@@ -46,7 +46,8 @@ public sealed class RegistrationEmitter {
         IReadOnlyList<ValidatedTypeModel> models,
         RegistrationMode mode,
         string assemblyNamespace,
-        string? fieldNamer = null) {
+        string? fieldNamer = null,
+        bool withDynamicAdapters = false) {
 
         if (models.Count == 0 || mode == RegistrationMode.None) {
             return null;
@@ -59,7 +60,7 @@ public sealed class RegistrationEmitter {
 
         // Block-scoped, because the extension belongs in the DI namespace by convention and the
         // module belongs beside the consumer's own types, and both land in this one file.
-        EmitExtension(builder, models, assemblyNamespace, fieldNamer);
+        EmitExtension(builder, models, assemblyNamespace, fieldNamer, withDynamicAdapters);
 
         if (mode == RegistrationMode.DependencyModules) {
             builder.AppendLine();
@@ -70,7 +71,11 @@ public sealed class RegistrationEmitter {
     }
 
     private static void EmitExtension(
-        StringBuilder builder, IReadOnlyList<ValidatedTypeModel> models, string ns, string? fieldNamer) {
+        StringBuilder builder,
+        IReadOnlyList<ValidatedTypeModel> models,
+        string ns,
+        string? fieldNamer,
+        bool withDynamicAdapters) {
 
         builder.AppendLine("namespace Microsoft.Extensions.DependencyInjection {");
         builder.AppendLine("    using global::Microsoft.Extensions.DependencyInjection.Extensions;");
@@ -102,6 +107,26 @@ public sealed class RegistrationEmitter {
         }
 
         builder.AppendLine();
+
+        // The adapters a Polymorphism.Runtime descent looks up. Emitted for every validated type in
+        // an assembly that dispatches dynamically, and for none at all in one that does not: a
+        // registration roots its adapter, so charging every consumer for a mode most never use is
+        // not free. Within a dispatching assembly the set is complete, so a registry miss means
+        // "that assembly never registered" and never "that type had no rules".
+        if (withDynamicAdapters) {
+            foreach (var model in models) {
+                builder.AppendLine(
+                    $"            services.AddSingleton<IDynamicValidator, {QualifiedAdapter(model)}>();");
+            }
+
+            builder.AppendLine();
+            builder.AppendLine("            // TryAdd and a factory: every assembly's registration wants the same registry,");
+            builder.AppendLine("            // built once over whatever adapters all of them contributed. A factory rather");
+            builder.AppendLine("            // than a type so nothing is constructed reflectively under Native AOT.");
+            builder.AppendLine("            services.TryAddSingleton(provider =>");
+            builder.AppendLine("                new DynamicValidatorRegistry(provider.GetServices<IDynamicValidator>()));");
+            builder.AppendLine();
+        }
 
         // Closed per type rather than an open generic: AddScoped(typeof(ValidationRunner<>)) would
         // have MS.DI construct it reflectively, which a Native AOT publish cannot do.
@@ -158,6 +183,11 @@ public sealed class RegistrationEmitter {
         "SnakeCase" => "SnakeCaseFieldNamer",
         _ => "CamelCaseFieldNamer",
     };
+
+    private static string QualifiedAdapter(ValidatedTypeModel model) =>
+        model.Namespace.Length == 0
+            ? $"global::{model.TypeName}DynamicValidator"
+            : $"global::{model.Namespace}.{model.TypeName}DynamicValidator";
 
     private static string Qualified(ValidatedTypeModel model) =>
         model.Namespace.Length == 0

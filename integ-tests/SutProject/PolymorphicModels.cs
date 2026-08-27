@@ -41,6 +41,16 @@ public sealed record DeclaredOnlyCheckout {
     public Payment? Payment { get; init; }
 }
 
+/// <summary>
+/// The same hierarchy dispatched through the container rather than through a compile-time switch.
+/// Unlike CompileTime, this composes: a separately registered validator for the runtime type runs
+/// alongside the generated one.
+/// </summary>
+public sealed record DynamicCheckout {
+    [ValidateNested(Polymorphism.Runtime)]
+    public Payment? Payment { get; init; }
+}
+
 public sealed record Basketful {
     [ValidateNested(Polymorphism.CompileTime)]
     public List<Payment> Payments { get; init; } = new();

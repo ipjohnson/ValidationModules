@@ -94,7 +94,10 @@ public static class ValidationModulesServiceCollectionExtensions {
 
         services.TryAdd(ServiceDescriptor.Scoped(static provider => new ValidationRunner<T>(
             provider.GetServices<IValidatorFor<T>>(),
-            provider.GetServices<IAsyncValidatorFor<T>>())));
+            provider.GetServices<IAsyncValidatorFor<T>>(),
+            // The scope's own provider, so a validation pass reaches request services rather than
+            // root ones - and so a Polymorphism.Runtime descent has something to resolve through.
+            provider)));
 
         return services;
     }

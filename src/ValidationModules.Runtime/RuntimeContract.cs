@@ -46,10 +46,16 @@ public static class RuntimeContract {
     // AddMultipleOf/AddUniqueItems that a contract-2 runtime does not have. The same bump covers
     // AddRangeAtLeast/AddRangeAtMost, which partially-bounded [Range] needs.
 
+    // 3 -> 4: ValidationContext.Services arrived, and with it Polymorphism.Runtime - a descent that
+    // resolves a validator for the value's runtime type through the provider on the collector. The
+    // emitter now writes calls to DynamicValidation, which a contract-3 runtime does not have, and
+    // reads ctx.Services, which it also does not have. Both would fail inside generated code, which
+    // is what VM0040 exists to prevent.
+
     /// <summary>
     /// The contract this runtime implements. Compared against
     /// <c>EmitterContract.RequiredRuntimeContract</c> by the generator, and against
     /// <c>$(ValidationModulesRuntimeContract)</c> by build tasks driving the emitter.
     /// </summary>
-    public const int Version = 3;
+    public const int Version = 4;
 }
