@@ -93,7 +93,12 @@ public sealed class ValidationRunner<T> {
         try {
             RunStructural(collector, path, value);
 
-            if (!collector.HasErrors) {
+            // Blocking errors, not any error. A structural rule that reports a warning has
+            // accepted the value - the error model says so, and IsValid agrees - so gating on
+            // HasErrors here silently skipped every business rule for a request that was valid.
+            // The gate itself is deliberate: do not spend a round trip checking whether a policy
+            // number exists when the policy number is malformed.
+            if (!collector.HasBlockingErrors) {
                 var context = new ValidationContext(collector, path);
 
                 for (var i = 0; i < _business.Length; i++) {
