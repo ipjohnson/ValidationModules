@@ -228,3 +228,37 @@ public sealed class MeteredRules : IValidationRulesFor<Metered> {
         });
     }
 }
+
+/// <summary>
+/// Private constants of the types whose literals need care, referenced from a lifted predicate and
+/// from a condition. Compiled and run rather than snapshotted, because the failure mode is a literal
+/// that reads back as a different value or a different type.
+/// </summary>
+public sealed record Quote {
+    public decimal Amount { get; init; }
+
+    public double Ratio { get; init; }
+
+    public QuoteTier Tier { get; init; }
+}
+
+public enum QuoteTier { Standard = 0, Premium = 1 }
+
+public sealed class QuoteRules : IValidationRulesFor<Quote> {
+
+    // A decimal: without the suffix this is a double literal, and the comparison would not compile.
+    private const decimal Ceiling = 1000.50m;
+
+    // Seventeen significant digits: the default ToString on a .NET Framework host would drop the
+    // last two, and the rule would then accept a value it is meant to reject.
+    private const double MaxRatio = 1.2345678901234567;
+
+    // An enum constant is carried as its underlying number, so the cast is what preserves it.
+    private const QuoteTier Restricted = QuoteTier.Premium;
+
+    public void Describe(ValidationRules<Quote> rules) {
+        rules.Ensure(x => x.Amount <= Ceiling, code: "ceiling");
+        rules.Ensure(x => x.Ratio <= MaxRatio, code: "ratio");
+        rules.Ensure(x => x.Amount > 0m, code: "positive").When(x => x.Tier == Restricted);
+    }
+}

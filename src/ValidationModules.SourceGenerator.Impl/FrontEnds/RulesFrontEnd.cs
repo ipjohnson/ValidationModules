@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -370,7 +371,7 @@ public sealed class RulesFrontEnd {
 
             var field = ExplicitField(arguments) ?? _owner._fieldNamer(anchor.Name);
             var lifted = $"Rule{_liftedRules++}";
-            _predicates.Add(new LiftedPredicate(lifted, predicate));
+            _predicates.Add(new LiftedPredicate(lifted, predicate, LiftBody(predicate)));
 
             var accessor = $"global::{Namespace()}{_rulesClass.Name}_Rules.{lifted}";
 
@@ -573,9 +574,185 @@ public sealed class RulesFrontEnd {
         /// <summary>
         /// Lifts a condition lambda into a static method and returns the call to it.
         /// </summary>
+        /// <summary>
+        /// The predicate's body, rewritten so that it compiles where it is going to be written.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A predicate is lifted into <c>{RulesClass}_Rules</c> so it keeps its declaring file's
+        /// using directives. The cost is that a name which resolved inside the rules class does not
+        /// resolve there: <c>x =&gt; x.Count &lt;= Max</c> becomes CS0103, whatever <c>Max</c>'s
+        /// accessibility, because the lifted method is simply not in that scope.
+        /// </para>
+        /// <para>
+        /// So a bare reference to one of the rules class's own members is qualified. That reads the
+        /// real member rather than a copy of it, which is what keeps the two engines agreeing: the
+        /// described engine runs the original lambda, and it must see the same value.
+        /// </para>
+        /// <para>
+        /// A <c>private</c> member cannot be reached even qualified. A constant is carried across by
+        /// value - C# already bakes a const at every use site, so both engines see the same number
+        /// either way - and anything else is VM0078.
+        /// </para>
+        /// </remarks>
+        private string LiftBody(ExpressionSyntax lambda) {
+            var body = lambda switch {
+                SimpleLambdaExpressionSyntax { ExpressionBody: { } expression } => expression,
+                ParenthesizedLambdaExpressionSyntax { ExpressionBody: { } expression } => expression,
+                _ => null,
+            };
+
+            if (body is null) {
+                return "true";
+            }
+
+            var qualified = _rulesClass.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            var edits = new List<(int Start, int Length, string Text)>();
+
+            foreach (var identifier in body.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>()) {
+                // The right-hand side of a member access is already anchored by whatever precedes
+                // it; only a bare name has lost its scope.
+                if (identifier.Parent is MemberAccessExpressionSyntax access && access.Name == identifier) {
+                    continue;
+                }
+
+                if (_model.GetSymbolInfo(identifier).Symbol is not { IsStatic: true } symbol ||
+                    symbol.ContainingType is not { } declaring ||
+                    !DeclaredByTheRulesClass(declaring)) {
+                    continue;
+                }
+
+                var start = identifier.Span.Start - body.Span.Start;
+
+                if (_model.Compilation.IsSymbolAccessibleWithin(symbol, _rulesClass.ContainingAssembly)) {
+                    edits.Add((start, identifier.Span.Length, $"{qualified}.{identifier.Identifier.Text}"));
+                    continue;
+                }
+
+                if (ConstantText(identifier) is { } literal) {
+                    edits.Add((start, identifier.Span.Length, literal));
+                    continue;
+                }
+
+                _owner.Report(
+                    ValidationDiagnostics.PredicateReferencesPrivateMember, identifier,
+                    $"{_rulesClass.Name}.{identifier.Identifier.Text}");
+            }
+
+            var text = body.ToString();
+
+            // Right to left, so an earlier edit does not move a later one's offsets.
+            foreach (var (start, length, replacement) in edits.OrderByDescending(edit => edit.Start)) {
+                text = text.Remove(start, length).Insert(start, replacement);
+            }
+
+            return text;
+        }
+
+        private bool DeclaredByTheRulesClass(INamedTypeSymbol declaring) {
+            for (INamedTypeSymbol? current = _rulesClass; current is not null; current = current.BaseType) {
+                if (SymbolEqualityComparer.Default.Equals(current, declaring)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// A constant rendered as a literal that reads back as the same value <i>and</i> the same
+        /// type, or null when it cannot be.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Every C# constant type can be written back exactly; what has to be got right is the
+        /// suffix and the round-trip format. <c>SymbolDisplay.FormatPrimitive</c> alone is not
+        /// enough - it renders <c>1.5m</c> as <c>1.5</c>, which is a <c>double</c> literal and so a
+        /// different type, and it renders an enum as a bare number.
+        /// </para>
+        /// <para>
+        /// Floating point uses <c>G17</c>/<c>G9</c> rather than the default: shortest-round-trip
+        /// formatting only became the default in .NET Core 3.0, and this assembly is netstandard2.0
+        /// and may be loaded into a .NET Framework host. Both formats round-trip everywhere.
+        /// </para>
+        /// <para>
+        /// There is no fidelity question about doing this at all: C# bakes a constant into every use
+        /// site already, so the lifted copy and the original are the same value by the language's
+        /// own rules rather than by our arithmetic.
+        /// </para>
+        /// </remarks>
+        private string? ConstantText(ExpressionSyntax identifier) {
+            var constant = _model.GetConstantValue(identifier);
+
+            if (!constant.HasValue) {
+                return null;
+            }
+
+            if (constant.Value is not { } value) {
+                return "null";
+            }
+
+            // An enum constant arrives as its underlying integral value, so the type is what makes
+            // it read back as itself. A cast rather than a member name, because a value need not
+            // correspond to any declared member - a [Flags] combination is an ordinary constant.
+            if (_model.GetTypeInfo(identifier).Type is { TypeKind: TypeKind.Enum } enumType) {
+                return _model.Compilation.IsSymbolAccessibleWithin(enumType, _rulesClass.ContainingAssembly)
+                    && Primitive(value) is { } underlying
+                        ? $"({enumType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}){underlying}"
+                        : null;
+            }
+
+            return Primitive(value);
+        }
+
+        private static string? Primitive(object value) => value switch {
+            bool or string or char => SymbolDisplay.FormatPrimitive(value, quoteStrings: true, useHexadecimalNumbers: false),
+            sbyte or byte or short or ushort or int =>
+                SymbolDisplay.FormatPrimitive(value, quoteStrings: false, useHexadecimalNumbers: false),
+            uint number => $"{number.ToString(CultureInfo.InvariantCulture)}U",
+            long number => $"{number.ToString(CultureInfo.InvariantCulture)}L",
+            ulong number => $"{number.ToString(CultureInfo.InvariantCulture)}UL",
+            float number => Floating(
+                number, float.IsNaN(number), float.IsPositiveInfinity(number), float.IsNegativeInfinity(number),
+                "float", number.ToString("G9", CultureInfo.InvariantCulture), "F"),
+            double number => Floating(
+                number, double.IsNaN(number), double.IsPositiveInfinity(number), double.IsNegativeInfinity(number),
+                "double", number.ToString("G17", CultureInfo.InvariantCulture), "D"),
+
+            // ToString round-trips a decimal exactly, scale included - 1.50m stays 1.50m rather
+            // than collapsing to 1.5m, which is the same value but a different representation.
+            decimal number => $"{number.ToString(CultureInfo.InvariantCulture)}m",
+            _ => null,
+        };
+
+        /// <summary>
+        /// A floating-point literal, or the named member for the three values that have no literal.
+        /// </summary>
+        private static string Floating(
+            object value, bool nan, bool positiveInfinity, bool negativeInfinity,
+            string type, string formatted, string suffix) {
+
+            _ = value;
+
+            if (nan) {
+                return $"{type}.NaN";
+            }
+
+            if (positiveInfinity) {
+                return $"{type}.PositiveInfinity";
+            }
+
+            if (negativeInfinity) {
+                return $"{type}.NegativeInfinity";
+            }
+
+            // The suffix is not decoration: G17 renders 10.0 as "10", which without it is an int.
+            return formatted + suffix;
+        }
+
         private string LiftCall(ExpressionSyntax predicate) {
             var lifted = $"Cond{_liftedConditions++}";
-            _predicates.Add(new LiftedPredicate(lifted, predicate));
+            _predicates.Add(new LiftedPredicate(lifted, predicate, LiftBody(predicate)));
 
             return $"global::{Namespace()}{_rulesClass.Name}_Rules.{lifted}(value)";
         }
@@ -797,7 +974,14 @@ public sealed record DeclaredRule(
     string? Condition = null);
 
 /// <summary>A predicate to be lifted into a static method the validator can call.</summary>
-public sealed record LiftedPredicate(string MethodName, ExpressionSyntax Lambda);
+/// <param name="MethodName">The lifted method's name.</param>
+/// <param name="Lambda">The declaration, which still supplies the parameter name.</param>
+/// <param name="Body">
+/// The body as it should be written into the lifted class: bare references to the rules class's own
+/// members qualified, and private constants replaced by their value. Resolved in the front end
+/// because that is where the semantic model is.
+/// </param>
+public sealed record LiftedPredicate(string MethodName, ExpressionSyntax Lambda, string Body);
 
 /// <summary>Everything one rules class declared, before it is merged with the target's attributes.</summary>
 public sealed record RulesDeclaration(

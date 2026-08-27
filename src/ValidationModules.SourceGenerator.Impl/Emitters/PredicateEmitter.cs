@@ -69,7 +69,7 @@ public sealed class PredicateEmitter {
 
         foreach (var predicate in declaration.Predicates) {
             var parameter = ParameterOf(predicate.Lambda) ?? "value";
-            var body = BodyOf(predicate.Lambda);
+            var body = predicate.Body;
 
             builder.AppendLine();
             builder.AppendLine($"    public static bool {predicate.MethodName}({target} {parameter}) =>");
@@ -115,9 +115,4 @@ public sealed class PredicateEmitter {
         _ => null,
     };
 
-    private static string BodyOf(ExpressionSyntax lambda) => lambda switch {
-        SimpleLambdaExpressionSyntax { ExpressionBody: { } body } => body.ToString(),
-        ParenthesizedLambdaExpressionSyntax { ExpressionBody: { } body } => body.ToString(),
-        _ => "true",
-    };
 }

@@ -45,3 +45,4 @@ VM0076 | ValidationModules.Usage | Warning | A conditional block declares no rul
 VM0077 | ValidationModules.Usage | Warning | A chained When/Unless applies to no rules.
 VM0032 | ValidationModules.Usage | Error | Polymorphism.Runtime was applied to a sealed or value type.
 VM0034 | ValidationModules.Usage | Warning | A When/Unless condition folds to a constant.
+VM0078 | ValidationModules.Usage | Error | A lifted predicate references a private member of the rules class.

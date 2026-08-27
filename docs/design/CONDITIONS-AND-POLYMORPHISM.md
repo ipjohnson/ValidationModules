@@ -84,7 +84,7 @@ happens once at the end.
 | **5** | Stages B + C — chained and block DSL, runtime condition array, VM0076/77 | When §3, Stages B, C | Almost disjoint from polymorphism — `RulesFrontEnd`, `PropertyRules`, `ValidationRules`, `CompiledRules`, new `ConditionalRules`. |
 | **6** | Part C + `Polymorphism.Runtime` — `ctx.Services`, `IDynamicValidator`, VM0032, contract 3 → 4 | Poly Part C | The only contract bump in the programme, taken last so one bump covers everything. |
 | **7** | VM0034 constant folding, website reference, migration note, size re-measure | When Stage D | VM0034 needs a constant-folding pass and is the one genuinely new analysis. |
-| **4b** | cross-assembly subtype discovery via a `[GeneratedValidatorFor]` manifest | Poly Part B | Deferred out of phase 4 and still open. `CompileTime` dispatches over subtypes declared in the compilation; a hierarchy spanning assemblies wants `Runtime` until this lands. |
+| **4b** | cross-assembly subtype discovery via a `[GeneratedValidatorFor]` manifest | Poly Part B | **Recommended dropped** once `Runtime` shipped — see below. |
 
 Diagnostics land with the phase that introduces them, not batched into Phase 7.
 
@@ -116,10 +116,23 @@ Every phase ends on `dotnet build -c Release && dotnet test -c Release`, solutio
 
 Phases 1-7 are on `main`'s history as seven commits. Two things are worth carrying forward:
 
-**Deferred.** Cross-assembly subtype discovery (phase 4b above). `Polymorphism.CompileTime` inverts
-the base chain over the compilation, so a subtype declared in a referenced assembly is not a
-dispatch target. `Polymorphism.Runtime` covers that case today, because it resolves by runtime type
-through the container rather than by a switch fixed at build time.
+**Dropped: phase 4b.** The manifest was specified so that `CompileTime` could dispatch over
+subtypes declared in referenced assemblies. Two things make it a poor investment now:
+
+- **`Runtime` already covers the case properly.** It resolves by runtime type through the container,
+  so a subtype in any registered assembly is dispatched to without the switch having to know it
+  exists at build time.
+- **The manifest could never close the gap anyway.** It would let a switch see subtypes *upstream*,
+  in assemblies this one references. A subtype added *downstream* — a consumer writing
+  `Crypto : Payment` against our package — can never appear in a switch compiled before it was
+  written. That is inherent to a compile-time switch, not an implementation shortfall, so 4b would
+  turn a clear boundary ("the compilation") into a fuzzy one ("the compilation, plus references")
+  while leaving the sharp edge in place.
+
+What that leaves: `CompileTime` dispatches over subtypes declared in the compilation, full stop —
+which is a property of the mode rather than a defect. A hierarchy spanning assemblies uses
+`Runtime`. The residual case 4b would serve is a *container-free* consumer with an upstream
+hierarchy; it stays additive if that turns out to matter.
 
 **Decided along the way, and not in either source spec:**
 
@@ -140,6 +153,16 @@ through the container rather than by a switch fixed at build time.
   container that will not build.
 - `Polymorphism.Runtime` was withheld from the published enum until phase 6 built it, rather than
   shipping in phase 4 as a member whose only behaviour was a build error.
+- A predicate lifted into `{RulesClass}_Rules` loses the rules class's scope, so a bare reference to
+  one of its members was CS0103 in generated code — for `public` members as readily as `private`
+  ones, which made it read as an accessibility problem when it was a qualification problem. Bare
+  references are now qualified, which reads the real member rather than copying it, so the described
+  engine running the original lambda still sees the same value. A `private` member cannot be reached
+  even qualified: a constant of any type crosses by value (C# bakes those anyway, so the copy is the
+  original by the language's own rules) and anything else is VM0078. Writing a constant back needs
+  the suffix and round-trip format that preserve its type as well as its value - `G17`/`G9` rather
+  than the default, since shortest-round-trip `ToString` only became the default in .NET Core 3.0
+  and this generator is netstandard2.0.
 
 ## 7. What is not being built
 
