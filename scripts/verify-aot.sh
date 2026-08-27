@@ -276,7 +276,7 @@ fi
 
 "${BINARY}"
 
-echo "Binary size: $(du -h "${BINARY}" | cut -f1)"
+echo "Binary size: $(du -h "${BINARY}" | cut -f1) ($(wc -c < "${BINARY}" | tr -d " ") bytes)"
 
 # ---------------------------------------------------------------------------
 # Second probe: minimal, and minimal on purpose.

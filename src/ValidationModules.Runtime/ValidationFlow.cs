@@ -44,15 +44,21 @@ public readonly struct ValidationFlow : IEquatable<ValidationFlow> {
     /// <summary>Whether the caller should return without evaluating anything further.</summary>
     public bool ShouldStop => _stop;
 
+    /// <inheritdoc/>
     public bool Equals(ValidationFlow other) => _stop == other._stop;
 
+    /// <inheritdoc/>
     public override bool Equals(object? obj) => obj is ValidationFlow other && Equals(other);
 
+    /// <inheritdoc/>
     public override int GetHashCode() => _stop.GetHashCode();
 
+    /// <summary><c>Stop</c> or <c>Continue</c>, so a failing assertion names which it was.</summary>
     public override string ToString() => _stop ? nameof(Stop) : nameof(Continue);
 
+    /// <summary>Whether two flows say the same thing.</summary>
     public static bool operator ==(ValidationFlow left, ValidationFlow right) => left.Equals(right);
 
+    /// <summary>Whether two flows disagree.</summary>
     public static bool operator !=(ValidationFlow left, ValidationFlow right) => !left.Equals(right);
 }

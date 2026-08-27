@@ -203,7 +203,7 @@ hand-written validator produces errors indistinguishable from a generated one.
 
 ## Stopping at the first failure {#stopping}
 
-Every `Report*` call answers a [`ValidationFlow`](#stopping), and so does `Validate` itself. Under
+Every `Report*` call answers a `ValidationFlow`, and so does `Validate` itself. Under
 the default `ValidationStopMode.CollectAll` the answer is always `ValidationFlow.Continue` and a
 validator that discards it behaves exactly as it always has. Under
 `ValidationStopMode.StopOnFirstError` the first blocking failure answers `ValidationFlow.Stop`, and
