@@ -36,10 +36,10 @@ public class RequiredSuppressionTests {
 
     [Fact]
     public void ContextAdd_NoLongerSuppressesAcrossTheWholePass() {
-        // The rule moved to where a field's rules are composed. Generated code short-circuits with
-        // an else if; a described validator with a field chain. A bare context does neither, so it
-        // records what it is told - which is what stops two positions that render alike from
-        // silencing each other.
+        // The rule moved to where a field's rules are composed. Generated code short-circuits by
+        // testing the required result on each of the field's other constraints; a described
+        // validator with a field chain. A bare context does neither, so it records what it is told -
+        // which is what stops two positions that render alike from silencing each other.
         var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
 

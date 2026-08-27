@@ -53,8 +53,9 @@ public sealed partial class PetValidator : IValidatorFor<global::Sample.Pet> {
     private static readonly Regex SkuPattern0 = new Regex("^[A-Z]{3}$");
 
     public void Validate(ref ValidationContext ctx, global::Sample.Pet value) {
-        if (string.IsNullOrWhiteSpace(value.Name)) ctx.AddRequired("name");
-        else if (value.Name is not null && (value.Name.Length < 1 || value.Name.Length > 100)) ctx.AddStringLength("name", 1, 100);
+        var missingName = string.IsNullOrWhiteSpace(value.Name);
+        if (missingName) ctx.AddRequired("name");
+        if (!missingName && (value.Name is not null && (value.Name.Length < 1 || value.Name.Length > 100))) ctx.AddStringLength("name", 1, 100);
         if ((value.Age < 0 || value.Age > 30)) ctx.AddRange("age", 0, 30);
         if (value.Sku is not null && !SkuPattern0.IsMatch(value.Sku)) ctx.AddPattern("sku");
         if (value.Status is not null && (value.Status != "available" && value.Status != "pending" && value.Status != "sold")) ctx.AddAllowedValues("status", "available, pending, sold");
