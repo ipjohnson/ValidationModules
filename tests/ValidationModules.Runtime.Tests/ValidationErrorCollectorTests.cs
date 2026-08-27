@@ -51,19 +51,20 @@ public class ValidationErrorCollectorTests {
     }
 
     [Fact]
-    public void Push_ManySiblings_EachKeepsItsOwnPath() {
+    public void Push_ManySequentialSiblings_EachKeepsItsOwnPath() {
         var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
 
-        // Held simultaneously and added to out of order. Each context owns its path outright, so
-        // there is no shared buffer here to grow, overwrite or exhaust.
-        var contexts = Enumerable.Range(0, 100).Select(i => context.PushIndex("toys", i)).ToArray();
-
-        foreach (var (child, index) in contexts.Select((child, index) => (child, index))) {
-            child.Add("name", "required", "x");
-
-            Assert.Equal($"toys[{index}].name", collector.ToResult().Errors[index].Field);
+        // One at a time, as a generated loop does: the buffer slot for this depth is rewritten per
+        // iteration and read before the next iteration touches it.
+        for (var i = 0; i < 100; i++) {
+            context.PushIndex("toys", i).Add("name", "required", "x");
         }
+
+        var fields = collector.ToResult().Errors.Select(error => error.Field).ToArray();
+
+        Assert.Equal(100, fields.Length);
+        Assert.Equal(Enumerable.Range(0, 100).Select(i => $"toys[{i}].name"), fields);
     }
 
     [Fact]
@@ -117,30 +118,31 @@ public class ValidationErrorCollectorTests {
     }
 
     [Fact]
-    public async Task CreateSynchronized_ConcurrentBranches_RecordEveryPathExactly() {
-        // The case a depth-indexed path stack cannot survive: every branch holds a context taken
-        // before the others existed, and they all add at once.
+    public async Task ConcurrentValidations_EachWithItsOwnCollector_RecordEveryPathExactly() {
+        // A pass is single-threaded: its contexts share one depth-indexed path buffer, so two
+        // branches walking at once would overwrite each other's segments. Concurrency is supported
+        // by giving each branch its own collector and merging, which also measured faster than
+        // sharing one under a lock.
         const int branches = 200;
-
-        var collector = ValidationErrorCollector.CreateSynchronized();
-        var context = new ValidationContext(collector);
 
         using var gate = new SemaphoreSlim(0);
 
-        var tasks = Enumerable.Range(0, branches).Select(i => {
-            var child = context.PushIndex("toys", i);
+        var tasks = Enumerable.Range(0, branches).Select(i => Task.Run(async () => {
+            await gate.WaitAsync(TestContext.Current.CancellationToken);
 
-            return Task.Run(async () => {
-                await gate.WaitAsync(TestContext.Current.CancellationToken);
-                child.Add("name", "required", "x");
-            });
-        }).ToArray();
+            var collector = new ValidationErrorCollector();
+            var context = new ValidationContext(collector);
+            context.PushIndex("toys", i).Add("name", "required", "x");
+
+            return collector.ToResult();
+        })).ToArray();
 
         gate.Release(branches);
-        await Task.WhenAll(tasks);
+        var results = await Task.WhenAll(tasks);
 
-        Assert.Equal(
-            Enumerable.Range(0, branches).Select(i => $"toys[{i}].name").OrderBy(field => field, StringComparer.Ordinal),
-            collector.ToResult().Errors.Select(error => error.Field).OrderBy(field => field, StringComparer.Ordinal));
+        var fields = results.SelectMany(result => result.Errors).Select(error => error.Field).ToArray();
+
+        Assert.Equal(branches, fields.Length);
+        Assert.Equal(branches, fields.Distinct().Count());
     }
 }

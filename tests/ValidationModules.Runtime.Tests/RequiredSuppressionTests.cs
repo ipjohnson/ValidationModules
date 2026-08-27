@@ -16,15 +16,37 @@ namespace ValidationModules.Runtime.Tests;
 public class RequiredSuppressionTests {
 
     [Fact]
-    public void Add_AfterRequiredOnTheSameField_IsSuppressed() {
+    public void RuleChain_AfterRequiredOnTheSameField_IsSuppressed() {
+        var validator = new DescribedValidator<Pet>(new NameRequiredThenLength());
+
+        var error = Assert.Single(validator.Validate(new Pet()).Errors);
+        Assert.Equal(ValidationCodes.Required, error.Code);
+    }
+
+    [Fact]
+    public void RuleChain_SuppressesEvenWhenTheRulesAreDeclaredApart() {
+        // Build groups a field's rules together regardless of where they were written, so the
+        // chain still sees them as one field.
+        var validator = new DescribedValidator<Pet>(new NameRulesSplitByAnotherField());
+
+        var errors = validator.Validate(new Pet()).Errors;
+
+        Assert.Equal(ValidationCodes.Required, Assert.Single(errors, e => e.Field == "name").Code);
+    }
+
+    [Fact]
+    public void ContextAdd_NoLongerSuppressesAcrossTheWholePass() {
+        // The rule moved to where a field's rules are composed. Generated code short-circuits with
+        // an else if; a described validator with a field chain. A bare context does neither, so it
+        // records what it is told - which is what stops two positions that render alike from
+        // silencing each other.
         var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
 
         context.AddRequired("name");
         context.AddStringLength("name", max: 10);
 
-        var error = Assert.Single(collector.ToResult().Errors);
-        Assert.Equal(ValidationCodes.Required, error.Code);
+        Assert.Equal(2, collector.ToResult().Errors.Count);
     }
 
     [Fact]
@@ -39,15 +61,19 @@ public class RequiredSuppressionTests {
     }
 
     [Fact]
-    public void Add_SecondRequiredOnTheSameField_IsSuppressed() {
-        // Two validators registered for one type both find it missing. One error, not two.
+    public void SiblingsThatRenderToTheSamePathEachKeepTheirError() {
+        // The bug the move fixes. Three different items, one elided rendering, three failures.
         var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
 
-        context.AddRequired("name");
-        context.AddRequired("name");
+        for (var i = 0; i < 3; i++) {
+            context.Push("two").Push("three").PushIndex("items", i).Push("five").AddRequired("req");
+        }
 
-        Assert.Single(collector.ToResult().Errors);
+        var errors = collector.ToResult().Errors;
+
+        Assert.Equal(3, errors.Count);
+        Assert.All(errors, error => Assert.Equal("two...five.req", error.Field));
     }
 
     [Fact]
@@ -121,17 +147,20 @@ public class RequiredSuppressionTests {
     }
 
     [Fact]
-    public void Suppression_SpansValidatorsWithinOnePass() {
+    public void Suppression_NoLongerSpansTwoValidatorsForOneType() {
+        // Narrowed deliberately. Each validator short-circuits its own fields; neither can see
+        // what the other recorded, so a hand-written validator composed with a generated one now
+        // reports alongside it rather than being silenced by it.
         var runner = new ValidationRunner<Pet>([RequiredOnly.Instance, LengthOnly.Instance], []);
 
         var result = runner.Validate(new Pet { Toys = [new Toy { Name = "ball" }] });
 
-        var error = Assert.Single(result.Errors);
-        Assert.Equal(ValidationCodes.Required, error.Code);
+        Assert.Equal(2, result.Errors.Count);
     }
 
     [Fact]
-    public async Task Suppression_SpansTheAsyncBoundary() {
+    public async Task Suppression_NoLongerSpansTheAsyncBoundary() {
+        // Same narrowing: an async validator composes rather than being suppressed by a sync one.
         var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
 
@@ -139,7 +168,7 @@ public class RequiredSuppressionTests {
         await Task.Yield();
         context.AddStringLength("name", max: 10);
 
-        Assert.Single(collector.ToResult().Errors);
+        Assert.Equal(2, collector.ToResult().Errors.Count);
     }
 
     [Fact]
@@ -168,6 +197,19 @@ public class RequiredSuppressionTests {
         }
 
         Assert.Equal(20, collector.ToResult().Errors.Count);
+    }
+
+    private sealed class NameRequiredThenLength : IValidationRulesFor<Pet> {
+        public void Describe(ValidationRules<Pet> rules) =>
+            rules.Required(x => x.Name).Length(5, 10);
+    }
+
+    private sealed class NameRulesSplitByAnotherField : IValidationRulesFor<Pet> {
+        public void Describe(ValidationRules<Pet> rules) {
+            rules.Required(x => x.Name);
+            rules.Required(x => x.Tag);
+            rules.Length(x => x.Name, 5, 10);
+        }
     }
 
     private sealed class RequiredOnly : IValidatorFor<Pet> {

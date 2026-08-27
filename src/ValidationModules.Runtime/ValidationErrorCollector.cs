@@ -27,9 +27,10 @@ namespace ValidationModules;
 /// control flow to express it with. See <c>AddCore</c>.
 /// </para>
 /// <para>
-/// Not thread-safe by default. Use <see cref="CreateSynchronized"/> when concurrent branches add
-/// errors in parallel. The lock now guards only <see cref="Add"/>, so a clean pass never touches it
-/// and descending no longer contends for it whether it is there or not.
+/// <b>A pass is single-threaded.</b> One collector belongs to one validation, and the path buffer
+/// its contexts share is a depth-indexed stack, so two branches walking at once would overwrite
+/// each other's segments. Validate concurrently by giving each branch its own collector and merging
+/// the results - which measured faster than sharing one under a lock in any case.
 /// </para>
 /// </remarks>
 public sealed class ValidationErrorCollector {
@@ -51,7 +52,7 @@ public sealed class ValidationErrorCollector {
     /// is a property of a validation pass rather than of one cursor into it.
     /// </para>
     /// </remarks>
-    public const int MaxDepth = 64;
+    public const int DefaultDepthLimit = 64;
 
     /// <summary>
     /// One recorded failure, and the link to the one recorded before it. A class rather than an
@@ -61,8 +62,6 @@ public sealed class ValidationErrorCollector {
         public ValidationError Error;
         public ErrorNode? Next;
     }
-
-    private readonly object? _gate;
 
     /// <summary>
     /// The most recent failure. The chain runs newest to oldest, which is what lets this be the only
@@ -76,6 +75,8 @@ public sealed class ValidationErrorCollector {
     /// </remarks>
     private ErrorNode? _head;
 
+    private long _stamp;
+
     /// <summary>
     /// Field paths that have already failed <see cref="ValidationCodes.Required"/> at error
     /// severity. Allocated only once something is actually missing, and short in every realistic
@@ -86,11 +87,10 @@ public sealed class ValidationErrorCollector {
     /// <summary>
     /// Creates an unsynchronized collector.
     /// </summary>
-    public ValidationErrorCollector() { }
+    public ValidationErrorCollector() : this(ValidationPathMode.Bounded) { }
 
-    private ValidationErrorCollector(object gate) {
-        _gate = gate;
-    }
+    /// <summary>Creates a collector that renders error paths the given way.</summary>
+    public ValidationErrorCollector(ValidationPathMode pathMode) => PathMode = pathMode;
 
     /// <summary>
     /// Creates a collector that tolerates concurrent adds, for async validators that genuinely fan
@@ -101,7 +101,8 @@ public sealed class ValidationErrorCollector {
     /// The default collector does not synchronize because generated straight-line code never needs
     /// it and the lock would sit on the hot path. Opt in here rather than paying for it everywhere.
     /// </remarks>
-    public static ValidationErrorCollector CreateSynchronized() => new(new object());
+    /// <summary>The path rendering this pass uses. Fixed at construction.</summary>
+    public ValidationPathMode PathMode { get; }
 
     /// <summary>
     /// Whether this pass has recorded any failure, at any severity.
@@ -129,18 +130,32 @@ public sealed class ValidationErrorCollector {
     }
 
     /// <summary>
+    /// An O(1) token that changes whenever an error is recorded. Compared by reference around a
+    /// block to answer "did that add anything", which <see cref="Count"/> would answer in linear
+    /// time - and a rule chain asks it once per field, so linear would compound.
+    /// </summary>
+    internal object? ChangeToken => _head;
+
+    /// <summary>
+    /// The next path-write stamp. Monotonic for the life of the collector, so a context can tell
+    /// whether the segments it walked are still the ones in the buffer.
+    /// </summary>
+    internal long NextStamp() => ++_stamp;
+
+    /// <summary>
+    /// Records an error without consulting the Required suppression rule. Used by
+    /// <see cref="ValidationContext"/>, whose engines short-circuit a failed Required per field
+    /// themselves - the emitter with an <c>else if</c>, the rule builder with a field chain - so a
+    /// second, path-keyed rule here would only ever fire when two positions rendered alike.
+    /// </summary>
+    internal void AddDirect(in ValidationError error) => Record(in error);
+
+    /// <summary>
     /// Adds an error whose field path is already resolved. Used by adapters that receive a flat
     /// field name from another engine rather than walking a path.
     /// </summary>
     public void Add(in ValidationError error) {
-        if (_gate is null) {
-            AddCore(in error);
-            return;
-        }
-
-        lock (_gate) {
-            AddCore(in error);
-        }
+        AddCore(in error);
     }
 
     /// <summary>

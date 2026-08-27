@@ -123,19 +123,25 @@ namespace ValidationModules
     }
     public sealed class ValidationErrorCollector
     {
-        public const int MaxDepth = 64;
+        public const int DefaultDepthLimit = 64;
         public ValidationErrorCollector() { }
+        public ValidationErrorCollector(ValidationModules.ValidationPathMode pathMode) { }
         public int Count { get; }
         public bool HasErrors { get; }
+        public ValidationModules.ValidationPathMode PathMode { get; }
         public void Add(in ValidationModules.ValidationError error) { }
         public void Reset() { }
         public ValidationModules.ValidationResult ToResult() { }
-        public static ValidationModules.ValidationErrorCollector CreateSynchronized() { }
     }
     public sealed class ValidationException : System.Exception
     {
         public ValidationException(ValidationModules.ValidationResult result) { }
         public ValidationModules.ValidationResult Result { get; }
+    }
+    public enum ValidationPathMode
+    {
+        Bounded = 0,
+        Full = 1,
     }
     public sealed class ValidationResult
     {

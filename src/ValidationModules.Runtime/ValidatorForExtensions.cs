@@ -1,3 +1,5 @@
+using System.Buffers;
+
 namespace ValidationModules;
 
 /// <summary>
@@ -18,11 +20,20 @@ public static class ValidatorForExtensions {
         ArgumentNullException.ThrowIfNull(validator);
 
         var collector = new ValidationErrorCollector();
-        var context = new ValidationContext(collector);
+        var path = ArrayPool<PathSegment>.Shared.Rent(ValidationErrorCollector.DefaultDepthLimit);
 
-        validator.Validate(ref context, value);
+        try {
+            var context = new ValidationContext(collector, path);
 
-        return collector.ToResult();
+            validator.Validate(ref context, value);
+
+            return collector.ToResult();
+        }
+        finally {
+            // Not cleared: every slot is written before it is read and nothing at or above the
+            // current depth is ever read, so stale contents cannot be observed.
+            ArrayPool<PathSegment>.Shared.Return(path);
+        }
     }
 
     /// <summary>
@@ -36,11 +47,18 @@ public static class ValidatorForExtensions {
         ArgumentNullException.ThrowIfNull(validator);
 
         var collector = new ValidationErrorCollector();
-        var context = new ValidationContext(collector);
+        var path = ArrayPool<PathSegment>.Shared.Rent(ValidationErrorCollector.DefaultDepthLimit);
 
-        validator.Validate(ref context, value);
+        try {
+            var context = new ValidationContext(collector, path);
 
-        return !collector.HasErrors;
+            validator.Validate(ref context, value);
+
+            return !collector.HasErrors;
+        }
+        finally {
+            ArrayPool<PathSegment>.Shared.Return(path);
+        }
     }
 
     /// <summary>
@@ -76,8 +94,15 @@ public static class ValidatorForExtensions {
         ArgumentNullException.ThrowIfNull(validator);
         ArgumentNullException.ThrowIfNull(collector);
 
-        var context = new ValidationContext(collector);
+        var path = ArrayPool<PathSegment>.Shared.Rent(ValidationErrorCollector.DefaultDepthLimit);
 
-        validator.Validate(ref context, value);
+        try {
+            var context = new ValidationContext(collector, path);
+
+            validator.Validate(ref context, value);
+        }
+        finally {
+            ArrayPool<PathSegment>.Shared.Return(path);
+        }
     }
 }

@@ -209,12 +209,10 @@ public sealed class ValidationErrorCollector {
     public ValidationErrorCollector();
     public ValidationErrorCollector(Type? profile);
 
-    /// <summary>
-    /// A collector that tolerates concurrent Add. For async validators that genuinely fan out.
-    /// The default collector does not synchronise, because generated straight-line code never
-    /// needs it and the lock would sit on the hot path. Push needs no synchronisation either way.
-    /// </summary>
-    public static ValidationErrorCollector CreateSynchronized(Type? profile = null);
+    /// <summary>How error paths are rendered for this pass. Fixed at construction.</summary>
+    public ValidationErrorCollector(ValidationPathMode pathMode);
+
+    public ValidationPathMode PathMode { get; }
 
     public bool HasErrors { get; }
     public int Count { get; }
@@ -231,12 +229,17 @@ public sealed class ValidationErrorCollector {
 }
 ```
 
-**The one concurrency rule.** §3.2 makes a *context* safe to hand to concurrent tasks; it does not
-make the *collector* safe to mutate from them. Handing contexts to parallel branches that all add
-errors needs `CreateSynchronized()`. The default collector is unsynchronised, which is correct for
-every generated validator and for any async validator that awaits sequentially — the overwhelming
-majority. Since the path moved into the struct, the lock covers only `Add`; descending into a
-nested object no longer touches the collector at all.
+**The one concurrency rule.** A pass is single-threaded. Its contexts share one depth-indexed path
+buffer, so two branches descending at once would overwrite each other's segments. Validate
+concurrently by giving each branch its own collector and merging the results — which measured faster
+than sharing one under a lock in any case.
+
+**The depth-first contract.** A context is a cursor into a walk that is still in progress, not a
+snapshot that outlives it: descend, validate, let it unwind, then descend again. Every emitted
+validator has that shape, and so do `EachRule` and `NestedRule`. Holding two contexts from the same
+parent and using the earlier one after creating the later one is the pattern that breaks it, and it
+throws rather than reporting the wrong path — each segment carries a monotonic stamp, checked when
+an error is recorded, so a clean pass never pays for it.
 
 Getting this wrong is silent rather than loud, so `Reset()` and the mutators carry a DEBUG-only
 overlap detector: an `Interlocked` in-use flag that throws `InvalidOperationException` naming the
@@ -330,8 +333,10 @@ because it is already on the wire and renaming it would break existing API consu
 - Within a property, **`[Required]` is evaluated first**, whatever order the attributes are written
   in. Every other constraint follows attribute order. This is the one place declaration order is
   overridden, and the next rule is why.
-- A failed `[Required]` **suppresses** every other error on the same field for the rest of the pass.
-  This is enforced by `ValidationErrorCollector`, not by generated control flow — see §4.3.
+- A failed `[Required]` **suppresses** every other error on the same field, within the engine that
+  found it. Generated code short-circuits with an `else if`; the rule builder groups a field's rules
+  into a chain that stops after a failed `Required`; errors arriving already pathed through
+  `ValidationErrorCollector.Add(in ValidationError)` are suppressed there — see §4.3.
 - Nothing else short-circuits. All errors are collected; there is no first-failure exit.
 - `[ValidateNested]` does not recurse into a value that failed `[Required]`. That is the emitter's
   job, not the collector's: suppression matches whole field paths and is deliberately not a prefix
@@ -340,7 +345,7 @@ because it is already on the wire and renaming it would break existing API consu
   Pointer because FluentValidation already produces this shape, which keeps the adapter's job to a
   case conversion.
 
-### 4.3 Suppression lives in the collector
+### 4.3 Suppression is local to the engine that finds it
 
 The obvious home for "a failed `[Required]` suppresses the rest of the field" is the emitter, as an
 `else if` chain — and that is where the plan puts it. It only works for engines that generate code.
