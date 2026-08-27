@@ -16,9 +16,20 @@ namespace ValidationModules.SourceGenerator.Impl.FrontEnds;
 /// </remarks>
 public sealed class AttributeFrontEnd {
     private readonly List<Diagnostic> _diagnostics = new();
+    private readonly Compilation _compilation;
     private readonly bool _compileDataAnnotations;
     private readonly Func<string, string> _fieldNamer;
     private readonly PatternPolicy _patternPolicy;
+
+    /// <summary>
+    /// Suppresses reporting while constraints are read from a declaration this type does not own.
+    /// </summary>
+    /// <remarks>
+    /// A base or interface declaration is validated where it is declared. Reporting it again from
+    /// here would repeat one mistake once per derived type, and anchor each copy at a location the
+    /// consumer may not be able to edit - a base type from a package has no source to fix.
+    /// </remarks>
+    private bool _quiet;
 
     /// <summary>
     /// Set per <see cref="Build"/> call rather than injected, because the caller collects the rules
@@ -26,7 +37,12 @@ public sealed class AttributeFrontEnd {
     /// </summary>
     private Func<INamedTypeSymbol, bool>? _hasRulesClass;
 
-    public AttributeFrontEnd(bool compileDataAnnotations, Func<string, string> fieldNamer, PatternPolicy patternPolicy) {
+    public AttributeFrontEnd(
+        Compilation compilation,
+        bool compileDataAnnotations,
+        Func<string, string> fieldNamer,
+        PatternPolicy patternPolicy) {
+        _compilation = compilation;
         _compileDataAnnotations = compileDataAnnotations;
         _fieldNamer = fieldNamer;
         _patternPolicy = patternPolicy;
@@ -73,16 +89,51 @@ public sealed class AttributeFrontEnd {
         var sawAnything = HasGenerateValidator(type) || declared is { Count: > 0 } || applied is { Count: > 0 };
         var sawAttribute = false;
 
-        foreach (var member in type.GetMembers()) {
-            if (member is not IPropertySymbol property || property.IsStatic || property.IsIndexer) {
-                continue;
+        foreach (var member in MemberWalk.PropertiesOf(type, _compilation, CarriesConstraints)) {
+            var property = member.Property;
+
+            // A property this type inherited rather than declared is validated where it is
+            // declared. Everything reported about it from here - the constraint-versus-member-type
+            // checks in BuildProperty included - would be one mistake repeated once per subclass,
+            // anchored at a metadata location the consumer cannot edit.
+            var enclosingQuiet = _quiet;
+            _quiet = member.Inherited;
+
+            // Constraints come from every declaration that supplies them: the property's own, then
+            // any interface it implements. A base declaration reaches here as the property itself,
+            // because the walk hands back the most-derived declaration of each name.
+            var constraints = new List<ConstraintModel>();
+
+            foreach (var source in member.Sources) {
+                var owned = SymbolEqualityComparer.Default.Equals(source.ContainingType, type);
+                var wasQuiet = _quiet;
+
+                _quiet = !owned;
+                constraints.AddRange(ReadConstraintsFor(source, property.Type));
+                _quiet = wasQuiet;
             }
 
-            var constraints = ReadConstraintsFor(property, property.Type);
-            var validateNested = HasValidateNested(property);
+            var validateNested = member.Sources.Any(HasValidateNested);
             string? overriddenField = null;
 
+            // Inherited constraints count. Without this a derived type that adds nothing of its own
+            // produces no validator at all, which is the defect this walk exists to fix rather than
+            // a narrower version of it.
             sawAttribute |= constraints.Count > 0 || validateNested;
+
+            if (member.Hidden is { } displaced && (constraints.Count > 0 || validateNested)) {
+                // Counted quietly: this is the displaced declaration's own text, and the point here
+                // is to say how much of it was dropped, not to re-report what is wrong with it.
+                _quiet = true;
+                var dropped = ReadConstraintsFor(displaced, displaced.Type).Count;
+                _quiet = member.Inherited;
+
+                if (dropped > 0) {
+                    Report(
+                        ValidationDiagnostics.HiddenBaseConstraints, property,
+                        property.Name, displaced.ContainingType.Name, dropped);
+                }
+            }
 
             if (declared is not null) {
                 foreach (var rule in declared) {
@@ -101,6 +152,7 @@ public sealed class AttributeFrontEnd {
             }
 
             if (constraints.Count == 0 && !validateNested) {
+                _quiet = enclosingQuiet;
                 continue;
             }
 
@@ -108,6 +160,7 @@ public sealed class AttributeFrontEnd {
 
             if (property.GetMethod is null || property.GetMethod.DeclaredAccessibility == Accessibility.Private) {
                 Report(ValidationDiagnostics.InaccessibleProperty, property, property.Name);
+                _quiet = enclosingQuiet;
                 continue;
             }
 
@@ -117,6 +170,8 @@ public sealed class AttributeFrontEnd {
 
             properties.Add(BuildProperty(property, constraints, validateNested, validatorNameFor, overriddenField));
             order.Add(FirstMentionOf(property, declared));
+
+            _quiet = enclosingQuiet;
         }
 
         if (!sawAnything) {
@@ -183,22 +238,36 @@ public sealed class AttributeFrontEnd {
             return true;
         }
 
-        foreach (var member in type.GetMembers()) {
-            if (member is not IPropertySymbol property) {
-                continue;
-            }
-
-            if (HasValidateNested(property)) {
+        // The walk rather than GetMembers(): a type whose only constraints are inherited still
+        // produces a validator, so asking only about declared members would make VM0007 accuse it
+        // of having no rules.
+        foreach (var member in MemberWalk.PropertiesOf(type, _compilation, CarriesConstraints)) {
+            if (member.Sources.Any(CarriesConstraints)) {
                 return true;
             }
+        }
 
-            foreach (var attribute in property.GetAttributes()) {
-                var ns = attribute.AttributeClass?.ContainingNamespace?.ToDisplayString();
+        return false;
+    }
 
-                if (ns == KnownTypes.ConstraintsNamespace ||
-                    (_compileDataAnnotations && ns == KnownTypes.DataAnnotationsNamespace)) {
-                    return true;
-                }
+    /// <summary>
+    /// Whether a declaration carries anything either front-end reads.
+    /// </summary>
+    /// <remarks>
+    /// Shared with the walk, which consults it to decide whether an interface declaration is worth
+    /// resolving to its implementer and whether a hidden base declaration is worth a VM0030.
+    /// </remarks>
+    private bool CarriesConstraints(IPropertySymbol property) {
+        if (HasValidateNested(property)) {
+            return true;
+        }
+
+        foreach (var attribute in property.GetAttributes()) {
+            var ns = attribute.AttributeClass?.ContainingNamespace?.ToDisplayString();
+
+            if (ns == KnownTypes.ConstraintsNamespace ||
+                (_compileDataAnnotations && ns == KnownTypes.DataAnnotationsNamespace)) {
+                return true;
             }
         }
 
@@ -903,8 +972,13 @@ public sealed class AttributeFrontEnd {
     private static bool ImplementsValidatableObject(INamedTypeSymbol type) =>
         type.AllInterfaces.Any(i => i.ToDisplayString() == KnownTypes.ValidatableObject);
 
-    private void Report(DiagnosticDescriptor descriptor, ISymbol symbol, params object?[] args) =>
+    private void Report(DiagnosticDescriptor descriptor, ISymbol symbol, params object?[] args) {
+        if (_quiet) {
+            return;
+        }
+
         _diagnostics.Add(Diagnostic.Create(descriptor, Location(symbol), args));
+    }
 
     private static Location? Location(ISymbol symbol) => symbol.Locations.FirstOrDefault();
 }

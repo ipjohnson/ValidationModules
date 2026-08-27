@@ -1473,6 +1473,21 @@ conversion.
 (§14.19). That surprises people, but it is what compatibility means, and `[ItemCount(min: 1)]` is
 the constraint that expresses "not empty".
 
+**Constraints declared on an interface are enforced.** `Validator.TryValidateObject` ignores them
+entirely — it reflects over the runtime type's own members and never consults the interfaces it
+implements — so an `[Required]` on `IAudited.ModifiedBy` does nothing under DA and is enforced here.
+This is uniform with native constraints: both vocabularies go through one member walk, so a rule's
+namespace never changes which declarations it is collected from. The divergence is toward enforcing
+what was written rather than ignoring it, which is the direction worth diverging in.
+
+**Constraints are inherited.** A base type's constrained properties are validated by every derived
+type's validator, across an assembly reference as readily as within a compilation. DA is the same
+here for classes; the divergence is only the interface case above. Where a derived type *hides* a
+base property with `new`, the most-derived declaration supplies all of that property's constraints
+and none are merged — two `[StringLength]` bounds on one field is ambiguous and would report twice.
+`VM0030` warns when hiding drops something. An `override` is one property rather than two, so its
+declarations accumulate the way `Inherited = true` says they should.
+
 ### 18.5 What is not compiled
 
 A custom `ValidationAttribute` subclass carries arbitrary C# in a method body. The only way to honour

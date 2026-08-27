@@ -137,6 +137,23 @@ public static class ValidationDiagnostics {
         DiagnosticSeverity.Error);
 
     /// <summary>
+    /// Constraints on a base type's properties are collected into the derived type's validator, so
+    /// a derived declaration of the same property name silently takes over every constraint on that
+    /// field.
+    /// </summary>
+    /// <remarks>
+    /// VM0028 and VM0029 belong to conditional rules, which took the two ids adjacent to VM0027 for
+    /// the constraint-declaration block. This continues that block from VM0030 rather than
+    /// interleaving; see docs/design/CONDITIONS-AND-POLYMORPHISM.md.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor HiddenBaseConstraints = Descriptor(
+        "VM0030", "Hidden property drops the base declaration's constraints",
+        "'{0}' hides '{1}.{0}', so the {2} constraint(s) declared there no longer apply. The " +
+        "most-derived declaration of a property supplies all of its constraints, never some of " +
+        "them - restate what is still wanted, or rename one of the two",
+        DiagnosticSeverity.Warning);
+
+    /// <summary>
     /// Declared with a fixed default severity so release tracking can discover it; the effective
     /// severity is overridden per site from the resolved policy, because the same situation is a
     /// build error for an AOT-facing project and unremarkable for a JIT one.

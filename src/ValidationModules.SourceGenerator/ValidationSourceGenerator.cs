@@ -216,7 +216,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             byTarget.TryGetValue(candidate, out var declared);
             byTarget.Remove(candidate);
 
-            if (Build(candidate, declared, options, HasRulesClass) is { } result) {
+            if (Build(candidate, declared, compilation, options, HasRulesClass) is { } result) {
                 results.Add(result);
             }
         }
@@ -224,7 +224,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         // Whatever is left targets a type this compilation does not declare - the case the feature
         // exists for. Its model has no attributes to merge with, only the rules class's own.
         foreach (var pair in byTarget) {
-            if (Build((INamedTypeSymbol)pair.Key, pair.Value, options, HasRulesClass) is { } result) {
+            if (Build((INamedTypeSymbol)pair.Key, pair.Value, compilation, options, HasRulesClass) is { } result) {
                 results.Add(result);
             }
         }
@@ -238,10 +238,12 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
     private static ModelResult? Build(
         INamedTypeSymbol target,
         List<RulesDeclaration>? declared,
+        Compilation compilation,
         GeneratorOptions options,
         Func<INamedTypeSymbol, bool> hasRulesClass) {
 
-        var frontEnd = new AttributeFrontEnd(options.CompileDataAnnotations, options.FieldNamer, options.ResolvedPatternPolicy);
+        var frontEnd = new AttributeFrontEnd(
+            compilation, options.CompileDataAnnotations, options.FieldNamer, options.ResolvedPatternPolicy);
 
         var model = frontEnd.Build(
             target,
