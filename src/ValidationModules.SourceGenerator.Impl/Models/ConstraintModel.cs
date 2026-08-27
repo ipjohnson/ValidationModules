@@ -96,4 +96,18 @@ public sealed record ConstraintModel(
     EquatableArray<string> Values = default,
     EquatableArray<string> ValueDisplays = default,
     bool Negated = false,
-    string? PredicateAccessor = null) : IEquatable<ConstraintModel>;
+    string? PredicateAccessor = null,
+
+    /// <summary>
+    /// The field this one constraint reports under, when it differs from its property's. A rule is
+    /// anchored to a property so both engines agree on ordering, but <c>field:</c> renames the
+    /// error rather than moving the rule - and a property can carry several rules each naming a
+    /// different field, so the name cannot live on the property.
+    /// </summary>
+    string? Field = null,
+
+    /// <summary>
+    /// The severity member to report with - <c>Warning</c> or <c>Info</c>. Null is
+    /// <c>Error</c>, which is both the default and what an omitted argument means.
+    /// </summary>
+    string? Severity = null) : IEquatable<ConstraintModel>;
