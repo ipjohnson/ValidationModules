@@ -137,6 +137,33 @@ public static class ValidationDiagnostics {
         DiagnosticSeverity.Error);
 
     /// <summary>
+    /// Conditional rules. VM0028 and VM0029 continue the constraint-declaration block from VM0027;
+    /// VM0033 and VM0034 sit just past the polymorphism ids that follow. See
+    /// docs/design/CONDITIONS-AND-POLYMORPHISM.md for why the two features interleave here.
+    /// </summary>
+    public static readonly DiagnosticDescriptor ConditionMemberNotFound = Descriptor(
+        "VM0028", "Condition member not found",
+        "'{0}' names '{1}', which '{2}' does not declare. A condition names a member of the type " +
+        "being validated",
+        DiagnosticSeverity.Error);
+
+    /// <summary>
+    /// The three accepted shapes are the three that cannot capture anything, which is what makes
+    /// the self-containment rule VM0072 enforces for <c>Ensure</c> predicates hold here for free.
+    /// </summary>
+    public static readonly DiagnosticDescriptor ConditionMemberNotAPredicate = Descriptor(
+        "VM0029", "Condition member is not a predicate",
+        "'{0}.{1}' cannot be used as a condition. A condition is a bool property, a parameterless " +
+        "bool method, or a static bool method taking a single '{0}' parameter",
+        DiagnosticSeverity.Error);
+
+    public static readonly DiagnosticDescriptor ConditionSetBothWays = Descriptor(
+        "VM0033", "Constraint sets both When and Unless",
+        "'{0}' on '{1}' sets both When and Unless, which is ambiguous. Write two constraints, or " +
+        "one negated condition",
+        DiagnosticSeverity.Error);
+
+    /// <summary>
     /// Constraints on a base type's properties are collected into the derived type's validator, so
     /// a derived declaration of the same property name silently takes over every constraint on that
     /// field.

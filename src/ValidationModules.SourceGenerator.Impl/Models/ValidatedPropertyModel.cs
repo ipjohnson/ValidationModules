@@ -32,6 +32,11 @@ public enum PropertyShape {
 /// <param name="CountAccessor">Collections only: Length for arrays, Count otherwise.</param>
 /// <param name="ValidateNested">Whether [ValidateNested] was declared.</param>
 /// <param name="Constraints">In evaluation order - Required first, then attribute order.</param>
+/// <param name="Condition">
+/// Guards the nested descent, from a <c>When</c> or <c>Unless</c> on <c>[ValidateNested]</c>. Same
+/// shape as <see cref="ConstraintModel.Condition"/>: a complete boolean expression in terms of
+/// <c>value</c>, negation already baked in, null when the descent is unconditional.
+/// </param>
 public sealed record ValidatedPropertyModel(
     string PropertyName,
     string FieldName,
@@ -45,4 +50,5 @@ public sealed record ValidatedPropertyModel(
     bool IsIndexable,
     string CountAccessor,
     bool ValidateNested,
-    EquatableArray<ConstraintModel> Constraints) : IEquatable<ValidatedPropertyModel>;
+    EquatableArray<ConstraintModel> Constraints,
+    string? Condition = null) : IEquatable<ValidatedPropertyModel>;
