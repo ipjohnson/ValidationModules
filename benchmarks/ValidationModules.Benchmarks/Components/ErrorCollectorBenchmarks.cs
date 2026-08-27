@@ -20,7 +20,6 @@ public class ErrorCollectorBenchmarks {
     // Hoisted: constructing per invocation would put an allocation on the measured path.
     private static readonly CustomerValidator CustomerValidatorShared = new();
     private readonly ValidationErrorCollector _pooled = new();
-    private readonly ValidationErrorCollector _pooledSynchronized = ValidationErrorCollector.CreateSynchronized();
 
     private Customer _valid = null!;
     private Customer _invalid = null!;
@@ -65,19 +64,6 @@ public class ErrorCollectorBenchmarks {
         CustomerValidatorShared.ValidateInto(_pooled, _invalid);
 
         return _pooled.HasErrors;
-    }
-
-    /// <summary>
-    /// What opting into <see cref="ValidationErrorCollector.CreateSynchronized"/> costs when nothing
-    /// is actually contending, which is the situation of anyone who turned it on defensively.
-    /// </summary>
-    [Benchmark(Description = "Synchronized collector, 8 failures, uncontended")]
-    public bool Synchronized_FailingPass() {
-        _pooledSynchronized.Reset();
-
-        CustomerValidatorShared.ValidateInto(_pooledSynchronized, _invalid);
-
-        return _pooledSynchronized.HasErrors;
     }
 
     [Benchmark(Description = "ToResult on a clean pass - returns the shared instance")]

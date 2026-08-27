@@ -36,17 +36,22 @@ public class ValidationContextTests {
     }
 
     [Fact]
-    public void Push_SiblingContexts_DoNotOverwriteEachOther() {
-        // The failure this guards against: with a depth-indexed path stack, the second Push
-        // clobbers the first, and both errors come out under the later segment.
+    public void Push_SequentialSiblingDescents_EachReportItsOwnPath() {
+        // The shape every engine emits: descend, use, unwind, descend again. The emitter scopes
+        // each child context to its own if-block or loop iteration, and EachRule/NestedRule do the
+        // same, so two sibling contexts are never live at once.
         var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
 
-        var first = context.Push("home");
-        var second = context.Push("work");
+        {
+            var home = context.Push("home");
+            home.Add("postalCode", "required", "x");
+        }
 
-        first.Add("postalCode", "required", "x");
-        second.Add("postalCode", "required", "x");
+        {
+            var work = context.Push("work");
+            work.Add("postalCode", "required", "x");
+        }
 
         Assert.Equal(
             ["home.postalCode", "work.postalCode"],
@@ -54,19 +59,20 @@ public class ValidationContextTests {
     }
 
     [Fact]
-    public void Push_StoredAndUsedLater_StillReportsItsOwnPath() {
+    public void Push_ParentAddsAfterAChildHasUnwound_StillReportsItsOwnPath() {
+        // A parent context stays valid across a completed child descent - the child's segments sit
+        // above the parent's depth and are never read from it. This is what makes a validator able
+        // to descend into a nested object and then report on its own fields afterwards.
         var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
 
-        var stored = context.Push("home");
-
-        // Unrelated pushes in between, which a shared mutable path stack would not survive.
-        context.Push("work").Add("postalCode", "required", "x");
+        context.Push("home").Add("postalCode", "required", "x");
         context.PushIndex("toys", 7).Add("name", "required", "x");
+        context.Add("id", "required", "x");
 
-        stored.Add("postalCode", "required", "x");
-
-        Assert.Equal("home.postalCode", collector.ToResult().Errors[^1].Field);
+        Assert.Equal(
+            ["home.postalCode", "toys[7].name", "id"],
+            collector.ToResult().Errors.Select(error => error.Field));
     }
 
     [Fact]
@@ -152,7 +158,7 @@ public class ValidationContextTests {
     public void Push_PastMaxDepth_ThrowsRatherThanOverflowingTheStack() {
         var context = new ValidationContext(new ValidationErrorCollector());
 
-        for (var i = 0; i < ValidationErrorCollector.MaxDepth; i++) {
+        for (var i = 0; i < ValidationErrorCollector.DefaultDepthLimit; i++) {
             context = context.Push("child");
         }
 
@@ -216,4 +222,109 @@ public class ValidationContextTests {
             Sku = "ABC",
             Toys = [new Toy { Name = "ball" }],
         };
+
+    // ---- path mode -----------------------------------------------------------------------
+
+    [Fact]
+    public void Bounded_IsTheDefault_AndElidesTheMiddle() {
+        var collector = new ValidationErrorCollector();
+        var context = new ValidationContext(collector);
+
+        context.Push("body").Push("order").Push("address").Add("postalCode", "required", "x");
+
+        Assert.Equal("body...address.postalCode", Assert.Single(collector.ToResult().Errors).Field);
+    }
+
+    [Fact]
+    public void Full_RendersEverySegmentWalked() {
+        var collector = new ValidationErrorCollector(ValidationPathMode.Full);
+        var context = new ValidationContext(collector);
+
+        context.Push("body").Push("order").Push("address").Add("postalCode", "required", "x");
+
+        Assert.Equal("body.order.address.postalCode", Assert.Single(collector.ToResult().Errors).Field);
+    }
+
+    [Fact]
+    public void Full_KeepsIndicesAndKeysOnEverySegment() {
+        var collector = new ValidationErrorCollector(ValidationPathMode.Full);
+        var context = new ValidationContext(collector);
+
+        context.Push("spec").PushIndex("containers", 2).PushKey("labels", "app")
+               .Add("value", "required", "x");
+
+        Assert.Equal(
+            "spec.containers[2].labels[app].value",
+            Assert.Single(collector.ToResult().Errors).Field);
+    }
+
+    [Fact]
+    public void Full_AtDepthOneAndZero_MatchesBounded() {
+        var full = new ValidationErrorCollector(ValidationPathMode.Full);
+        var context = new ValidationContext(full);
+
+        context.Add("id", "required", "x");
+        context.Push("home").Add("postalCode", "required", "x");
+
+        Assert.Equal(
+            ["id", "home.postalCode"],
+            full.ToResult().Errors.Select(error => error.Field));
+    }
+
+    [Fact]
+    public void Full_ReportsTheContainerItselfWithAddHere() {
+        var collector = new ValidationErrorCollector(ValidationPathMode.Full);
+        var context = new ValidationContext(collector);
+
+        context.Push("body").PushIndex("lines", 4).AddHere("invalid", "x");
+
+        Assert.Equal("body.lines[4]", Assert.Single(collector.ToResult().Errors).Field);
+    }
+
+    // ---- depth-first contract ------------------------------------------------------------
+
+    [Fact]
+    public void Push_TwoLiveSiblingContexts_ThrowsRatherThanReportingTheWrongPath() {
+        var collector = new ValidationErrorCollector();
+        var context = new ValidationContext(collector);
+
+        var first = context.Push("home");
+        var second = context.Push("work");
+
+        second.Add("postalCode", "required", "x");
+
+        // `first` now describes a segment that has been overwritten. Reporting it would attribute
+        // the error to "work", so it fails instead.
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => first.Add("postalCode", "required", "x"));
+
+        Assert.Contains("no longer describes where it was created", exception.Message);
+    }
+
+    [Fact]
+    public void Push_ContextUsedAfterADeeperDescentUnwound_IsStillValid() {
+        // The legitimate shape: a parent reports on itself after a child has finished.
+        var collector = new ValidationErrorCollector();
+        var context = new ValidationContext(collector);
+
+        var body = context.Push("body");
+        body.Push("address").Add("postalCode", "required", "x");
+        body.Add("id", "required", "x");
+
+        Assert.Equal(
+            ["body.address.postalCode", "body.id"],
+            collector.ToResult().Errors.Select(error => error.Field));
+    }
+
+    [Fact]
+    public void Push_LoopOverElements_ReusesTheSameDepthWithoutTripping() {
+        var collector = new ValidationErrorCollector();
+        var context = new ValidationContext(collector);
+
+        for (var i = 0; i < 50; i++) {
+            context.PushIndex("toys", i).Push("owner").Add("name", "required", "x");
+        }
+
+        Assert.Equal(50, collector.ToResult().Errors.Count);
+    }
 }

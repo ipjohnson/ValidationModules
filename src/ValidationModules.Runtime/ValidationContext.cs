@@ -6,12 +6,12 @@ namespace ValidationModules;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>What it records, and what it does not.</b> A context keeps the <i>outermost</i> segment, the
-/// <i>immediate parent</i> segment and nothing between them, so an error four levels down reads
-/// <c>body...address.postalCode</c> rather than <c>body.order.address.postalCode</c>. See
-/// HANDOFF.md §3.1 for why full ancestry was dropped; the short version is that request bodies are
-/// one or two levels deep, where this reports a complete path anyway, and the <c>...</c> only ever
-/// appears when something really was omitted.
+/// <b>What it records.</b> Every segment walked, written into a buffer the caller supplies, with
+/// <see cref="_depth"/> as the write index. How much of that is <i>rendered</i> is a separate
+/// choice: <see cref="ValidationPathMode.Bounded"/>, the default, prints the outermost segment and
+/// the immediate parent so an error four levels down reads <c>body...address.postalCode</c>;
+/// <see cref="ValidationPathMode.Full"/> prints the lot. Rendering only happens when an error is
+/// actually recorded, so a clean pass allocates nothing either way.
 /// </para>
 /// <para>
 /// <b>Both retained segments carry their own index or key.</b> Rendering <c>toys.owner.name</c> for
@@ -28,8 +28,13 @@ namespace ValidationModules;
 /// or forcing every async caller into a sync-core/async-tail split. See API-SURFACE.md §13.1.
 /// </para>
 /// <para>
-/// <b>Concurrency.</b> A context is safe to hand to concurrent branches, and so is
-/// <see cref="Push"/> - descending writes nothing anyone else can see, because the path lives
+/// <b>Concurrency.</b> A pass is single-threaded. The buffer is a depth-indexed stack shared by
+/// every context in one walk, so two branches descending at once would overwrite each other's
+/// segments. Validate concurrently by giving each branch its own collector and merging the results,
+/// which is faster than sharing one anyway.
+/// </para>
+/// <para>
+/// <b>Superseded note.</b> Descending previously wrote nothing anyone else could see, because the path lived
 /// entirely in the copied struct. Only <i>adding</i> touches shared state, so a pass whose branches
 /// add errors in parallel needs
 /// <see cref="ValidationErrorCollector.CreateSynchronized"/>; one that fans out and adds afterwards
@@ -43,13 +48,12 @@ public readonly struct ValidationContext {
 
     private readonly ValidationErrorCollector _collector;
 
-    private readonly string? _outermost;
-    private readonly string? _outermostKey;
-    private readonly string? _parent;
-    private readonly string? _parentKey;
-
-    private readonly int _outermostIndex;
-    private readonly int _parentIndex;
+    /// <summary>
+    /// The segments walked to get here, indexed by depth. Shared by every context in one pass;
+    /// slots at or above <see cref="_depth"/> belong to walks that have already unwound and are
+    /// never read, which is why nothing has to clear them.
+    /// </summary>
+    private readonly PathSegment[] _path;
 
     /// <summary>
     /// How many times this pass has descended. Drives both the cycle guard and the decision to
@@ -57,35 +61,43 @@ public readonly struct ValidationContext {
     /// </summary>
     private readonly int _depth;
 
+    /// <summary>The stamp this context's own segment was written with; 0 at the root.</summary>
+    private readonly long _stamp;
+
     /// <summary>
     /// Starts a validation pass at the root of the path.
     /// </summary>
     /// <param name="collector">Receives the errors this pass produces.</param>
-    public ValidationContext(ValidationErrorCollector collector) {
+    /// <summary>
+    /// Starts a pass with a buffer of its own. The library's own entry points rent one instead;
+    /// this is the shape for a caller holding a context by hand, where there is nothing to return
+    /// it to and an allocation is the safe answer.
+    /// </summary>
+    public ValidationContext(ValidationErrorCollector collector)
+        : this(collector, new PathSegment[ValidationErrorCollector.DefaultDepthLimit]) { }
+
+    /// <summary>
+    /// Starts a pass over a buffer the caller owns. Its length is the depth limit, so a caller that
+    /// wants to fail earlier on a cycle passes a shorter one.
+    /// </summary>
+    internal ValidationContext(ValidationErrorCollector collector, PathSegment[] path) {
         ArgumentNullException.ThrowIfNull(collector);
+        ArgumentNullException.ThrowIfNull(path);
+
+        if (path.Length == 0) {
+            throw new ArgumentException("A validation path buffer needs room for at least one segment.", nameof(path));
+        }
 
         _collector = collector;
-        _outermostIndex = NoIndex;
-        _parentIndex = NoIndex;
+        _path = path;
+        _depth = 0;
     }
 
-    private ValidationContext(
-        ValidationErrorCollector collector,
-        string? outermost,
-        string? outermostKey,
-        int outermostIndex,
-        string? parent,
-        string? parentKey,
-        int parentIndex,
-        int depth) {
+    private ValidationContext(ValidationErrorCollector collector, PathSegment[] path, int depth, long stamp) {
         _collector = collector;
-        _outermost = outermost;
-        _outermostKey = outermostKey;
-        _outermostIndex = outermostIndex;
-        _parent = parent;
-        _parentKey = parentKey;
-        _parentIndex = parentIndex;
+        _path = path;
         _depth = depth;
+        _stamp = stamp;
     }
 
     /// <summary>
@@ -164,18 +176,22 @@ public readonly struct ValidationContext {
     /// parent, which is exactly the middle of the path being dropped.
     /// </summary>
     private ValidationContext Descend(string segment, int index, string? key) {
-        // O(1) where the path log made it a walk to the root: depth is carried rather than counted.
-        if (_depth >= ValidationErrorCollector.MaxDepth) {
+        // The buffer's length is the limit: one number, so a buffer and a guard cannot disagree.
+        if (_depth >= _path.Length) {
             throw new InvalidOperationException(
-                $"Validation nested more than {ValidationErrorCollector.MaxDepth} levels deep at " +
-                $"'{BuildPath(segment)}'. This normally means the object graph contains a cycle.");
+                $"Validation nested more than {_path.Length} levels deep at '{BuildPath(segment)}'. " +
+                "That is the length of the path buffer this pass was given. Either the object graph " +
+                "contains a cycle, or a deeper buffer is needed.");
         }
 
-        return _depth == 0
-            ? new ValidationContext(_collector, segment, key, index, null, null, NoIndex, 1)
-            : new ValidationContext(
-                _collector, _outermost, _outermostKey, _outermostIndex,
-                segment, key, index, _depth + 1);
+        var stamp = _collector.NextStamp();
+
+        _path[_depth].Name = segment;
+        _path[_depth].Key = key;
+        _path[_depth].Index = index;
+        _path[_depth].Stamp = stamp;
+
+        return new ValidationContext(_collector, _path, _depth + 1, stamp);
     }
 
     /// <summary>
@@ -184,30 +200,110 @@ public readonly struct ValidationContext {
     /// is what lets it run without the collector's lock.
     /// </summary>
     private string BuildPath(string? field) {
-        if (_outermost is null) {
+        if (_depth == 0) {
             return field ?? string.Empty;
         }
 
-        var head = Segment(_outermost, _outermostKey, _outermostIndex);
+        EnsurePathIsIntact();
 
-        if (_parent is null) {
+        return _collector.PathMode == ValidationPathMode.Full
+            ? BuildFullPath(field)
+            : BuildBoundedPath(field);
+    }
+
+    private string BuildBoundedPath(string? field) {
+        var head = Segment(_path[0]);
+
+        if (_depth == 1) {
             return field is null ? head : string.Concat(head, ".", field);
         }
 
         // Three or more descents means one was dropped between these two, and the marker says so.
         var joiner = _depth >= 3 ? "..." : ".";
-        var tail = Segment(_parent, _parentKey, _parentIndex);
+        var tail = Segment(_path[_depth - 1]);
 
         return field is null
             ? string.Concat(head, joiner, tail)
             : $"{head}{joiner}{tail}.{field}";
     }
 
-    private static string Segment(string name, string? key, int index) {
-        if (key is not null) {
-            return string.Concat(name, "[", key, "]");
+    private string BuildFullPath(string? field) {
+        var builder = new System.Text.StringBuilder();
+
+        for (var i = 0; i < _depth; i++) {
+            if (i > 0) {
+                builder.Append('.');
+            }
+
+            Append(builder, _path[i]);
         }
 
-        return index >= 0 ? $"{name}[{index}]" : name;
+        if (field is not null) {
+            builder.Append('.').Append(field);
+        }
+
+        return builder.ToString();
+    }
+
+    private static void Append(System.Text.StringBuilder builder, in PathSegment segment) {
+        builder.Append(segment.Name);
+
+        if (segment.Key is not null) {
+            builder.Append('[').Append(segment.Key).Append(']');
+        }
+        else if (segment.Index >= 0) {
+            builder.Append('[').Append(segment.Index).Append(']');
+        }
+    }
+
+    /// <summary>
+    /// Verifies that the buffer still holds the segments this context walked.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The buffer is a depth-indexed stack shared by one pass, so a context is a cursor into a walk
+    /// that is still in progress, not a snapshot that outlives it. Descend, use, unwind, descend
+    /// again - which is the shape every engine emits, and the shape a loop over a collection has
+    /// naturally. Holding two sibling contexts and adding to the first after creating the second is
+    /// the pattern this catches.
+    /// </para>
+    /// <para>
+    /// Stamps only ever increase, so a context's lineage is intact exactly when its own slot still
+    /// carries its stamp and the stamps below it are strictly increasing. Anything written after
+    /// this context was created carries a higher stamp and breaks one of those two. Runs only when
+    /// an error is being recorded, so a clean pass never pays for it.
+    /// </para>
+    /// </remarks>
+    private void EnsurePathIsIntact() {
+        if (_path[_depth - 1].Stamp == _stamp) {
+            var intact = true;
+
+            for (var i = 1; i < _depth; i++) {
+                if (_path[i - 1].Stamp >= _path[i].Stamp) {
+                    intact = false;
+                    break;
+                }
+            }
+
+            if (intact) {
+                return;
+            }
+        }
+
+        throw new InvalidOperationException(
+            "This validation context no longer describes where it was created. Its path was " +
+            "overwritten by another descent in the same pass, which happens when two contexts from " +
+            "the same parent are held at once and the earlier one is used after the later one was " +
+            "created. A pass walks depth-first: descend, validate, let it unwind, then descend " +
+            "again. Reporting the path as it now stands would attribute the error to the wrong " +
+            "place, so it fails here instead.");
+    }
+
+    private static string Segment(in PathSegment segment) {
+        if (segment.Key is not null) {
+            return string.Concat(segment.Name, "[", segment.Key, "]");
+        }
+
+        return segment.Index >= 0 ? $"{segment.Name}[{segment.Index}]" : segment.Name;
     }
 }

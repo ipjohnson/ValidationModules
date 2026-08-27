@@ -195,6 +195,27 @@ and no shared state at any depth or element count.
 That needs three or more descents *and* an object between the element and the failing field. And an
 index on the outermost segment itself, when a bare collection is validated at the very top.
 
+## Asking for the whole path
+
+Bounded rendering is the default because it keeps a failing pass proportional to its failures rather
+than its depth. Where that trade is wrong — a manifest linter, a config validator, a batch importer,
+anything where documents are deep and the reader needs to find the exact row that failed — ask for
+the full path:
+
+```csharp
+var collector = new ValidationErrorCollector(ValidationPathMode.Full);
+validator.ValidateInto(collector, manifest);
+```
+
+| mode | `body.order.lines[3].address.postalCode` |
+|---|---|
+| `Bounded` (default) | `body...address.postalCode` |
+| `Full` | `body.order.lines[3].address.postalCode` |
+
+Every segment keeps its index or key either way; `Full` simply stops dropping the middle ones. It
+costs a longer string per error and nothing at all on a clean pass — the path is only ever rendered
+when an error is actually recorded.
+
 There is no root name and nothing is synthesized. `body` is not special — it is an ordinary property
 that got pushed like any other, and it appears only because something pushed it. A path or query
 parameter validated on its own is depth 0 and renders bare: `id`, `page`.
@@ -208,8 +229,9 @@ Validation of an actual cycle is guarded. Descending past **64 levels** throws
 `InvalidOperationException` naming the path it got to:
 
 ```
-Validation nested more than 64 levels deep at 'child...child.child'.
-This normally means the object graph contains a cycle.
+Validation nested more than 64 levels deep at 'child...child.child'. That is the length of the
+path buffer this pass was given. Either the object graph contains a cycle, or a deeper buffer
+is needed.
 ```
 
 A guard rather than a detector, deliberately: tracking visited instances would cost an allocation

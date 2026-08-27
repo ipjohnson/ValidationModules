@@ -1,3 +1,5 @@
+using System.Buffers;
+
 namespace ValidationModules;
 
 /// <summary>
@@ -53,10 +55,16 @@ public sealed class ValidationRunner<T> {
     /// <param name="value">The value to validate.</param>
     public ValidationResult Validate(T value) {
         var collector = new ValidationErrorCollector();
+        var path = ArrayPool<PathSegment>.Shared.Rent(ValidationErrorCollector.DefaultDepthLimit);
 
-        RunStructural(collector, value);
+        try {
+            RunStructural(collector, path, value);
 
-        return collector.ToResult();
+            return collector.ToResult();
+        }
+        finally {
+            ArrayPool<PathSegment>.Shared.Return(path);
+        }
     }
 
     /// <summary>
@@ -80,23 +88,29 @@ public sealed class ValidationRunner<T> {
         CancellationToken cancellationToken = default) {
 
         var collector = new ValidationErrorCollector();
+        var path = ArrayPool<PathSegment>.Shared.Rent(ValidationErrorCollector.DefaultDepthLimit);
 
-        RunStructural(collector, value);
+        try {
+            RunStructural(collector, path, value);
 
-        if (!collector.HasErrors) {
-            var context = new ValidationContext(collector);
+            if (!collector.HasErrors) {
+                var context = new ValidationContext(collector, path);
 
-            for (var i = 0; i < _business.Length; i++) {
-                await _business[i].ValidateAsync(context, value, cancellationToken).ConfigureAwait(false);
+                for (var i = 0; i < _business.Length; i++) {
+                    await _business[i].ValidateAsync(context, value, cancellationToken).ConfigureAwait(false);
+                }
             }
-        }
 
-        return collector.ToResult();
+            return collector.ToResult();
+        }
+        finally {
+            ArrayPool<PathSegment>.Shared.Return(path);
+        }
     }
 
-    private void RunStructural(ValidationErrorCollector collector, T value) {
+    private void RunStructural(ValidationErrorCollector collector, PathSegment[] path, T value) {
         for (var i = 0; i < _structural.Length; i++) {
-            var context = new ValidationContext(collector);
+            var context = new ValidationContext(collector, path);
 
             _structural[i].Validate(ref context, value);
         }

@@ -88,23 +88,22 @@ so `Push` writes nothing any other context can observe.
 
 ## Fanning out
 
-A context is safe to hand to concurrent tasks. The **collector** is not safe to *mutate* from them.
+A validation pass is single-threaded. Its contexts share one depth-indexed path buffer, so two
+branches descending at the same time would overwrite each other's segments.
 
-If you genuinely fan out and add errors from parallel branches, ask for a synchronized collector:
+To validate in parallel, give each branch its own collector and merge the results:
 
 ```csharp
-var collector = ValidationErrorCollector.CreateSynchronized();
+var results = await Task.WhenAll(batch.Select(item => Task.Run(() => validator.Validate(item))));
 ```
 
-The default collector does not synchronize, because generated straight-line code never needs it and
-the lock would sit on the hot path. Since the path moved into the struct, that lock covers only
-`Add` — descending into a nested object does not touch the collector at all.
+That is also faster than sharing one collector under a lock, which is why the synchronized collector
+was removed rather than kept.
 
-::: tip This failure is caught in Debug
-Getting it wrong is silent rather than loud, so the collector carries a DEBUG-only overlap detector:
-an interlocked in-use flag that throws `InvalidOperationException` naming the offending path when two
-threads mutate an unsynchronized collector at once. It costs nothing in Release, and turns the one
-remaining footgun into a failing test.
+::: tip Getting it wrong fails loudly
+Reusing a context after another descent has overwritten its path throws
+`InvalidOperationException` rather than reporting the error under the wrong field. Each path segment
+carries a monotonic stamp, checked when an error is recorded, so a clean pass pays nothing for it.
 :::
 
 Note also that a validator which fans out internally gives up deterministic error ordering for its
