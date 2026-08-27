@@ -37,6 +37,13 @@ namespace ValidationModules.SourceGenerator.Tests;
 public class DocumentationSnippetTests {
 
     /// <summary>The usings every sample gets, so a page can show the interesting line alone.</summary>
+    /// <remarks>
+    /// <b>This preamble is why a sample compiling here does not prove a reader can copy it.</b> It
+    /// supplies <c>ValidationModules</c>, so a sample calling <c>validator.Validate(value)</c>
+    /// passes even when the page never shows that import - which is exactly the way the
+    /// getting-started sample was wrong while being green. A page that shows a call has to say
+    /// which namespace it comes from; this harness cannot notice that it did not.
+    /// </remarks>
     private const string Preamble = """
         using System;
         using System.Collections.Generic;
