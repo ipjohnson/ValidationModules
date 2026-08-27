@@ -33,13 +33,6 @@ namespace ValidationModules;
 /// segments. Validate concurrently by giving each branch its own collector and merging the results,
 /// which is faster than sharing one anyway.
 /// </para>
-/// <para>
-/// <b>Superseded note.</b> Descending previously wrote nothing anyone else could see, because the path lived
-/// entirely in the copied struct. Only <i>adding</i> touches shared state, so a pass whose branches
-/// add errors in parallel needs
-/// <see cref="ValidationErrorCollector.CreateSynchronized"/>; one that fans out and adds afterwards
-/// does not.
-/// </para>
 /// </remarks>
 public readonly struct ValidationContext {
 
