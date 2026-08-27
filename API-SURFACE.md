@@ -209,12 +209,10 @@ public sealed class ValidationErrorCollector {
     public ValidationErrorCollector();
     public ValidationErrorCollector(Type? profile);
 
-    /// <summary>
-    /// A collector that tolerates concurrent Add. For async validators that genuinely fan out.
-    /// The default collector does not synchronise, because generated straight-line code never
-    /// needs it and the lock would sit on the hot path. Push needs no synchronisation either way.
-    /// </summary>
-    public static ValidationErrorCollector CreateSynchronized(Type? profile = null);
+    /// <summary>How error paths are rendered for this pass. Fixed at construction.</summary>
+    public ValidationErrorCollector(ValidationPathMode pathMode);
+
+    public ValidationPathMode PathMode { get; }
 
     public bool HasErrors { get; }
     public int Count { get; }
@@ -231,12 +229,17 @@ public sealed class ValidationErrorCollector {
 }
 ```
 
-**The one concurrency rule.** §3.2 makes a *context* safe to hand to concurrent tasks; it does not
-make the *collector* safe to mutate from them. Handing contexts to parallel branches that all add
-errors needs `CreateSynchronized()`. The default collector is unsynchronised, which is correct for
-every generated validator and for any async validator that awaits sequentially — the overwhelming
-majority. Since the path moved into the struct, the lock covers only `Add`; descending into a
-nested object no longer touches the collector at all.
+**The one concurrency rule.** A pass is single-threaded. Its contexts share one depth-indexed path
+buffer, so two branches descending at once would overwrite each other's segments. Validate
+concurrently by giving each branch its own collector and merging the results — which measured faster
+than sharing one under a lock in any case.
+
+**The depth-first contract.** A context is a cursor into a walk that is still in progress, not a
+snapshot that outlives it: descend, validate, let it unwind, then descend again. Every emitted
+validator has that shape, and so do `EachRule` and `NestedRule`. Holding two contexts from the same
+parent and using the earlier one after creating the later one is the pattern that breaks it, and it
+throws rather than reporting the wrong path — each segment carries a monotonic stamp, checked when
+an error is recorded, so a clean pass never pays for it.
 
 Getting this wrong is silent rather than loud, so `Reset()` and the mutators carry a DEBUG-only
 overlap detector: an `Interlocked` in-use flag that throws `InvalidOperationException` naming the

@@ -118,9 +118,11 @@ public class ValidationRunnerTests {
         }
 
         // A clean pass still allocates the collector itself, which is 48 bytes and deliberate -
-        // see ValidationErrorCollector's remarks on why pooling was dropped. What must not be here
-        // is a per-call enumerator on top of it.
-        Assert.Equal(40 * 500, best);
+        // see ValidationErrorCollector's remarks on why pooling was dropped. It carries the
+        // monotonic path stamp that lets a context detect an overwritten path, which is what took
+        // it from 40 to 48. What must not be here is a per-call enumerator on top of it, or the
+        // path buffer - that is rented, not allocated.
+        Assert.Equal(48 * 500, best);
     }
 
     /// <summary>A validator that finds nothing, so the pass stays on its clean path.</summary>
