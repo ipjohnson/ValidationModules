@@ -22,6 +22,52 @@ namespace ValidationModules.SourceGenerator.Impl.Emitters;
 /// </remarks>
 public sealed class ValidatorEmitter {
 
+    /// <summary>
+    /// The distinct conditions one method body references, each hoisted into a local evaluated once
+    /// before any of them is tested.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Hoisting is not an optimization. A condition may read live static state, so evaluating it
+    /// once per pass and once per guarded constraint are observably different answers rather than
+    /// two spellings of the same one. Once per pass is what both engines owe.
+    /// </para>
+    /// <para>
+    /// Per method, not per type. <c>IsValid</c> skips Warning and Info constraints, so a condition
+    /// only those reference must not be declared in it - an unused local is a warning, and this
+    /// solution is warning-free.
+    /// </para>
+    /// <para>
+    /// Keyed by the condition's text, which is what makes two constraints naming one predicate
+    /// share a local. The front ends produce different-looking strings - <c>value.IsAuto</c> from
+    /// an attribute, a lifted static call from the DSL - and the emitter cannot tell them apart,
+    /// which is the point.
+    /// </para>
+    /// </remarks>
+    private sealed class ConditionScope {
+        private readonly Dictionary<string, string> _locals = new(StringComparer.Ordinal);
+        private readonly List<string> _order = new();
+
+        public string Local(string condition) {
+            if (!_locals.TryGetValue(condition, out var name)) {
+                _locals[condition] = name = $"c{_locals.Count}";
+                _order.Add(condition);
+            }
+
+            return name;
+        }
+
+        public void Declare(StringBuilder builder) {
+            foreach (var condition in _order) {
+                builder.AppendLine($"        var {_locals[condition]} = {condition};");
+            }
+        }
+    }
+
+    /// <summary>Prefixes a test with its hoisted condition, when it has one.</summary>
+    private static string Guarded(ConditionScope scope, string? condition, string test) =>
+        condition is null ? test : $"{scope.Local(condition)} && ({test})";
+
     public string Emit(ValidatedTypeModel model) {
         var builder = new StringBuilder();
         var patterns = new List<(string Field, ConstraintModel Constraint)>();
@@ -46,9 +92,11 @@ public sealed class ValidatorEmitter {
 
         var body = new StringBuilder();
         var fast = new StringBuilder();
+        var bodyConditions = new ConditionScope();
+        var fastConditions = new ConditionScope();
 
         foreach (var property in model.Properties) {
-            EmitProperty(body, fast, property, model, patterns);
+            EmitProperty(body, fast, property, model, patterns, bodyConditions, fastConditions);
         }
 
         // Applied rules own no property, so they run once every property has been walked. Ordering
@@ -90,6 +138,7 @@ public sealed class ValidatorEmitter {
         }
 
         builder.AppendLine($"    public void Validate(ref ValidationContext ctx, {model.QualifiedTypeName} value) {{");
+        bodyConditions.Declare(builder);
         builder.Append(body);
         builder.AppendLine("    }");
 
@@ -103,6 +152,7 @@ public sealed class ValidatorEmitter {
             builder.AppendLine("    /// no path, message or error record - a caller wanting only a boolean pays for nothing else.");
             builder.AppendLine("    /// </summary>");
             builder.AppendLine($"    public bool IsValid({model.QualifiedTypeName} value) {{");
+            fastConditions.Declare(builder);
             builder.Append(fast);
             builder.AppendLine("        return true;");
             builder.AppendLine("    }");
@@ -254,7 +304,9 @@ public sealed class ValidatorEmitter {
         StringBuilder fast,
         ValidatedPropertyModel property,
         ValidatedTypeModel model,
-        List<(string, ConstraintModel)> patterns) {
+        List<(string, ConstraintModel)> patterns,
+        ConditionScope conditions,
+        ConditionScope fastConditions) {
 
         var access = $"value.{Escape(property.PropertyName)}";
         var field = Quote(property.FieldName);
@@ -288,7 +340,11 @@ public sealed class ValidatorEmitter {
         string? missing = null;
 
         if (required is not null) {
-            var requiredTest = RequiredTest(access, property, required);
+            // A guarded Required suppresses only when it runs. If its condition is false the test
+            // is false, nothing is recorded, and nothing on the field is suppressed - which is the
+            // correct reading of §4.2 and needs no special case, because the condition is simply
+            // part of the test.
+            var requiredTest = Guarded(conditions, required.Condition, RequiredTest(access, property, required));
             var guard = requiredTest;
 
             if (others.Any(o => o.Constraint.Kind != ConstraintKind.Predicate)) {
@@ -298,7 +354,8 @@ public sealed class ValidatorEmitter {
             }
 
             builder.AppendLine($"        if ({guard}) {Add(field, required, "AddRequired", "")}");
-            fast.AppendLine($"        if ({requiredTest}) return false;");
+            fast.AppendLine(
+                $"        if ({Guarded(fastConditions, required.Condition, RequiredTest(access, property, required))}) return false;");
         }
 
         foreach (var (constraint, test) in others) {
@@ -310,15 +367,26 @@ public sealed class ValidatorEmitter {
             // to, so a Required failure on the anchor says nothing about whether it would fail, and
             // skipping it would make this engine report fewer errors than the runtime one.
             var guarded = missing is not null && constraint.Kind != ConstraintKind.Predicate;
+            var conjuncts = new List<string>();
 
-            // The test is parenthesized rather than trusted to bind. Most produce a top-level `&&`
-            // or a bracketed group, but `!missing && a || b` would parse as `(!missing && a) || b`
-            // and silently widen the constraint - the same class of quiet wrong answer as the chain
-            // this replaced.
-            var full = guarded ? $"!{missing} && ({test})" : test;
+            if (constraint.Condition is { } condition) {
+                conjuncts.Add(conditions.Local(condition));
+            }
+
+            if (guarded) {
+                conjuncts.Add($"!{missing}");
+            }
+
+            // The test is parenthesized rather than trusted to bind, once anything precedes it.
+            // Most produce a top-level `&&` or a bracketed group, but `!missing && a || b` would
+            // parse as `(!missing && a) || b` and silently widen the constraint - the same class of
+            // quiet wrong answer as the else-if chain this replaced.
+            conjuncts.Add(conjuncts.Count == 0 ? test : $"({test})");
+
             var reportedField = constraint.Field is { } renamed ? Quote(renamed) : field;
 
-            builder.AppendLine($"        if ({full}) {AddFor(reportedField, constraint, property)}");
+            builder.AppendLine(
+                $"        if ({string.Join(" && ", conjuncts)}) {AddFor(reportedField, constraint, property)}");
 
             // No guard on the boolean path: a failed Required has already returned, so anything
             // still running has a value to test.
@@ -327,26 +395,38 @@ public sealed class ValidatorEmitter {
             // rather than testing it: running the check and ignoring the answer would be the same
             // result at a cost, and returning false on it would be wrong.
             if (constraint.Severity is null) {
-                fast.AppendLine($"        if ({test}) return false;");
+                fast.AppendLine($"        if ({Guarded(fastConditions, constraint.Condition, test)}) return false;");
             }
         }
 
-        EmitNested(builder, fast, property, access);
+        EmitNested(builder, fast, property, access, conditions, fastConditions);
     }
 
     private static void EmitNested(
         StringBuilder builder,
         StringBuilder fast,
         ValidatedPropertyModel property,
-        string access) {
+        string access,
+        ConditionScope conditions,
+        ConditionScope fastConditions) {
         if (property.ElementValidatorName is null) {
             return;
         }
 
+        // The guard is a separate concern from what the descent then does, and deliberately so:
+        // this is the seam polymorphic dispatch drops its type switch into, inside the same
+        // ctx.Push. Conditions decide whether to descend; dispatch decides which validator runs.
+        //
+        // Written as a wrapper rather than a prefix because the pattern's variable comes last -
+        // "c0 && (value.X is { } nested)" is what has to come out, and the binding is still
+        // definite inside the true branch.
+        string Enter(ConditionScope scope, string test) =>
+            property.Condition is null ? test : $"{scope.Local(property.Condition)} && ({test})";
+
         if (property.Shape == PropertyShape.Dictionary) {
             var entries = $"entries{property.PropertyName}";
 
-            builder.AppendLine($"        if ({access} is {{ }} {entries}) {{");
+            builder.AppendLine($"        if ({Enter(conditions, $"{access} is {{ }} {entries}")}) {{");
             builder.AppendLine($"            foreach (var pair in {entries}) {{");
             builder.AppendLine("                if (pair.Value is not null) {");
             builder.AppendLine($"                    var entryCtx = ctx.PushKey({Quote(property.FieldName)}, pair.Key?.ToString() ?? \"\");");
@@ -358,7 +438,7 @@ public sealed class ValidatorEmitter {
             builder.AppendLine("            }");
             builder.AppendLine("        }");
 
-            fast.AppendLine($"        if ({access} is {{ }} {entries}) {{");
+            fast.AppendLine($"        if ({Enter(fastConditions, $"{access} is {{ }} {entries}")}) {{");
             fast.AppendLine($"            foreach (var pair in {entries}) {{");
             fast.AppendLine("                if (pair.Value is not null) {");
             fast.AppendLine($"                    var entryValidators = {Accessor(property)};");
@@ -372,7 +452,7 @@ public sealed class ValidatorEmitter {
         }
 
         if (property.Shape == PropertyShape.Object) {
-            builder.AppendLine($"        if ({access} is {{ }} nested{property.PropertyName}) {{");
+            builder.AppendLine($"        if ({Enter(conditions, $"{access} is {{ }} nested{property.PropertyName}")}) {{");
             builder.AppendLine($"            var ctx{property.PropertyName} = ctx.Push({Quote(property.FieldName)});");
             builder.AppendLine($"            var validators{property.PropertyName} = {Accessor(property)};");
             builder.AppendLine($"            for (var vi = 0; vi < validators{property.PropertyName}.Length; vi++) {{");
@@ -380,7 +460,7 @@ public sealed class ValidatorEmitter {
             builder.AppendLine("            }");
             builder.AppendLine("        }");
 
-            fast.AppendLine($"        if ({access} is {{ }} nested{property.PropertyName}) {{");
+            fast.AppendLine($"        if ({Enter(fastConditions, $"{access} is {{ }} nested{property.PropertyName}")}) {{");
             fast.AppendLine($"            var validators{property.PropertyName} = {Accessor(property)};");
             fast.AppendLine($"            for (var vi = 0; vi < validators{property.PropertyName}.Length; vi++) {{");
             fast.AppendLine($"                if (!validators{property.PropertyName}[vi].IsValid(nested{property.PropertyName})) return false;");
@@ -392,7 +472,7 @@ public sealed class ValidatorEmitter {
         var items = $"items{property.PropertyName}";
         var index = $"i{property.PropertyName}";
 
-        builder.AppendLine($"        if ({access} is {{ }} {items}) {{");
+        builder.AppendLine($"        if ({Enter(conditions, $"{access} is {{ }} {items}")}) {{");
 
         if (property.IsIndexable) {
             // A for loop rather than foreach: enumerating an interface-typed collection boxes the
@@ -419,7 +499,7 @@ public sealed class ValidatorEmitter {
         builder.AppendLine("            }");
         builder.AppendLine("        }");
 
-        fast.AppendLine($"        if ({access} is {{ }} {items}) {{");
+        fast.AppendLine($"        if ({Enter(fastConditions, $"{access} is {{ }} {items}")}) {{");
 
         if (property.IsIndexable) {
             fast.AppendLine($"            for (var {index} = 0; {index} < {items}.{property.CountAccessor}; {index}++) {{");

@@ -123,4 +123,26 @@ public sealed record ConstraintModel(
     /// declared member, tested as a mask rather than as membership because a combination is a
     /// legitimate value that no single member equals.
     /// </summary>
-    string? FlagsMask = null) : IEquatable<ConstraintModel>;
+    string? FlagsMask = null,
+
+    /// <summary>
+    /// The member named by <c>When</c>, exactly as written. Resolved by the front end into
+    /// <see cref="Condition"/>; carried separately so that "both were set" stays answerable, which
+    /// is VM0033.
+    /// </summary>
+    string? WhenMember = null,
+
+    /// <summary>The member named by <c>Unless</c>, exactly as written.</summary>
+    string? UnlessMember = null,
+
+    /// <summary>
+    /// The resolved condition: a complete boolean expression in terms of <c>value</c>, with any
+    /// negation already baked in, or null when the constraint is unconditional.
+    /// </summary>
+    /// <remarks>
+    /// One field rather than an expression plus a "negated" flag, because the emitter must not be
+    /// able to tell the surfaces apart. An attribute condition arrives as <c>value.IsAuto</c>, a
+    /// DSL one as <c>global::My.ClaimRules_Rules.Cond0(value)</c>, and both are hoisted and tested
+    /// identically.
+    /// </remarks>
+    string? Condition = null) : IEquatable<ConstraintModel>;

@@ -290,6 +290,8 @@ namespace ValidationModules.Constraints
         protected ValidationConstraintAttribute() { }
         public string? Code { get; init; }
         public string? Message { get; init; }
+        public string? Unless { get; init; }
+        public string? When { get; init; }
     }
 }
 namespace ValidationModules.Naming

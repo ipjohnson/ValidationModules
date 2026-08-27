@@ -121,7 +121,9 @@ public static class NativeConstraintReader {
     private static ConstraintModel ReadCommon(AttributeData attribute) => new(
         ConstraintKind.Required,
         Code: Named(attribute, "Code") as string,
-        Message: Named(attribute, "Message") as string);
+        Message: Named(attribute, "Message") as string,
+        WhenMember: Named(attribute, "When") as string,
+        UnlessMember: Named(attribute, "Unless") as string);
 
     private static (string Min, string Max) ReadBounds(AttributeData attribute) {
         // Positional (min, max) and the named Min/Max form are both legal; named wins where set,

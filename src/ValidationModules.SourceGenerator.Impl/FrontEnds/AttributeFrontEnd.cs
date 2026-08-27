@@ -32,6 +32,14 @@ public sealed class AttributeFrontEnd {
     private bool _quiet;
 
     /// <summary>
+    /// The type currently being built. Conditions name a member of it, and constraints inherited
+    /// from a base resolve their condition against the type being validated rather than the one
+    /// that declared them - a derived type sees every member its base does, and may deliberately
+    /// shadow the predicate.
+    /// </summary>
+    private INamedTypeSymbol? _validatedType;
+
+    /// <summary>
     /// Set per <see cref="Build"/> call rather than injected, because the caller collects the rules
     /// declarations across every candidate and a front end is constructed per type.
     /// </summary>
@@ -79,6 +87,7 @@ public sealed class AttributeFrontEnd {
         Func<INamedTypeSymbol, bool>? hasRulesClass = null) {
 
         _hasRulesClass = hasRulesClass;
+        _validatedType = type;
 
         // Before anything reads a property, because the situation this reports is precisely one
         // where no property carries anything and the type would otherwise look unconstrained.
@@ -168,7 +177,9 @@ public sealed class AttributeFrontEnd {
                 ReportRulelessNestedTarget(property);
             }
 
-            properties.Add(BuildProperty(property, constraints, validateNested, validatorNameFor, overriddenField));
+            properties.Add(BuildProperty(
+                property, constraints, validateNested, validatorNameFor, overriddenField,
+                validateNested ? NestedCondition(member.Sources) : null));
             order.Add(FirstMentionOf(property, declared));
 
             _quiet = enclosingQuiet;
@@ -341,7 +352,8 @@ public sealed class AttributeFrontEnd {
         List<ConstraintModel> constraints,
         bool validateNested,
         Func<INamedTypeSymbol, string> validatorNameFor,
-        string? overriddenField = null) {
+        string? overriddenField = null,
+        string? condition = null) {
 
         var type = property.Type;
         var isString = type.SpecialType == SpecialType.System_String;
@@ -389,7 +401,8 @@ public sealed class AttributeFrontEnd {
             elementType is not null && TypeFacts.IsIndexable(type),
             TypeFacts.CountAccessor(type),
             validateNested,
-            new EquatableArray<ConstraintModel>(Order(constraints).ToImmutableArray()));
+            new EquatableArray<ConstraintModel>(Order(constraints).ToImmutableArray()),
+            condition);
     }
 
     /// <summary>
@@ -819,7 +832,7 @@ public sealed class AttributeFrontEnd {
                 }
 
                 if (native is not null) {
-                    constraints.Add(native);
+                    constraints.Add(ResolveCondition(native, member));
                 }
 
                 continue;
@@ -953,6 +966,127 @@ public sealed class AttributeFrontEnd {
     private static bool HasGenerateValidator(INamedTypeSymbol type) =>
         type.GetAttributes().Any(attribute =>
             attribute.AttributeClass?.ToDisplayString() == KnownTypes.GenerateValidatorAttribute);
+
+    /// <summary>
+    /// Turns a <c>When</c>/<c>Unless</c> member name into the boolean expression the emitter tests,
+    /// with the negation baked in so that the emitter cannot tell the two apart.
+    /// </summary>
+    private ConstraintModel ResolveCondition(ConstraintModel constraint, ISymbol member) {
+        var when = constraint.WhenMember;
+        var unless = constraint.UnlessMember;
+
+        if (when is null && unless is null) {
+            return constraint;
+        }
+
+        if (when is not null && unless is not null) {
+            Report(ValidationDiagnostics.ConditionSetBothWays, member, constraint.Kind, member.Name);
+            return constraint;
+        }
+
+        return ConditionExpression(when ?? unless!, member) is { } expression
+            ? constraint with { Condition = when is not null ? expression : $"!({expression})" }
+            : constraint;
+    }
+
+    /// <summary>
+    /// Resolves a condition member to a call the generated validator can make.
+    /// </summary>
+    /// <remarks>
+    /// Three shapes, and they are the three that cannot capture anything: a bool property, a
+    /// parameterless bool method, and a static bool method taking the model. That is what makes the
+    /// self-containment VM0072 enforces for <c>Ensure</c> predicates hold here by construction.
+    /// </remarks>
+    private string? ConditionExpression(string name, ISymbol member) {
+        var type = _validatedType!;
+
+        // The base chain too, so a predicate declared on a shared base is usable from every type
+        // that inherits it - the same reach the constraints themselves now have.
+        var candidates = new List<ISymbol>();
+
+        for (INamedTypeSymbol? current = type; current is not null; current = current.BaseType) {
+            candidates.AddRange(current.GetMembers(name));
+        }
+
+        if (candidates.Count == 0) {
+            Report(ValidationDiagnostics.ConditionMemberNotFound, member, member.Name, name, type.Name);
+            return null;
+        }
+
+        foreach (var candidate in candidates) {
+            if (!_compilation.IsSymbolAccessibleWithin(candidate, type.ContainingAssembly)) {
+                continue;
+            }
+
+            switch (candidate) {
+                case IPropertySymbol { IsStatic: false, GetMethod: not null } property
+                    when property.Type.SpecialType == SpecialType.System_Boolean:
+                    return $"value.{EscapeIdentifier(name)}";
+
+                case IMethodSymbol { IsStatic: false, Parameters.Length: 0 } instance
+                    when instance.ReturnType.SpecialType == SpecialType.System_Boolean
+                        && instance.MethodKind == MethodKind.Ordinary:
+                    return $"value.{EscapeIdentifier(name)}()";
+
+                case IMethodSymbol { IsStatic: true, Parameters.Length: 1 } stat
+                    when stat.ReturnType.SpecialType == SpecialType.System_Boolean
+                        && TakesTheModel(stat.Parameters[0].Type, type):
+                    return $"{stat.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}" +
+                        $".{EscapeIdentifier(name)}(value)";
+            }
+        }
+
+        Report(ValidationDiagnostics.ConditionMemberNotAPredicate, member, type.Name, name);
+        return null;
+    }
+
+    /// <summary>
+    /// Whether a static predicate's parameter accepts the model. A base type or an implemented
+    /// interface counts: a condition shared across a hierarchy is written once, against the base.
+    /// </summary>
+    private static bool TakesTheModel(ITypeSymbol parameter, INamedTypeSymbol model) {
+        for (INamedTypeSymbol? current = model; current is not null; current = current.BaseType) {
+            if (SymbolEqualityComparer.Default.Equals(current, parameter)) {
+                return true;
+            }
+        }
+
+        return model.AllInterfaces.Any(i => SymbolEqualityComparer.Default.Equals(i, parameter));
+    }
+
+    private static string EscapeIdentifier(string identifier) =>
+        Microsoft.CodeAnalysis.CSharp.SyntaxFacts.GetKeywordKind(identifier)
+            == Microsoft.CodeAnalysis.CSharp.SyntaxKind.None
+            ? identifier
+            : "@" + identifier;
+
+    /// <summary>
+    /// The condition guarding a nested descent, read off <c>[ValidateNested]</c> itself.
+    /// </summary>
+    private string? NestedCondition(IEnumerable<IPropertySymbol> sources) {
+        foreach (var source in sources) {
+            foreach (var attribute in source.GetAttributes()) {
+                if (attribute.AttributeClass?.Name != "ValidateNestedAttribute" ||
+                    attribute.AttributeClass.ContainingNamespace?.ToDisplayString() != KnownTypes.ConstraintsNamespace) {
+                    continue;
+                }
+
+                var probe = new ConstraintModel(
+                    ConstraintKind.Required,
+                    WhenMember: NamedArgument(attribute, "When"),
+                    UnlessMember: NamedArgument(attribute, "Unless"));
+
+                if (ResolveCondition(probe, source).Condition is { } condition) {
+                    return condition;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static string? NamedArgument(AttributeData attribute, string name) =>
+        attribute.NamedArguments.FirstOrDefault(pair => pair.Key == name).Value.Value as string;
 
     private static bool HasValidateNested(IPropertySymbol property) =>
         property.GetAttributes().Any(attribute =>
