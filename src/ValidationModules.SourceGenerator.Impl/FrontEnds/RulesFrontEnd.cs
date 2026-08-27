@@ -68,23 +68,24 @@ public sealed class RulesFrontEnd {
         var parameter = describe.Parameters[0].Name;
         var reader = new BodyReader(this, model, target, rulesClass, parameter);
 
-        foreach (var statement in StatementsOf(syntax)) {
-            reader.Read(statement);
+        if (syntax.Body is { } block) {
+            foreach (var statement in block.Statements) {
+                reader.Read(statement);
+            }
+        } else if (syntax.ExpressionBody is { } arrow) {
+            // An expression-bodied Describe is one rule, which is a shape worth accepting: a rules
+            // class that says one thing should not have to open a block to say it.
+            //
+            // The expression is read where it stands. Wrapping it in a synthesized
+            // ExpressionStatementSyntax to reuse the statement path looks harmless and is not: a
+            // synthesized node belongs to no syntax tree, so the first GetSymbolInfo against it
+            // throws ArgumentException ("Syntax node is not within syntax tree"). That surfaces as
+            // CS8785 and takes down the whole compilation's output - every validator in the project
+            // disappears and the only visible error is a missing MValidator type.
+            reader.ReadExpression(arrow.Expression);
         }
 
         return reader.Finish();
-    }
-
-    private static IEnumerable<StatementSyntax> StatementsOf(MethodDeclarationSyntax syntax) {
-        if (syntax.Body is { } block) {
-            return block.Statements;
-        }
-
-        // An expression-bodied Describe is one rule, which is a shape worth accepting: a rules class
-        // that says one thing should not have to open a block to say it.
-        return syntax.ExpressionBody is { } arrow
-            ? new StatementSyntax[] { SyntaxFactory.ExpressionStatement(arrow.Expression) }
-            : Array.Empty<StatementSyntax>();
     }
 
     private void Report(DiagnosticDescriptor descriptor, SyntaxNode node, params object?[] args) =>
@@ -119,8 +120,27 @@ public sealed class RulesFrontEnd {
         }
 
         public void Read(StatementSyntax statement) {
-            if (statement is not ExpressionStatementSyntax { Expression: InvocationExpressionSyntax invocation }) {
+            if (statement is not ExpressionStatementSyntax { Expression: { } expression }) {
                 _owner.Report(ValidationDiagnostics.NotARuleDeclaration, statement, _rulesClass.Name);
+                return;
+            }
+
+            ReadExpression(expression, statement);
+        }
+
+        /// <summary>
+        /// Reads one rule from its expression, which an expression-bodied <c>Describe</c> has
+        /// without any enclosing statement to wrap it in.
+        /// </summary>
+        /// <param name="expression">The rule expression.</param>
+        /// <param name="report">
+        /// The node a diagnostic is anchored to. Defaults to the expression itself, which is what
+        /// the arrow form wants; the statement form passes the whole statement so that the squiggle
+        /// covers the trailing semicolon as it always has.
+        /// </param>
+        public void ReadExpression(ExpressionSyntax expression, SyntaxNode? report = null) {
+            if (expression is not InvocationExpressionSyntax invocation) {
+                _owner.Report(ValidationDiagnostics.NotARuleDeclaration, report ?? expression, _rulesClass.Name);
                 return;
             }
 

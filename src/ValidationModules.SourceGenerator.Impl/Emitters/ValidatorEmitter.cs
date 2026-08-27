@@ -259,43 +259,69 @@ public sealed class ValidatorEmitter {
         var access = $"value.{Escape(property.PropertyName)}";
         var field = Quote(property.FieldName);
         var required = property.Constraints.FirstOrDefault(c => c.Kind == ConstraintKind.Required);
-        var wroteChain = false;
+
+        // Every non-Required test is computed before anything is written, because whether the
+        // Required check is worth hoisting into a local depends on whether anything ends up
+        // chaining off it, and TestFor can decline a constraint outright.
+        var others = new List<(ConstraintModel Constraint, string Test)>();
+
+        foreach (var constraint in property.Constraints) {
+            if (constraint.Kind != ConstraintKind.Required
+                && TestFor(access, property, constraint, model, patterns) is { } test) {
+                others.Add((constraint, test));
+            }
+        }
+
+        // Holds "this property failed Required", or null when there is no Required to fail. Every
+        // other constraint on the property tests this local.
+        //
+        // What it replaces was an `else if` chain, and the difference is not cosmetic. Chaining
+        // constraint N off constraint N-1 means the second failing constraint on a field is never
+        // reached, so the generated engine reported one error per field where the runtime engine
+        // reported all of them - a silent divergence between the two, on any field carrying two
+        // constraints that both fail. §4.2 permits exactly one short-circuit, a failed Required,
+        // and this was not it.
+        //
+        // A local rather than an `else` block because constraints must stay in declaration order:
+        // a predicate is never guarded (below) and may sit between two constraints that are, which
+        // no single contiguous `else` can express.
+        string? missing = null;
 
         if (required is not null) {
             var requiredTest = RequiredTest(access, property, required);
+            var guard = requiredTest;
 
-            builder.AppendLine($"        if ({requiredTest}) {Add(field, required, "AddRequired", "")}");
+            if (others.Any(o => o.Constraint.Kind != ConstraintKind.Predicate)) {
+                missing = $"missing{property.PropertyName}";
+                builder.AppendLine($"        var {missing} = {requiredTest};");
+                guard = missing;
+            }
+
+            builder.AppendLine($"        if ({guard}) {Add(field, required, "AddRequired", "")}");
             fast.AppendLine($"        if ({requiredTest}) return false;");
-            wroteChain = true;
         }
 
-        foreach (var constraint in property.Constraints) {
-            if (constraint.Kind == ConstraintKind.Required) {
-                continue;
-            }
-
-            var test = TestFor(access, property, constraint, model, patterns);
-            if (test is null) {
-                continue;
-            }
-
-            // else-if after a required check is an optimization, not the suppression mechanism -
-            // the collector drops anything on a field that already failed required. It still earns
+        foreach (var (constraint, test) in others) {
+            // Guarding on the Required result is an optimization, not the suppression mechanism -
+            // the collector drops anything on a field that already failed required (§4.3). It earns
             // its place by not evaluating a length or pattern test against a value known to be null.
             //
-            // A predicate stays out of the chain, in both directions. It may read fields other than
-            // the one it is anchored to, so an earlier failure on the anchor says nothing about
-            // whether it would fail; and skipping it would make this engine report fewer errors than
-            // the runtime one, which walks every rule. §4.2 allows exactly one short-circuit and this
-            // is not it.
-            var standalone = constraint.Kind == ConstraintKind.Predicate;
-            var keyword = wroteChain && !standalone ? "        else if" : "        if";
-            var reportedField = constraint.Field is { } renamed ? Quote(renamed) : field;
-            builder.AppendLine($"{keyword} ({test}) {AddFor(reportedField, constraint, property)}");
+            // A predicate is never guarded. It may read fields other than the one it is anchored
+            // to, so a Required failure on the anchor says nothing about whether it would fail, and
+            // skipping it would make this engine report fewer errors than the runtime one.
+            var guarded = missing is not null && constraint.Kind != ConstraintKind.Predicate;
 
-            // No else-if here: a failure has already returned, so the next test is only reached
-            // when the previous one passed. The chain in Validate exists to avoid evaluating a
-            // length test against a value known to be null; returning gets that for free.
+            // The test is parenthesized rather than trusted to bind. Most produce a top-level `&&`
+            // or a bracketed group, but `!missing && a || b` would parse as `(!missing && a) || b`
+            // and silently widen the constraint - the same class of quiet wrong answer as the chain
+            // this replaced.
+            var full = guarded ? $"!{missing} && ({test})" : test;
+            var reportedField = constraint.Field is { } renamed ? Quote(renamed) : field;
+
+            builder.AppendLine($"        if ({full}) {AddFor(reportedField, constraint, property)}");
+
+            // No guard on the boolean path: a failed Required has already returned, so anything
+            // still running has a value to test.
             //
             // A warning or an info does not make a value invalid, so the boolean path skips it
             // rather than testing it: running the check and ignoring the answer would be the same
@@ -303,11 +329,6 @@ public sealed class ValidatorEmitter {
             if (constraint.Severity is null) {
                 fast.AppendLine($"        if ({test}) return false;");
             }
-
-            // A standalone predicate also ends the chain, rather than merely not joining it: a
-            // following `else if` would otherwise bind to the predicate's `if` and be skipped
-            // whenever the predicate failed.
-            wroteChain = !standalone;
         }
 
         EmitNested(builder, fast, property, access);

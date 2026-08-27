@@ -94,3 +94,55 @@ public sealed class FilingRules : IValidationRulesFor<Filing> {
     }
 }
 
+
+/// <summary>
+/// Three fields, each carrying two constraints that fail together. The shape that used to expose
+/// the <c>else if</c> chain in the emitter: the generated engine reported the first failure per
+/// field and stopped, where the described engine reported both.
+/// </summary>
+/// <remarks>
+/// A <c>[Required]</c> is not needed to trigger it - <see cref="Note"/> carries none - so the three
+/// cases here are the three the divergence was reproduced with: guarded by a Required, unguarded,
+/// and on a value type where neither constraint can be skipped for nullness.
+/// </remarks>
+public sealed record Ticket {
+    public string? Code { get; init; }
+
+    public string? Note { get; init; }
+
+    public decimal Amount { get; init; }
+}
+
+public static partial class TicketPatterns {
+    [GeneratedRegex("^[0-9]+$")]
+    public static partial Regex Digits();
+}
+
+public sealed class TicketRules : IValidationRulesFor<Ticket> {
+
+    public void Describe(ValidationRules<Ticket> rules) {
+        // Required passes on "AB"; the two constraints behind it both fail.
+        rules.Required(x => x.Code).Length(3, 10);
+        rules.Pattern(x => x.Code, TicketPatterns.Digits);
+
+        // The same pair with nothing in front of them.
+        rules.Length(x => x.Note, 3, 10);
+        rules.Pattern(x => x.Note, TicketPatterns.Digits);
+
+        rules.Range(x => x.Amount, 10m, 20m);
+        rules.MultipleOf(x => x.Amount, 4m);
+    }
+}
+
+/// <summary>
+/// An expression-bodied <c>Describe</c>, compiled here rather than only in the generator's own
+/// tests. The arrow form used to throw inside the generator, which produced no output for the whole
+/// compilation - a failure this project catches by existing.
+/// </summary>
+public sealed record Badge {
+    public string? Holder { get; init; }
+}
+
+public sealed class BadgeRules : IValidationRulesFor<Badge> {
+    public void Describe(ValidationRules<Badge> rules) => rules.Required(x => x.Holder).Length(2, 20);
+}
