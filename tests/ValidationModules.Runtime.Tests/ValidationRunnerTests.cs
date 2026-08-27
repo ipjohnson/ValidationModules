@@ -149,4 +149,52 @@ public class ValidationRunnerTests {
             context.Add("name", code, "x");
         }
     }
+
+    /// <summary>
+    /// A structural warning does not make a value invalid, so it must not stop the business rules
+    /// from running. Gating on HasErrors - which counts any severity - skipped them silently, and
+    /// the response looked clean.
+    /// </summary>
+    [Fact]
+    public async Task ValidateAsync_StructuralWarning_StillRunsAsyncValidators() {
+        var runner = new ValidationRunner<Pet>([WarnsOnly.Instance], [RecordsThatItRan.Instance]);
+
+        var result = await runner.ValidateAsync(ValidPet(), TestContext.Current.CancellationToken);
+
+        Assert.Contains(result.Errors, error => error.Code == "async_ran");
+        Assert.True(result.IsValid is false || result.Errors.Count > 0);
+    }
+
+    /// <summary>A blocking error still short-circuits: that gate is the point.</summary>
+    [Fact]
+    public async Task ValidateAsync_StructuralError_SkipsAsyncValidators() {
+        var runner = new ValidationRunner<Pet>([FailsOnly.Instance], [RecordsThatItRan.Instance]);
+
+        var result = await runner.ValidateAsync(ValidPet(), TestContext.Current.CancellationToken);
+
+        Assert.DoesNotContain(result.Errors, error => error.Code == "async_ran");
+    }
+
+    private sealed class WarnsOnly : IValidatorFor<Pet> {
+        public static readonly WarnsOnly Instance = new();
+
+        public void Validate(ref ValidationContext context, Pet value) =>
+            context.Add("name", "advisory", "worth a look", ValidationSeverity.Warning);
+    }
+
+    private sealed class FailsOnly : IValidatorFor<Pet> {
+        public static readonly FailsOnly Instance = new();
+
+        public void Validate(ref ValidationContext context, Pet value) =>
+            context.Add("name", "blocked", "no", ValidationSeverity.Error);
+    }
+
+    private sealed class RecordsThatItRan : IAsyncValidatorFor<Pet> {
+        public static readonly RecordsThatItRan Instance = new();
+
+        public ValueTask ValidateAsync(ValidationContext context, Pet value, CancellationToken cancellationToken) {
+            context.Add("policy", "async_ran", "the business rule ran");
+            return default;
+        }
+    }
 }
