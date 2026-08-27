@@ -95,7 +95,13 @@ public sealed class ValidatorEmitter {
     private static string Guarded(ConditionScope scope, string? condition, string test) =>
         condition is null ? test : $"{scope.Local(condition)} && ({test})";
 
-    public string Emit(ValidatedTypeModel model) {
+    /// <param name="model">The type to emit a validator for.</param>
+    /// <param name="withDynamicAdapter">
+    /// Whether to emit the <c>IDynamicValidator</c> adapter beside it. Assembly-wide rather than
+    /// per type: the adapters are only useful when something dispatches dynamically, and rooting
+    /// them all would charge every consumer for a mode most never use.
+    /// </param>
+    public string Emit(ValidatedTypeModel model, bool withDynamicAdapter = false) {
         var builder = new StringBuilder();
         var patterns = new List<(string Field, ConstraintModel Constraint)>();
 
@@ -187,7 +193,13 @@ public sealed class ValidatorEmitter {
         // An applied rule is handed the context and owns what it records, so there is no condition
         // to test without one. A type carrying any falls back to IValidatorFor<T>.IsValid, which
         // walks properly - correct, just not free.
-        if (model.AppliedRules.Count == 0) {
+        // A Runtime descent resolves through the provider on the context, and IsValid has no
+        // context - so a type carrying one falls back to IValidatorFor<T>.IsValid, which walks
+        // Validate properly. Correct, just not free, and the same trade an applied rule already
+        // makes.
+        var dispatchesDynamically = model.Properties.Any(p => p.Polymorphism == PolymorphismMode.Runtime);
+
+        if (model.AppliedRules.Count == 0 && !dispatchesDynamically) {
             builder.AppendLine();
             builder.AppendLine("    /// <summary>");
             builder.AppendLine("    /// The same tests as <see cref=\"Validate\"/>, returning at the first failure and building");
@@ -202,7 +214,87 @@ public sealed class ValidatorEmitter {
 
         builder.AppendLine("}");
 
+        if (withDynamicAdapter) {
+            EmitDynamicAdapter(builder, model);
+        }
+
         return builder.ToString();
+    }
+
+    /// <summary>
+    /// The <c>IDynamicValidator</c> adapter for this type: how a Runtime descent reaches it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Emitted for every validated type, including ones with nothing of their own to check. That is
+    /// what makes a registry miss unambiguous - it can only mean the declaring assembly never
+    /// registered, never that the type had no rules - so the throw can be unconditional and can say
+    /// what to do about it.
+    /// </para>
+    /// <para>
+    /// Internal regardless of the validated type's accessibility. Nothing outside the assembly names
+    /// it; it is reached as <c>IDynamicValidator</c>, so there is no CS0051 to avoid.
+    /// </para>
+    /// <para>
+    /// Resolves the injected set rather than constructing a validator, so a separately registered
+    /// <c>IValidatorFor&lt;T&gt;</c> composes here exactly as it does on a static descent. That is
+    /// the difference from CompileTime, which consults no container and so cannot.
+    /// </para>
+    /// <para>
+    /// <b>Resolved on first use, not in the constructor</b>, for the same reason the nested
+    /// validator arrays are. A self-referential model - a Node whose Child is a Node - has a
+    /// validator that depends on <c>IEnumerable&lt;IValidatorFor&lt;Node&gt;&gt;</c>, which is the
+    /// service it is itself registered under. Taking that in an adapter constructor makes the cycle
+    /// eager, and building the registry resolves every adapter at once, so one self-referential type
+    /// anywhere in the assembly would fail the whole container. Demand-driven resolution terminates
+    /// because nothing is built until a value actually descends.
+    /// </para>
+    /// </remarks>
+    private static void EmitDynamicAdapter(StringBuilder builder, ValidatedTypeModel model) {
+        var type = model.QualifiedTypeName;
+        var array = $"IValidatorFor<{type}>[]";
+
+        builder.AppendLine();
+        builder.AppendLine($"/// <summary>Reaches <see cref=\"{model.ValidatorName}\"/> by runtime type.</summary>");
+        builder.AppendLine($"internal sealed class {model.TypeName}DynamicValidator : IDynamicValidator {{");
+        builder.AppendLine("    private readonly global::System.IServiceProvider _services;");
+        builder.AppendLine($"    private {array}? _validators;");
+        builder.AppendLine();
+        builder.AppendLine(
+            $"    public {model.TypeName}DynamicValidator(global::System.IServiceProvider services) {{");
+        builder.AppendLine("        _services = services;");
+        builder.AppendLine("    }");
+        builder.AppendLine();
+        builder.AppendLine($"    public global::System.Type ValidatedType => typeof({type});");
+        builder.AppendLine();
+        builder.AppendLine("    // The race on first use is benign: two threads build equivalent arrays and one wins.");
+        builder.AppendLine($"    private {array} Validators =>");
+        builder.AppendLine("        _validators ??= global::System.Linq.Enumerable.ToArray(");
+        builder.AppendLine("            global::Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions");
+        builder.AppendLine($"                .GetServices<IValidatorFor<{type}>>(_services));");
+        builder.AppendLine();
+        builder.AppendLine("    public void Validate(ref ValidationContext context, object value) {");
+        builder.AppendLine($"        var typed = ({type})value;");
+        builder.AppendLine("        var validators = Validators;");
+        builder.AppendLine();
+        builder.AppendLine("        for (var i = 0; i < validators.Length; i++) {");
+        builder.AppendLine("            validators[i].Validate(ref context, typed);");
+        builder.AppendLine("        }");
+        builder.AppendLine("    }");
+        builder.AppendLine();
+        builder.AppendLine("    public bool IsValid(object value) {");
+        builder.AppendLine($"        var typed = ({type})value;");
+        builder.AppendLine("        var validators = Validators;");
+        builder.AppendLine();
+        builder.AppendLine("        for (var i = 0; i < validators.Length; i++) {");
+        builder.AppendLine("            if (!validators[i].IsValid(typed)) {");
+        builder.AppendLine("                return false;");
+        builder.AppendLine("            }");
+        builder.AppendLine("        }");
+        builder.AppendLine();
+        builder.AppendLine("        return true;");
+        builder.AppendLine("    }");
+        builder.AppendLine("}");
     }
 
     /// <summary>
@@ -442,7 +534,7 @@ public sealed class ValidatorEmitter {
             }
         }
 
-        EmitNested(builder, fast, property, access, conditions, fastConditions, dispatchers);
+        EmitNested(builder, fast, property, access, conditions, fastConditions, dispatchers, model.TypeName);
     }
 
     /// <summary>
@@ -469,8 +561,22 @@ public sealed class ValidatorEmitter {
         string context,
         string indent,
         string validators,
+        string owner,
         List<string> dispatchers,
         bool boolean) {
+
+        if (property.Polymorphism == PolymorphismMode.Runtime) {
+            // The boolean path is not emitted for a type that dispatches dynamically, so this only
+            // ever runs for Validate. Guarded rather than assumed, so that a future caller cannot
+            // quietly get a services-less lookup.
+            if (!boolean) {
+                builder.AppendLine(
+                    $"{indent}global::ValidationModules.DynamicValidation.Validate(" +
+                    $"ref {context}, {value}, {Quote(property.FieldName)}, {Quote(owner)});");
+            }
+
+            return;
+        }
 
         var subtypes = property.Subtypes;
 
@@ -530,7 +636,8 @@ public sealed class ValidatorEmitter {
         string access,
         ConditionScope conditions,
         ConditionScope fastConditions,
-        List<string> dispatchers) {
+        List<string> dispatchers,
+        string owner) {
         if (property.ElementValidatorName is null) {
             return;
         }
@@ -552,7 +659,7 @@ public sealed class ValidatorEmitter {
             builder.AppendLine($"            foreach (var pair in {entries}) {{");
             builder.AppendLine("                if (pair.Value is not null) {");
             builder.AppendLine($"                    var entryCtx = ctx.PushKey({Quote(property.FieldName)}, pair.Key?.ToString() ?? \"\");");
-            EmitDescent(builder, property, "pair.Value", "entryCtx", "                    ", "entryValidators", dispatchers, boolean: false);
+            EmitDescent(builder, property, "pair.Value", "entryCtx", "                    ", "entryValidators", owner, dispatchers, boolean: false);
             builder.AppendLine("                }");
             builder.AppendLine("            }");
             builder.AppendLine("        }");
@@ -560,7 +667,7 @@ public sealed class ValidatorEmitter {
             fast.AppendLine($"        if ({Enter(fastConditions, $"{access} is {{ }} {entries}")}) {{");
             fast.AppendLine($"            foreach (var pair in {entries}) {{");
             fast.AppendLine("                if (pair.Value is not null) {");
-            EmitDescent(fast, property, "pair.Value", string.Empty, "                    ", "entryValidators", dispatchers, boolean: true);
+            EmitDescent(fast, property, "pair.Value", string.Empty, "                    ", "entryValidators", owner, dispatchers, boolean: true);
             fast.AppendLine("                }");
             fast.AppendLine("            }");
             fast.AppendLine("        }");
@@ -572,13 +679,13 @@ public sealed class ValidatorEmitter {
             builder.AppendLine($"            var ctx{property.PropertyName} = ctx.Push({Quote(property.FieldName)});");
             EmitDescent(
                 builder, property, $"nested{property.PropertyName}", $"ctx{property.PropertyName}",
-                "            ", $"validators{property.PropertyName}", dispatchers, boolean: false);
+                "            ", $"validators{property.PropertyName}", owner, dispatchers, boolean: false);
             builder.AppendLine("        }");
 
             fast.AppendLine($"        if ({Enter(fastConditions, $"{access} is {{ }} nested{property.PropertyName}")}) {{");
             EmitDescent(
                 fast, property, $"nested{property.PropertyName}", string.Empty,
-                "            ", $"validators{property.PropertyName}", dispatchers, boolean: true);
+                "            ", $"validators{property.PropertyName}", owner, dispatchers, boolean: true);
             fast.AppendLine("        }");
             return;
         }
@@ -600,7 +707,7 @@ public sealed class ValidatorEmitter {
 
         builder.AppendLine("                if (element is not null) {");
         builder.AppendLine($"                    var elementCtx = ctx.PushIndex({Quote(property.FieldName)}, {index});");
-        EmitDescent(builder, property, "element", "elementCtx", "                    ", "elementValidators", dispatchers, boolean: false);
+        EmitDescent(builder, property, "element", "elementCtx", "                    ", "elementValidators", owner, dispatchers, boolean: false);
         builder.AppendLine("                }");
 
         if (!property.IsIndexable) {
@@ -620,7 +727,7 @@ public sealed class ValidatorEmitter {
         }
 
         fast.AppendLine("                if (element is not null) {");
-        EmitDescent(fast, property, "element", string.Empty, "                    ", "elementValidators", dispatchers, boolean: true);
+        EmitDescent(fast, property, "element", string.Empty, "                    ", "elementValidators", owner, dispatchers, boolean: true);
         fast.AppendLine("                }");
         fast.AppendLine("            }");
         fast.AppendLine("        }");

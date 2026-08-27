@@ -43,3 +43,4 @@ VM0033 | ValidationModules.Usage | Error | A constraint sets both When and Unles
 VM0031 | ValidationModules.Usage | Warning | A [ValidateNested] target is not sealed and declares no polymorphism mode.
 VM0076 | ValidationModules.Usage | Warning | A conditional block declares no rules.
 VM0077 | ValidationModules.Usage | Warning | A chained When/Unless applies to no rules.
+VM0032 | ValidationModules.Usage | Error | Polymorphism.Runtime was applied to a sealed or value type.

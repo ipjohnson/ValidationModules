@@ -94,6 +94,26 @@ public readonly struct ValidationContext {
     }
 
     /// <summary>
+    /// The services this validation pass can reach, or null when it was started without any.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Forwarded from the collector, not held.</b> This struct is copied on every
+    /// <see cref="Push(string)"/>, so a fifth field would cost eight bytes on every descent;
+    /// forwarding costs one indirection on the rare read.
+    /// </para>
+    /// <para>
+    /// <b>An escape hatch, not the library's own mechanism.</b> Generated code never calls
+    /// <c>GetService</c> at a rule site - it resolves a typed lookup once and calls through it.
+    /// This exists for user code, principally <c>rules.Apply(…)</c> rules, whose
+    /// <c>RuleAction&lt;T&gt;</c> signature gives them no other way to reach a dependency, which is
+    /// why checks needing services currently get hoisted into static helpers away from their
+    /// declarations.
+    /// </para>
+    /// </remarks>
+    public IServiceProvider? Services => _collector.Services;
+
+    /// <summary>
     /// Descends into a nested object. An error added through the returned context reads
     /// <c>home.postalCode</c> rather than <c>postalCode</c>.
     /// </summary>

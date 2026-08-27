@@ -180,6 +180,20 @@ public static class ValidationDiagnostics {
         DiagnosticSeverity.Warning);
 
     /// <summary>
+    /// Runtime dispatch on a type that can have no subtypes resolves, at cost, to the validator the
+    /// declared type would have used anyway.
+    /// </summary>
+    /// <remarks>
+    /// An error rather than a warning because it also fails at run time without a container, and a
+    /// mode that can never differ from DeclaredOnly is never what was meant.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor RuntimePolymorphismOnClosedType = Descriptor(
+        "VM0032", "Polymorphism.Runtime on a type that can have no subtypes",
+        "'{0}' is {1}, so its runtime type can never differ from its declared type and dispatching " +
+        "on it costs a container lookup for the same answer. Use Polymorphism.DeclaredOnly",
+        DiagnosticSeverity.Error);
+
+    /// <summary>
     /// Constraints on a base type's properties are collected into the derived type's validator, so
     /// a derived declaration of the same property name silently takes over every constraint on that
     /// field.

@@ -90,7 +90,43 @@ public sealed class ValidationErrorCollector {
     public ValidationErrorCollector() : this(ValidationPathMode.Bounded) { }
 
     /// <summary>Creates a collector that renders error paths the given way.</summary>
-    public ValidationErrorCollector(ValidationPathMode pathMode) => PathMode = pathMode;
+    public ValidationErrorCollector(ValidationPathMode pathMode) : this(null, pathMode) { }
+
+    /// <summary>Creates a collector carrying the services this unit of work should reach.</summary>
+    public ValidationErrorCollector(IServiceProvider? services) : this(services, ValidationPathMode.Bounded) { }
+
+    /// <summary>Creates a collector carrying services and a path rendering.</summary>
+    public ValidationErrorCollector(IServiceProvider? services, ValidationPathMode pathMode) {
+        Services = services;
+        PathMode = pathMode;
+    }
+
+    /// <summary>
+    /// The services this validation pass can reach, or null when it was started without any.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Here rather than on the validator.</b> Validators are registered singleton - they are
+    /// stateless and building the rule graph once is a hard requirement - while
+    /// <see cref="ValidationRunner{T}"/> is scoped and creates its collector per call. A provider
+    /// injected into a singleton validator would be a captive dependency handing out root-scoped
+    /// services forever; on a per-call collector the scope is correct by construction, and under
+    /// ASP.NET Core you hold request services without anyone having to think about it.
+    /// </para>
+    /// <para>
+    /// It also avoids a transitive closure over the nesting graph: were the provider a constructor
+    /// argument, anything nesting a validator that needed one would need one too, recursively, with
+    /// cycles to handle.
+    /// </para>
+    /// <para>
+    /// <b><see cref="Reset"/> keeps it.</b> A collector belongs to one unit of work and carries
+    /// that scope's services; reuse within a scope is the point. Constructor-only with no setter is
+    /// what encodes the invariant in the type - re-arming a pooled collector for a different scope
+    /// is simply not expressible, so crossing a scope means a new collector, which costs 40 bytes.
+    /// This is deliberate, not an oversight to be tidied away later.
+    /// </para>
+    /// </remarks>
+    public IServiceProvider? Services { get; }
 
     /// <summary>
     /// Creates a collector that tolerates concurrent adds, for async validators that genuinely fan

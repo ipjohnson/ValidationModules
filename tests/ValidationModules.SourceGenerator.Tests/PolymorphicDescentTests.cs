@@ -287,6 +287,91 @@ public class PolymorphicDescentTests {
             result.Sources.Single(s => s.Key.Contains("CheckoutValidator")).Value);
     }
 
+    // -- Polymorphism.Runtime --------------------------------------------------------------------
+
+    [Fact]
+    public void Runtime_ResolvesThroughTheContextRatherThanEmittingASwitch() {
+        var body = Run("[ValidateNested(Polymorphism.Runtime)]").Checkout;
+
+        Assert.Contains(
+            "global::ValidationModules.DynamicValidation.Validate(ref ctxPayment, nestedPayment, \"payment\", \"Checkout\");",
+            body);
+
+        Assert.DoesNotContain("switch (", body);
+    }
+
+    /// <summary>
+    /// <c>IsValid</c> has no context, so it has no services either. A type that dispatches
+    /// dynamically falls back to the interface default, which walks <c>Validate</c> - correct, just
+    /// not free, and the same trade an applied rule already makes.
+    /// </summary>
+    [Fact]
+    public void Runtime_SuppressesTheBooleanFastPath() {
+        // The typed signature, not the bare name: the adapter beside the validator declares an
+        // IsValid(object) of its own, and that one is meant to be there.
+        Assert.DoesNotContain(
+            "public bool IsValid(global::Sample.Checkout value)",
+            Run("[ValidateNested(Polymorphism.Runtime)]").Checkout);
+    }
+
+    /// <summary>
+    /// The adapters are what a runtime lookup finds. Emitted for every validated type in an assembly
+    /// that dispatches dynamically, so a registry miss can only mean the assembly never registered.
+    /// </summary>
+    [Fact]
+    public void Runtime_EmitsAnAdapterForEveryValidatedType() {
+        var result = Run("[ValidateNested(Polymorphism.Runtime)]").Result;
+
+        Assert.Empty(result.CompilationErrors);
+
+        var emitted = string.Concat(result.Sources.Values);
+
+        Assert.Contains("internal sealed class CardDynamicValidator : IDynamicValidator", emitted);
+        Assert.Contains("internal sealed class PremiumDynamicValidator : IDynamicValidator", emitted);
+        Assert.Contains("internal sealed class CheckoutDynamicValidator : IDynamicValidator", emitted);
+        Assert.Contains("services.AddSingleton<IDynamicValidator, global::Sample.CardDynamicValidator>();", emitted);
+        Assert.Contains("new DynamicValidatorRegistry(", emitted);
+    }
+
+    /// <summary>
+    /// And none at all for an assembly that does not, because a registration roots its adapter and
+    /// nobody should pay for a mode they never asked for.
+    /// </summary>
+    [Theory]
+    [InlineData("[ValidateNested(Polymorphism.CompileTime)]")]
+    [InlineData("[ValidateNested(Polymorphism.DeclaredOnly)]")]
+    public void WithoutARuntimeDescent_NoAdaptersAreEmitted(string nested) {
+        var emitted = string.Concat(Run(nested).Result.Sources.Values);
+
+        Assert.DoesNotContain("IDynamicValidator", emitted);
+        Assert.DoesNotContain("DynamicValidatorRegistry", emitted);
+    }
+
+    /// <summary>
+    /// A sealed or value type's runtime type can never differ from its declared type, so dispatching
+    /// on it buys a container lookup and nothing else.
+    /// </summary>
+    [Fact]
+    public void RuntimeOnASealedTarget_IsVM0032() {
+        var result = GeneratorHarness.Run("""
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed record Address {
+                [Required]
+                public string? Street { get; init; }
+            }
+
+            public sealed record Person {
+                [ValidateNested(Polymorphism.Runtime)]
+                public Address? Home { get; init; }
+            }
+            """);
+
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM0032");
+    }
+
     private static int Occurrences(string text, string value) {
         var count = 0;
 

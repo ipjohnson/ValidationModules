@@ -33,20 +33,32 @@ public sealed class ValidationRunner<T> {
     /// </remarks>
     private readonly IValidatorFor<T>[] _structural;
     private readonly IAsyncValidatorFor<T>[] _business;
+    private readonly IServiceProvider? _services;
 
     /// <summary>
     /// Creates a runner over the validators registered for <typeparamref name="T"/>.
     /// </summary>
     /// <param name="structural">Generated constraint validators. Usually one.</param>
     /// <param name="business">Hand-written rules that need I/O. Often none.</param>
+    /// <param name="services">
+    /// The scope's services, handed to each collector this runner creates.
+    /// </param>
+    /// <remarks>
+    /// The runner is registered Scoped and creates its collector per call, which is what makes this
+    /// the right place to carry a provider: the scope is correct by construction, where a provider
+    /// injected into a singleton validator would be a captive dependency handing out root-scoped
+    /// services forever.
+    /// </remarks>
     public ValidationRunner(
         IEnumerable<IValidatorFor<T>> structural,
-        IEnumerable<IAsyncValidatorFor<T>> business) {
+        IEnumerable<IAsyncValidatorFor<T>> business,
+        IServiceProvider? services = null) {
         ArgumentNullException.ThrowIfNull(structural);
         ArgumentNullException.ThrowIfNull(business);
 
         _structural = structural as IValidatorFor<T>[] ?? System.Linq.Enumerable.ToArray(structural);
         _business = business as IAsyncValidatorFor<T>[] ?? System.Linq.Enumerable.ToArray(business);
+        _services = services;
     }
 
     /// <summary>
@@ -54,7 +66,7 @@ public sealed class ValidationRunner<T> {
     /// </summary>
     /// <param name="value">The value to validate.</param>
     public ValidationResult Validate(T value) {
-        var collector = new ValidationErrorCollector();
+        var collector = new ValidationErrorCollector(_services);
         var path = ArrayPool<PathSegment>.Shared.Rent(ValidationErrorCollector.DefaultDepthLimit);
 
         try {
@@ -87,7 +99,7 @@ public sealed class ValidationRunner<T> {
         T value,
         CancellationToken cancellationToken = default) {
 
-        var collector = new ValidationErrorCollector();
+        var collector = new ValidationErrorCollector(_services);
         var path = ArrayPool<PathSegment>.Shared.Rent(ValidationErrorCollector.DefaultDepthLimit);
 
         try {

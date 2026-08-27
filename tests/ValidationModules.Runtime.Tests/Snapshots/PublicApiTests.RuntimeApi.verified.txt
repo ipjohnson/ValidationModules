@@ -25,9 +25,25 @@ namespace ValidationModules
         public DescribedValidator(ValidationModules.IValidationRulesFor<T> rules, ValidationModules.IValidatorProvider? nested = null, ValidationModules.Naming.IValidationFieldNamer? namer = null) { }
         public void Validate(ref ValidationModules.ValidationContext context, T value) { }
     }
+    public static class DynamicValidation
+    {
+        public static bool IsValid(System.IServiceProvider? services, object value, string property, string owner) { }
+        public static void Validate(ref ValidationModules.ValidationContext context, object value, string property, string owner) { }
+    }
+    public sealed class DynamicValidatorRegistry
+    {
+        public DynamicValidatorRegistry(System.Collections.Generic.IEnumerable<ValidationModules.IDynamicValidator> validators) { }
+        public ValidationModules.IDynamicValidator? Find(System.Type type) { }
+    }
     public interface IAsyncValidatorFor<in T>
     {
         System.Threading.Tasks.ValueTask ValidateAsync(ValidationModules.ValidationContext context, T value, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IDynamicValidator
+    {
+        System.Type ValidatedType { get; }
+        bool IsValid(object value);
+        void Validate(ref ValidationModules.ValidationContext context, object value);
     }
     public interface IValidationRulesFor<T>
     {
@@ -78,7 +94,7 @@ namespace ValidationModules
     public delegate void RuleAction<in T>(ref ValidationModules.ValidationContext context, T value);
     public static class RuntimeContract
     {
-        public const int Version = 3;
+        public const int Version = 4;
     }
     public static class ValidationCodes
     {
@@ -98,6 +114,7 @@ namespace ValidationModules
         public ValidationContext(ValidationModules.ValidationErrorCollector collector) { }
         public int ErrorCount { get; }
         public bool HasErrors { get; }
+        public System.IServiceProvider? Services { get; }
         public void Add(string field, string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
         public void AddHere(string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
         public ValidationModules.ValidationContext Push(string segment) { }
@@ -132,10 +149,13 @@ namespace ValidationModules
     {
         public const int DefaultDepthLimit = 64;
         public ValidationErrorCollector() { }
+        public ValidationErrorCollector(System.IServiceProvider? services) { }
         public ValidationErrorCollector(ValidationModules.ValidationPathMode pathMode) { }
+        public ValidationErrorCollector(System.IServiceProvider? services, ValidationModules.ValidationPathMode pathMode) { }
         public int Count { get; }
         public bool HasErrors { get; }
         public ValidationModules.ValidationPathMode PathMode { get; }
+        public System.IServiceProvider? Services { get; }
         public void Add(in ValidationModules.ValidationError error) { }
         public void Reset() { }
         public ValidationModules.ValidationResult ToResult() { }
@@ -195,7 +215,7 @@ namespace ValidationModules
     }
     public sealed class ValidationRunner<T>
     {
-        public ValidationRunner(System.Collections.Generic.IEnumerable<ValidationModules.IValidatorFor<T>> structural, System.Collections.Generic.IEnumerable<ValidationModules.IAsyncValidatorFor<T>> business) { }
+        public ValidationRunner(System.Collections.Generic.IEnumerable<ValidationModules.IValidatorFor<T>> structural, System.Collections.Generic.IEnumerable<ValidationModules.IAsyncValidatorFor<T>> business, System.IServiceProvider? services = null) { }
         public ValidationModules.ValidationResult Validate(T value) { }
         public System.Threading.Tasks.ValueTask<ValidationModules.ValidationResult> ValidateAsync(T value, System.Threading.CancellationToken cancellationToken = default) { }
     }
@@ -266,6 +286,7 @@ namespace ValidationModules.Constraints
     {
         DeclaredOnly = 0,
         CompileTime = 1,
+        Runtime = 2,
     }
     public sealed class RangeAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
     {
