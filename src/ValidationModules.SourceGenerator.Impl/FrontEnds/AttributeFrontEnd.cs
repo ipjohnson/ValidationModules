@@ -511,6 +511,7 @@ public sealed class AttributeFrontEnd {
 
         ResolveRangeBounds(member, memberType, constraints);
         ResolveMultipleOfDivisors(member, memberType, constraints);
+        ResolveEnumMembers(member, memberType, constraints);
         ValidateConstraintsAgainstType(member, memberType, constraints, isString, elementType);
     }
 
@@ -555,6 +556,82 @@ public sealed class AttributeFrontEnd {
             }
 
             constraints[i] = constraint with { Divisor = divisor, DecimalDomain = decimalDomain };
+        }
+    }
+
+    /// <summary>
+    /// Fills an <c>[EnumDefined]</c> with the members its type declares.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The members are known while the validator is being written, so the check becomes a
+    /// comparison against them rather than a call to <c>Enum.IsDefined</c> - which boxes, searches,
+    /// and needs the enum's metadata kept alive under trimming. This is the whole reason a generator
+    /// can afford a check a reflection-based library charges for.
+    /// </para>
+    /// <para>
+    /// A <c>[Flags]</c> enum is a mask instead. <c>Read | Write</c> is a legitimate value that
+    /// equals no declared member, so membership would reject what the type was designed to express;
+    /// the question there is whether any bit outside the declared ones is set.
+    /// </para>
+    /// </remarks>
+    private void ResolveEnumMembers(ISymbol member, ITypeSymbol memberType, List<ConstraintModel> constraints) {
+        for (var i = constraints.Count - 1; i >= 0; i--) {
+            if (constraints[i].Kind != ConstraintKind.EnumDefined) {
+                continue;
+            }
+
+            var underlying = TypeFacts.IsNullableValueType(memberType)
+                ? ((INamedTypeSymbol)memberType).TypeArguments[0]
+                : memberType;
+
+            if (underlying is not INamedTypeSymbol { EnumUnderlyingType: not null } enumType) {
+                Report(ValidationDiagnostics.EnumDefinedOnNonEnum, member,
+                    member.Name, memberType.ToDisplayString());
+                constraints.RemoveAt(i);
+                continue;
+            }
+
+            var qualified = enumType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+            var members = enumType.GetMembers()
+                .OfType<IFieldSymbol>()
+                .Where(field => field.HasConstantValue)
+                .ToList();
+
+            // An enum with no members admits no value at all. Reported as unemittable rather than
+            // emitted as a check nothing can pass.
+            if (members.Count == 0) {
+                Report(ValidationDiagnostics.EnumDefinedOnNonEnum, member,
+                    member.Name, memberType.ToDisplayString());
+                constraints.RemoveAt(i);
+                continue;
+            }
+
+            var isFlags = enumType.GetAttributes().Any(a =>
+                a.AttributeClass?.ToDisplayString() == "System.FlagsAttribute");
+
+            if (isFlags) {
+                var mask = string.Join(" | ", members.Select(m => $"{qualified}.{m.Name}"));
+
+                // Values as well as displays, kept parallel: the mask is what the check tests, but
+                // the message still names the flags, and Displays reads the two together.
+                constraints[i] = constraints[i] with {
+                    FlagsMask = $"({mask})",
+                    Values = new EquatableArray<string>(
+                        members.Select(m => $"{qualified}.{m.Name}").ToImmutableArray()),
+                    ValueDisplays = new EquatableArray<string>(
+                        members.Select(m => m.Name).ToImmutableArray()),
+                };
+                continue;
+            }
+
+            constraints[i] = constraints[i] with {
+                Values = new EquatableArray<string>(
+                    members.Select(m => $"{qualified}.{m.Name}").ToImmutableArray()),
+                ValueDisplays = new EquatableArray<string>(
+                    members.Select(m => m.Name).ToImmutableArray()),
+            };
         }
     }
 

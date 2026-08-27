@@ -7,6 +7,12 @@ public enum ConstraintKind {
     Range,
     Pattern,
     AllowedValues,
+
+    /// <summary>
+    /// An enum member check. Resolved against the member's type in the front end, which turns it
+    /// into a comparison against the declared members, or a mask test on a [Flags] enum.
+    /// </summary>
+    EnumDefined,
     ItemCount,
     MultipleOf,
 
@@ -110,4 +116,11 @@ public sealed record ConstraintModel(
     /// The severity member to report with - <c>Warning</c> or <c>Info</c>. Null is
     /// <c>Error</c>, which is both the default and what an omitted argument means.
     /// </summary>
-    string? Severity = null) : IEquatable<ConstraintModel>;
+    string? Severity = null,
+
+    /// <summary>
+    /// For <see cref="ConstraintKind.EnumDefined"/> on a <c>[Flags]</c> enum: the OR of every
+    /// declared member, tested as a mask rather than as membership because a combination is a
+    /// legitimate value that no single member equals.
+    /// </summary>
+    string? FlagsMask = null) : IEquatable<ConstraintModel>;

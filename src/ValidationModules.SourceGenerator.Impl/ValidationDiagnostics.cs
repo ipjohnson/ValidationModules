@@ -127,6 +127,16 @@ public static class ValidationDiagnostics {
         "[Range] on '{0}' sets neither Min nor Max, so it can never fail", DiagnosticSeverity.Warning);
 
     /// <summary>
+    /// Continues the VM0021 block. VM0005 and VM0011-VM0015 stay retired for the reason given
+    /// above: an .editorconfig line written against a withdrawn meaning would go on suppressing
+    /// something else entirely.
+    /// </summary>
+    public static readonly DiagnosticDescriptor EnumDefinedOnNonEnum = Descriptor(
+        "VM0027", "[EnumDefined] requires an enum type",
+        "[EnumDefined] applies to enum types; '{0}' is '{1}'",
+        DiagnosticSeverity.Error);
+
+    /// <summary>
     /// Declared with a fixed default severity so release tracking can discover it; the effective
     /// severity is overridden per site from the resolved policy, because the same situation is a
     /// build error for an AOT-facing project and unremarkable for a JIT one.

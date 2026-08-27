@@ -519,6 +519,21 @@ public sealed class ValidatorEmitter {
                 return $"{guard}!{field}.IsMatch({access})";
             }
 
+            // Membership against the declared members, or - on a [Flags] enum - whether any bit
+            // outside them is set. Never Enum.IsDefined: the members were known at build time, and
+            // the reflective form would box and search on a path that is otherwise a comparison.
+            case ConstraintKind.EnumDefined: {
+                if (constraint.FlagsMask is { } mask) {
+                    return $"{guard}(({value} & ~{mask}) != 0)";
+                }
+
+                if (constraint.Values.Count == 0) {
+                    return null;
+                }
+
+                return $"{guard}({string.Join(" && ", constraint.Values.Select(v => $"{value} != {v}"))})";
+            }
+
             case ConstraintKind.AllowedValues: {
                 if (constraint.Values.Count == 0) {
                     return null;
@@ -543,6 +558,13 @@ public sealed class ValidatorEmitter {
             ConstraintKind.UniqueItems => Add(field, constraint, "AddUniqueItems", ""),
             ConstraintKind.Pattern => Add(field, constraint, "AddPattern", ""),
             ConstraintKind.AllowedValues => Add(field, constraint, "AddAllowedValues",
+                $", {Quote(string.Join(", ", Displays(constraint)))}"),
+            // A flags value is a combination, so "must be one of" would be wrong about what the
+            // type accepts. Says which flags exist instead.
+            ConstraintKind.EnumDefined when constraint.FlagsMask is not null =>
+                $"ctx.Add({field}, ValidationCodes.Enum, " +
+                $"{Quote($"{Unquote(field)} must be a combination of: {string.Join(", ", Displays(constraint))}.")});",
+            ConstraintKind.EnumDefined => Add(field, constraint, "AddAllowedValues",
                 $", {Quote(string.Join(", ", Displays(constraint)))}"),
 
             // Always the literal branch: a predicate's message was rendered from its own source when
@@ -591,6 +613,7 @@ public sealed class ValidatorEmitter {
         ConstraintKind.Range => "ValidationCodes.Range",
         ConstraintKind.Pattern => "ValidationCodes.Pattern",
         ConstraintKind.AllowedValues => "ValidationCodes.Enum",
+        ConstraintKind.EnumDefined => "ValidationCodes.Enum",
         ConstraintKind.MultipleOf => "ValidationCodes.MultipleOf",
         ConstraintKind.UniqueItems => "ValidationCodes.UniqueItems",
         ConstraintKind.Predicate => "ValidationCodes.Predicate",

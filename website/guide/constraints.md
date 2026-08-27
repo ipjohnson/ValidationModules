@@ -1,6 +1,6 @@
 # Constraints
 
-Nine attributes, all in `ValidationModules.Constraints`. Each one is read at build time and
+Ten attributes, all in `ValidationModules.Constraints`. Each one is read at build time and
 becomes a branch; none of them is ever constructed at run time.
 
 <!-- verify -->
@@ -389,3 +389,48 @@ public record Pet {
 }
 ```
 :::
+
+## `[EnumDefined]`
+
+Emits code `enum`. Enum types only; anything else is
+[VM0027](/reference/diagnostics#vm0027). No arguments — presence is the constraint.
+
+```csharp
+[EnumDefined]
+public PaymentMethod Method { get; init; }
+```
+
+An enum is an integer with names on some of it. Nothing stops `(PaymentMethod)99` existing, and a
+deserialiser handed `99` from the wire produces exactly that — so a handler switching on the value
+falls through every case it was written for. This is the check that says the value came from the set
+the type describes.
+
+The members are known while the validator is being written, so the emitted test is a comparison
+against them:
+
+```csharp
+if ((value.Method != PaymentMethod.Card && value.Method != PaymentMethod.Cash &&
+     value.Method != PaymentMethod.Transfer)) ctx.AddAllowedValues("method", "Card, Cash, Transfer");
+```
+
+Never `Enum.IsDefined`, which boxes, searches, and needs the enum's metadata kept alive under
+trimming. This is a check a generator can afford and a reflection-based library charges for.
+
+### `[Flags]` enums are a mask, not a membership test
+
+On a `[Flags]` enum a combination of declared members is a legitimate value that equals no single
+member, so membership would reject exactly what the type exists to express. The question there is
+whether any bit outside the declared ones is set:
+
+```csharp
+if (((value.Rights & ~(Access.None | Access.Read | Access.Write | Access.Delete)) != 0))
+    ctx.Add("rights", ValidationCodes.Enum, "rights must be a combination of: None, Read, Write, Delete.");
+```
+
+`Read | Delete` passes. `(Access)64` does not.
+
+::: tip Absent is not undefined
+`[EnumDefined]` on a nullable enum accepts `null` — it says nothing about whether a value is
+required. Pair it with `[Required]` when you need both.
+:::
+

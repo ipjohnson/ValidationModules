@@ -57,3 +57,19 @@ public sealed record Line {
 public sealed record Destination {
     [Required] public string? PostalCode { get; init; }
 }
+
+/// <summary>An enum is an integer with names on some of it; <c>[EnumDefined]</c> is the check.</summary>
+public enum PaymentMethod { Card, Cash, Transfer }
+
+/// <summary>A combination is a legitimate value here, which membership would reject.</summary>
+[Flags]
+public enum Access { None = 0, Read = 1, Write = 2, Delete = 4 }
+
+public sealed record Payment {
+    [EnumDefined] public PaymentMethod Method { get; init; }
+
+    [EnumDefined] public Access Rights { get; init; }
+
+    [EnumDefined] public PaymentMethod? Fallback { get; init; }
+}
+
