@@ -25,7 +25,75 @@ internal interface ICompiledRule<in T> {
     /// <summary>Whether this is the <c>Required</c> check for <see cref="Field"/>.</summary>
     bool IsRequired { get; }
 
+    /// <summary>
+    /// Which condition slot guards this rule, or -1 when it is unconditional.
+    /// </summary>
+    /// <remarks>
+    /// Settable because a condition is stamped onto rules that were already declared: a chained
+    /// <c>.When()</c> conditions everything its own statement added, and a block conditions
+    /// everything its body added. Both know the rules only after they exist.
+    /// </remarks>
+    int ConditionIndex { get; set; }
+
     void Apply(ref ValidationContext context, T value);
+
+    /// <summary>
+    /// The same, for a rule that holds children of its own and must gate them itself.
+    /// </summary>
+    void Apply(ref ValidationContext context, T value, ConditionValues conditions);
+}
+
+/// <summary>
+/// One pass's answers to every condition, and the slots that combine them.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The runtime engine's version of the locals the emitter hoists above a method body, and it exists
+/// for the same reason. A condition may read live static state, so evaluating it once per pass and
+/// once per rule that names it are observably different results rather than two spellings of one.
+/// Both engines owe once per pass, or the conformance suite is testing a coin flip.
+/// </para>
+/// <para>
+/// Atoms are the distinct predicates; a slot is the set of atoms a rule needs, each with the
+/// polarity it needs them in. Nested blocks conjoin by listing more atoms in one slot rather than
+/// by composing a new delegate, which is what keeps a doubly-nested rule from evaluating its outer
+/// condition twice.
+/// </para>
+/// <para>
+/// A default instance holds nothing and answers true to everything, so a rule reached outside a
+/// pass - through the two-argument <c>Apply</c> - behaves as it did before conditions existed.
+/// </para>
+/// </remarks>
+internal readonly ref struct ConditionValues {
+    private readonly ReadOnlySpan<bool> _atoms;
+    private readonly int[][]? _slots;
+
+    public ConditionValues(ReadOnlySpan<bool> atoms, int[][] slots) {
+        _atoms = atoms;
+        _slots = slots;
+    }
+
+    /// <summary>Whether every atom in <paramref name="slot"/> holds with the polarity it wants.</summary>
+    public bool Holds(int slot) {
+        if (slot < 0 || _slots is null) {
+            return true;
+        }
+
+        var entries = _slots[slot];
+
+        for (var i = 0; i < entries.Length; i++) {
+            // Signed one-based: +n wants atom n-1 true, -n wants it false. One array rather than a
+            // pair, because a slot is read on every rule of every pass.
+            var entry = entries[i];
+            var held = _atoms[(entry < 0 ? -entry : entry) - 1];
+
+            if (entry > 0 ? !held : held) {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }
 
 /// <summary>
@@ -39,7 +107,17 @@ internal abstract class CompiledRule<T> : ICompiledRule<T> {
 
     public virtual bool IsRequired => false;
 
+    public int ConditionIndex { get; set; } = -1;
+
     public abstract void Apply(ref ValidationContext context, T value);
+
+    /// <summary>
+    /// A leaf rule has nothing of its own to gate - the caller has already decided this rule runs -
+    /// so it ignores the values and defers to the two-argument form. Only a rule holding children
+    /// overrides this.
+    /// </summary>
+    public virtual void Apply(ref ValidationContext context, T value, ConditionValues conditions) =>
+        Apply(ref context, value);
 }
 
 /// <summary>Whitespace counts as missing unless the declaration opted out - §12 Q5.</summary>
@@ -71,20 +149,31 @@ internal sealed class FieldChainRule<T> : CompiledRule<T> {
 
     public override bool IsRequired => _requiredCount > 0;
 
-    public override void Apply(ref ValidationContext context, T value) {
+    public override void Apply(ref ValidationContext context, T value) =>
+        Apply(ref context, value, default);
+
+    public override void Apply(ref ValidationContext context, T value, ConditionValues conditions) {
         var token = context.ChangeToken;
 
         for (var i = 0; i < _requiredCount; i++) {
-            _chain[i].Apply(ref context, value);
+            if (!conditions.Holds(_chain[i].ConditionIndex)) {
+                continue;
+            }
 
-            // A Required that failed suppresses the rest of its own field, and nothing else.
+            _chain[i].Apply(ref context, value, conditions);
+
+            // A Required that failed suppresses the rest of its own field, and nothing else. A
+            // guarded Required that did not run has recorded nothing, so it suppresses nothing -
+            // which falls out of skipping it rather than needing a case of its own.
             if (!ReferenceEquals(token, context.ChangeToken)) {
                 return;
             }
         }
 
         for (var i = _requiredCount; i < _chain.Length; i++) {
-            _chain[i].Apply(ref context, value);
+            if (conditions.Holds(_chain[i].ConditionIndex)) {
+                _chain[i].Apply(ref context, value, conditions);
+            }
         }
     }
 }

@@ -45,21 +45,48 @@ public sealed class ValidatorEmitter {
     /// </para>
     /// </remarks>
     private sealed class ConditionScope {
-        private readonly Dictionary<string, string> _locals = new(StringComparer.Ordinal);
-        private readonly List<string> _order = new();
+        private readonly Dictionary<string, string> _names = new(StringComparer.Ordinal);
+        private readonly List<(string Name, string Expression)> _declarations = new();
 
         public string Local(string condition) {
-            if (!_locals.TryGetValue(condition, out var name)) {
-                _locals[condition] = name = $"c{_locals.Count}";
-                _order.Add(condition);
+            if (_names.TryGetValue(condition, out var existing)) {
+                return existing;
             }
+
+            // A condition can be a conjunction, from nested blocks or a chained .When() written
+            // inside one. Each conjunct is hoisted in its own right and the composite is built from
+            // those locals, so a doubly-nested rule evaluates its outer condition once rather than
+            // once per level. Splitting is safe because a conjunct is always a single call or a
+            // negation of one - the front ends join with this separator and never produce it inside
+            // an operand.
+            var conjuncts = condition.Split(new[] { " && " }, StringSplitOptions.None);
+            string expression;
+
+            if (conjuncts.Length == 1) {
+                expression = condition;
+            } else {
+                var parts = new string[conjuncts.Length];
+
+                for (var i = 0; i < conjuncts.Length; i++) {
+                    parts[i] = Local(conjuncts[i]);
+                }
+
+                expression = string.Join(" && ", parts);
+            }
+
+            // Numbered after its conjuncts are resolved, so the declarations read in dependency
+            // order and a composite never references a local declared below it.
+            var name = $"c{_declarations.Count}";
+
+            _names[condition] = name;
+            _declarations.Add((name, expression));
 
             return name;
         }
 
         public void Declare(StringBuilder builder) {
-            foreach (var condition in _order) {
-                builder.AppendLine($"        var {_locals[condition]} = {condition};");
+            foreach (var (name, expression) in _declarations) {
+                builder.AppendLine($"        var {name} = {expression};");
             }
         }
     }

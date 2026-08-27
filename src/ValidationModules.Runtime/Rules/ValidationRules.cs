@@ -28,6 +28,15 @@ public sealed class ValidationRules<T> {
     private readonly IValidationFieldNamer _namer;
     private readonly IValidatorProvider? _nested;
 
+    /// <summary>The distinct condition predicates, each evaluated once per validation pass.</summary>
+    private readonly List<Func<T, bool>> _atoms = new();
+
+    /// <summary>Sets of signed atom entries; a rule's <c>ConditionIndex</c> indexes this.</summary>
+    private readonly List<int[]> _slots = new();
+
+    /// <summary>The conditions of the blocks currently open around whatever is being declared.</summary>
+    private readonly List<int> _open = new();
+
     internal ValidationRules(IValidationFieldNamer namer, IValidatorProvider? nested) {
         _namer = namer;
         _nested = nested;
@@ -40,8 +49,14 @@ public sealed class ValidationRules<T> {
     public PropertyRules<T, TValue> For<TValue>(
         Func<T, TValue> value,
         string? field = null,
-        [CallerArgumentExpression(nameof(value))] string? selector = null) =>
-        new(this, FieldOf(field, selector), value);
+        [CallerArgumentExpression(nameof(value))] string? selector = null) {
+
+        // Anchors without declaring anything, so it marks the statement itself - otherwise a
+        // `rules.For(x => x.A).Length(2).When(...)` would stamp from whatever came before it.
+        LastStatementStart = _rules.Count;
+
+        return new PropertyRules<T, TValue>(this, FieldOf(field, selector), value);
+    }
 
     /// <summary>
     /// Declares that a string must be present. Whitespace counts as missing - §12 Q5.
@@ -59,7 +74,8 @@ public sealed class ValidationRules<T> {
         [CallerArgumentExpression(nameof(value))] string? selector = null) {
 
         var name = FieldOf(field, selector);
-        _rules.Add(new RequiredStringRule<T>(name, value, allowEmptyStrings: false));
+        LastStatementStart = _rules.Count;
+        Add(new RequiredStringRule<T>(name, value, allowEmptyStrings: false));
 
         return new PropertyRules<T, string?>(this, name, value);
     }
@@ -73,7 +89,8 @@ public sealed class ValidationRules<T> {
         [CallerArgumentExpression(nameof(value))] string? selector = null) {
 
         var name = FieldOf(field, selector);
-        _rules.Add(new RequiredStringRule<T>(name, value, allowEmptyStrings: true));
+        LastStatementStart = _rules.Count;
+        Add(new RequiredStringRule<T>(name, value, allowEmptyStrings: true));
 
         return new PropertyRules<T, string?>(this, name, value);
     }
@@ -86,7 +103,8 @@ public sealed class ValidationRules<T> {
         where TValue : class {
 
         var name = FieldOf(field, selector);
-        _rules.Add(new RequiredReferenceRule<T, TValue>(name, value));
+        LastStatementStart = _rules.Count;
+        Add(new RequiredReferenceRule<T, TValue>(name, value));
 
         return new PropertyRules<T, TValue?>(this, name, value);
     }
@@ -107,7 +125,8 @@ public sealed class ValidationRules<T> {
         where TValue : struct {
 
         var name = FieldOf(field, selector);
-        _rules.Add(new RequiredNullableRule<T, TValue>(name, value));
+        LastStatementStart = _rules.Count;
+        Add(new RequiredNullableRule<T, TValue>(name, value));
 
         return new PropertyRules<T, TValue?>(this, name, value);
     }
@@ -121,7 +140,8 @@ public sealed class ValidationRules<T> {
         [CallerArgumentExpression(nameof(value))] string? selector = null) {
 
         var name = FieldOf(field, selector);
-        _rules.Add(new StringLengthRule<T>(name, value, min, max));
+        LastStatementStart = _rules.Count;
+        Add(new StringLengthRule<T>(name, value, min, max));
 
         return new PropertyRules<T, string?>(this, name, value);
     }
@@ -136,7 +156,8 @@ public sealed class ValidationRules<T> {
         where TValue : struct, IComparable<TValue>, IFormattable {
 
         var name = FieldOf(field, selector);
-        _rules.Add(new RangeRule<T, TValue>(name, value, min, max));
+        LastStatementStart = _rules.Count;
+        Add(new RangeRule<T, TValue>(name, value, min, max));
 
         return new PropertyRules<T, TValue?>(this, name, value);
     }
@@ -157,7 +178,8 @@ public sealed class ValidationRules<T> {
         where TValue : struct, IComparable<TValue>, IFormattable {
 
         var name = FieldOf(field, selector);
-        _rules.Add(new RangeRule<T, TValue>(name, value, min, null));
+        LastStatementStart = _rules.Count;
+        Add(new RangeRule<T, TValue>(name, value, min, null));
 
         return new PropertyRules<T, TValue?>(this, name, value);
     }
@@ -171,7 +193,8 @@ public sealed class ValidationRules<T> {
         where TValue : struct, IComparable<TValue>, IFormattable {
 
         var name = FieldOf(field, selector);
-        _rules.Add(new RangeRule<T, TValue>(name, value, null, max));
+        LastStatementStart = _rules.Count;
+        Add(new RangeRule<T, TValue>(name, value, null, max));
 
         return new PropertyRules<T, TValue?>(this, name, value);
     }
@@ -193,7 +216,8 @@ public sealed class ValidationRules<T> {
         ArgumentNullException.ThrowIfNull(pattern);
 
         var name = FieldOf(field, selector);
-        _rules.Add(new PatternRule<T>(name, value, pattern()));
+        LastStatementStart = _rules.Count;
+        Add(new PatternRule<T>(name, value, pattern()));
 
         return new PropertyRules<T, string?>(this, name, value);
     }
@@ -217,7 +241,8 @@ public sealed class ValidationRules<T> {
         ArgumentNullException.ThrowIfNull(allowed);
 
         var name = FieldOf(field, selector);
-        _rules.Add(new AllowedValuesRule<T, TValue>(name, value, allowed));
+        LastStatementStart = _rules.Count;
+        Add(new AllowedValuesRule<T, TValue>(name, value, allowed));
 
         return new PropertyRules<T, TValue>(this, name, value);
     }
@@ -239,7 +264,8 @@ public sealed class ValidationRules<T> {
         [CallerArgumentExpression(nameof(value))] string? selector = null) {
 
         var name = FieldOf(field, selector);
-        _rules.Add(new ItemCountRule<T, TElement>(name, value, min, max));
+        LastStatementStart = _rules.Count;
+        Add(new ItemCountRule<T, TElement>(name, value, min, max));
 
         return new PropertyRules<T, IReadOnlyList<TElement>?>(this, name, value);
     }
@@ -256,7 +282,8 @@ public sealed class ValidationRules<T> {
         [CallerArgumentExpression(nameof(value))] string? selector = null) {
 
         var name = FieldOf(field, selector);
-        _rules.Add(new UniqueItemsRule<T, TElement>(name, value));
+        LastStatementStart = _rules.Count;
+        Add(new UniqueItemsRule<T, TElement>(name, value));
 
         return new PropertyRules<T, IEnumerable<TElement>?>(this, name, value);
     }
@@ -275,7 +302,8 @@ public sealed class ValidationRules<T> {
         [CallerArgumentExpression(nameof(value))] string? selector = null) {
 
         var name = FieldOf(field, selector);
-        _rules.Add(new MultipleOfRule<T>(name, target => value(target), divisor));
+        LastStatementStart = _rules.Count;
+        Add(new MultipleOfRule<T>(name, target => value(target), divisor));
 
         return new PropertyRules<T, long?>(this, name, value);
     }
@@ -288,7 +316,8 @@ public sealed class ValidationRules<T> {
         [CallerArgumentExpression(nameof(value))] string? selector = null) {
 
         var name = FieldOf(field, selector);
-        _rules.Add(new MultipleOfRule<T>(name, value, divisor));
+        LastStatementStart = _rules.Count;
+        Add(new MultipleOfRule<T>(name, value, divisor));
 
         return new PropertyRules<T, decimal?>(this, name, value);
     }
@@ -304,7 +333,8 @@ public sealed class ValidationRules<T> {
         [CallerArgumentExpression(nameof(value))] string? selector = null) {
 
         var name = FieldOf(field, selector);
-        _rules.Add(new MultipleOfApproximateRule<T>(name, value, (decimal)divisor));
+        LastStatementStart = _rules.Count;
+        Add(new MultipleOfApproximateRule<T>(name, value, (decimal)divisor));
 
         return new PropertyRules<T, double?>(this, name, value);
     }
@@ -317,7 +347,8 @@ public sealed class ValidationRules<T> {
         where TValue : class {
 
         var name = FieldOf(field, selector);
-        _rules.Add(new NestedRule<T, TValue>(name, value, ValidatorFor<TValue>(name)));
+        LastStatementStart = _rules.Count;
+        Add(new NestedRule<T, TValue>(name, value, ValidatorFor<TValue>(name)));
 
         return new PropertyRules<T, TValue?>(this, name, value);
     }
@@ -330,7 +361,8 @@ public sealed class ValidationRules<T> {
         where TElement : class {
 
         var name = FieldOf(field, selector);
-        _rules.Add(new EachRule<T, TElement>(name, value, ValidatorFor<TElement>(name)));
+        LastStatementStart = _rules.Count;
+        Add(new EachRule<T, TElement>(name, value, ValidatorFor<TElement>(name)));
 
         return new PropertyRules<T, IReadOnlyList<TElement>?>(this, name, value);
     }
@@ -372,7 +404,9 @@ public sealed class ValidationRules<T> {
 
         var name = field ?? Named(RuleText.AnchorOfPredicate(expression), expression, "predicate");
 
-        _rules.Add(new PredicateRule<T>(
+        LastStatementStart = _rules.Count;
+
+        Add(new PredicateRule<T>(
             name,
             predicate,
             code ?? ValidationCodes.Predicate,
@@ -382,15 +416,184 @@ public sealed class ValidationRules<T> {
         return this;
     }
 
+    /// <summary>
+    /// Conditions every constraint declared by the statement this terminates.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Scope is the statement</b>, which is already the unit a reader sees and the unit the
+    /// generator's body reader walks. <c>rules.Ensure(…).When(…)</c> guards the <c>Ensure</c>;
+    /// nothing reaches back past the semicolon.
+    /// </para>
+    /// <para>
+    /// FluentValidation's <c>ApplyConditionTo</c> has no counterpart here, deliberately. That
+    /// parameter exists to undo a surprising default - a chained <c>.When()</c> there applies to
+    /// every validator in the chain including ones written before it, and the parameter opts out.
+    /// Scoping to the statement removes the default, and with it the need to opt out of one: to
+    /// guard less, write two statements.
+    /// </para>
+    /// </remarks>
+    public ValidationRules<T> When(Func<T, bool> condition) =>
+        StampFrom(LastStatementStart, condition, negated: false);
+
+    /// <summary>The negation of <see cref="When(Func{T, bool})"/>.</summary>
+    public ValidationRules<T> Unless(Func<T, bool> condition) =>
+        StampFrom(LastStatementStart, condition, negated: true);
+
+    /// <summary>
+    /// Declares a group of rules that apply only when <paramref name="condition"/> holds.
+    /// </summary>
+    /// <param name="condition">Evaluated once per validation pass, not once per rule inside.</param>
+    /// <param name="rules">
+    /// Runs immediately. Everything it declares carries the condition, however deeply nested; a
+    /// block inside a block conjoins rather than replaces.
+    /// </param>
+    /// <returns>A handle offering <c>Otherwise</c> and nothing else.</returns>
+    /// <remarks>
+    /// Two arguments rather than one is what separates this from
+    /// <see cref="When(Func{T, bool})"/>, which terminates a statement instead of opening a block.
+    /// </remarks>
+    public ConditionalRules<T> When(Func<T, bool> condition, Action rules) =>
+        Block(condition, rules, negated: false);
+
+    /// <summary>The negation of <see cref="When(Func{T, bool}, Action)"/>.</summary>
+    public ConditionalRules<T> Unless(Func<T, bool> condition, Action rules) =>
+        Block(condition, rules, negated: true);
+
     /// <summary>Applies a hand-written rule, taken as a method group.</summary>
     public ValidationRules<T> Apply(RuleAction<T> rule) {
         ArgumentNullException.ThrowIfNull(rule);
-        _rules.Add(new ActionRule<T>(rule));
+        LastStatementStart = _rules.Count;
+        Add(new ActionRule<T>(rule));
 
         return this;
     }
 
-    internal void Add(ICompiledRule<T> rule) => _rules.Add(rule);
+    /// <summary>
+    /// Adds a rule, stamped with whatever conditions are open around it.
+    /// </summary>
+    /// <remarks>
+    /// The single funnel, so that a rule declared inside a <c>When</c> block carries the block's
+    /// condition however it got there - through a type-level entry point or a chained constraint on
+    /// an anchored property.
+    /// </remarks>
+    internal void Add(ICompiledRule<T> rule) {
+        rule.ConditionIndex = _open.Count == 0 ? -1 : SlotFor(_open.ToArray());
+        _rules.Add(rule);
+    }
+
+    /// <summary>
+    /// Where the statement currently being declared started, so <c>.When()</c> knows how far back
+    /// to reach.
+    /// </summary>
+    internal int LastStatementStart { get; private set; }
+
+    internal Func<T, bool>[] Atoms => _atoms.ToArray();
+
+    internal int[][] Slots => _slots.ToArray();
+
+    /// <summary>
+    /// Conditions every rule from <paramref name="start"/> to the end of the current declaration.
+    /// </summary>
+    /// <remarks>
+    /// Combined with whatever each rule already carries rather than replacing it, so a chained
+    /// <c>.When()</c> written inside a <c>When</c> block means both.
+    /// </remarks>
+    internal ValidationRules<T> StampFrom(int start, Func<T, bool> condition, bool negated) {
+        ArgumentNullException.ThrowIfNull(condition);
+
+        var entry = Entry(Atom(condition), negated);
+
+        for (var i = start; i < _rules.Count; i++) {
+            _rules[i].ConditionIndex = Combine(_rules[i].ConditionIndex, entry);
+        }
+
+        return this;
+    }
+
+    /// <summary>Runs <paramref name="rules"/> with <paramref name="condition"/> open around it.</summary>
+    internal ConditionalRules<T> Block(Func<T, bool> condition, Action rules, bool negated) {
+        ArgumentNullException.ThrowIfNull(condition);
+        ArgumentNullException.ThrowIfNull(rules);
+
+        _open.Add(Entry(Atom(condition), negated));
+
+        try {
+            // Run immediately rather than deferred: Describe is a declaration, so everything the
+            // body adds belongs in this rule set now, in the position it was written.
+            rules();
+        } finally {
+            _open.RemoveAt(_open.Count - 1);
+        }
+
+        return new ConditionalRules<T>(this, condition, negated);
+    }
+
+    /// <summary>
+    /// The index of <paramref name="predicate"/> among the distinct conditions, adding it if new.
+    /// </summary>
+    /// <remarks>
+    /// Delegate equality, so the same instance handed in twice is one atom evaluated once - which
+    /// is how <c>Otherwise</c> reuses its block's condition rather than adding a second one that
+    /// would evaluate the same lambda again.
+    /// </remarks>
+    private int Atom(Func<T, bool> predicate) {
+        var existing = _atoms.IndexOf(predicate);
+
+        if (existing >= 0) {
+            return existing;
+        }
+
+        _atoms.Add(predicate);
+
+        return _atoms.Count - 1;
+    }
+
+    private static int Entry(int atom, bool negated) => negated ? -(atom + 1) : atom + 1;
+
+    private int Combine(int slot, int entry) {
+        if (slot < 0) {
+            return SlotFor(new[] { entry });
+        }
+
+        var existing = _slots[slot];
+
+        if (Array.IndexOf(existing, entry) >= 0) {
+            return slot;
+        }
+
+        var combined = new int[existing.Length + 1];
+        Array.Copy(existing, combined, existing.Length);
+        combined[existing.Length] = entry;
+
+        return SlotFor(combined);
+    }
+
+    private int SlotFor(int[] entries) {
+        for (var i = 0; i < _slots.Count; i++) {
+            if (SameEntries(_slots[i], entries)) {
+                return i;
+            }
+        }
+
+        _slots.Add(entries);
+
+        return _slots.Count - 1;
+    }
+
+    private static bool SameEntries(int[] left, int[] right) {
+        if (left.Length != right.Length) {
+            return false;
+        }
+
+        for (var i = 0; i < left.Length; i++) {
+            if (left[i] != right[i]) {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     internal IValidationFieldNamer Namer => _namer;
 

@@ -105,6 +105,25 @@ public sealed class RulesFrontEnd {
         private readonly List<string> _applied = new();
         private readonly List<LiftedPredicate> _predicates = new();
 
+        /// <summary>The conditions of the blocks currently open around whatever is being read.</summary>
+        private readonly List<string> _open = new();
+
+        /// <summary>
+        /// Separate counters, so that adding a condition to a rules class does not renumber its
+        /// Ensure predicates - the lifted names appear in generated code people read.
+        /// </summary>
+        private int _liftedRules;
+
+        private int _liftedConditions;
+
+        /// <summary>
+        /// The block a trailing <c>Otherwise</c> would negate, as the lifted call and its polarity.
+        /// Otherwise reuses this rather than lifting a second method for the same lambda.
+        /// </summary>
+        private string? _lastBlockCall;
+
+        private bool _lastBlockNegated;
+
         public BodyReader(
             RulesFrontEnd owner,
             SemanticModel model,
@@ -155,9 +174,10 @@ public sealed class RulesFrontEnd {
             chain.Reverse();
 
             IPropertySymbol? anchor = null;
+            var start = _rules.Count;
 
             foreach (var call in chain) {
-                anchor = ReadCall(call, anchor);
+                anchor = ReadCall(call, anchor, start);
             }
         }
 
@@ -190,7 +210,8 @@ public sealed class RulesFrontEnd {
         /// <summary>
         /// Reads one call in a chain and returns the property it leaves anchored.
         /// </summary>
-        private IPropertySymbol? ReadCall(InvocationExpressionSyntax call, IPropertySymbol? inherited) {
+        private IPropertySymbol? ReadCall(
+            InvocationExpressionSyntax call, IPropertySymbol? inherited, int statementStart) {
             if (_model.GetSymbolInfo(call).Symbol is not IMethodSymbol method) {
                 _owner.Report(ValidationDiagnostics.NotARuleDeclaration, call, _rulesClass.Name);
                 return inherited;
@@ -209,6 +230,23 @@ public sealed class RulesFrontEnd {
                 return inherited;
             }
 
+            if (name is "When" or "Unless") {
+                // Arity separates the two shapes cleanly: one argument terminates a statement, two
+                // open a block. Nothing else has to tell them apart.
+                if (method.Parameters.Length == 1) {
+                    StampStatement(call, arguments, statementStart, negated: name == "Unless");
+                } else {
+                    ReadBlock(call, arguments, negated: name == "Unless");
+                }
+
+                return inherited;
+            }
+
+            if (name == "Otherwise") {
+                ReadOtherwise(call, arguments);
+                return inherited;
+            }
+
             var anchor = arguments.TryGetValue("value", out var selector)
                 ? PropertyOf(selector)
                 : inherited;
@@ -222,9 +260,9 @@ public sealed class RulesFrontEnd {
             var constraint = ConstraintFor(name, arguments, call);
 
             if (constraint is not null) {
-                _rules.Add(new DeclaredRule(anchor, field, constraint, Nesting.None));
+                AddRule(new DeclaredRule(anchor, field, constraint, Nesting.None));
             } else if (name is "Nested" or "Each") {
-                _rules.Add(new DeclaredRule(anchor, field, null,
+                AddRule(new DeclaredRule(anchor, field, null,
                     name == "Nested" ? Nesting.Object : Nesting.Elements));
             } else if (name != "For") {
                 _owner.Report(ValidationDiagnostics.NotARuleDeclaration, call, _rulesClass.Name);
@@ -331,12 +369,12 @@ public sealed class RulesFrontEnd {
             }
 
             var field = ExplicitField(arguments) ?? _owner._fieldNamer(anchor.Name);
-            var lifted = $"Rule{_predicates.Count}";
+            var lifted = $"Rule{_liftedRules++}";
             _predicates.Add(new LiftedPredicate(lifted, predicate));
 
             var accessor = $"global::{Namespace()}{_rulesClass.Name}_Rules.{lifted}";
 
-            _rules.Add(new DeclaredRule(
+            AddRule(new DeclaredRule(
                 anchor,
                 field,
                 new ConstraintModel(
@@ -352,6 +390,185 @@ public sealed class RulesFrontEnd {
                     Severity: SeverityOf(arguments)),
                 Nesting.None));
         }
+
+        /// <summary>
+        /// Adds a rule carrying whatever conditional blocks are open around it.
+        /// </summary>
+        private void AddRule(DeclaredRule rule) {
+            if (_open.Count > 0) {
+                // Nested blocks conjoin rather than replace, with no depth limit worth imposing.
+                rule = Conditioned(rule, string.Join(" && ", _open));
+            }
+
+            _rules.Add(rule);
+        }
+
+        /// <summary>
+        /// Conditions every rule the current statement declared - the one-argument
+        /// <c>.When()</c> / <c>.Unless()</c> form.
+        /// </summary>
+        /// <remarks>
+        /// Scope is the statement, which is already the unit this reader walks. That is what removes
+        /// the need for FluentValidation's <c>ApplyConditionTo</c>: there is no retroactive default
+        /// to opt out of, because nothing reaches past the semicolon.
+        /// </remarks>
+        private void StampStatement(
+            InvocationExpressionSyntax call,
+            IReadOnlyDictionary<string, ExpressionSyntax> arguments,
+            int statementStart,
+            bool negated) {
+
+            if (!arguments.TryGetValue("condition", out var predicate)) {
+                _owner.Report(ValidationDiagnostics.NotARuleDeclaration, call, _rulesClass.Name);
+                return;
+            }
+
+            if (!IsLambda(predicate, call) || !IsSelfContained(predicate)) {
+                return;
+            }
+
+            if (statementStart >= _rules.Count) {
+                _owner.Report(
+                    ValidationDiagnostics.ConditionAppliesToNoRules, call, negated ? "Unless" : "When");
+                return;
+            }
+
+            var condition = Lift(predicate, negated);
+
+            for (var i = statementStart; i < _rules.Count; i++) {
+                _rules[i] = Conditioned(_rules[i], condition);
+            }
+        }
+
+        /// <summary>
+        /// Reads a <c>When(condition, () =&gt; …)</c> block, with the condition open over its body.
+        /// </summary>
+        private void ReadBlock(
+            InvocationExpressionSyntax call,
+            IReadOnlyDictionary<string, ExpressionSyntax> arguments,
+            bool negated) {
+
+            if (!arguments.TryGetValue("condition", out var predicate) ||
+                !arguments.TryGetValue("rules", out var body)) {
+                _owner.Report(ValidationDiagnostics.NotARuleDeclaration, call, _rulesClass.Name);
+                return;
+            }
+
+            if (!IsLambda(predicate, call) || !IsSelfContained(predicate)) {
+                return;
+            }
+
+            var lifted = LiftCall(predicate);
+
+            _lastBlockCall = lifted;
+            _lastBlockNegated = negated;
+
+            ReadBlockBody(call, body, negated ? $"!({lifted})" : lifted, negated ? "Unless" : "When");
+        }
+
+        /// <summary>
+        /// Reads the <c>Otherwise</c> half, reusing the block's own lifted method negated rather
+        /// than lifting a second one for the same lambda.
+        /// </summary>
+        private void ReadOtherwise(
+            InvocationExpressionSyntax call, IReadOnlyDictionary<string, ExpressionSyntax> arguments) {
+
+            if (_lastBlockCall is not { } lifted || !arguments.TryGetValue("rules", out var body)) {
+                _owner.Report(ValidationDiagnostics.NotARuleDeclaration, call, _rulesClass.Name);
+                return;
+            }
+
+            ReadBlockBody(call, body, _lastBlockNegated ? lifted : $"!({lifted})", "Otherwise");
+        }
+
+        private void ReadBlockBody(
+            InvocationExpressionSyntax call, ExpressionSyntax body, string condition, string what) {
+
+            var start = _rules.Count;
+
+            _open.Add(condition);
+
+            try {
+                switch (body) {
+                    case ParenthesizedLambdaExpressionSyntax { Block: { } block }:
+                        foreach (var statement in block.Statements) {
+                            Read(statement);
+                        }
+
+                        break;
+
+                    // A block that says one thing does not have to open braces to say it, for the
+                    // same reason an expression-bodied Describe does not.
+                    case ParenthesizedLambdaExpressionSyntax { ExpressionBody: { } expression }:
+                        ReadExpression(expression);
+                        break;
+
+                    default:
+                        _owner.Report(ValidationDiagnostics.NotARuleDeclaration, call, _rulesClass.Name);
+                        break;
+                }
+            } finally {
+                _open.RemoveAt(_open.Count - 1);
+            }
+
+            if (_rules.Count == start) {
+                _owner.Report(ValidationDiagnostics.EmptyConditionalBlock, call, what, _rulesClass.Name);
+            }
+        }
+
+        /// <summary>
+        /// Whether the condition was written as a lambda, which is the only form that can be lifted.
+        /// </summary>
+        /// <remarks>
+        /// A method group reaches the emitter with no body to copy, and the lifted method would come
+        /// out as <c>=&gt; true</c> - a condition that silently holds always, in generated code
+        /// nobody reads. Reported rather than emitted: this is exactly the class of quiet wrong
+        /// answer the no-emit-after-diagnostic rule exists to prevent.
+        /// </remarks>
+        private bool IsLambda(ExpressionSyntax predicate, InvocationExpressionSyntax call) {
+            if (predicate is SimpleLambdaExpressionSyntax { ExpressionBody: not null } or
+                ParenthesizedLambdaExpressionSyntax { ExpressionBody: not null }) {
+                return true;
+            }
+
+            _owner.Report(ValidationDiagnostics.NotARuleDeclaration, call, _rulesClass.Name);
+
+            return false;
+        }
+
+        /// <summary>
+        /// Lifts a condition lambda into a static method and returns the call to it.
+        /// </summary>
+        private string LiftCall(ExpressionSyntax predicate) {
+            var lifted = $"Cond{_liftedConditions++}";
+            _predicates.Add(new LiftedPredicate(lifted, predicate));
+
+            return $"global::{Namespace()}{_rulesClass.Name}_Rules.{lifted}(value)";
+        }
+
+        private string Lift(ExpressionSyntax predicate, bool negated) {
+            var call = LiftCall(predicate);
+
+            return negated ? $"!({call})" : call;
+        }
+
+        /// <summary>
+        /// Adds <paramref name="condition"/> to whatever the rule already carries.
+        /// </summary>
+        /// <remarks>
+        /// Conjoined rather than replaced, so a chained <c>.When()</c> written inside a <c>When</c>
+        /// block means both. The emitter hoists each distinct call once, so repeating one across
+        /// several rules costs one evaluation, not several.
+        /// </remarks>
+        private static DeclaredRule Conditioned(DeclaredRule rule, string condition) => rule with {
+            Constraint = rule.Constraint is { } constraint
+                ? constraint with { Condition = Conjoin(constraint.Condition, condition) }
+                : null,
+            Condition = Conjoin(rule.Condition, condition),
+        };
+
+        private static string Conjoin(string? existing, string added) =>
+            existing is null ? added : $"{existing} && {added}";
 
         private void ReadApply(InvocationExpressionSyntax call, IReadOnlyDictionary<string, ExpressionSyntax> arguments) {
             if (!arguments.TryGetValue("rule", out var rule) ||
@@ -533,11 +750,17 @@ public enum Nesting {
 }
 
 /// <summary>One rule read out of a Describe body, still carrying its Roslyn symbols.</summary>
+/// <param name="Condition">
+/// Guards this rule, when a <c>When</c>/<c>Unless</c> covers it. Carried on the rule as well as on
+/// its constraint because a nesting rule has no constraint to carry it - <c>rules.Nested(x =&gt;
+/// x.Auto).When(…)</c> guards the descent itself.
+/// </param>
 public sealed record DeclaredRule(
     IPropertySymbol? Property,
     string Field,
     ConstraintModel? Constraint,
-    Nesting Nesting);
+    Nesting Nesting,
+    string? Condition = null);
 
 /// <summary>A predicate to be lifted into a static method the validator can call.</summary>
 public sealed record LiftedPredicate(string MethodName, ExpressionSyntax Lambda);

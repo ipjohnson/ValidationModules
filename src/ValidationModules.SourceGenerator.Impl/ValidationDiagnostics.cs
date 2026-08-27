@@ -296,6 +296,20 @@ public static class ValidationDiagnostics {
     /// (§4.2), so <c>field:</c> renames the error and does not detach the rule - passing it leaves
     /// this firing, and the old wording sent the reader round the loop a second time.
     /// </summary>
+    /// <summary>
+    /// Continues the rules-DSL block that ends at VM0075.
+    /// </summary>
+    public static readonly DiagnosticDescriptor EmptyConditionalBlock = Descriptor(
+        "VM0076", "Conditional block declares no rules",
+        "The {0} block in '{1}' declares no rules, so the condition guards nothing. Almost always " +
+        "a rule that was moved out and left the block behind",
+        DiagnosticSeverity.Warning);
+
+    public static readonly DiagnosticDescriptor ConditionAppliesToNoRules = Descriptor(
+        "VM0077", "Condition applies to no rules",
+        "This {0} terminates a statement that declared no constraints, so it conditions nothing",
+        DiagnosticSeverity.Warning);
+
     public static readonly DiagnosticDescriptor EnsureHasNoField = Descriptor(
         "VM0075", "Ensure has no field",
         "The predicate in '{0}.Describe' reads no property of its parameter, so the rule has no " +
