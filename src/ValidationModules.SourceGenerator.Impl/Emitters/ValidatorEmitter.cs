@@ -164,8 +164,15 @@ public sealed class ValidatorEmitter {
         }
 
         foreach (var property in nested) {
-            builder.AppendLine(
-                $"        {Field(property)} = System.Linq.Enumerable.ToArray({Parameter(property)});");
+            // Empty means absent, not "validate nothing". A container that has no
+            // IValidatorFor<TNested> registered - the usual cause being a second assembly whose
+            // AddXValidators() was never called - injects an empty sequence, and storing that
+            // non-null array would leave the ??= fallback below unreachable. The nested value would
+            // then be skipped in silence while every other constraint still reported, which reads
+            // as validation working. Falling back to the generated validator is what the
+            // parameterless constructor already does for the standalone case.
+            builder.AppendLine($"        var resolved{property.PropertyName} = System.Linq.Enumerable.ToArray({Parameter(property)});");
+            builder.AppendLine($"        {Field(property)} = resolved{property.PropertyName}.Length == 0 ? null : resolved{property.PropertyName};");
         }
 
         builder.AppendLine("    }");

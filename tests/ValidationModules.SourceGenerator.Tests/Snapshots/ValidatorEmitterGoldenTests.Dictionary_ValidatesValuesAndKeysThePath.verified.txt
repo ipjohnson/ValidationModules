@@ -55,7 +55,8 @@ public sealed partial class PetValidator : IValidatorFor<global::Sample.Pet> {
     /// <summary>Resolved from the container: the full set for each nested type.</summary>
     public PetValidator(
         System.Collections.Generic.IEnumerable<IValidatorFor<global::Sample.Toy>> toys) {
-        _toysValidators = System.Linq.Enumerable.ToArray(toys);
+        var resolvedToys = System.Linq.Enumerable.ToArray(toys);
+        _toysValidators = resolvedToys.Length == 0 ? null : resolvedToys;
     }
 
     /// <summary>Standalone: nested types fall back to their own generated validators.</summary>

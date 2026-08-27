@@ -144,4 +144,40 @@ public class NestedCompositionTests {
         Assert.True(runner.Validate(Valid() with { Home = new Address { PostalCode = "BLOCKED" } }).IsValid);
     }
 
+
+    /// <summary>
+    /// A container with no <c>IValidatorFor&lt;Item&gt;</c> registered injects an empty sequence,
+    /// not a missing one. Storing that array left the fallback unreachable and the nested value
+    /// went unvalidated in silence, while every other constraint still reported - so validation
+    /// looked like it was working. The usual cause is models in a second assembly whose
+    /// <c>AddXValidators()</c> was never called.
+    /// </summary>
+    [Fact]
+    public void NestedValidator_NotRegistered_FallsBackRatherThanSkipping() {
+        var validator = new SutProject.Nesting.CatalogValidator(
+            System.Array.Empty<IValidatorFor<SutProject.Nesting.Item>>());
+
+        var result = validator.Validate(new SutProject.Nesting.Catalog {
+            Items = { ["a"] = new SutProject.Nesting.Item { Sku = null } }
+        });
+
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(ValidationCodes.Required, error.Code);
+    }
+
+    /// <summary>The registered case is unaffected: an injected validator still wins.</summary>
+    [Fact]
+    public void NestedValidator_Registered_StillComposes() {
+        var services = new ServiceCollection();
+        services.AddSutProjectValidators();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = provider.GetRequiredService<IValidatorFor<SutProject.Nesting.Catalog>>()
+            .Validate(new SutProject.Nesting.Catalog {
+                Items = { ["a"] = new SutProject.Nesting.Item { Sku = null } }
+            });
+
+        Assert.Single(result.Errors);
+    }
 }
