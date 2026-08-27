@@ -449,7 +449,9 @@ public class ConstraintDiagnosticsTests {
 
             namespace Sample;
 
-            public record Address {
+            // Sealed, which is what "well formed" now means for a nested target: an unsealed one
+            // leaves open what should happen to a value of a more derived type, and VM0031 asks.
+            public sealed record Address {
                 [Required]
                 [StringLength(1, 100)]
                 public string? Street { get; init; }

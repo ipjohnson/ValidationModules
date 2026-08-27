@@ -252,6 +252,11 @@ namespace ValidationModules.Constraints
         public string? RegexMember { get; }
         public System.Type? RegexProvider { get; }
     }
+    public enum Polymorphism
+    {
+        DeclaredOnly = 0,
+        CompileTime = 1,
+    }
     public sealed class RangeAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
     {
         public RangeAttribute() { }
@@ -283,6 +288,8 @@ namespace ValidationModules.Constraints
     public sealed class ValidateNestedAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
     {
         public ValidateNestedAttribute() { }
+        public ValidateNestedAttribute(ValidationModules.Constraints.Polymorphism polymorphism) { }
+        public ValidationModules.Constraints.Polymorphism Polymorphism { get; }
     }
     [System.AttributeUsage(System.AttributeTargets.Property | System.AttributeTargets.Field | System.AttributeTargets.Parameter, AllowMultiple=true, Inherited=true)]
     public abstract class ValidationConstraintAttribute : System.Attribute
