@@ -217,6 +217,11 @@ namespace ValidationModules.Constraints
         public System.StringComparison Comparison { get; init; }
         public object[] Values { get; }
     }
+    [System.AttributeUsage(System.AttributeTargets.Property | System.AttributeTargets.Field | System.AttributeTargets.Parameter)]
+    public sealed class EnumDefinedAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public EnumDefinedAttribute() { }
+    }
     [System.AttributeUsage(System.AttributeTargets.Class | System.AttributeTargets.Struct | System.AttributeTargets.Interface)]
     public sealed class GenerateValidatorAttribute : System.Attribute
     {

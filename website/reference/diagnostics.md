@@ -40,6 +40,7 @@ silently does not is worse than one you know is missing.
 | [VM0024](#vm0024) | Error | `[UniqueItems]` on a non-collection |
 | [VM0025](#vm0025) | Warning | `[UniqueItems]` over elements with no equality of their own |
 | [VM0026](#vm0026) | Warning | `[Range]` declares neither bound |
+| [VM0027](#vm0027) | Error | `[EnumDefined]` was applied to a member whose type is not an enum. |
 | [VM0017](#vm0017) | *policy* | an inline pattern roots the regex engine |
 | [VM0018](#vm0018) | Error | referenced regex member is unusable |
 | [VM0040](#vm0040) | Error | `ValidationModules.Runtime` is too old |
@@ -305,6 +306,22 @@ public int Age { get; init; }
 
 A warning rather than an error, for VM0004's reason: the declaration is inert rather than wrong.
 Set `Min`, `Max`, or both.
+
+### VM0027 {#vm0027}
+
+**Error** — *`[EnumDefined] applies to enum types; 'Quantity' is 'int'`*
+
+```csharp
+[EnumDefined] // VM0027
+public int Quantity { get; init; }
+```
+
+The check is a comparison against the members the type declares, so a type that declares none has
+nothing to compare against. An enum with no members reports the same way, for the same reason: there
+is no value it could accept.
+
+Nullable enums are fine — `PaymentMethod?` is checked when it has a value and passes when it does
+not.
 
 ### VM0040 {#vm0040}
 

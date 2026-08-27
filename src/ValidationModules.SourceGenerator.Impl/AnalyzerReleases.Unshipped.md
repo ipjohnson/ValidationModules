@@ -35,3 +35,4 @@ VM0070 | ValidationModules.Usage | Error | A statement in Describe is not a rule
 VM0071 | ValidationModules.Usage | Error | A rule selector is not a simple property path.
 VM0072 | ValidationModules.Usage | Error | A predicate references state outside its own parameter.
 VM0075 | ValidationModules.Usage | Error | An Ensure has no inferable field and no explicit field name.
+VM0027 | ValidationModules.Usage | Error | [EnumDefined] was applied to a member whose type is not an enum.

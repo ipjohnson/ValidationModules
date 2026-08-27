@@ -705,4 +705,17 @@ public class ConstraintDiagnosticsTests {
         Assert.Contains("AddRequired(\"name\")", emitted);
         Assert.DoesNotContain("Quantity", emitted);
     }
+
+    [Theory]
+    [InlineData("[EnumDefined] public int Quantity { get; init; }", "int")]
+    [InlineData("[EnumDefined] public string? Name { get; init; }", "string")]
+    public void EnumDefined_OnANonEnum_IsVM0027(string member, string mentioned) {
+        var result = GeneratorHarness.Run(Model(member));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0027");
+
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        Assert.Contains(mentioned, diagnostic.GetMessage());
+        Assert.Empty(result.CompilationErrors);
+    }
 }

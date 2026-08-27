@@ -73,6 +73,11 @@ public static class NativeConstraintReader {
             case "UniqueItemsAttribute":
                 return common with { Kind = ConstraintKind.UniqueItems };
 
+            // Carries no members yet: they come from the member's own type, which only the front end
+            // has, and are filled in by ResolveEnumMembers.
+            case "EnumDefinedAttribute":
+                return common with { Kind = ConstraintKind.EnumDefined };
+
             case "PatternAttribute": {
                 var args = attribute.ConstructorArguments;
 

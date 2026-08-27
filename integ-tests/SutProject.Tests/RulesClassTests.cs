@@ -196,4 +196,59 @@ public class RulesClassTests {
     public void IsValid_IgnoresAWarning() =>
         Assert.True(new FilingValidator().IsValid(
             new Filing { Reference = "R-1", Attachment = "a.pdf", DaysLate = 45 }));
+
+    // ---- [EnumDefined] ----------------------------------------------------------------------
+
+    /// <summary>
+    /// The gap this closes: a deserialiser handed 99 produces (PaymentMethod)99, and a handler
+    /// switching on it falls through every case it was written for. Nothing used to say so.
+    /// </summary>
+    [Fact]
+    public void EnumDefined_RejectsAValueTheEnumDoesNotDeclare() {
+        var result = new SutProject.Nesting.PaymentValidator().Validate(new SutProject.Nesting.Payment {
+            Method = (SutProject.Nesting.PaymentMethod)99,
+        });
+
+        var error = Assert.Single(result.Errors);
+        Assert.Equal("method", error.Field);
+        Assert.Equal(ValidationCodes.Enum, error.Code);
+        Assert.Contains("Card, Cash, Transfer", error.Message);
+    }
+
+    [Fact]
+    public void EnumDefined_AcceptsEveryDeclaredMember() {
+        foreach (var method in Enum.GetValues<SutProject.Nesting.PaymentMethod>()) {
+            Assert.True(new SutProject.Nesting.PaymentValidator().IsValid(
+                new SutProject.Nesting.Payment { Method = method }));
+        }
+    }
+
+    /// <summary>
+    /// A combination equals no declared member, so membership would reject what the type exists to
+    /// express. The test is whether any bit outside the declared ones is set.
+    /// </summary>
+    [Fact]
+    public void EnumDefined_OnFlags_AcceptsACombinationAndRejectsAnUndeclaredBit() {
+        var combination = new SutProject.Nesting.Payment {
+            Rights = SutProject.Nesting.Access.Read | SutProject.Nesting.Access.Delete,
+        };
+
+        Assert.True(new SutProject.Nesting.PaymentValidator().IsValid(combination));
+
+        var undeclared = new SutProject.Nesting.Payment { Rights = (SutProject.Nesting.Access)64 };
+        var error = Assert.Single(new SutProject.Nesting.PaymentValidator().Validate(undeclared).Errors);
+
+        Assert.Equal("rights", error.Field);
+        Assert.Contains("combination of", error.Message);
+    }
+
+    /// <summary>Absent is not undefined: [EnumDefined] does not imply [Required].</summary>
+    [Fact]
+    public void EnumDefined_OnANullable_AcceptsNullAndChecksAValue() {
+        Assert.True(new SutProject.Nesting.PaymentValidator().IsValid(
+            new SutProject.Nesting.Payment { Fallback = null }));
+
+        Assert.False(new SutProject.Nesting.PaymentValidator().IsValid(
+            new SutProject.Nesting.Payment { Fallback = (SutProject.Nesting.PaymentMethod)77 }));
+    }
 }
