@@ -35,6 +35,8 @@ namespace ValidationModules;
 /// <typeparam name="T">The type being validated.</typeparam>
 public sealed class DescribedValidator<T> : IValidatorFor<T> {
     private readonly ICompiledRule<T>[] _rules;
+    private readonly Func<T, bool>[] _conditions;
+    private readonly int[][] _slots;
 
     /// <summary>
     /// Builds the rule set by running <paramref name="rules"/> once.
@@ -62,15 +64,37 @@ public sealed class DescribedValidator<T> : IValidatorFor<T> {
         rules.Describe(builder);
 
         _rules = builder.Build();
+        _conditions = builder.Atoms;
+        _slots = builder.Slots;
     }
 
     /// <inheritdoc/>
     public void Validate(ref ValidationContext context, T value) {
+        // Every distinct condition, evaluated once, before any rule is tested. This is the runtime
+        // engine's version of the locals the emitter hoists above a method body, and it exists for
+        // the same reason: a condition may read live static state, so once per pass and once per
+        // guarded rule are different answers. Evaluating per rule would make the two engines
+        // disagree, which is exactly what API-SURFACE.md §19.9 promises cannot happen.
+        //
+        // A stackalloc rather than an array, so a guarded clean pass allocates what an unguarded one
+        // does - which is nothing.
+        Span<bool> held = stackalloc bool[_conditions.Length];
+
+        for (var i = 0; i < _conditions.Length; i++) {
+            held[i] = _conditions[i](value);
+        }
+
+        var conditions = new ConditionValues(held, _slots);
+
         // Indexed over an array, not foreach over a list: HANDOFF.md §2.3 measured exactly 32 bytes
         // for the enumerator ValidationRunner<T> was boxing on the same shape, and a clean pass here
         // has to allocate nothing.
         for (var i = 0; i < _rules.Length; i++) {
-            _rules[i].Apply(ref context, value);
+            var rule = _rules[i];
+
+            if (conditions.Holds(rule.ConditionIndex)) {
+                rule.Apply(ref context, value, conditions);
+            }
         }
     }
 }

@@ -10,6 +10,10 @@ namespace Microsoft.Extensions.DependencyInjection
 }
 namespace ValidationModules
 {
+    public sealed class ConditionalRules<T>
+    {
+        public ValidationModules.ValidationRules<T> Otherwise(System.Action rules) { }
+    }
     public static class ConstraintChecks
     {
         public static bool AllUnique<T>(System.Collections.Generic.IEnumerable<T> items) { }
@@ -64,6 +68,8 @@ namespace ValidationModules
             where TValue :  struct { }
         public static ValidationModules.PropertyRules<T, string?> RequiredAllowingEmpty<T>(this ValidationModules.PropertyRules<T, string?> rules) { }
         public static ValidationModules.PropertyRules<T, System.Collections.Generic.IEnumerable<TElement>?> Unique<T, TElement>(this ValidationModules.PropertyRules<T, System.Collections.Generic.IEnumerable<TElement>?> rules) { }
+        public static ValidationModules.PropertyRules<T, TValue> Unless<T, TValue>(this ValidationModules.PropertyRules<T, TValue> rules, System.Func<T, bool> condition) { }
+        public static ValidationModules.PropertyRules<T, TValue> When<T, TValue>(this ValidationModules.PropertyRules<T, TValue> rules, System.Func<T, bool> condition) { }
     }
     public sealed class PropertyRules<T, TValue>
     {
@@ -182,6 +188,10 @@ namespace ValidationModules
             where TValue :  struct { }
         public ValidationModules.PropertyRules<T, string?> RequiredAllowingEmpty(System.Func<T, string?> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
         public ValidationModules.PropertyRules<T, System.Collections.Generic.IEnumerable<TElement>?> Unique<TElement>(System.Func<T, System.Collections.Generic.IEnumerable<TElement>?> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
+        public ValidationModules.ValidationRules<T> Unless(System.Func<T, bool> condition) { }
+        public ValidationModules.ConditionalRules<T> Unless(System.Func<T, bool> condition, System.Action rules) { }
+        public ValidationModules.ValidationRules<T> When(System.Func<T, bool> condition) { }
+        public ValidationModules.ConditionalRules<T> When(System.Func<T, bool> condition, System.Action rules) { }
     }
     public sealed class ValidationRunner<T>
     {

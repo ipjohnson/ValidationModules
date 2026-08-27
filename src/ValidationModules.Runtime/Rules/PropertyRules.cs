@@ -22,7 +22,14 @@ public sealed class PropertyRules<T, TValue> {
         Owner = owner;
         Field = field;
         Read = read;
+        StartIndex = owner.LastStatementStart;
     }
+
+    /// <summary>
+    /// Where this statement's rules begin, so a trailing <c>.When()</c> conditions all of them and
+    /// nothing declared before them.
+    /// </summary>
+    internal int StartIndex { get; }
 
     /// <summary>Returns to the type-level builder, for a rule that is not about this property.</summary>
     public ValidationRules<T> And => Owner;
@@ -44,6 +51,31 @@ public sealed class PropertyRules<T, TValue> {
 /// live outside it.
 /// </remarks>
 public static class PropertyRulesExtensions {
+
+    /// <summary>
+    /// Conditions every constraint declared by the statement this terminates.
+    /// </summary>
+    /// <remarks>
+    /// <c>rules.Required(x =&gt; x.Reason).Length(max: 500).When(x =&gt; x.Expedited)</c> guards both
+    /// constraints, which is the obvious reading of the line. Nothing reaches past the semicolon:
+    /// to guard only the length, declare the two in separate statements.
+    /// </remarks>
+    public static PropertyRules<T, TValue> When<T, TValue>(
+        this PropertyRules<T, TValue> rules, Func<T, bool> condition) {
+        ArgumentNullException.ThrowIfNull(rules);
+        rules.Owner.StampFrom(rules.StartIndex, condition, negated: false);
+
+        return rules;
+    }
+
+    /// <summary>The negation of <see cref="When{T, TValue}"/>.</summary>
+    public static PropertyRules<T, TValue> Unless<T, TValue>(
+        this PropertyRules<T, TValue> rules, Func<T, bool> condition) {
+        ArgumentNullException.ThrowIfNull(rules);
+        rules.Owner.StampFrom(rules.StartIndex, condition, negated: true);
+
+        return rules;
+    }
 
     /// <summary>Declares that the anchored string must be present. Whitespace counts as missing.</summary>
     public static PropertyRules<T, string?> Required<T>(this PropertyRules<T, string?> rules) {

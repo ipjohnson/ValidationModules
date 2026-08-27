@@ -146,3 +146,85 @@ public sealed record Badge {
 public sealed class BadgeRules : IValidationRulesFor<Badge> {
     public void Describe(ValidationRules<Badge> rules) => rules.Required(x => x.Holder).Length(2, 20);
 }
+
+/// <summary>
+/// Every conditional shape the DSL offers, in one declaration, so both engines can be run against
+/// the same rules and compared error for error.
+/// </summary>
+/// <remarks>
+/// The substitutability promise of API-SURFACE.md §19.9 is what conditions put most at risk: a
+/// condition may read live static state, so an engine evaluating it per rule and one evaluating it
+/// per pass produce different answers rather than the same answer twice.
+/// </remarks>
+public sealed record Claim {
+    public bool IsAuto { get; init; }
+
+    public bool IsDraft { get; init; }
+
+    public bool IsExpedited { get; init; }
+
+    public string? Plate { get; init; }
+
+    public string? Reason { get; init; }
+
+    public string? Reference { get; init; }
+
+    public string? Notes { get; init; }
+}
+
+public sealed class ClaimRules : IValidationRulesFor<Claim> {
+
+    public void Describe(ValidationRules<Claim> rules) {
+        // Chained: guards both constraints of its own statement, and nothing past the semicolon.
+        rules.Required(x => x.Reason).Length(2, 20).When(x => x.IsExpedited);
+
+        // Chained negated.
+        rules.Required(x => x.Reference).Unless(x => x.IsDraft);
+
+        // Block, with the other half declared through Otherwise rather than a second predicate.
+        rules.When(x => x.IsAuto, () => {
+            rules.Required(x => x.Plate);
+        }).Otherwise(() => {
+            rules.Required(x => x.Notes);
+        });
+    }
+}
+
+/// <summary>
+/// A condition reading a mutable static counter, so "once per pass" is observed rather than
+/// asserted. Three rules name it; the counter must move by one per validation, on either engine.
+/// </summary>
+public sealed record Metered {
+    public static int Evaluations;
+
+    /// <summary>
+    /// Public and on the model, not private on the rules class: a condition is lifted into its own
+    /// static class carrying the declaring file's usings, so it can only reach what that class can.
+    /// </summary>
+    public static bool Counted(Metered value) {
+        Evaluations++;
+
+        return value.Gate;
+    }
+
+    public bool Gate { get; init; }
+
+    public string? First { get; init; }
+
+    public string? Second { get; init; }
+
+    public string? Third { get; init; }
+}
+
+public sealed class MeteredRules : IValidationRulesFor<Metered> {
+
+    public void Describe(ValidationRules<Metered> rules) {
+        // A lambda rather than the method group: a condition has to be liftable into a static
+        // method, and a method group has no body for the generator to copy.
+        rules.When(x => Metered.Counted(x), () => {
+            rules.Required(x => x.First);
+            rules.Required(x => x.Second);
+            rules.Required(x => x.Third);
+        });
+    }
+}

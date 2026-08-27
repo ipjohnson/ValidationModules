@@ -152,6 +152,8 @@ public sealed class AttributeFrontEnd {
                 }
             }
 
+            string? declaredNestedCondition = null;
+
             if (declared is not null) {
                 foreach (var rule in declared) {
                     if (!SymbolEqualityComparer.Default.Equals(rule.Property, property)) {
@@ -164,7 +166,13 @@ public sealed class AttributeFrontEnd {
                         constraints.Add(rule.Constraint);
                     }
 
-                    validateNested |= rule.Nesting != Nesting.None;
+                    if (rule.Nesting != Nesting.None) {
+                        validateNested = true;
+
+                        // A nesting rule has no constraint to carry its guard, so the descent's
+                        // condition rides on the rule itself.
+                        declaredNestedCondition = rule.Condition;
+                    }
                 }
             }
 
@@ -197,7 +205,7 @@ public sealed class AttributeFrontEnd {
 
             properties.Add(BuildProperty(
                 property, constraints, validateNested, validatorNameFor, overriddenField,
-                validateNested ? NestedCondition(member.Sources) : null,
+                validateNested ? NestedDescentCondition(member.Sources, declaredNestedCondition) : null,
                 polymorphism));
             order.Add(FirstMentionOf(property, declared));
 
@@ -1186,6 +1194,26 @@ public sealed class AttributeFrontEnd {
     /// </remarks>
     private static bool CanHaveSubtypes(ITypeSymbol target) =>
         target is { IsSealed: false, IsValueType: false } and not { TypeKind: TypeKind.Enum };
+
+    /// <summary>
+    /// The guard on a nested descent, from <c>[ValidateNested]</c> and from a rules class alike.
+    /// </summary>
+    /// <remarks>
+    /// Conjoined rather than one winning, for the same reason the two rule sources union rather
+    /// than replace (§19.7): both were written and both are meant.
+    /// </remarks>
+    private string? NestedDescentCondition(
+        IEnumerable<IPropertySymbol> sources, string? declared) {
+
+        var attributed = NestedCondition(sources);
+
+        return (attributed, declared) switch {
+            (null, null) => null,
+            ({ } only, null) => only,
+            (null, { } only) => only,
+            ({ } left, { } right) => $"{left} && {right}",
+        };
+    }
 
     private static string? NamedArgument(AttributeData attribute, string name) =>
         attribute.NamedArguments.FirstOrDefault(pair => pair.Key == name).Value.Value as string;
