@@ -27,7 +27,11 @@ public sealed record Circle : Shape {
 }
 
 public sealed record Drawing {
-    [ValidateNested] public Shape? Primary { get; init; }
+    /// <summary>
+    /// The declared-type defect, now answered. Without a mode this checks <c>Kind</c> and nothing
+    /// else, so a <c>Circle</c> missing its radius validates clean.
+    /// </summary>
+    [ValidateNested(Polymorphism.CompileTime)] public Shape? Primary { get; init; }
 }
 
 /// <summary>A mutable self-reference, so a genuine cycle can be built in a test.</summary>

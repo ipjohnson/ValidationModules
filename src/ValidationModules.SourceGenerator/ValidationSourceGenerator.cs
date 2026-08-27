@@ -174,6 +174,12 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         var declarations = new List<RulesDeclaration>();
         var rulesFrontEnd = new RulesFrontEnd(options.FieldNamer);
         var plain = new List<INamedTypeSymbol>();
+        var subtypes = InvertBaseChains(candidates);
+
+        IReadOnlyList<(INamedTypeSymbol Type, int Depth)> SubtypesOf(INamedTypeSymbol type) =>
+            subtypes.TryGetValue(type, out var found)
+                ? found
+                : Array.Empty<(INamedTypeSymbol, int)>();
 
         foreach (var candidate in candidates) {
             if (rulesFrontEnd.Build(candidate, compilation) is { } declaration) {
@@ -216,7 +222,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             byTarget.TryGetValue(candidate, out var declared);
             byTarget.Remove(candidate);
 
-            if (Build(candidate, declared, compilation, options, HasRulesClass) is { } result) {
+            if (Build(candidate, declared, compilation, options, HasRulesClass, SubtypesOf) is { } result) {
                 results.Add(result);
             }
         }
@@ -224,7 +230,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         // Whatever is left targets a type this compilation does not declare - the case the feature
         // exists for. Its model has no attributes to merge with, only the rules class's own.
         foreach (var pair in byTarget) {
-            if (Build((INamedTypeSymbol)pair.Key, pair.Value, compilation, options, HasRulesClass) is { } result) {
+            if (Build((INamedTypeSymbol)pair.Key, pair.Value, compilation, options, HasRulesClass, SubtypesOf) is { } result) {
                 results.Add(result);
             }
         }
@@ -240,7 +246,8 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         List<RulesDeclaration>? declared,
         Compilation compilation,
         GeneratorOptions options,
-        Func<INamedTypeSymbol, bool> hasRulesClass) {
+        Func<INamedTypeSymbol, bool> hasRulesClass,
+        Func<INamedTypeSymbol, IReadOnlyList<(INamedTypeSymbol Type, int Depth)>> subtypesOf) {
 
         var frontEnd = new AttributeFrontEnd(
             compilation, options.CompileDataAnnotations, options.FieldNamer, options.ResolvedPatternPolicy);
@@ -250,13 +257,75 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             static type => $"{type.Name}Validator",
             declared?.SelectMany(static declaration => declaration.Rules).ToArray(),
             declared?.SelectMany(static declaration => declaration.AppliedRules).ToArray(),
-            hasRulesClass);
+            hasRulesClass,
+            subtypesOf);
 
         var diagnostics = frontEnd.Diagnostics.ToImmutableArray();
 
         return model is null && diagnostics.Length == 0
             ? null
             : new ModelResult(model, diagnostics, null, null);
+    }
+
+    /// <summary>
+    /// Indexes each candidate against every ancestor it has, so that "the subtypes of X" is
+    /// answerable without ever enumerating types in a referenced assembly.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Walking namespaces across every reference to find derived types would traverse tens of
+    /// thousands of symbols per compilation, behind a CompilationProvider that invalidates on every
+    /// keystroke. Inverting the chain over the candidates already collected is one pass,
+    /// O(types x depth), and multi-level and metadata ancestors both fall out of it for free.
+    /// </para>
+    /// <para>
+    /// Depth is the candidate's own distance from <c>object</c>, not its distance from the ancestor
+    /// being indexed against. That is what makes one number order the switch arms correctly when
+    /// the dispatch target is an interface: any subtype is strictly deeper than its base, whether
+    /// or not the two reach the target by the same route.
+    /// </para>
+    /// </remarks>
+    private static Dictionary<INamedTypeSymbol, List<(INamedTypeSymbol Type, int Depth)>> InvertBaseChains(
+        ImmutableArray<INamedTypeSymbol> candidates) {
+
+        var index = new Dictionary<INamedTypeSymbol, List<(INamedTypeSymbol, int)>>(SymbolEqualityComparer.Default);
+
+        foreach (var candidate in candidates) {
+            var depth = 0;
+
+            for (INamedTypeSymbol? ancestor = candidate.BaseType;
+                 ancestor is not null && ancestor.SpecialType != SpecialType.System_Object;
+                 ancestor = ancestor.BaseType) {
+                depth++;
+            }
+
+            for (INamedTypeSymbol? ancestor = candidate.BaseType;
+                 ancestor is not null && ancestor.SpecialType != SpecialType.System_Object;
+                 ancestor = ancestor.BaseType) {
+                Add(index, ancestor, candidate, depth);
+            }
+
+            // Interfaces are dispatch targets too - a [ValidateNested] IPayment is as ordinary as a
+            // [ValidateNested] Payment.
+            foreach (var contract in candidate.AllInterfaces) {
+                Add(index, contract, candidate, depth);
+            }
+        }
+
+        return index;
+    }
+
+    private static void Add(
+        Dictionary<INamedTypeSymbol, List<(INamedTypeSymbol, int)>> index,
+        INamedTypeSymbol ancestor,
+        INamedTypeSymbol candidate,
+        int depth) {
+
+        if (!index.TryGetValue(ancestor, out var list)) {
+            index[ancestor] = list = new List<(INamedTypeSymbol, int)>();
+        }
+
+        list.Add((candidate, depth));
     }
 
     private static string QualifiedName(INamedTypeSymbol type) =>

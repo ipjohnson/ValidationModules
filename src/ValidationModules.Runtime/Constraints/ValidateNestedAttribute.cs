@@ -18,4 +18,24 @@ namespace ValidationModules.Constraints;
 /// Does not recurse into a value that failed <see cref="RequiredAttribute"/>.
 /// </para>
 /// </remarks>
-public sealed class ValidateNestedAttribute : ValidationConstraintAttribute;
+public sealed class ValidateNestedAttribute : ValidationConstraintAttribute {
+
+    /// <summary>Descend into the declared type only.</summary>
+    public ValidateNestedAttribute() { }
+
+    /// <summary>
+    /// Descend with the given treatment of subtypes.
+    /// </summary>
+    /// <param name="polymorphism">
+    /// How to handle a value whose runtime type is more derived than this property's declared type.
+    /// </param>
+    public ValidateNestedAttribute(Polymorphism polymorphism) {
+        Polymorphism = polymorphism;
+    }
+
+    /// <summary>
+    /// How this descent treats subtypes. Set through the constructor, because it is the one
+    /// decision the property has to make and there is no second place to put it.
+    /// </summary>
+    public Polymorphism Polymorphism { get; }
+}

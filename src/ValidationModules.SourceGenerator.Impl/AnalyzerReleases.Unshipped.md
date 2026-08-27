@@ -40,3 +40,4 @@ VM0030 | ValidationModules.Usage | Warning | A derived property hides a base dec
 VM0028 | ValidationModules.Usage | Error | A When/Unless condition names a member the validated type does not declare.
 VM0029 | ValidationModules.Usage | Error | A When/Unless condition names a member that is not a predicate.
 VM0033 | ValidationModules.Usage | Error | A constraint sets both When and Unless.
+VM0031 | ValidationModules.Usage | Warning | A [ValidateNested] target is not sealed and declares no polymorphism mode.

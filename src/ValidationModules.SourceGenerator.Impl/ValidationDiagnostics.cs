@@ -164,6 +164,22 @@ public static class ValidationDiagnostics {
         DiagnosticSeverity.Error);
 
     /// <summary>
+    /// Keyed on whether the target is sealed - a local fact about the type - and never on which
+    /// subtypes happen to be visible from this compilation.
+    /// </summary>
+    /// <remarks>
+    /// That distinction is the whole design. A diagnostic keyed on subtype visibility would appear
+    /// when the hierarchy sat in one assembly and vanish when a type moved to a package, which is
+    /// precisely the layout-dependence polymorphic dispatch is written to avoid.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor UnsealedNestedTargetHasNoMode = Descriptor(
+        "VM0031", "[ValidateNested] target is not sealed and declares no polymorphism mode",
+        "'{0}' is not sealed, so a value of a more derived type may reach '{1}'. Say what should " +
+        "happen: seal it, or pass Polymorphism.DeclaredOnly to check only the declared type, or " +
+        "Polymorphism.CompileTime to dispatch over its subtypes",
+        DiagnosticSeverity.Warning);
+
+    /// <summary>
     /// Constraints on a base type's properties are collected into the derived type's validator, so
     /// a derived declaration of the same property name silently takes over every constraint on that
     /// field.

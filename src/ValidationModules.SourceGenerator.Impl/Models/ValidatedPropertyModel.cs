@@ -37,6 +37,11 @@ public enum PropertyShape {
 /// shape as <see cref="ConstraintModel.Condition"/>: a complete boolean expression in terms of
 /// <c>value</c>, negation already baked in, null when the descent is unconditional.
 /// </param>
+/// <param name="Polymorphism">How the descent treats subtypes of the nested type.</param>
+/// <param name="Subtypes">
+/// The subtypes a <see cref="PolymorphismMode.CompileTime"/> descent dispatches to, already sorted
+/// most-derived first. Empty for every other mode.
+/// </param>
 public sealed record ValidatedPropertyModel(
     string PropertyName,
     string FieldName,
@@ -51,4 +56,6 @@ public sealed record ValidatedPropertyModel(
     string CountAccessor,
     bool ValidateNested,
     EquatableArray<ConstraintModel> Constraints,
-    string? Condition = null) : IEquatable<ValidatedPropertyModel>;
+    string? Condition = null,
+    PolymorphismMode Polymorphism = PolymorphismMode.DeclaredOnly,
+    EquatableArray<SubtypeModel> Subtypes = default) : IEquatable<ValidatedPropertyModel>;

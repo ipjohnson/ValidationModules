@@ -40,6 +40,12 @@ public sealed class AttributeFrontEnd {
     private INamedTypeSymbol? _validatedType;
 
     /// <summary>
+    /// Resolves the subtypes of a nested target, with their inheritance distance from it. Supplied
+    /// by the caller because only it has collected every candidate in the compilation.
+    /// </summary>
+    private Func<INamedTypeSymbol, IReadOnlyList<(INamedTypeSymbol Type, int Depth)>>? _subtypesOf;
+
+    /// <summary>
     /// Set per <see cref="Build"/> call rather than injected, because the caller collects the rules
     /// declarations across every candidate and a front end is constructed per type.
     /// </summary>
@@ -84,10 +90,12 @@ public sealed class AttributeFrontEnd {
         Func<INamedTypeSymbol, string> validatorNameFor,
         IReadOnlyList<DeclaredRule>? declared = null,
         IReadOnlyList<string>? applied = null,
-        Func<INamedTypeSymbol, bool>? hasRulesClass = null) {
+        Func<INamedTypeSymbol, bool>? hasRulesClass = null,
+        Func<INamedTypeSymbol, IReadOnlyList<(INamedTypeSymbol Type, int Depth)>>? subtypesOf = null) {
 
         _hasRulesClass = hasRulesClass;
         _validatedType = type;
+        _subtypesOf = subtypesOf;
 
         // Before anything reads a property, because the situation this reports is precisely one
         // where no property carries anything and the type would otherwise look unconstrained.
@@ -173,13 +181,24 @@ public sealed class AttributeFrontEnd {
                 continue;
             }
 
+            var (polymorphism, stated) = validateNested
+                ? NestedPolymorphism(member.Sources)
+                : (PolymorphismMode.DeclaredOnly, false);
+
             if (validateNested) {
                 ReportRulelessNestedTarget(property);
+
+                if (!stated && NestedTargetOf(property) is { } target && CanHaveSubtypes(target)) {
+                    Report(
+                        ValidationDiagnostics.UnsealedNestedTargetHasNoMode, property,
+                        target.Name, property.Name);
+                }
             }
 
             properties.Add(BuildProperty(
                 property, constraints, validateNested, validatorNameFor, overriddenField,
-                validateNested ? NestedCondition(member.Sources) : null));
+                validateNested ? NestedCondition(member.Sources) : null,
+                polymorphism));
             order.Add(FirstMentionOf(property, declared));
 
             _quiet = enclosingQuiet;
@@ -219,6 +238,18 @@ public sealed class AttributeFrontEnd {
     /// compilation is left alone - it may carry a validator generated in its own assembly, which is
     /// invisible from here.
     /// </remarks>
+    /// <summary>
+    /// What a descent into <paramref name="property"/> actually reaches: a dictionary's value type,
+    /// a collection's element type, or the property's own type.
+    /// </summary>
+    private static INamedTypeSymbol? NestedTargetOf(IPropertySymbol property) {
+        var target =
+            TypeFacts.DictionaryTypesOf(property.Type) is { } entry ? entry.Value
+            : TypeFacts.ElementTypeOf(property.Type) ?? property.Type;
+
+        return target as INamedTypeSymbol;
+    }
+
     private void ReportRulelessNestedTarget(IPropertySymbol property) {
         var target =
             TypeFacts.DictionaryTypesOf(property.Type) is { } entry ? entry.Value
@@ -353,7 +384,8 @@ public sealed class AttributeFrontEnd {
         bool validateNested,
         Func<INamedTypeSymbol, string> validatorNameFor,
         string? overriddenField = null,
-        string? condition = null) {
+        string? condition = null,
+        PolymorphismMode polymorphism = PolymorphismMode.DeclaredOnly) {
 
         var type = property.Type;
         var isString = type.SpecialType == SpecialType.System_String;
@@ -362,6 +394,10 @@ public sealed class AttributeFrontEnd {
         var shape = PropertyShape.Scalar;
         string? elementTypeName = null;
         string? elementValidatorName = null;
+
+        // Whatever the descent actually reaches, which is what dispatch is over: a dictionary's
+        // value type, a collection's element type, or the property's own type.
+        INamedTypeSymbol? nestedTarget = null;
 
         var dictionary = TypeFacts.DictionaryTypesOf(type);
 
@@ -372,6 +408,7 @@ public sealed class AttributeFrontEnd {
 
                 if (entry.Value is INamedTypeSymbol namedValue) {
                     elementValidatorName = QualifiedValidator(namedValue, validatorNameFor);
+                    nestedTarget = namedValue;
                 }
             } else if (elementType is not null) {
                 shape = PropertyShape.Collection;
@@ -379,11 +416,35 @@ public sealed class AttributeFrontEnd {
 
                 if (elementType is INamedTypeSymbol namedElement) {
                     elementValidatorName = QualifiedValidator(namedElement, validatorNameFor);
+                    nestedTarget = namedElement;
                 }
             } else if (type is INamedTypeSymbol namedType) {
                 shape = PropertyShape.Object;
                 elementValidatorName = QualifiedValidator(namedType, validatorNameFor);
+                nestedTarget = namedType;
             }
+        }
+
+        var subtypes = ImmutableArray<SubtypeModel>.Empty;
+
+        if (polymorphism == PolymorphismMode.CompileTime && nestedTarget is not null && _subtypesOf is not null) {
+            // Sorted most-derived first, then ordinally. A type pattern matches derived types too,
+            // so `case Card` ahead of `case Premium : Card` makes the second arm unreachable -
+            // CS8120, raised inside a generated file. The ordinal tiebreak is for determinism: an
+            // incremental generator that reorders arms between runs invalidates caches for nothing.
+            subtypes = _subtypesOf(nestedTarget)
+                // Only types that will actually have a validator to call. After inherited
+                // constraint collection a subtype of a constrained base always does, but a
+                // hierarchy whose base carries nothing has nothing to dispatch to, and naming a
+                // class that was never emitted would be CS0246 inside generated code.
+                .Where(subtype => ProducesAValidator(subtype.Type))
+                .Select(subtype => new SubtypeModel(
+                    subtype.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    QualifiedValidator(subtype.Type, validatorNameFor),
+                    subtype.Depth))
+                .OrderByDescending(subtype => subtype.Depth)
+                .ThenBy(subtype => subtype.QualifiedTypeName, StringComparer.Ordinal)
+                .ToImmutableArray();
         }
 
         ValidateAndResolve(property, type, constraints, isString, elementType);
@@ -402,7 +463,9 @@ public sealed class AttributeFrontEnd {
             TypeFacts.CountAccessor(type),
             validateNested,
             new EquatableArray<ConstraintModel>(Order(constraints).ToImmutableArray()),
-            condition);
+            condition,
+            polymorphism,
+            new EquatableArray<SubtypeModel>(subtypes));
     }
 
     /// <summary>
@@ -1084,6 +1147,45 @@ public sealed class AttributeFrontEnd {
 
         return null;
     }
+
+    /// <summary>
+    /// The polymorphism mode declared on <c>[ValidateNested]</c>, and whether it was stated at all.
+    /// </summary>
+    /// <remarks>
+    /// "Stated" is tracked separately from the value because <c>DeclaredOnly</c> is both the
+    /// default and a legitimate explicit answer, and VM0031 exists to tell the two apart: an
+    /// author who wrote <c>Polymorphism.DeclaredOnly</c> has made the decision and should not be
+    /// asked again.
+    /// </remarks>
+    private static (PolymorphismMode Mode, bool Stated) NestedPolymorphism(
+        IEnumerable<IPropertySymbol> sources) {
+
+        foreach (var source in sources) {
+            foreach (var attribute in source.GetAttributes()) {
+                if (attribute.AttributeClass?.Name != "ValidateNestedAttribute" ||
+                    attribute.AttributeClass.ContainingNamespace?.ToDisplayString() != KnownTypes.ConstraintsNamespace) {
+                    continue;
+                }
+
+                if (attribute.ConstructorArguments.Length == 1 &&
+                    attribute.ConstructorArguments[0].Value is int mode) {
+                    return ((PolymorphismMode)mode, true);
+                }
+            }
+        }
+
+        return (PolymorphismMode.DeclaredOnly, false);
+    }
+
+    /// <summary>
+    /// Whether a value more derived than <paramref name="target"/> could reach a descent into it.
+    /// </summary>
+    /// <remarks>
+    /// A sealed class, a value type and an enum can have no subtypes, so there is no decision to
+    /// make and VM0031 stays quiet. Everything else can, whether or not anything visible here does.
+    /// </remarks>
+    private static bool CanHaveSubtypes(ITypeSymbol target) =>
+        target is { IsSealed: false, IsValueType: false } and not { TypeKind: TypeKind.Enum };
 
     private static string? NamedArgument(AttributeData attribute, string name) =>
         attribute.NamedArguments.FirstOrDefault(pair => pair.Key == name).Value.Value as string;
