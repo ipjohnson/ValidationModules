@@ -91,5 +91,24 @@ public static class ConstraintChecks {
     }
 
     /// <summary>Whether a <c>float</c> is an exact multiple of a divisor. See the double overload.</summary>
-    public static bool IsMultipleOf(float value, decimal divisor) => IsMultipleOf((double)value, divisor);
+    /// <summary>
+    /// Whether a <see cref="float"/> is a whole multiple of <paramref name="divisor"/>.
+    /// </summary>
+    /// <remarks>
+    /// Converts straight to <see cref="decimal"/> rather than widening through
+    /// <see cref="double"/> first. Widening is lossless in the sense that matters to a double, and
+    /// exactly wrong here: it exposes the float's own representation error at double resolution,
+    /// and the conversion to decimal then keeps those digits. 0.3f became 0.300000011920929 and
+    /// stopped being a multiple of 0.1, while the same value as a double passed. float to decimal
+    /// rounds to the seven significant digits a float actually carries, which is the precision the
+    /// caller wrote the constraint against.
+    /// </remarks>
+    public static bool IsMultipleOf(float value, decimal divisor) {
+        if (float.IsNaN(value) || float.IsInfinity(value) ||
+            value < -DecimalRange || value > DecimalRange) {
+            return false;
+        }
+
+        return (decimal)value % divisor == 0m;
+    }
 }

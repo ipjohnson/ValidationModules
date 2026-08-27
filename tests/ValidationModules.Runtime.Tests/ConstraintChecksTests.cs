@@ -150,4 +150,38 @@ public class ConstraintChecksTests {
     private sealed class Opaque(string value) {
         public string Value { get; } = value;
     }
+
+    /// <summary>
+    /// A float and a double describing the same value must agree. They did not: the float overload
+    /// widened to double first, which surfaced the float's representation error and carried it into
+    /// the decimal comparison.
+    /// </summary>
+    [Theory]
+    [InlineData(0.3f)]
+    [InlineData(0.7f)]
+    [InlineData(1.0f)]
+    [InlineData(0.1f)]
+    [InlineData(12.5f)]
+    public void IsMultipleOf_Float_AgreesWithTheSameValueAsADouble(float value) {
+        Assert.Equal(
+            ConstraintChecks.IsMultipleOf((double)(decimal)value, 0.1m),
+            ConstraintChecks.IsMultipleOf(value, 0.1m));
+    }
+
+    [Theory]
+    [InlineData(0.3f, true)]
+    [InlineData(0.7f, true)]
+    [InlineData(0.25f, false)]
+    [InlineData(0.05f, false)]
+    public void IsMultipleOf_Float_MatchesWhatTheConstraintAuthorWrote(float value, bool expected) =>
+        Assert.Equal(expected, ConstraintChecks.IsMultipleOf(value, 0.1m));
+
+    [Theory]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    [InlineData(float.NegativeInfinity)]
+    [InlineData(float.MaxValue)]
+    [InlineData(float.MinValue)]
+    public void IsMultipleOf_Float_RejectsWhatDecimalCannotHold(float value) =>
+        Assert.False(ConstraintChecks.IsMultipleOf(value, 0.1m));
 }
