@@ -137,6 +137,23 @@ public sealed class ValidationErrorCollector {
     internal object? ChangeToken => _head;
 
     /// <summary>
+    /// Whether anything Error-severity was recorded. This, and not <see cref="HasErrors"/>, is what
+    /// "valid" means - a warning is surfaced but the value is accepted. Stops at the first one, and
+    /// on a clean pass never leaves the null check.
+    /// </summary>
+    internal bool HasBlockingErrors {
+        get {
+            for (var node = _head; node is not null; node = node.Next) {
+                if (node.Error.Severity == ValidationSeverity.Error) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
+    /// <summary>
     /// The next path-write stamp. Monotonic for the life of the collector, so a context can tell
     /// whether the segments it walked are still the ones in the buffer.
     /// </summary>

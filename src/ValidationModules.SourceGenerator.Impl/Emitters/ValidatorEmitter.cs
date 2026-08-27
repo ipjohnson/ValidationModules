@@ -45,8 +45,10 @@ public sealed class ValidatorEmitter {
         EmitNestedDependencies(builder, model);
 
         var body = new StringBuilder();
+        var fast = new StringBuilder();
+
         foreach (var property in model.Properties) {
-            EmitProperty(body, property, model, patterns);
+            EmitProperty(body, fast, property, model, patterns);
         }
 
         // Applied rules own no property, so they run once every property has been walked. Ordering
@@ -90,6 +92,22 @@ public sealed class ValidatorEmitter {
         builder.AppendLine($"    public void Validate(ref ValidationContext ctx, {model.QualifiedTypeName} value) {{");
         builder.Append(body);
         builder.AppendLine("    }");
+
+        // An applied rule is handed the context and owns what it records, so there is no condition
+        // to test without one. A type carrying any falls back to IValidatorFor<T>.IsValid, which
+        // walks properly - correct, just not free.
+        if (model.AppliedRules.Count == 0) {
+            builder.AppendLine();
+            builder.AppendLine("    /// <summary>");
+            builder.AppendLine("    /// The same tests as <see cref=\"Validate\"/>, returning at the first failure and building");
+            builder.AppendLine("    /// no path, message or error record - a caller wanting only a boolean pays for nothing else.");
+            builder.AppendLine("    /// </summary>");
+            builder.AppendLine($"    public bool IsValid({model.QualifiedTypeName} value) {{");
+            builder.Append(fast);
+            builder.AppendLine("        return true;");
+            builder.AppendLine("    }");
+        }
+
         builder.AppendLine("}");
 
         return builder.ToString();
@@ -226,6 +244,7 @@ public sealed class ValidatorEmitter {
 
     private static void EmitProperty(
         StringBuilder builder,
+        StringBuilder fast,
         ValidatedPropertyModel property,
         ValidatedTypeModel model,
         List<(string, ConstraintModel)> patterns) {
@@ -236,7 +255,10 @@ public sealed class ValidatorEmitter {
         var wroteChain = false;
 
         if (required is not null) {
-            builder.AppendLine($"        if ({RequiredTest(access, property, required)}) {Add(field, required, "AddRequired", "")}");
+            var requiredTest = RequiredTest(access, property, required);
+
+            builder.AppendLine($"        if ({requiredTest}) {Add(field, required, "AddRequired", "")}");
+            fast.AppendLine($"        if ({requiredTest}) return false;");
             wroteChain = true;
         }
 
@@ -263,16 +285,25 @@ public sealed class ValidatorEmitter {
             var keyword = wroteChain && !standalone ? "        else if" : "        if";
             builder.AppendLine($"{keyword} ({test}) {AddFor(field, constraint, property)}");
 
+            // No else-if here: a failure has already returned, so the next test is only reached
+            // when the previous one passed. The chain in Validate exists to avoid evaluating a
+            // length test against a value known to be null; returning gets that for free.
+            fast.AppendLine($"        if ({test}) return false;");
+
             // A standalone predicate also ends the chain, rather than merely not joining it: a
             // following `else if` would otherwise bind to the predicate's `if` and be skipped
             // whenever the predicate failed.
             wroteChain = !standalone;
         }
 
-        EmitNested(builder, property, access);
+        EmitNested(builder, fast, property, access);
     }
 
-    private static void EmitNested(StringBuilder builder, ValidatedPropertyModel property, string access) {
+    private static void EmitNested(
+        StringBuilder builder,
+        StringBuilder fast,
+        ValidatedPropertyModel property,
+        string access) {
         if (property.ElementValidatorName is null) {
             return;
         }
@@ -291,6 +322,17 @@ public sealed class ValidatorEmitter {
             builder.AppendLine("                }");
             builder.AppendLine("            }");
             builder.AppendLine("        }");
+
+            fast.AppendLine($"        if ({access} is {{ }} {entries}) {{");
+            fast.AppendLine($"            foreach (var pair in {entries}) {{");
+            fast.AppendLine("                if (pair.Value is not null) {");
+            fast.AppendLine($"                    var entryValidators = {Accessor(property)};");
+            fast.AppendLine("                    for (var vi = 0; vi < entryValidators.Length; vi++) {");
+            fast.AppendLine("                        if (!entryValidators[vi].IsValid(pair.Value)) return false;");
+            fast.AppendLine("                    }");
+            fast.AppendLine("                }");
+            fast.AppendLine("            }");
+            fast.AppendLine("        }");
             return;
         }
 
@@ -302,6 +344,13 @@ public sealed class ValidatorEmitter {
             builder.AppendLine($"                validators{property.PropertyName}[vi].Validate(ref ctx{property.PropertyName}, nested{property.PropertyName});");
             builder.AppendLine("            }");
             builder.AppendLine("        }");
+
+            fast.AppendLine($"        if ({access} is {{ }} nested{property.PropertyName}) {{");
+            fast.AppendLine($"            var validators{property.PropertyName} = {Accessor(property)};");
+            fast.AppendLine($"            for (var vi = 0; vi < validators{property.PropertyName}.Length; vi++) {{");
+            fast.AppendLine($"                if (!validators{property.PropertyName}[vi].IsValid(nested{property.PropertyName})) return false;");
+            fast.AppendLine("            }");
+            fast.AppendLine("        }");
             return;
         }
 
@@ -334,6 +383,24 @@ public sealed class ValidatorEmitter {
 
         builder.AppendLine("            }");
         builder.AppendLine("        }");
+
+        fast.AppendLine($"        if ({access} is {{ }} {items}) {{");
+
+        if (property.IsIndexable) {
+            fast.AppendLine($"            for (var {index} = 0; {index} < {items}.{property.CountAccessor}; {index}++) {{");
+            fast.AppendLine($"                var element = {items}[{index}];");
+        } else {
+            fast.AppendLine($"            foreach (var element in {items}) {{");
+        }
+
+        fast.AppendLine("                if (element is not null) {");
+        fast.AppendLine($"                    var elementValidators = {Accessor(property)};");
+        fast.AppendLine("                    for (var vi = 0; vi < elementValidators.Length; vi++) {");
+        fast.AppendLine("                        if (!elementValidators[vi].IsValid(element)) return false;");
+        fast.AppendLine("                    }");
+        fast.AppendLine("                }");
+        fast.AppendLine("            }");
+        fast.AppendLine("        }");
     }
 
     private static string RequiredTest(string access, ValidatedPropertyModel property, ConstraintModel constraint) {

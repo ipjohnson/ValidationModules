@@ -79,6 +79,24 @@ public sealed partial class PetValidator : IValidatorFor<global::Sample.Pet> {
             }
         }
     }
+
+    /// <summary>
+    /// The same tests as <see cref="Validate"/>, returning at the first failure and building
+    /// no path, message or error record - a caller wanting only a boolean pays for nothing else.
+    /// </summary>
+    public bool IsValid(global::Sample.Pet value) {
+        if (value.Toys is { } itemsToys) {
+            foreach (var element in itemsToys) {
+                if (element is not null) {
+                    var elementValidators = ToysValidators;
+                    for (var vi = 0; vi < elementValidators.Length; vi++) {
+                        if (!elementValidators[vi].IsValid(element)) return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
 }
 
 
@@ -97,5 +115,14 @@ public sealed partial class ToyValidator : IValidatorFor<global::Sample.Toy> {
 
     public void Validate(ref ValidationContext ctx, global::Sample.Toy value) {
         if (string.IsNullOrWhiteSpace(value.Name)) ctx.AddRequired("name");
+    }
+
+    /// <summary>
+    /// The same tests as <see cref="Validate"/>, returning at the first failure and building
+    /// no path, message or error record - a caller wanting only a boolean pays for nothing else.
+    /// </summary>
+    public bool IsValid(global::Sample.Toy value) {
+        if (string.IsNullOrWhiteSpace(value.Name)) return false;
+        return true;
     }
 }

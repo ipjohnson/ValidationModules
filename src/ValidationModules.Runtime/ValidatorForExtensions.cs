@@ -36,29 +36,21 @@ public static class ValidatorForExtensions {
         }
     }
 
+
     /// <summary>
-    /// Whether the value passes, without materializing a result.
+    /// Whether the value passes, without building the reasons it did not.
     /// </summary>
     /// <remarks>
-    /// Still runs every constraint - there is no first-failure exit - but nothing is allocated
-    /// when the value is clean.
+    /// Forwards to <see cref="IValidatorFor{T}.IsValid"/>, which a generated validator overrides
+    /// with straight-line tests that return at the first failure. This exists because a default
+    /// interface member is only reachable through the interface: calling it on a hand-written
+    /// validator's concrete type would otherwise not compile. Where the concrete type declares its
+    /// own - every generated one does - that instance method wins and this is never reached.
     /// </remarks>
     public static bool IsValid<T>(this IValidatorFor<T> validator, T value) {
         ArgumentNullException.ThrowIfNull(validator);
 
-        var collector = new ValidationErrorCollector();
-        var path = ArrayPool<PathSegment>.Shared.Rent(ValidationErrorCollector.DefaultDepthLimit);
-
-        try {
-            var context = new ValidationContext(collector, path);
-
-            validator.Validate(ref context, value);
-
-            return !collector.HasErrors;
-        }
-        finally {
-            ArrayPool<PathSegment>.Shared.Return(path);
-        }
+        return validator.IsValid(value);
     }
 
     /// <summary>

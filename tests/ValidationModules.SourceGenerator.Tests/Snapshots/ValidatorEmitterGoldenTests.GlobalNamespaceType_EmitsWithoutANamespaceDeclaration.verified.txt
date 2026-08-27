@@ -51,4 +51,13 @@ public sealed partial class PetValidator : IValidatorFor<global::Pet> {
     public void Validate(ref ValidationContext ctx, global::Pet value) {
         if (string.IsNullOrWhiteSpace(value.Name)) ctx.AddRequired("name");
     }
+
+    /// <summary>
+    /// The same tests as <see cref="Validate"/>, returning at the first failure and building
+    /// no path, message or error record - a caller wanting only a boolean pays for nothing else.
+    /// </summary>
+    public bool IsValid(global::Pet value) {
+        if (string.IsNullOrWhiteSpace(value.Name)) return false;
+        return true;
+    }
 }
