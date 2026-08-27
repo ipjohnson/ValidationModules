@@ -1480,6 +1480,12 @@ This is uniform with native constraints: both vocabularies go through one member
 namespace never changes which declarations it is collected from. The divergence is toward enforcing
 what was written rather than ignoring it, which is the direction worth diverging in.
 
+**Conditional constraints.** `When` and `Unless` on `ValidationConstraintAttribute` name a
+predicate on the validated type; the constraint is checked only when it holds. DA has no equivalent,
+so nothing is diverging from — this is additional surface rather than a different answer to a shared
+question. The three accepted shapes are the three that cannot capture anything, which is what makes
+the self-containment VM0072 enforces for `Ensure` predicates hold here by construction.
+
 **Constraints are inherited.** A base type's constrained properties are validated by every derived
 type's validator, across an assembly reference as readily as within a compilation. DA is the same
 here for classes; the divergence is only the interface case above. Where a derived type *hides* a
@@ -1957,3 +1963,11 @@ build rather than behave differently on the two paths.
   is `IAsyncValidatorFor<T>` (§7).
 - **Runtime-mutable rule sets.** `Describe` runs once. A rule that varies per request is a business
   rule.
+
+  This line has moved, and deliberately rather than by discovery. `ValidationContext.Services` makes
+  a rule's *outcome* request-varying — an `Apply` rule can read a feature flag, and a `When`
+  condition can read live static state, which is exactly why conditions are evaluated once per pass
+  rather than once per rule. What stays ruled out is the rule **set**: the graph is still built once
+  and never rebuilt, so nothing adds or removes a rule per request. `IAsyncValidatorFor<T>` already
+  varied per request, so this is a smaller step than it looks; it is written down because a line
+  that moves without being redrawn is one nobody can rely on afterwards.

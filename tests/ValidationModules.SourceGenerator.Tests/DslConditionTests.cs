@@ -284,6 +284,44 @@ public class DslConditionTests {
     }
 
     /// <summary>
+    /// A condition the compiler can fold is either noise or a rule that can never fire. Roslyn does
+    /// the folding, so an expression that reduces to a constant is caught along with the literal.
+    /// </summary>
+    [Theory]
+    [InlineData("rules.Required(x => x.Plate).When(x => true);", "true")]
+    [InlineData("rules.Required(x => x.Plate).When(x => false);", "false")]
+    [InlineData("rules.Required(x => x.Plate).Unless(x => true);", "false")]
+    [InlineData("rules.Required(x => x.Plate).Unless(x => false);", "true")]
+    [InlineData("rules.Required(x => x.Plate).When(x => 1 > 2);", "false")]
+    public void AConstantCondition_IsVM0034(string statement, string folded) {
+        var reported = Run($"            {statement}").Diagnostics.Where(d => d.Id == "VM0034").ToList();
+
+        var message = Assert.Single(reported).GetMessage();
+
+        Assert.Contains($"always evaluates to {folded}", message);
+    }
+
+    [Fact]
+    public void AConstantConditionOnABlock_IsAlsoVM0034() {
+        Assert.Contains(
+            Run("""
+                    rules.When(x => true, () => {
+                        rules.Required(x => x.Plate);
+                    });
+            """).Diagnostics,
+            d => d.Id == "VM0034");
+    }
+
+    [Fact]
+    public void AGenuineCondition_IsNotVM0034() {
+        Assert.DoesNotContain(
+            Run("""
+                    rules.Required(x => x.Plate).When(x => x.IsAuto);
+            """).Diagnostics,
+            d => d.Id == "VM0034");
+    }
+
+    /// <summary>
     /// A method group has no body to lift, and the lifted method would come out as <c>=&gt; true</c>
     /// - a condition that silently always holds. Reported rather than emitted.
     /// </summary>

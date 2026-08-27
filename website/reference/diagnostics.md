@@ -41,6 +41,13 @@ silently does not is worse than one you know is missing.
 | [VM0025](#vm0025) | Warning | `[UniqueItems]` over elements with no equality of their own |
 | [VM0026](#vm0026) | Warning | `[Range]` declares neither bound |
 | [VM0027](#vm0027) | Error | `[EnumDefined]` was applied to a member whose type is not an enum. |
+| [VM0028](#vm0028) | Error | a `When`/`Unless` naming a member the type does not declare |
+| [VM0029](#vm0029) | Error | a `When`/`Unless` naming something that is not a predicate |
+| [VM0030](#vm0030) | Warning | a derived property hides a base declaration's constraints |
+| [VM0031](#vm0031) | Warning | a `[ValidateNested]` target is not sealed and declares no mode |
+| [VM0032](#vm0032) | Error | `Polymorphism.Runtime` on a type that can have no subtypes |
+| [VM0033](#vm0033) | Error | a constraint setting both `When` and `Unless` |
+| [VM0034](#vm0034) | Warning | a condition that folds to a constant |
 | [VM0017](#vm0017) | *policy* | an inline pattern roots the regex engine |
 | [VM0018](#vm0018) | Error | referenced regex member is unusable |
 | [VM0040](#vm0040) | Error | `ValidationModules.Runtime` is too old |
@@ -55,6 +62,8 @@ silently does not is worse than one you know is missing.
 | [VM0071](#vm0071) | Error | a rule selector is not a property path |
 | [VM0072](#vm0072) | Error | a predicate captures state |
 | [VM0075](#vm0075) | Error | an `Ensure` has no field |
+| [VM0076](#vm0076) | Warning | a conditional block declares no rules |
+| [VM0077](#vm0077) | Warning | a chained `When`/`Unless` applies to no rules |
 
 ---
 
@@ -323,6 +332,116 @@ is no value it could accept.
 Nullable enums are fine — `PaymentMethod?` is checked when it has a value and passes when it does
 not.
 
+### VM0028 {#vm0028}
+
+**Error** — *`'PolicyNumber' names 'IsAuto', which 'Claim' does not declare`*
+
+```csharp
+[Required(When = nameof(IsAuto))] // VM0028 if Claim has no IsAuto
+public string? PolicyNumber { get; init; }
+```
+
+A condition names a member of the type being validated. Resolution walks the base chain, so a
+predicate declared on a shared base works from every type that inherits it — which is also why a
+condition on an *inherited* constraint resolves against the derived type rather than the one that
+declared it.
+
+### VM0029 {#vm0029}
+
+**Error** — *`'Claim.IsAuto' cannot be used as a condition`*
+
+Three shapes are accepted, and they are the three that cannot capture anything:
+
+```csharp
+public bool IsAuto { get; init; }                    // a bool property
+public bool IsAuto() => …;                           // a parameterless bool method
+public static bool IsAuto(Claim value) => …;         // a static bool method taking the model
+```
+
+That is what makes the self-containment [VM0072](#vm0072) enforces for `Ensure` predicates hold here
+by construction rather than by analysis. There is no `WhenType`, so shared logic is reached through
+a one-line forwarder on the model.
+
+### VM0030 {#vm0030}
+
+**Warning** — *`'Name' hides 'Base.Name', so the 2 constraint(s) declared there no longer apply`*
+
+```csharp
+public class Base {
+    [Required]
+    [StringLength(1, 10)]
+    public virtual string? Name { get; set; }
+}
+
+public class Derived : Base {
+    [StringLength(1, 200)]
+    public new string? Name { get; set; } // VM0030
+}
+```
+
+Constraints are inherited, and the most-derived declaration of a property supplies **all** of that
+property's constraints rather than some of them — two `[StringLength]` bounds on one field is
+ambiguous and would report twice. So `new` silently drops what the base said, and this says so.
+
+An `override` is one property with two declarations rather than two properties, so it does not fire:
+`ValidationConstraintAttribute` is `Inherited = true` and those declarations accumulate.
+
+### VM0031 {#vm0031}
+
+**Warning** — *`'Address' is not sealed, so a value of a more derived type may reach 'Home'`*
+
+```csharp
+public record Address { … }
+
+public sealed record Person {
+    [ValidateNested] // VM0031
+    public Address? Home { get; init; }
+}
+```
+
+A descent dispatches on the declared type, so a subtype's own rules are not reached unless you ask
+for them. Say what should happen — seal the target, or pass a
+[`Polymorphism`](./attributes#polymorphism) mode.
+
+This fires widely on existing code, because `public record Address` without `sealed` is the common
+idiom. That is intended: sealing is the default posture, not a workaround.
+
+::: tip Why it keys on sealed rather than on subtypes
+Deliberately a local fact about the type, never "are any subtypes visible from here". A diagnostic
+keyed on visibility would appear when a hierarchy sat in one assembly and vanish when a type moved
+to a package — reintroducing exactly the layout-dependence explicit modes exist to prevent.
+:::
+
+### VM0032 {#vm0032}
+
+**Error** — *`'Address' is sealed, so its runtime type can never differ from its declared type`*
+
+```csharp
+[ValidateNested(Polymorphism.Runtime)] // VM0032
+public Address? Home { get; init; }    // where Address is sealed
+```
+
+`Runtime` buys a container lookup for an answer the declared type already had. Use `DeclaredOnly`.
+
+### VM0033 {#vm0033}
+
+**Error** — *`'Required' on 'PolicyNumber' sets both When and Unless, which is ambiguous`*
+
+Write two constraints, or one negated condition.
+
+### VM0034 {#vm0034}
+
+**Warning** — *`This condition always evaluates to true, so the guard is noise`*
+
+```csharp
+rules.Required(x => x.Plate).When(x => true);   // VM0034
+rules.Required(x => x.Plate).When(x => 1 > 2);  // VM0034, folded
+```
+
+The one check here no runtime library could offer: a described engine holds a delegate and cannot
+know what it returns without calling it, where the generator has the expression in hand. Roslyn does
+the folding, so an expression that reduces to a constant is caught along with the literal.
+
 ### VM0040 {#vm0040}
 
 **Error** — *`The generated validators require ValidationModules.Runtime contract N or later; the referenced runtime is contract M`*
@@ -538,3 +657,25 @@ field: "nights")` and runs it, because an explicit field means it never consults
 generated path is the stricter of the two, which is the safe direction — the build fails rather than
 two deployments disagreeing.
 :::
+
+### VM0076 {#vm0076}
+
+**Warning** — *`The When block in 'ClaimRules' declares no rules, so the condition guards nothing`*
+
+```csharp
+rules.When(x => x.IsAuto, () => { });  // VM0076
+```
+
+Almost always a rule that was moved out and left the block behind. Fires for an empty `Otherwise`
+too.
+
+### VM0077 {#vm0077}
+
+**Warning** — *`This When terminates a statement that declared no constraints`*
+
+```csharp
+rules.For(x => x.Reason).When(x => x.IsExpedited);  // VM0077
+```
+
+A chained `When` conditions every constraint its own statement declared. `For` anchors without
+declaring anything, so there is nothing for the condition to cover.

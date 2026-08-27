@@ -84,6 +84,7 @@ happens once at the end.
 | **5** | Stages B + C — chained and block DSL, runtime condition array, VM0076/77 | When §3, Stages B, C | Almost disjoint from polymorphism — `RulesFrontEnd`, `PropertyRules`, `ValidationRules`, `CompiledRules`, new `ConditionalRules`. |
 | **6** | Part C + `Polymorphism.Runtime` — `ctx.Services`, `IDynamicValidator`, VM0032, contract 3 → 4 | Poly Part C | The only contract bump in the programme, taken last so one bump covers everything. |
 | **7** | VM0034 constant folding, website reference, migration note, size re-measure | When Stage D | VM0034 needs a constant-folding pass and is the one genuinely new analysis. |
+| **4b** | cross-assembly subtype discovery via a `[GeneratedValidatorFor]` manifest | Poly Part B | Deferred out of phase 4 and still open. `CompileTime` dispatches over subtypes declared in the compilation; a hierarchy spanning assemblies wants `Runtime` until this lands. |
 
 Diagnostics land with the phase that introduces them, not batched into Phase 7.
 
@@ -104,8 +105,43 @@ Every phase ends on `dotnet build -c Release && dotnet test -c Release`, solutio
   exactly once per `Validate` call under both engines. This test fails against the naive per-rule design.
 - **Phase 6** — engine parity on a polymorphic descent with a provider-carrying collector.
 - **Phase 7** — re-measure emitted size against the +65 KiB Native AOT baseline.
+  **Measured, and it did not move**: `scripts/verify-aot.sh` publishes byte-for-byte the same
+  binary at `origin/main` and at the end of phase 7 — 2,248,008 bytes on osx-arm64 either way. That
+  is the design decisions paying off rather than a happy accident: an unconditional constraint emits
+  exactly what it emitted before, `DeclaredOnly` emits no switch, and `IDynamicValidator` adapters
+  are emitted only for an assembly that actually dispatches dynamically. A consumer using none of
+  this pays nothing for it.
 
-## 6. What is not being built
+## 6. What actually shipped, and what did not
+
+Phases 1-7 are on `main`'s history as seven commits. Two things are worth carrying forward:
+
+**Deferred.** Cross-assembly subtype discovery (phase 4b above). `Polymorphism.CompileTime` inverts
+the base chain over the compilation, so a subtype declared in a referenced assembly is not a
+dispatch target. `Polymorphism.Runtime` covers that case today, because it resolves by runtime type
+through the container rather than by a switch fixed at build time.
+
+**Decided along the way, and not in either source spec:**
+
+- An `override` is one property with two declarations rather than two properties, so its constraint
+  attributes accumulate — `ValidationConstraintAttribute` is `Inherited = true`. Only a `new`
+  declaration is a hide, and only that raises VM0030.
+- Diagnostics from a base or interface declaration are reported where that declaration lives, not
+  once per derived type. A consumer cannot edit a base type that arrived as metadata.
+- A condition must be written as a lambda. A method group has no body to lift and would come out of
+  the emitter as `=> true` — a condition that silently always holds. Reported instead.
+- `IDynamicValidator` adapters are emitted for every validated type in an assembly that dispatches
+  dynamically, and for none at all in one that does not. A registration roots its adapter past the
+  trimmer, so an assembly that never asked for the mode pays nothing; within a dispatching assembly
+  the set is complete, so a registry miss is unambiguous.
+- Those adapters resolve their validators on first use rather than in the constructor. Building the
+  registry resolves every adapter at once, so a self-referential model — whose validator depends on
+  the service it is itself registered under — would otherwise turn a latent DI cycle into a
+  container that will not build.
+- `Polymorphism.Runtime` was withheld from the published enum until phase 6 built it, rather than
+  shipping in phase 4 as a member whose only behaviour was a build error.
+
+## 7. What is not being built
 
 Carried over from the source specs, restated so nothing is rediscovered:
 
