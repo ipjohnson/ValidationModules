@@ -564,34 +564,51 @@ public sealed class AttributeFrontEnd {
 
         var isCollection = elementType is not null;
 
-        foreach (var constraint in constraints) {
+        // Backwards, so a constraint can be dropped in place - the same shape ResolveRangeBounds and
+        // ResolveMultipleOfDivisors already use when a bound turns out not to be usable.
+        //
+        // A constraint whose type cannot support it is removed rather than merely reported. Emitting
+        // it anyway produced a second failure out of a file the author never wrote - .Length on an
+        // int, > on a type with no ordering - and that error names generated code while the useful
+        // one names their property. One mistake, three errors, two of them noise. Diagnostics whose
+        // code still compiles stay: they are advice about a check that will not fail, not about a
+        // check that cannot be written.
+        for (var i = constraints.Count - 1; i >= 0; i--) {
+            var constraint = constraints[i];
             var typeName = memberType.ToDisplayString();
+            var unemittable = false;
 
             switch (constraint.Kind) {
                 case ConstraintKind.StringLength when !isString:
                     Report(ValidationDiagnostics.StringConstraintOnNonString, member,
                         "[StringLength]", member.Name, typeName);
+                    unemittable = true;
                     break;
 
                 case ConstraintKind.Pattern when !isString:
                     Report(ValidationDiagnostics.StringConstraintOnNonString, member,
                         "[Pattern]", member.Name, typeName);
+                    unemittable = true;
                     break;
 
                 case ConstraintKind.ItemCount when !isCollection:
                     Report(ValidationDiagnostics.ItemCountOnNonCollection, member, member.Name, typeName);
+                    unemittable = true;
                     break;
 
                 case ConstraintKind.Range when !TypeFacts.IsOrdered(memberType):
                     Report(ValidationDiagnostics.RangeOnUnorderedType, member, member.Name, typeName);
+                    unemittable = true;
                     break;
 
                 case ConstraintKind.MultipleOf when !MultipleOfReader.IsSupported(memberType):
                     Report(ValidationDiagnostics.MultipleOfOnUnsupportedType, member, member.Name, typeName);
+                    unemittable = true;
                     break;
 
                 case ConstraintKind.UniqueItems when !isCollection:
                     Report(ValidationDiagnostics.UniqueItemsOnNonCollection, member, member.Name, typeName);
+                    unemittable = true;
                     break;
 
                 // The check runs through EqualityComparer<T>.Default, so an element type with no
@@ -603,8 +620,12 @@ public sealed class AttributeFrontEnd {
                         member.Name, element.ToDisplayString());
                     break;
 
+                // Dropped as well as reported, and the two agree: the diagnostic says the check can
+                // never fail, and a check that can never fail is the same as no check. Emitting it
+                // asked whether an int was null, which does not compile.
                 case ConstraintKind.Required when memberType.IsValueType && !TypeFacts.IsNullableValueType(memberType):
                     Report(ValidationDiagnostics.RequiredOnNonNullableValueType, member, member.Name);
+                    unemittable = true;
                     break;
             }
 
@@ -618,12 +639,17 @@ public sealed class AttributeFrontEnd {
             if (constraint.Kind == ConstraintKind.Pattern && constraint.RegexAccessor is null &&
                 constraint.Pattern is { } pattern && !TypeFacts.IsValidRegex(pattern, out var error)) {
                 Report(ValidationDiagnostics.InvalidPattern, member, member.Name, error);
+                unemittable = true;
             }
 
             // RegexOptions.Compiled is 8. Meaningless against a source-generated regex, and asking
             // for it usually means someone is carrying over a habit this library exists to remove.
             if (constraint.Kind == ConstraintKind.Pattern && (constraint.RegexOptions & 8) != 0) {
                 Report(ValidationDiagnostics.CompiledRegexRequested, member, member.Name);
+            }
+
+            if (unemittable) {
+                constraints.RemoveAt(i);
             }
         }
     }

@@ -659,4 +659,50 @@ public class ConstraintDiagnosticsTests {
         Assert.Empty(result.Diagnostics);
         Assert.Empty(result.CompilationErrors);
     }
+
+    // ---- a diagnosed constraint must not also break the build it diagnosed ------------------
+
+    /// <summary>
+    /// One mistake, one error. A constraint whose type cannot support it is dropped as well as
+    /// reported: emitting it anyway produced a second failure out of generated code - <c>.Length</c>
+    /// on an int, <c>&gt;</c> on a type with no ordering - naming a file the author never wrote,
+    /// while the useful diagnostic named their property.
+    /// </summary>
+    [Theory]
+    [InlineData("[StringLength(1, 10)] public int Quantity { get; init; }", "VM0001")]
+    [InlineData("[Pattern(\"^a$\")] public int Quantity { get; init; }", "VM0001")]
+    [InlineData("[ItemCount(1, 5)] public int Quantity { get; init; }", "VM0002")]
+    [InlineData("[Range(1, 10)] public object? Thing { get; init; }", "VM0003")]
+    [InlineData("[Required] public int Quantity { get; init; }", "VM0004")]
+    [InlineData("[Pattern(\"([unclosed\")] public string? Name { get; init; }", "VM0006")]
+    [InlineData("[MultipleOf(5)] public string? Name { get; init; }", "VM0021")]
+    [InlineData("[UniqueItems] public int Quantity { get; init; }", "VM0024")]
+    public void DiagnosedConstraint_DoesNotAlsoEmitUncompilableCode(string member, string diagnostic) {
+        var result = GeneratorHarness.Run(Model(member));
+
+        Assert.Contains(result.Diagnostics, d => d.Id == diagnostic);
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    /// <summary>
+    /// Dropping the constraint does not drop the type. A model whose only constraint was rejected
+    /// still gets a validator, so anything referencing it - a [ValidateNested] on another type -
+    /// keeps compiling.
+    /// </summary>
+    [Fact]
+    public void DiagnosedConstraint_LeavesTheRestOfTheModelIntact() {
+        var result = GeneratorHarness.Run(Model("""
+            [StringLength(1, 10)] public int Quantity { get; init; }
+
+            [Required] public string? Name { get; init; }
+            """));
+
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM0001");
+        Assert.Empty(result.CompilationErrors);
+
+        var emitted = Assert.Single(result.Sources, pair => pair.Key.EndsWith("Validator.g.cs")).Value;
+
+        Assert.Contains("AddRequired(\"name\")", emitted);
+        Assert.DoesNotContain("Quantity", emitted);
+    }
 }
