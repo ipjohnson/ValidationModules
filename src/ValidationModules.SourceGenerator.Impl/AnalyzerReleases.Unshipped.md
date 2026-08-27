@@ -36,3 +36,4 @@ VM0071 | ValidationModules.Usage | Error | A rule selector is not a simple prope
 VM0072 | ValidationModules.Usage | Error | A predicate references state outside its own parameter.
 VM0075 | ValidationModules.Usage | Error | An Ensure has no inferable field and no explicit field name.
 VM0027 | ValidationModules.Usage | Error | [EnumDefined] was applied to a member whose type is not an enum.
+VM0030 | ValidationModules.Usage | Warning | A derived property hides a base declaration whose constraints are dropped.

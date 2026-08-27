@@ -24,6 +24,63 @@ public static class GeneratorHarness {
     public static Result Run(string source, params (string Key, string Value)[] buildProperties) =>
         Run(source, assemblyName: "GeneratorTests", buildProperties);
 
+    /// <summary>
+    /// Compiles <paramref name="referencedSource"/> to an assembly, then runs the generator over
+    /// <paramref name="source"/> with that assembly referenced as metadata.
+    /// </summary>
+    /// <remarks>
+    /// Two source files in one compilation are not a test of anything cross-assembly: symbols from
+    /// the same compilation carry their syntax with them, so a walk that only works because it can
+    /// reach a declaration would still pass. Going through metadata is the whole point - a base
+    /// type from a NuGet package is the case that matters, and it is reached through
+    /// <c>MetadataReference</c> and nothing else.
+    /// </remarks>
+    public static Result RunWithReference(
+        string referencedSource,
+        string source,
+        string referencedAssemblyName = "ReferencedTypes",
+        params (string Key, string Value)[] buildProperties) {
+
+        var reference = CompileToReference(referencedSource, referencedAssemblyName);
+
+        return Run(
+            source,
+            "GeneratorTests",
+            OutputKind.DynamicallyLinkedLibrary,
+            new[] { reference },
+            buildProperties);
+    }
+
+    /// <summary>
+    /// Builds <paramref name="source"/> into an in-memory assembly and hands back a reference to
+    /// it. Throws rather than returning diagnostics: a broken fixture is a broken test, not a
+    /// result worth asserting on.
+    /// </summary>
+    public static MetadataReference CompileToReference(string source, string assemblyName) {
+        var compilation = CSharpCompilation.Create(
+            assemblyName,
+            new[] { CSharpSyntaxTree.ParseText(source) },
+            BaseReferences(),
+            new CSharpCompilationOptions(
+                OutputKind.DynamicallyLinkedLibrary,
+                nullableContextOptions: NullableContextOptions.Enable));
+
+        var stream = new MemoryStream();
+        var result = compilation.Emit(stream);
+
+        if (!result.Success) {
+            var errors = string.Join(
+                Environment.NewLine,
+                result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
+
+            throw new InvalidOperationException(
+                $"The referenced fixture assembly '{assemblyName}' did not compile:{Environment.NewLine}{errors}");
+        }
+
+        stream.Position = 0;
+        return MetadataReference.CreateFromStream(stream);
+    }
+
     /// <param name="assemblyName">
     /// The compilation's assembly name, which the registration emitter derives its namespace from.
     /// Worth varying: an assembly name is not necessarily a valid namespace.
@@ -41,7 +98,60 @@ public static class GeneratorHarness {
         string source,
         string assemblyName,
         OutputKind outputKind,
+        params (string Key, string Value)[] buildProperties) =>
+        Run(source, assemblyName, outputKind, Array.Empty<MetadataReference>(), buildProperties);
+
+    /// <param name="extraReferences">
+    /// Assemblies to reference beyond the ambient set - the cross-assembly cases build these with
+    /// <see cref="CompileToReference"/>.
+    /// </param>
+    public static Result Run(
+        string source,
+        string assemblyName,
+        OutputKind outputKind,
+        IReadOnlyCollection<MetadataReference> extraReferences,
         params (string Key, string Value)[] buildProperties) {
+        var references = BaseReferences();
+        references.AddRange(extraReferences);
+
+        var compilation = CSharpCompilation.Create(
+            assemblyName,
+            new[] { CSharpSyntaxTree.ParseText(source) },
+            references,
+            new CSharpCompilationOptions(outputKind, nullableContextOptions: NullableContextOptions.Enable));
+
+        var driver = CSharpGeneratorDriver
+            .Create(new ValidationSourceGenerator())
+            .WithUpdatedAnalyzerConfigOptions(new OptionsProvider(buildProperties))
+            .RunGeneratorsAndUpdateCompilation(compilation, out var output, out var diagnostics);
+
+        _ = driver;
+
+        var sources = output.SyntaxTrees
+            .Where(tree => tree.FilePath.EndsWith(".g.cs", StringComparison.Ordinal))
+            .ToDictionary(
+                tree => Path.GetFileName(tree.FilePath),
+                tree => tree.ToString());
+
+        // Only errors: the synthetic compilation has no entry point and other benign warnings.
+        var compilationErrors = output.GetDiagnostics()
+            .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+            .ToImmutableArray();
+
+        return new Result(diagnostics, sources, compilationErrors);
+    }
+
+    /// <summary>
+    /// The ambient reference set plus <paramref name="extra"/>, for tests driving Roslyn directly
+    /// rather than through <see cref="Run(string, ValueTuple{string, string}[])"/>.
+    /// </summary>
+    public static List<MetadataReference> ReferencesIncluding(params MetadataReference[] extra) {
+        var references = BaseReferences();
+        references.AddRange(extra);
+        return references;
+    }
+
+    private static List<MetadataReference> BaseReferences() {
         // Touch the types first: GetAssemblies returns only what is already loaded, and nothing in
         // a test has any reason to have loaded the runtime or the regex library before this point.
         // Without them the attributes do not bind, the front end sees an unannotated type, and every
@@ -76,39 +186,13 @@ public static class GeneratorHarness {
             Assembly.Load("System.Runtime"),
         };
 
-        var references = AppDomain.CurrentDomain.GetAssemblies()
+        return AppDomain.CurrentDomain.GetAssemblies()
             .Concat(seeds)
             .Where(assembly => !assembly.IsDynamic && !string.IsNullOrEmpty(assembly.Location))
             .Select(assembly => assembly.Location)
             .Distinct(StringComparer.Ordinal)
             .Select(location => (MetadataReference)MetadataReference.CreateFromFile(location))
             .ToList();
-
-        var compilation = CSharpCompilation.Create(
-            assemblyName,
-            new[] { CSharpSyntaxTree.ParseText(source) },
-            references,
-            new CSharpCompilationOptions(outputKind, nullableContextOptions: NullableContextOptions.Enable));
-
-        var driver = CSharpGeneratorDriver
-            .Create(new ValidationSourceGenerator())
-            .WithUpdatedAnalyzerConfigOptions(new OptionsProvider(buildProperties))
-            .RunGeneratorsAndUpdateCompilation(compilation, out var output, out var diagnostics);
-
-        _ = driver;
-
-        var sources = output.SyntaxTrees
-            .Where(tree => tree.FilePath.EndsWith(".g.cs", StringComparison.Ordinal))
-            .ToDictionary(
-                tree => Path.GetFileName(tree.FilePath),
-                tree => tree.ToString());
-
-        // Only errors: the synthetic compilation has no entry point and other benign warnings.
-        var compilationErrors = output.GetDiagnostics()
-            .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
-            .ToImmutableArray();
-
-        return new Result(diagnostics, sources, compilationErrors);
     }
 
     private sealed class OptionsProvider : AnalyzerConfigOptionsProvider {
