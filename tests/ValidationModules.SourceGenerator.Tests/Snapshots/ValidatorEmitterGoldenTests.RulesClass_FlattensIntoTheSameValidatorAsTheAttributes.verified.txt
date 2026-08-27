@@ -76,4 +76,16 @@ public sealed partial class ReservationValidator : IValidatorFor<global::Sample.
         if ((value.Nights < 1 || value.Nights > 30)) ctx.AddRange("nights", 1, 30);
         if (!global::Sample.ReservationRules_Rules.Rule0(value)) ctx.Add("start", ValidationCodes.Predicate, "start < end.");
     }
+
+    /// <summary>
+    /// The same tests as <see cref="Validate"/>, returning at the first failure and building
+    /// no path, message or error record - a caller wanting only a boolean pays for nothing else.
+    /// </summary>
+    public bool IsValid(global::Sample.Reservation value) {
+        if (string.IsNullOrWhiteSpace(value.Guest)) return false;
+        if (value.Guest is not null && (value.Guest.Length < 2 || value.Guest.Length > 40)) return false;
+        if ((value.Nights < 1 || value.Nights > 30)) return false;
+        if (!global::Sample.ReservationRules_Rules.Rule0(value)) return false;
+        return true;
+    }
 }

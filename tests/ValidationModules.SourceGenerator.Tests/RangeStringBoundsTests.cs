@@ -80,14 +80,16 @@ public class RangeStringBoundsTests {
 
     [Fact]
     public void StringBounds_AppearInTheMessageAsWellAsTheComparison() {
-        // Both sites take the same expression, so the message cannot disagree with the check.
+        // Every site takes the same expression, so the message cannot disagree with the check and
+        // the boolean fast path cannot disagree with either: twice in Validate (the comparison and
+        // the message it reports) and once more in IsValid, which reuses the comparison.
         var result = GeneratorHarness.Run(Model(
             "[Range(\"2000-01-01\", \"2100-01-01\")] public DateOnly Born { get; init; }"));
 
         var emitted = result.Sources["Sample.PetValidator.g.cs"];
         var occurrences = emitted.Split(["new global::System.DateOnly(2000, 1, 1)"], StringSplitOptions.None).Length - 1;
 
-        Assert.Equal(2, occurrences);
+        Assert.Equal(3, occurrences);
     }
 
     [Theory]

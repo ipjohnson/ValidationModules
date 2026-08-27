@@ -29,4 +29,36 @@ public interface IValidatorFor<in T> {
     /// <param name="context">Accumulates failures and carries the current field path.</param>
     /// <param name="value">The value to validate.</param>
     void Validate(ref ValidationContext context, T value);
+
+    /// <summary>
+    /// Whether <paramref name="value"/> passes, without building the reasons it did not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The default walks into a throwaway collector and asks whether anything blocking landed,
+    /// which is correct for any implementation and costs what <see cref="Validate"/> costs. A
+    /// generated validator overrides it with straight-line tests that return at the first failure,
+    /// building no path, no message and no error record - so a caller who only wants a boolean is
+    /// not charged for the report they threw away.
+    /// </para>
+    /// <para>
+    /// Warnings do not make a value invalid, here or anywhere else in the error model.
+    /// </para>
+    /// </remarks>
+    bool IsValid(T value) {
+        var collector = new ValidationErrorCollector();
+        var path = System.Buffers.ArrayPool<PathSegment>.Shared.Rent(
+            ValidationErrorCollector.DefaultDepthLimit);
+
+        try {
+            var context = new ValidationContext(collector, path);
+
+            Validate(ref context, value);
+
+            return !collector.HasBlockingErrors;
+        }
+        finally {
+            System.Buffers.ArrayPool<PathSegment>.Shared.Return(path);
+        }
+    }
 }

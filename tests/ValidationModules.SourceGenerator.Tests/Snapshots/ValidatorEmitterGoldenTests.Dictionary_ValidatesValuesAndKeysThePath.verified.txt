@@ -55,7 +55,8 @@ public sealed partial class PetValidator : IValidatorFor<global::Sample.Pet> {
     /// <summary>Resolved from the container: the full set for each nested type.</summary>
     public PetValidator(
         System.Collections.Generic.IEnumerable<IValidatorFor<global::Sample.Toy>> toys) {
-        _toysValidators = System.Linq.Enumerable.ToArray(toys);
+        var resolvedToys = System.Linq.Enumerable.ToArray(toys);
+        _toysValidators = resolvedToys.Length == 0 ? null : resolvedToys;
     }
 
     /// <summary>Standalone: nested types fall back to their own generated validators.</summary>
@@ -77,6 +78,24 @@ public sealed partial class PetValidator : IValidatorFor<global::Sample.Pet> {
             }
         }
     }
+
+    /// <summary>
+    /// The same tests as <see cref="Validate"/>, returning at the first failure and building
+    /// no path, message or error record - a caller wanting only a boolean pays for nothing else.
+    /// </summary>
+    public bool IsValid(global::Sample.Pet value) {
+        if (value.Toys is { } entriesToys) {
+            foreach (var pair in entriesToys) {
+                if (pair.Value is not null) {
+                    var entryValidators = ToysValidators;
+                    for (var vi = 0; vi < entryValidators.Length; vi++) {
+                        if (!entryValidators[vi].IsValid(pair.Value)) return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
 }
 
 
@@ -95,5 +114,14 @@ public sealed partial class ToyValidator : IValidatorFor<global::Sample.Toy> {
 
     public void Validate(ref ValidationContext ctx, global::Sample.Toy value) {
         if (string.IsNullOrWhiteSpace(value.Name)) ctx.AddRequired("name");
+    }
+
+    /// <summary>
+    /// The same tests as <see cref="Validate"/>, returning at the first failure and building
+    /// no path, message or error record - a caller wanting only a boolean pays for nothing else.
+    /// </summary>
+    public bool IsValid(global::Sample.Toy value) {
+        if (string.IsNullOrWhiteSpace(value.Name)) return false;
+        return true;
     }
 }

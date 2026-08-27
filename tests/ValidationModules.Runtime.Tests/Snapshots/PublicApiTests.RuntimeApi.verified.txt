@@ -31,6 +31,7 @@ namespace ValidationModules
     }
     public interface IValidatorFor<in T>
     {
+        bool IsValid(T value);
         void Validate(ref ValidationModules.ValidationContext context, T value);
     }
     public interface IValidatorProvider

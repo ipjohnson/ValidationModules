@@ -59,4 +59,17 @@ public sealed partial class CustomerValidator : IValidatorFor<global::Sample.Cus
         if (value.Sku is not null && !SkuPattern0.IsMatch(value.Sku)) ctx.AddPattern("sku");
         if (value.Tags is not null && (value.Tags.Count > 5)) ctx.AddItemCount("tags", 0, 5);
     }
+
+    /// <summary>
+    /// The same tests as <see cref="Validate"/>, returning at the first failure and building
+    /// no path, message or error record - a caller wanting only a boolean pays for nothing else.
+    /// </summary>
+    public bool IsValid(global::Sample.Customer value) {
+        if (string.IsNullOrWhiteSpace(value.Name)) return false;
+        if (value.Name is not null && (value.Name.Length < 1 || value.Name.Length > 100)) return false;
+        if ((value.Age < 0 || value.Age > 120)) return false;
+        if (value.Sku is not null && !SkuPattern0.IsMatch(value.Sku)) return false;
+        if (value.Tags is not null && (value.Tags.Count > 5)) return false;
+        return true;
+    }
 }
