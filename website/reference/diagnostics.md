@@ -32,7 +32,7 @@ silently does not is worse than one you know is missing.
 | [VM0007](#vm0007) | Warning | `[ValidateNested]` target has no rules — **not reported** |
 | [VM0008](#vm0008) | Error | lower bound exceeds upper bound |
 | [VM0009](#vm0009) | Error | constrained property has no accessible getter |
-| [VM0010](#vm0010) | Warning | a DataAnnotations constraint was skipped |
+| [VM0010](#vm0010) | Info | a DataAnnotations constraint is ignored by ValidationModules |
 | [VM0016](#vm0016) | Warning | `RegexOptions.Compiled` is not meaningful |
 | [VM0021](#vm0021) | Error | `[MultipleOf]` on a type with no arithmetic |
 | [VM0022](#vm0022) | Error | a `[MultipleOf]` divisor that is zero or negative |
@@ -52,12 +52,12 @@ silently does not is worse than one you know is missing.
 | [VM0018](#vm0018) | Error | referenced regex member is unusable |
 | [VM0040](#vm0040) | Error | `ValidationModules.Runtime` is too old |
 | [VM0051](#vm0051) | Warning | constraint on a record parameter without `property:` |
-| [VM0060](#vm0060) | Warning | a custom `ValidationAttribute` is not compiled |
+| [VM0060](#vm0060) | Warning¹ | a custom `ValidationAttribute` is not compiled |
 | [VM0061](#vm0061) | Warning | a cross-field DataAnnotations attribute is not compiled |
 | [VM0063](#vm0063) | Warning | a format DataAnnotations attribute is not compiled |
 | [VM0064](#vm0064) | Error | a length constraint on neither a string nor a collection |
 | [VM0065](#vm0065) | Error | `[Range]` bounds do not parse as the member's type |
-| [VM0067](#vm0067) | Warning | `IValidatableObject` is not called |
+| [VM0067](#vm0067) | Warning¹ | `IValidatableObject` is not called |
 | [VM0070](#vm0070) | Error | a statement in `Describe` is not a rule declaration |
 | [VM0071](#vm0071) | Error | a rule selector is not a property path |
 | [VM0072](#vm0072) | Error | a predicate captures state |
@@ -489,17 +489,25 @@ public sealed record Pet {
 
 ## DataAnnotations diagnostics
 
+¹ VM0060 and VM0067 drop to **Info** when
+[`ValidationModules_DataAnnotations`](/reference/msbuild) is `Ignore`, and their message says
+that *ValidationModules* is the one ignoring the rule: with the front end deliberately off, an
+attribute this library leaves alone is configuration working rather than a problem, and another
+validation system reading the same attributes may still enforce it.
+
 ### VM0010 {#vm0010}
 
-**Warning** — *`'RequiredAttribute' on 'Name' is a DataAnnotations constraint and ValidationModules_DataAnnotations is set to Ignore, so it is not enforced`*
+**Info** — *`'RequiredAttribute' on 'Name' is a DataAnnotations constraint, which ValidationModules is ignoring because ValidationModules_DataAnnotations is set to Ignore; another validation system may still enforce it`*
 
-Reported once per skipped constraint, so switching the front end off cannot silently unvalidate a
-model. Remove the `Ignore` setting, or move the rules to
+Reported once per ignored constraint, so switching the front end off cannot silently change what
+this library validates. It names ValidationModules deliberately: the attribute itself stays in
+the compilation, and DataAnnotations, a different validator, or a test harness may still read
+it. To have this library enforce the rule, remove the `Ignore` setting or move it to
 [native constraints](/guide/constraints).
 
 ### VM0060 {#vm0060}
 
-**Warning** — *`'EvenNumberAttribute' on 'Age' derives from ValidationAttribute and carries arbitrary code, which cannot be compiled`*
+**Warning** (**Info** under `Ignore`¹) — *`'EvenNumberAttribute' on 'Age' derives from ValidationAttribute and carries arbitrary code, which cannot be compiled`*
 
 A custom `ValidationAttribute` subclass, or `[CustomValidation]`. Its `IsValid` is arbitrary code
 that only exists at run time; compiling it would mean invoking it, which is the reflection this
@@ -578,7 +586,7 @@ to whatever the build machine happened to be in would make the same source mean 
 
 ### VM0067 {#vm0067}
 
-**Warning** — *`'Customer' implements IValidatableObject; its Validate method is not called by the generated validator`*
+**Warning** (**Info** under `Ignore`¹) — *`'Customer' implements IValidatableObject; its Validate method is not called by the generated validator`*
 
 The type is still validated for everything else it declares. Dropping it entirely would be a worse
 answer than validating what can be validated and saying what was left out.

@@ -29,7 +29,7 @@ public class DataAnnotationsDiagnosticsTests {
         }
         """;
 
-    // VM0010 — the vocabulary is switched off, so a constraint that reads as enforced is not.
+    // VM0010 — the vocabulary is switched off, so this library leaves the constraint alone.
 
     [Fact]
     public void DataAnnotations_SetToIgnore_ReportsVM0010PerSkippedConstraint() {
@@ -40,7 +40,14 @@ public class DataAnnotationsDiagnosticsTests {
                 """),
             ("ValidationModules_DataAnnotations", "Ignore"));
 
-        Assert.Equal(DiagnosticSeverity.Warning, Assert.Single(result.Diagnostics, d => d.Id == "VM0010").Severity);
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0010");
+
+        // Info, not Warning: the project asked for Ignore, so the skip is configuration working.
+        // And the message names ValidationModules as the one ignoring, because the attribute stays
+        // in the compilation and another validation system may still enforce it.
+        Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
+        Assert.Contains("ValidationModules is ignoring", diagnostic.GetMessage());
+        Assert.Contains("another validation system may still enforce it", diagnostic.GetMessage());
     }
 
     [Fact]
@@ -127,6 +134,37 @@ public class DataAnnotationsDiagnosticsTests {
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0060");
         Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
         Assert.Contains("EvenNumberAttribute", diagnostic.GetMessage());
+        Assert.Contains("It is not enforced", diagnostic.GetMessage());
+    }
+
+    [Fact]
+    public void CustomValidationAttribute_UnderIgnore_IsVM0060AsInfo() {
+        // The custom attribute fires in both modes — it can never be compiled — but under Ignore
+        // the project has said DataAnnotations belong to someone else, so the report drops to
+        // Info and says which library is doing the ignoring.
+        var source = """
+            using System.ComponentModel.DataAnnotations;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed class EvenNumberAttribute : ValidationAttribute {
+                public override bool IsValid(object? value) => value is int number && number % 2 == 0;
+            }
+
+            public class Customer {
+                [EvenNumber]
+                [ValidationModules.Constraints.Required]
+                public string? Name { get; set; }
+            }
+            """;
+
+        var result = GeneratorHarness.Run(source, ("ValidationModules_DataAnnotations", "Ignore"));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0060");
+        Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
+        Assert.Contains("ValidationModules is ignoring it", diagnostic.GetMessage());
+        Assert.Contains("another validation system may still enforce it", diagnostic.GetMessage());
     }
 
     [Fact]
@@ -260,6 +298,34 @@ public class DataAnnotationsDiagnosticsTests {
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0067");
         Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
         Assert.Contains("Customer", diagnostic.GetMessage());
+        Assert.Contains("not called by the generated validator", diagnostic.GetMessage());
+    }
+
+    [Fact]
+    public void ValidatableObject_UnderIgnore_IsVM0067AsInfo() {
+        var source = """
+            using System.Collections.Generic;
+            using System.ComponentModel.DataAnnotations;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public class Customer : IValidatableObject {
+                [ValidationModules.Constraints.Required]
+                public string? Name { get; set; }
+
+                public IEnumerable<ValidationResult> Validate(ValidationContext validationContext) {
+                    yield break;
+                }
+            }
+            """;
+
+        var result = GeneratorHarness.Run(source, ("ValidationModules_DataAnnotations", "Ignore"));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0067");
+        Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
+        Assert.Contains("ValidationModules is ignoring its Validate method", diagnostic.GetMessage());
+        Assert.Contains("another validation system may still call it", diagnostic.GetMessage());
     }
 
     [Fact]
