@@ -160,7 +160,13 @@ public sealed class AttributeFrontEnd {
                         continue;
                     }
 
-                    overriddenField ??= rule.Field;
+                    // Only a descent renames the property. A constraint rule's rename rides on
+                    // the constraint, so promoting it here would rename every other rule anchored
+                    // to the same property - and would also defeat [JsonPropertyName], which
+                    // FieldNameFor honours and a rule's namered CLR name does not.
+                    if (rule.Nesting != Nesting.None) {
+                        overriddenField ??= rule.Field;
+                    }
 
                     if (rule.Constraint is not null) {
                         constraints.Add(rule.Constraint);

@@ -42,7 +42,7 @@ public readonly struct ValidationContext {
     private readonly ValidationErrorCollector _collector;
 
     /// <summary>
-    /// The segments walked to get here, indexed by depth. Shared by every context in one pass;
+    /// The path segments walked to get here, indexed by depth. Shared by every context in one pass;
     /// slots at or above <see cref="_depth"/> belong to walks that have already unwound and are
     /// never read, which is why nothing has to clear them.
     /// </summary>

@@ -105,6 +105,14 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
                 result.Model is { } model
                 && model.Properties.Any(property => property.Polymorphism == PolymorphismMode.Runtime));
 
+            // Built over every model in the compilation, which this loop already has in hand - so
+            // knowing which nested descents come back round costs nothing in incrementality. A
+            // validator on a cycle cannot take its nested validator as a constructor dependency
+            // without making the container refuse to build, and cannot carry the straight-line
+            // IsValid without risking the process on cyclic data.
+            var nesting = NestingGraph.Build(
+                results.Select(result => result.Model).Where(model => model is not null).Select(model => model!));
+
             foreach (var result in results) {
                 foreach (var diagnostic in result.Diagnostics) {
                     production.ReportDiagnostic(diagnostic);
@@ -113,7 +121,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
                 if (result.Model is { } model) {
                     production.AddSource(
                         HintNameFor(model),
-                        new ValidatorEmitter().Emit(model, dispatchesDynamically, emitFailFast));
+                        new ValidatorEmitter().Emit(model, dispatchesDynamically, emitFailFast, nesting));
                 }
 
                 if (result.Predicates is { } predicates) {
@@ -442,10 +450,40 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             _ => CamelCase,
         };
 
-        private static string CamelCase(string name) =>
-            name.Length == 0 || !char.IsUpper(name[0])
-                ? name
-                : char.ToLowerInvariant(name[0]) + name.Substring(1);
+        /// <summary>
+        /// <c>JsonNamingPolicy.CamelCase</c>'s algorithm, which is what the runtime's
+        /// <c>CamelCaseFieldNamer</c> also implements. The two have to agree exactly: this one
+        /// names the field baked into generated code and that one names it for anything reached
+        /// through the adapter, so a divergence gives the same property two spellings depending on
+        /// which engine found the error.
+        /// </summary>
+        private static string CamelCase(string name) {
+            if (name.Length == 0 || !char.IsUpper(name[0])) {
+                return name;
+            }
+
+            var characters = name.ToCharArray();
+
+            for (var i = 0; i < characters.Length; i++) {
+                if (i == 1 && !char.IsUpper(characters[i])) {
+                    break;
+                }
+
+                var hasNext = i + 1 < characters.Length;
+
+                if (i > 0 && hasNext && !char.IsUpper(characters[i + 1])) {
+                    if (characters[i + 1] == ' ') {
+                        characters[i] = char.ToLowerInvariant(characters[i]);
+                    }
+
+                    break;
+                }
+
+                characters[i] = char.ToLowerInvariant(characters[i]);
+            }
+
+            return new string(characters);
+        }
 
         private static string SnakeCase(string name) {
             var builder = new System.Text.StringBuilder(name.Length + 4);

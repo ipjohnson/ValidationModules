@@ -124,19 +124,19 @@ namespace ValidationModules
     }
     public static class ValidationContextExtensions
     {
-        public static ValidationModules.ValidationFlow ReportAllowedValues(this ValidationModules.ValidationContext context, string field, string allowedValues, ValidationModules.ValidationSeverity severity = 0) { }
-        public static ValidationModules.ValidationFlow ReportItemCount(this ValidationModules.ValidationContext context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0) { }
-        public static ValidationModules.ValidationFlow ReportMultipleOf(this ValidationModules.ValidationContext context, string field, decimal divisor, ValidationModules.ValidationSeverity severity = 0) { }
-        public static ValidationModules.ValidationFlow ReportPattern(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0) { }
-        public static ValidationModules.ValidationFlow ReportRange<T>(this ValidationModules.ValidationContext context, string field, T min, T max, ValidationModules.ValidationSeverity severity = 0)
+        public static ValidationModules.ValidationFlow ReportAllowedValues(this ValidationModules.ValidationContext context, string field, string allowedValues, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
+        public static ValidationModules.ValidationFlow ReportItemCount(this ValidationModules.ValidationContext context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
+        public static ValidationModules.ValidationFlow ReportMultipleOf(this ValidationModules.ValidationContext context, string field, decimal divisor, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
+        public static ValidationModules.ValidationFlow ReportPattern(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
+        public static ValidationModules.ValidationFlow ReportRange<T>(this ValidationModules.ValidationContext context, string field, T min, T max, ValidationModules.ValidationSeverity severity = 0, string? code = null)
             where T : System.IFormattable { }
-        public static ValidationModules.ValidationFlow ReportRangeAtLeast<T>(this ValidationModules.ValidationContext context, string field, T min, ValidationModules.ValidationSeverity severity = 0)
+        public static ValidationModules.ValidationFlow ReportRangeAtLeast<T>(this ValidationModules.ValidationContext context, string field, T min, ValidationModules.ValidationSeverity severity = 0, string? code = null)
             where T : System.IFormattable { }
-        public static ValidationModules.ValidationFlow ReportRangeAtMost<T>(this ValidationModules.ValidationContext context, string field, T max, ValidationModules.ValidationSeverity severity = 0)
+        public static ValidationModules.ValidationFlow ReportRangeAtMost<T>(this ValidationModules.ValidationContext context, string field, T max, ValidationModules.ValidationSeverity severity = 0, string? code = null)
             where T : System.IFormattable { }
-        public static ValidationModules.ValidationFlow ReportRequired(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0) { }
-        public static ValidationModules.ValidationFlow ReportStringLength(this ValidationModules.ValidationContext context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0) { }
-        public static ValidationModules.ValidationFlow ReportUniqueItems(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0) { }
+        public static ValidationModules.ValidationFlow ReportRequired(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
+        public static ValidationModules.ValidationFlow ReportStringLength(this ValidationModules.ValidationContext context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
+        public static ValidationModules.ValidationFlow ReportUniqueItems(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
     }
     public readonly struct ValidationError : System.IEquatable<ValidationModules.ValidationError>
     {

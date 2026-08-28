@@ -19,6 +19,7 @@ public class RulesClassDiagnosticsTests {
     private static string Rules(string body, string extraMembers = "") => $$"""
         using System;
         using System.Collections.Generic;
+        using System.Linq;
         using ValidationModules;
 
         namespace Sample;
@@ -227,5 +228,47 @@ public class RulesClassDiagnosticsTests {
         var result = GeneratorHarness.Run(Rules("        rules.Ensure(x => x.Start < x.End);"));
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0072");
+    }
+
+    [Fact]
+    public void PredicateWithANestedLambda_IsSilent() {
+        // The walk binds its parameter list once, to the outermost lambda, and then descends
+        // through the whole subtree - so an inner lambda's own parameter is a name it has never
+        // heard of and scores as a capture. Nothing is captured here: the C# compiler accepts the
+        // inner lambda as static, which is the proof.
+        var result = GeneratorHarness.Run(Rules(
+            "        rules.Ensure(x => x.Nights <= x.Notes.Sum(n => n.Length));"));
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0072");
+    }
+
+    [Fact]
+    public void PredicateWithAnExplicitlyStaticNestedLambda_IsSilent() {
+        var result = GeneratorHarness.Run(Rules(
+            "        rules.Ensure(x => x.Nights <= x.Notes.Sum(static n => n.Length));"));
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0072");
+    }
+
+    [Fact]
+    public void PredicateDeclaringItsOwnLocal_IsSilent() {
+        // The same root cause reached a second way: every ILocalSymbol scores as captured, including
+        // one declared inside the predicate. A local that the lifted static method declares for
+        // itself is not state from anywhere else.
+        var result = GeneratorHarness.Run(Rules(
+            "        rules.Ensure(x => { var span = x.End.DayNumber - x.Start.DayNumber; return span > 0; });"));
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0072");
+    }
+
+    [Fact]
+    public void PredicateCapturingThroughANestedLambda_IsStillVM0072() {
+        // The complement, and the one that keeps the three above honest: teaching the walk about
+        // inner scopes must not blind it to a capture that happens inside one.
+        var result = GeneratorHarness.Run(Rules(
+            "        rules.Ensure(x => x.Notes.Any(n => n.Length > _limit));",
+            "    private readonly int _limit = 7;\n"));
+
+        Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM0072").Severity);
     }
 }

@@ -72,6 +72,21 @@ public class NestingTests {
     }
 
     [Fact]
+    public void CyclicGraph_IsValid_ThrowsRatherThanAbortingTheProcess() {
+        // The guard lives in the collector, which IsValid does not go through: a generated IsValid
+        // is straight-line tests calling the nested validator's IsValid directly, with nothing
+        // counting depth. So the entry point documented for hot paths was the one that took the
+        // process down, while Validate on the same input threw cleanly.
+        var head = new MutableNode { Label = "head" };
+        head.Child = head;
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => new MutableNodeValidator().IsValid(head));
+
+        Assert.Contains("cycle", exception.Message);
+    }
+
+    [Fact]
     public void NestedObject_DoesNotRecurseIntoAMissingValue() {
         var result = new NodeValidator().Validate(new Node { Label = "a" });
 

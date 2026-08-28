@@ -96,6 +96,8 @@ public static class NativeConstraintReader {
                     Pattern = pattern,
                     Anchored = Named(attribute, "Anchored") is bool anchored && anchored,
                     RegexOptions = Named(attribute, "Options") is int options ? options : 0,
+                    MatchTimeoutMilliseconds =
+                        Named(attribute, "MatchTimeoutMilliseconds") is int timeout ? timeout : 0,
                 };
             }
 

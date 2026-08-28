@@ -107,7 +107,13 @@ public sealed class ValidatorEmitter {
     /// evaluates every rule regardless of the collector's
     /// <c>ValidationStopMode</c> - the answer is the same, the work is not.
     /// </param>
-    public string Emit(ValidatedTypeModel model, bool withDynamicAdapter = false, bool failFast = true) {
+    public string Emit(
+        ValidatedTypeModel model,
+        bool withDynamicAdapter = false,
+        bool failFast = true,
+        NestingGraph? nesting = null) {
+
+        var graph = nesting ?? NestingGraph.Empty;
         var builder = new StringBuilder();
         var patterns = new List<(string Field, ConstraintModel Constraint)>();
 
@@ -133,7 +139,7 @@ public sealed class ValidatorEmitter {
 
         builder.AppendLine($"{accessibility} sealed partial class {model.ValidatorName} : IValidatorFor<{model.QualifiedTypeName}> {{");
         builder.AppendLine();
-        EmitNestedDependencies(builder, model);
+        EmitNestedDependencies(builder, model, graph);
 
         var body = new StringBuilder();
         var fast = new StringBuilder();
@@ -176,12 +182,18 @@ public sealed class ValidatorEmitter {
             // ILC prove RegexOptions.Compiled is never set and trim the RegexCompiler path with it,
             // and passing the enum defeats that. Measured at 713 KB on a published AOT binary -
             // more than the regex engine itself costs.
-            var options = constraint.RegexOptions != 0
-                ? $", (RegexOptions){constraint.RegexOptions}"
-                : string.Empty;
+            // A timeout is the attribute's only ReDoS mitigation, and it needs the three-argument
+            // constructor - so it has to pass options too, giving up the trim above. That is the
+            // trade the author asked for by setting it, and it is paid only where it was set.
+            var arguments = constraint.MatchTimeoutMilliseconds > 0
+                ? $", (RegexOptions){constraint.RegexOptions}, " +
+                  $"System.TimeSpan.FromMilliseconds({constraint.MatchTimeoutMilliseconds})"
+                : constraint.RegexOptions != 0
+                    ? $", (RegexOptions){constraint.RegexOptions}"
+                    : string.Empty;
 
             builder.AppendLine(
-                $"    private static readonly Regex {field} = new Regex({Quote(expression)}{options});");
+                $"    private static readonly Regex {field} = new Regex({Quote(expression)}{arguments});");
             builder.AppendLine();
         }
 
@@ -210,7 +222,17 @@ public sealed class ValidatorEmitter {
         // makes.
         var dispatchesDynamically = model.Properties.Any(p => p.Polymorphism == PolymorphismMode.Runtime);
 
-        if (model.AppliedRules.Count == 0 && !dispatchesDynamically) {
+        // A type that nests itself falls back for a third reason, and a worse one than being slow.
+        // The straight-line form calls the nested validator's IsValid directly, and nothing on that
+        // path counts depth - the guard lives on the collector, which IsValid never builds. So a
+        // caller's cyclic data recursed until the stack went, and a StackOverflowException cannot be
+        // caught: the process aborted, out of the entry point documented for hot paths, while
+        // Validate on the same value threw InvalidOperationException and named the cycle. The
+        // interface default walks Validate into a throwaway collector, so it inherits the guard.
+        var nestsItself = model.Properties.Any(property => NestsItsOwnType(property, model))
+            || graph.ParticipatesInACycle(model);
+
+        if (model.AppliedRules.Count == 0 && !dispatchesDynamically && !nestsItself) {
             builder.AppendLine();
             builder.AppendLine("    /// <summary>");
             builder.AppendLine("    /// The same tests as <see cref=\"Validate\"/>, returning at the first failure and building");
@@ -338,7 +360,8 @@ public sealed class ValidatorEmitter {
     /// and one wins.
     /// </para>
     /// </remarks>
-    private static void EmitNestedDependencies(StringBuilder builder, ValidatedTypeModel model) {
+    private static void EmitNestedDependencies(
+        StringBuilder builder, ValidatedTypeModel model, NestingGraph graph) {
         var nested = model.Properties.Where(p => p.ElementValidatorName is not null).ToList();
 
         if (nested.Count == 0) {
@@ -353,29 +376,50 @@ public sealed class ValidatorEmitter {
         }
 
         builder.AppendLine();
-        builder.AppendLine("    /// <summary>Resolved from the container: the full set for each nested type.</summary>");
-        builder.AppendLine($"    public {model.ValidatorName}(");
 
-        for (var i = 0; i < nested.Count; i++) {
-            var comma = i == nested.Count - 1 ? ") {" : ",";
-            builder.AppendLine(
-                $"        System.Collections.Generic.IEnumerable<IValidatorFor<{ElementType(nested[i])}>> {Parameter(nested[i])}{comma}");
+        // A property nesting its own type is deliberately not asked for from the container. Asking
+        // would make this validator a dependency of itself - MS.DI answers
+        // IEnumerable<IValidatorFor<T>> by constructing IValidatorFor<T>, which is this - and
+        // reports a circular dependency. ASP.NET Core turns ValidateOnBuild on in Development, so
+        // that is not a lazy failure on first use: the application does not start. Category trees,
+        // comment threads, BOMs and org charts are all this shape, and nesting.md documents it as
+        // supported.
+        //
+        // Nothing is lost by leaving it out. The field stays null, and the accessor's fallback
+        // already resolves `this` for a self-nesting property - which is the same instance the
+        // container would have handed back, since generated validators are registered as
+        // singletons.
+        var injected = nested
+            .Where(property => !NestsItsOwnType(property, model) &&
+                !graph.DescentReturnsToDeclarer(model, property))
+            .ToList();
+
+        if (injected.Count > 0) {
+            builder.AppendLine("    /// <summary>Resolved from the container: the full set for each nested type.</summary>");
+            builder.AppendLine($"    public {model.ValidatorName}(");
+
+            for (var i = 0; i < injected.Count; i++) {
+                var comma = i == injected.Count - 1 ? ") {" : ",";
+                builder.AppendLine(
+                    $"        System.Collections.Generic.IEnumerable<IValidatorFor<{ElementType(injected[i])}>> {Parameter(injected[i])}{comma}");
+            }
+
+            foreach (var property in injected) {
+                // Empty means absent, not "validate nothing". A container that has no
+                // IValidatorFor<TNested> registered - the usual cause being a second assembly whose
+                // AddXValidators() was never called - injects an empty sequence, and storing that
+                // non-null array would leave the ??= fallback below unreachable. The nested value
+                // would then be skipped in silence while every other constraint still reported,
+                // which reads as validation working. Falling back to the generated validator is what
+                // the parameterless constructor already does for the standalone case.
+                builder.AppendLine($"        var resolved{property.PropertyName} = System.Linq.Enumerable.ToArray({Parameter(property)});");
+                builder.AppendLine($"        {Field(property)} = resolved{property.PropertyName}.Length == 0 ? null : resolved{property.PropertyName};");
+            }
+
+            builder.AppendLine("    }");
+            builder.AppendLine();
         }
 
-        foreach (var property in nested) {
-            // Empty means absent, not "validate nothing". A container that has no
-            // IValidatorFor<TNested> registered - the usual cause being a second assembly whose
-            // AddXValidators() was never called - injects an empty sequence, and storing that
-            // non-null array would leave the ??= fallback below unreachable. The nested value would
-            // then be skipped in silence while every other constraint still reported, which reads
-            // as validation working. Falling back to the generated validator is what the
-            // parameterless constructor already does for the standalone case.
-            builder.AppendLine($"        var resolved{property.PropertyName} = System.Linq.Enumerable.ToArray({Parameter(property)});");
-            builder.AppendLine($"        {Field(property)} = resolved{property.PropertyName}.Length == 0 ? null : resolved{property.PropertyName};");
-        }
-
-        builder.AppendLine("    }");
-        builder.AppendLine();
         builder.AppendLine("    /// <summary>Standalone: nested types fall back to their own generated validators.</summary>");
         builder.AppendLine($"    public {model.ValidatorName}() {{ }}");
         builder.AppendLine();
@@ -383,7 +427,7 @@ public sealed class ValidatorEmitter {
         foreach (var property in nested) {
             // A property that nests its own type resolves to this instance rather than a new one,
             // which is both correct and the cheapest way to terminate the common cycle.
-            var fallback = property.ElementValidatorName == $"global::{Qualify(model)}"
+            var fallback = NestsItsOwnType(property, model)
                 ? "this"
                 : $"new {property.ElementValidatorName}()";
 
@@ -394,6 +438,13 @@ public sealed class ValidatorEmitter {
             builder.AppendLine();
         }
     }
+
+    /// <summary>
+    /// Whether this property nests the very type being validated, so that the validator it descends
+    /// through is the one declaring it.
+    /// </summary>
+    private static bool NestsItsOwnType(ValidatedPropertyModel property, ValidatedTypeModel model) =>
+        property.ElementValidatorName == $"global::{Qualify(model)}";
 
     /// <summary>
     /// The type a nested property's validators are for. A collection or dictionary carries its
@@ -949,8 +1000,9 @@ public sealed class ValidatorEmitter {
             // A flags value is a combination, so "must be one of" would be wrong about what the
             // type accepts. Says which flags exist instead.
             ConstraintKind.EnumDefined when constraint.FlagsMask is not null =>
-                $"ctx.Report({field}, ValidationCodes.Enum, " +
-                $"{Quote($"{Unquote(field)} must be a combination of: {string.Join(", ", Displays(constraint))}.")})",
+                $"ctx.Report({field}, " +
+                $"{(constraint.Code is { } flagsCode ? Quote(flagsCode) : "ValidationCodes.Enum")}, " +
+                $"{Quote(constraint.Message ?? $"{Unquote(field)} must be a combination of: {string.Join(", ", Displays(constraint))}.")})",
             ConstraintKind.EnumDefined => Report(field, constraint, "ReportAllowedValues",
                 $", {Quote(string.Join(", ", Displays(constraint)))}"),
 
@@ -981,6 +1033,14 @@ public sealed class ValidatorEmitter {
     /// A constraint carrying an explicit message falls back to the literal overload: at that point
     /// the text is one the author chose rather than one the runtime owns.
     /// </summary>
+    /// <remarks>
+    /// A <c>Code</c> without a <c>Message</c> takes the helper path and passes the code to it. It
+    /// used to be read only inside the message branch, so setting one alone was discarded in
+    /// silence and a default code went out on the wire - against a documented contract, and with
+    /// nothing to tell the author. Passing it here rather than switching to a literal keeps the
+    /// composed default message, which is built from the constraint's own bounds and belongs to the
+    /// runtime.
+    /// </remarks>
     private static string Report(string field, ConstraintModel constraint, string helper, string arguments) {
         // Omitted entirely at the default rather than passed as ValidationSeverity.Error, so the
         // emitted line stays the one a reader would have written by hand.
@@ -991,7 +1051,11 @@ public sealed class ValidatorEmitter {
             return $"ctx.Report({field}, {code}, {Quote(message)}{severity})";
         }
 
-        return $"ctx.{helper}({field}{arguments}{severity})";
+        // Named, because severity sits between the bounds and this one and is itself omitted at the
+        // default - so there is no positional spelling that works for both.
+        var explicitCode = constraint.Code is { } declared ? $", code: {Quote(declared)}" : string.Empty;
+
+        return $"ctx.{helper}({field}{arguments}{severity}{explicitCode})";
     }
 
     private static string CodeConstant(ConstraintKind kind) => kind switch {

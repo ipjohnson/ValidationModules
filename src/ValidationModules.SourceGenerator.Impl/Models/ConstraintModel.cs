@@ -53,6 +53,13 @@ public enum ConstraintKind {
 /// than two kinds - see API-SURFACE.md §18.3.
 /// </param>
 /// <param name="RegexOptions">Pattern only: flows to the emitted Regex.</param>
+/// <param name="MatchTimeoutMilliseconds">
+/// Pattern only, inline form only: the per-match timeout, flowed to the emitted Regex as its third
+/// constructor argument. Zero means none, and emits the single-argument constructor - which is
+/// load-bearing, because it is what lets ILC prove RegexOptions.Compiled is never set and trim the
+/// RegexCompiler path. The reference form has nowhere to put this: the consumer owns the
+/// [GeneratedRegex] and sets MatchTimeoutMilliseconds on it directly.
+/// </param>
 /// <param name="RegexAccessor">
 /// Pattern only. The already-resolved expression that yields the Regex in the reference form -
 /// "global::My.Patterns.Sku()" for a method, without parentheses for a property or field. Null
@@ -96,6 +103,7 @@ public sealed record ConstraintModel(
     string? Pattern = null,
     bool Anchored = false,
     int RegexOptions = 0,
+    int MatchTimeoutMilliseconds = 0,
     string? RegexAccessor = null,
     string? Divisor = null,
     bool DecimalDomain = false,
