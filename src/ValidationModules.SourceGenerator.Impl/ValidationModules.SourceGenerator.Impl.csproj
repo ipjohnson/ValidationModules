@@ -89,7 +89,7 @@
             the version that satisfies DM's sources is this project's problem to get right, and
             nothing in the restore graph will raise it for us.
         -->
-        <PackageReference Include="CSharpAuthor" Version="2.0.0-preview1004">
+        <PackageReference Include="CSharpAuthor" Version="2.0.0-preview1005">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>build</IncludeAssets>
         </PackageReference>

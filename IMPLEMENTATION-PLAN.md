@@ -469,10 +469,13 @@ type named `ValidationFlow`, `Regex` or `IValidatorFor` silently captured genera
   `global::…ServiceCollectionServiceExtensions.AddSingleton<…>(services)` — because a `global::`
   name cannot reach an extension method, and a using-imported one could still be outranked by an
   extension the consumer declares in the model's own namespace.
-- **A global-namespace model stays `global::Pet`.** CSharpAuthor writes an empty-namespace type
-  bare in every mode (the predefined keyword types share that shape, and `global::int` would not
-  compile), so `EmitterOutput.GlobalNamespaceType` supplies the qualifier until the library can
-  distinguish the two. Worth upstreaming into CSharpAuthor.
+- **A global-namespace model stays `global::Pet`.** CSharpAuthor used to write an empty-namespace
+  type bare in every mode (the predefined keyword types share that shape, and `global::int` would
+  not compile), and `EmitterOutput.GlobalNamespaceType` supplied the qualifier locally. The
+  distinction was upstreamed as hoped: CSharpAuthor 2.0.0-preview1005 qualifies empty-namespace
+  user types in `Global` mode itself and keeps the keywords bare (its `migration-v1-v2.md` §4.2
+  B13, with the keyword list drift-pinned in its own suite), so the local class is gone and
+  `EmitterOutput.NamedType` is a plain `TypeDefinition.Get`.
 - **`PredicateEmitter` keeps the one deliberate exception**: predicate bodies are the author's
   source, and the copied usings exist to resolve them. Its structure is CSharpAuthor; the target
   type comes off the symbol through the package's Roslyn bridge

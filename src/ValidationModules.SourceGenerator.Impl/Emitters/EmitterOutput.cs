@@ -100,82 +100,20 @@ internal static class EmitterOutput {
     }
 
     /// <summary>
-    /// A type by namespace and name, with the global namespace actually reachable.
+    /// A type by namespace and name, the global namespace included.
     /// </summary>
     /// <remarks>
-    /// <see cref="TypeDefinition.Get(string, string, bool, bool)"/> writes an empty-namespace type
-    /// as its bare name in every mode, because the predefined keyword types carry an empty
-    /// namespace and <c>global::int</c> would not compile. A user type in the global namespace is
-    /// the case that distinction drops: bare <c>Pet</c> inside the emitted
-    /// <c>Microsoft.Extensions.DependencyInjection</c> block resolves through every enclosing
-    /// namespace before the global one, so anything named <c>Pet</c> along that walk captures it -
-    /// the exact failure mode Global output exists to remove. Until CSharpAuthor can say
-    /// <c>global::Pet</c> itself, <see cref="GlobalNamespaceType"/> says it here.
+    /// This used to route an empty namespace through a local <c>GlobalNamespaceType</c> that wrote
+    /// <c>global::Pet</c> itself, because CSharpAuthor wrote every empty-namespace type bare - the
+    /// predefined keyword types share that shape, and <c>global::int</c> would not compile. The
+    /// distinction was upstreamed as predicted: from 2.0.0-preview1005, Global mode qualifies an
+    /// empty-namespace user type and leaves the keywords bare (its migration note B13), so
+    /// <see cref="TypeDefinition.Get(string, string, bool, bool)"/> is the whole answer.
     /// </remarks>
     public static ITypeDefinition NamedType(string ns, string name) =>
-        ns.Length == 0 ? new GlobalNamespaceType(name) : TypeDefinition.Get(ns, name);
+        TypeDefinition.Get(ns, name);
 
     private static readonly char[] UnexpectedInATypeName = { '<', '>', '[', ']', '?', ' ', ',' };
-
-    /// <summary>
-    /// A non-generic type declared in the global namespace, written <c>global::Name</c> in every
-    /// mode - the one spelling C# accepts for it from inside any other namespace, and legal
-    /// everywhere else too.
-    /// </summary>
-    private sealed class GlobalNamespaceType : ITypeDefinition {
-        private readonly string _name;
-        private readonly bool _nullable;
-
-        public GlobalNamespaceType(string name, bool nullable = false) {
-            _name = name;
-            _nullable = nullable;
-        }
-
-        public TypeDefinitionEnum TypeDefinitionEnum => TypeDefinitionEnum.ClassDefinition;
-
-        public bool IsNullable => _nullable;
-
-        public bool IsArray => false;
-
-        public IReadOnlyList<bool> NullableAnnotations => new[] { _nullable };
-
-        public IReadOnlyList<int> ArrayRanks => Array.Empty<int>();
-
-        public string Name => _name;
-
-        public string Namespace => string.Empty;
-
-        public ITypeDefinition? ContainingType => null;
-
-        public IEnumerable<string> KnownNamespaces => Array.Empty<string>();
-
-        public IReadOnlyList<ITypeDefinition> TypeArguments => Array.Empty<ITypeDefinition>();
-
-        public void WriteTypeName(
-            System.Text.StringBuilder builder, TypeOutputMode typeOutputMode = TypeOutputMode.ShortName) {
-            builder.Append("global::");
-            builder.Append(_name);
-
-            if (_nullable) {
-                builder.Append('?');
-            }
-        }
-
-        public ITypeDefinition MakeNullable(bool nullable = true) => new GlobalNamespaceType(_name, nullable);
-
-        public ITypeDefinition MakeArray() => MakeArray(1);
-
-        // Nothing the emitters produce needs an array of a global-namespace type - element arrays
-        // are arrays of IValidatorFor<T>, which carries its namespace. Refused loudly rather than
-        // written bare, which is the silent capture this class exists to remove.
-        public ITypeDefinition MakeArray(int rank) =>
-            throw new NotSupportedException(
-                $"An array of the global-namespace type '{_name}' has no writer; " +
-                "widen GlobalNamespaceType if an emitter ever needs one.");
-
-        public int CompareTo(ITypeDefinition other) =>
-            other is null ? 1 : string.CompareOrdinal(_name, other.Namespace.Length == 0 ? other.Name : $"{other.Namespace}.{other.Name}");
-    }
 
     /// <summary><c>IValidatorFor&lt;T&gt;</c> closed over <paramref name="validated"/>.</summary>
     public static ITypeDefinition ValidatorFor(ITypeDefinition validated) =>
