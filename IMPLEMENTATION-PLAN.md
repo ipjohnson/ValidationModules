@@ -53,6 +53,19 @@ These are settled. Do not reopen them, and do not ask.
   `WarningsAsErrors=IL2026;IL2055;IL2067;IL2072;IL2075;IL2087;IL3050`, so the compiler enforces
   it rather than review.
 - **Generated validators are plain classes.** No attributes on them, no DI-framework knowledge.
+- **Emitted C# is authored with CSharpAuthor, never assembled as text.** Every character the
+  generator writes goes through `CSharpFileDefinition` and `OutputContext`, the path
+  `DependencyModules.SourceGenerator.Impl.DependencyFileWriter` already takes. Both generator
+  projects reference `CSharpAuthor` 2.0.0-preview1004 with `PackageCSharpAuthorIncludeSource=true`
+  and `PackageCSharpAuthorIncludeRoslyn=true` (the `ITypeSymbol` → `ITypeDefinition` bridge), so
+  this costs no new dependency and no new packaging story. A `StringBuilder` in an emitter, a line of
+  C# built by interpolation and appended to one, or a raw string literal holding a class body is a
+  defect rather than a style preference: hand-assembled source owns its own brace matching, its own
+  indentation, its own `global::` qualification and its own using list, and the compiler cannot see
+  any of those go wrong until the consumer's build breaks. This is scoped to *source* text.
+  `StringBuilder` for runtime string work — `FieldNamer`, `RuleText`, `ValidationContext`'s path
+  rendering — builds values, not code, and is untouched by this rule; CSharpAuthor must never be
+  referenced from `ValidationModules.Runtime`.
 - **Regex uses `[GeneratedRegex]`**, never `new Regex(..., RegexOptions.Compiled)`. See §10.2 for
   what happens when you get this wrong.
 - **Rule graphs are built once**, never per validation call.
@@ -434,6 +447,58 @@ generator (§9), so the check has a better place to live: the task can compare t
 both — the marker-type probe for generator-hosted front-ends, and an MSBuild-time check the task can
 call. The second is the one Hardened hits first, and it produces the better error.
 
+### 7.6 The emitters are on CSharpAuthor — debt paid
+
+Recorded 2026-08-28 as `StringBuilder` debt; converted the same day, on CSharpAuthor
+`2.0.0-preview1004`. All three emitters — `ValidatorEmitter`, `RegistrationEmitter`,
+`PredicateEmitter` — author their output through `CSharpFileDefinition` + `OutputContext`, with
+the shared settings (`TypeOutputMode.Global`, K&R braces, one-line invokes, `\n` endings) and the
+IR-string → `ITypeDefinition` bridge in `Emitters/EmitterOutput.cs`.
+
+The conversion was never a formatting exercise, and the output deliberately does **not** match the
+old text. The old emitters leaned on `using ValidationModules;` and short names, so a consumer
+type named `ValidationFlow`, `Regex` or `IValidatorFor` silently captured generated code — the
+"types aren't written correctly" class of defect. What holds now:
+
+- **Generated files carry no using directives and every type is `global::`-qualified.**
+  Declarations go through the type model; the qualified-name strings the IR carries are converted
+  once at the emitter's edge (`EmitterOutput.TypeRef`), which throws on any shape a front end
+  should never produce rather than compiling it into the consumer's build.
+- **Extension methods are called in static form** —
+  `global::…ValidationContextExtensions.ReportX(ctx, …)`,
+  `global::…ServiceCollectionServiceExtensions.AddSingleton<…>(services)` — because a `global::`
+  name cannot reach an extension method, and a using-imported one could still be outranked by an
+  extension the consumer declares in the model's own namespace.
+- **A global-namespace model stays `global::Pet`.** CSharpAuthor used to write an empty-namespace
+  type bare in every mode (the predefined keyword types share that shape, and `global::int` would
+  not compile), and `EmitterOutput.GlobalNamespaceType` supplied the qualifier locally. The
+  distinction was upstreamed as hoped: CSharpAuthor 2.0.0-preview1005 qualifies empty-namespace
+  user types in `Global` mode itself and keeps the keywords bare (its `migration-v1-v2.md` §4.2
+  B13, with the keyword list drift-pinned in its own suite), so the local class is gone and
+  `EmitterOutput.NamedType` is a plain `TypeDefinition.Get`.
+- **`PredicateEmitter` keeps the one deliberate exception**: predicate bodies are the author's
+  source, and the copied usings exist to resolve them. Its structure is CSharpAuthor; the target
+  type comes off the symbol through the package's Roslyn bridge
+  (`PackageCSharpAuthorIncludeRoslyn=true`, now set in both generator projects — consumers that
+  compile Impl in from the package need the same property).
+
+The golden snapshots under `tests/ValidationModules.SourceGenerator.Tests/Snapshots/` were
+re-accepted for the new shape and read line by line: every test expression, guard, bound, report
+argument and registration pair is byte-identical to the old output; what changed is
+qualification, bracing and member layout. Two stale snapshot files from renamed tests
+(`EmitsACompleteModule`, `EmitsAStaticTableOfFactories`) were deleted in the same pass — the live
+count is 14, not the 16 this section used to claim.
+
+Still deliberately out of scope, and still not violations:
+
+- `ValidationSourceGenerator.cs` builds an identifier and a snake-case name out of characters.
+  They transform strings; they do not write source.
+- `Runtime/Naming/FieldNamer.cs`, `Runtime/Rules/RuleText.cs` and `Runtime/ValidationContext.cs`
+  build values at validation time, and `ValidationModules.Runtime` must never take a codegen
+  dependency.
+- `spikes-specdemo/` emits by hand, is not in `ValidationModules.sln` and is not built; convert it
+  only if it is ever promoted.
+
 ---
 
 ## 8. FluentValidation adapter and conformance
@@ -480,9 +545,10 @@ FluentValidation is Apache 2.0 and free, with no paid tier. Worth restating beca
 spec. The original text is kept below the line because most of it held; the summary here records
 what changed and why.
 
-The change is one fact about Impl: `ValidatorEmitter` and `RegistrationEmitter` are `StringBuilder`
-over the IR with no `Microsoft.CodeAnalysis` reference — only `FrontEnds/` and `ValidationDiagnostics`
-are Roslyn-coupled. So **an MSBuild task can drive the emitter**, and Hardened's spec front-end goes
+The change is one fact about Impl: `ValidatorEmitter` and `RegistrationEmitter` are CSharpAuthor
+writers over the IR with no `Microsoft.CodeAnalysis` reference — only `FrontEnds/`,
+`ValidationDiagnostics` and `PredicateEmitter` are Roslyn-coupled. *(They were `StringBuilder`
+when this was written; §7.6 records the conversion, which kept the Roslyn-free property.)* So **an MSBuild task can drive the emitter**, and Hardened's spec front-end goes
 there rather than into a Roslyn generator. Consequences:
 
 - **`[GeneratedRegex]` becomes available to spec-driven patterns.** A task writes ordinary source

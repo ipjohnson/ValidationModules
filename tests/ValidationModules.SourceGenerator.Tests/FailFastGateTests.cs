@@ -45,7 +45,8 @@ public class FailFastGateTests {
     public void Unset_EmitsTheReturns() {
         var body = Emit();
 
-        Assert.Contains("ctx.ReportRequired(\"name\").ShouldStop) return ValidationFlow.Stop;", body);
+        Assert.Contains("if (string.IsNullOrWhiteSpace(value.Name) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\").ShouldStop) {", body);
+        Assert.Contains("return global::ValidationModules.ValidationFlow.Stop;", body);
     }
 
     [Theory]
@@ -56,9 +57,10 @@ public class FailFastGateTests {
     public void TurnedOff_DiscardsTheAnswerInstead(string setting) {
         var body = Emit(("ValidationModules_FailFast", setting));
 
-        Assert.Contains("if (string.IsNullOrWhiteSpace(value.Name)) ctx.ReportRequired(\"name\");", body);
+        Assert.Contains("if (string.IsNullOrWhiteSpace(value.Name)) {", body);
+        Assert.Contains("global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\");", body);
         Assert.DoesNotContain("ShouldStop", body);
-        Assert.DoesNotContain("return ValidationFlow.Stop;", body);
+        Assert.DoesNotContain("return global::ValidationModules.ValidationFlow.Stop;", body);
     }
 
     /// <summary>
@@ -82,8 +84,8 @@ public class FailFastGateTests {
     public void EitherWay_TheSignatureAndTerminalReturnAreTheSame(string? setting) {
         var body = setting is null ? Emit() : Emit(("ValidationModules_FailFast", setting));
 
-        Assert.Contains("public ValidationFlow Validate(ref ValidationContext ctx", body);
-        Assert.Contains("return ValidationFlow.Continue;", body);
+        Assert.Contains("public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx", body);
+        Assert.Contains("return global::ValidationModules.ValidationFlow.Continue;", body);
     }
 
     [Fact]

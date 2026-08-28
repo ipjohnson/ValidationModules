@@ -67,8 +67,8 @@ public class HintNameCollisionTests {
 
         // Registered by implementation type, so the container constructs each and injects whatever
         // validates its nested properties.
-        Assert.Contains("global::Api.V1.CustomerValidator>()", registration);
-        Assert.Contains("global::Api.V2.CustomerValidator>()", registration);
+        Assert.Contains("global::Api.V1.CustomerValidator>(services)", registration);
+        Assert.Contains("global::Api.V2.CustomerValidator>(services)", registration);
     }
 
     /// <summary>

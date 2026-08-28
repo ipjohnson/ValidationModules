@@ -71,12 +71,16 @@ public class RegistrationEmitterTests {
     public void DependencyModulesBranch_DelegatesRatherThanRepeatingTheRegistrations() {
         var source = Registration(compiles: false, ("ValidationModules_Registration", "DependencyModules"));
 
-        Assert.Contains("services.AddGeneratorTestsValidators();", source);
+        Assert.Contains(
+            "global::Microsoft.Extensions.DependencyInjection.GeneratorTestsValidationExtensions.AddGeneratorTestsValidators(services);",
+            source);
 
         // The validator registrations appear once, in the extension — not again inside the module.
-        // Anchored on "services.AddSingleton<" rather than "AddSingleton<", which also matches
-        // inside the TryAddSingleton that registers the namer.
-        Assert.Equal(2, source.Split("services.AddSingleton<").Length - 1);
+        // Anchored on the qualified ServiceCollectionServiceExtensions call rather than bare
+        // "AddSingleton<", which also matches inside the TryAddSingleton that registers the namer.
+        Assert.Equal(
+            2,
+            source.Split("global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton<").Length - 1);
     }
 
     [Fact]
@@ -123,7 +127,9 @@ public class RegistrationEmitterTests {
             ? Registration()
             : Registration(("ValidationModules_FieldNaming", policy));
 
-        Assert.Contains($"TryAddSingleton<IValidationFieldNamer>({expected}.Instance)", source);
+        Assert.Contains(
+            $"TryAddSingleton<global::ValidationModules.Naming.IValidationFieldNamer>(services, global::ValidationModules.Naming.{expected}.Instance)",
+            source);
     }
 
     [Fact]
@@ -191,6 +197,8 @@ public class RegistrationEmitterTests {
         var source = GeneratorHarness.Run(TwoTypes, assemblyName)
             .Sources["GeneratedValidatorRegistration.g.cs"];
 
-        Assert.Contains($"public static IServiceCollection {expected}(", source);
+        Assert.Contains(
+            $"public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection {expected}(",
+            source);
     }
 }

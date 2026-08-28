@@ -52,9 +52,12 @@ public class InheritedConstraintTests {
     public void BaseClassConstraints_AreCheckedByTheDerivedValidator() {
         var body = Body(GeneratorHarness.Run(BaseChain), "CreateOrderValidator");
 
-        Assert.Contains("ctx.ReportRequired(\"correlationId\")", body);
-        Assert.Contains("ctx.ReportRequired(\"tenantId\")", body);
-        Assert.Contains("ctx.ReportRequired(\"sku\")", body);
+        Assert.Contains(
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"correlationId\")", body);
+        Assert.Contains(
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"tenantId\")", body);
+        Assert.Contains(
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"sku\")", body);
     }
 
     /// <summary>
@@ -91,7 +94,9 @@ public class InheritedConstraintTests {
             public record Ping : BaseRequest;
             """);
 
-        Assert.Contains("ctx.ReportRequired(\"correlationId\")", Body(result, "PingValidator"));
+        Assert.Contains(
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"correlationId\")",
+            Body(result, "PingValidator"));
     }
 
     [Fact]
@@ -108,9 +113,12 @@ public class InheritedConstraintTests {
 
         var body = Body(result, "LeafValidator");
 
-        Assert.Contains("ctx.ReportRequired(\"a\")", body);
-        Assert.Contains("ctx.ReportRequired(\"b\")", body);
-        Assert.Contains("ctx.ReportRequired(\"c\")", body);
+        Assert.Contains(
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"a\")", body);
+        Assert.Contains(
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"b\")", body);
+        Assert.Contains(
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"c\")", body);
     }
 
     // -- interfaces --------------------------------------------------------------------------
@@ -142,8 +150,10 @@ public class InheritedConstraintTests {
 
         var body = Body(result, "DocumentValidator");
 
-        Assert.Contains("ctx.ReportRequired(\"title\")", body);
-        Assert.Contains("ctx.ReportRequired(\"modifiedBy\")", body);
+        Assert.Contains(
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"title\")", body);
+        Assert.Contains(
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"modifiedBy\")", body);
     }
 
     /// <summary>
@@ -171,8 +181,10 @@ public class InheritedConstraintTests {
 
         var body = Body(result, "DocumentValidator");
 
-        Assert.Contains("ctx.ReportRequired(\"modifiedBy\")", body);
-        Assert.Contains("ctx.ReportStringLength(\"modifiedBy\", 1, 64)", body);
+        Assert.Contains(
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"modifiedBy\")", body);
+        Assert.Contains(
+            "global::ValidationModules.ValidationContextExtensions.ReportStringLength(ctx, \"modifiedBy\", 1, 64)", body);
     }
 
     // -- shadowing ---------------------------------------------------------------------------
@@ -203,9 +215,11 @@ public class InheritedConstraintTests {
 
         var body = Body(result, "DerivedValidator");
 
-        Assert.Contains("ctx.ReportStringLength(\"name\", 1, 200)", body);
+        Assert.Contains(
+            "global::ValidationModules.ValidationContextExtensions.ReportStringLength(ctx, \"name\", 1, 200)", body);
         Assert.DoesNotContain("1, 10", body);
-        Assert.DoesNotContain("ctx.ReportRequired(\"name\")", body);
+        Assert.DoesNotContain(
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\")", body);
 
         Assert.Contains(result.Diagnostics, d => d.Id == "VM0030");
     }
@@ -231,7 +245,9 @@ public class InheritedConstraintTests {
             """);
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0030");
-        Assert.Contains("ctx.ReportRequired(\"name\")", Body(result, "DerivedValidator"));
+        Assert.Contains(
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\")",
+            Body(result, "DerivedValidator"));
     }
 
     // -- across an assembly boundary ---------------------------------------------------------
@@ -271,9 +287,12 @@ public class InheritedConstraintTests {
 
         var body = Body(result, "CreateOrderValidator");
 
-        Assert.Contains("ctx.ReportRequired(\"correlationId\")", body);
-        Assert.Contains("ctx.ReportStringLength(\"tenantId\", 1, 64)", body);
-        Assert.Contains("ctx.ReportRequired(\"sku\")", body);
+        Assert.Contains(
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"correlationId\")", body);
+        Assert.Contains(
+            "global::ValidationModules.ValidationContextExtensions.ReportStringLength(ctx, \"tenantId\", 1, 64)", body);
+        Assert.Contains(
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"sku\")", body);
     }
 
     /// <summary>
@@ -311,7 +330,8 @@ public class InheritedConstraintTests {
 
         var body = Body(result, "CreateOrderValidator");
 
-        Assert.Contains("ctx.ReportRequired(\"visible\")", body);
+        Assert.Contains(
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"visible\")", body);
         Assert.DoesNotContain("Hidden", body);
     }
 

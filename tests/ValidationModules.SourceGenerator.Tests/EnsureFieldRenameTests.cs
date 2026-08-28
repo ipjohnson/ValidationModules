@@ -85,7 +85,7 @@ public class EnsureFieldRenameTests {
         var emitted = result.Sources["Sample.OrderValidator.g.cs"];
 
         // The [Required] on the same property keeps its own name.
-        Assert.Contains("ReportRequired(\"reference\"", emitted);
+        Assert.Contains("ReportRequired(ctx, \"reference\"", emitted);
         Assert.Contains("\"reference_state\"", emitted);
     }
 
