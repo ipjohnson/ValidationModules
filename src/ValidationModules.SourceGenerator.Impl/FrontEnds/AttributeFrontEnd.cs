@@ -241,7 +241,16 @@ public sealed class AttributeFrontEnd {
         }
 
         if (ImplementsValidatableObject(type)) {
-            Report(ValidationDiagnostics.ValidatableObjectNotCompiled, type, type.Name);
+            // Asked-for-but-uncompilable is a warning; ignored-by-configuration is information,
+            // and the tail says which library is doing the ignoring - another validation system
+            // reading the same interface may still call it.
+            if (_compileDataAnnotations) {
+                Report(ValidationDiagnostics.ValidatableObjectNotCompiled, type,
+                    type.Name, ValidationDiagnostics.ValidatableObjectEnforceTail);
+            } else {
+                ReportAs(DiagnosticSeverity.Info, ValidationDiagnostics.ValidatableObjectNotCompiled, type,
+                    type.Name, ValidationDiagnostics.ValidatableObjectIgnoreTail);
+            }
         }
 
         // The validator lives where the type lives, global namespace included. Parking those in a
@@ -952,8 +961,19 @@ public sealed class AttributeFrontEnd {
 
             if (ns != KnownTypes.DataAnnotationsNamespace) {
                 if (DerivesFromValidationAttribute(attributeClass)) {
-                    Report(ValidationDiagnostics.CustomValidationAttribute, member,
-                        attributeClass.Name, member.Name);
+                    // Same split as VM0067 above: the mode that asked for DataAnnotations gets a
+                    // warning it cannot have this one; Ignore mode gets information that this
+                    // library is the one ignoring it.
+                    if (_compileDataAnnotations) {
+                        Report(ValidationDiagnostics.CustomValidationAttribute, member,
+                            attributeClass.Name, member.Name,
+                            ValidationDiagnostics.CustomValidationEnforceTail);
+                    } else {
+                        ReportAs(DiagnosticSeverity.Info,
+                            ValidationDiagnostics.CustomValidationAttribute, member,
+                            attributeClass.Name, member.Name,
+                            ValidationDiagnostics.CustomValidationIgnoreTail);
+                    }
                 }
 
                 continue;
@@ -974,8 +994,11 @@ public sealed class AttributeFrontEnd {
             }
 
             if (outcome.Diagnostic is not null) {
+                // Only reached with the front end on, so the tail is always the enforce one.
+                // VM0061 and VM0063 have no third placeholder and ignore the extra argument.
                 _diagnostics.Add(Diagnostic.Create(
-                    outcome.Diagnostic, Location(member), attributeClass.Name, member.Name));
+                    outcome.Diagnostic, Location(member), attributeClass.Name, member.Name,
+                    ValidationDiagnostics.CustomValidationEnforceTail));
             }
         }
 
@@ -1283,6 +1306,20 @@ public sealed class AttributeFrontEnd {
         }
 
         _diagnostics.Add(Diagnostic.Create(descriptor, Location(symbol), args));
+    }
+
+    /// <summary>
+    /// Reports at a severity other than the descriptor's default - the Ignore-mode drop to Info,
+    /// where the descriptor stays a Warning for the mode that asked for compilation.
+    /// </summary>
+    private void ReportAs(
+        DiagnosticSeverity severity, DiagnosticDescriptor descriptor, ISymbol symbol, params object?[] args) {
+        if (_quiet) {
+            return;
+        }
+
+        _diagnostics.Add(Diagnostic.Create(
+            descriptor, Location(symbol), severity, additionalLocations: null, properties: null, args));
     }
 
     private static Location? Location(ISymbol symbol) => symbol.Locations.FirstOrDefault();

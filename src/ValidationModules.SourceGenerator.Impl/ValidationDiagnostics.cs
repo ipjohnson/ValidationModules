@@ -68,10 +68,16 @@ public static class ValidationDiagnostics {
         "VM0009", "Constrained property is not readable",
         "'{0}' has no accessible getter, so its constraints cannot be evaluated", DiagnosticSeverity.Error);
 
+    /// <summary>
+    /// Info rather than Warning, because it only fires when the project explicitly set
+    /// <c>ValidationModules_DataAnnotations=Ignore</c> - the attribute being skipped is the
+    /// configuration working, not a problem. The message says <i>who</i> is ignoring it, because
+    /// another validation system reading the same attributes may still enforce them.
+    /// </summary>
     public static readonly DiagnosticDescriptor DataAnnotationsSkipped = Descriptor(
-        "VM0010", "DataAnnotations constraint is not being compiled",
-        "'{0}' on '{1}' is a DataAnnotations constraint and ValidationModules_DataAnnotations is set to Ignore, so it is not enforced",
-        DiagnosticSeverity.Warning);
+        "VM0010", "DataAnnotations constraint is ignored by ValidationModules",
+        "'{0}' on '{1}' is a DataAnnotations constraint, which ValidationModules is ignoring because ValidationModules_DataAnnotations is set to Ignore; another validation system may still enforce it",
+        DiagnosticSeverity.Info);
 
     public static readonly DiagnosticDescriptor CompiledRegexRequested = Descriptor(
         "VM0016", "RegexOptions.Compiled is not meaningful here",
@@ -242,10 +248,25 @@ public static class ValidationDiagnostics {
         "'{0}' is on a record parameter without the property: target, so it lands on the parameter and is never evaluated. Write [property: {0}]",
         DiagnosticSeverity.Warning);
 
+    /// <summary>
+    /// One descriptor with two closing sentences rather than two descriptors: the catalogue keys
+    /// an id to one declaration, and an .editorconfig override addresses the id. The tail carries
+    /// what changes with <c>ValidationModules_DataAnnotations</c>, and the Ignore report site
+    /// drops the severity to Info beside it - a rule the project told this library to leave alone
+    /// is information, and another validation system may still enforce it.
+    /// </summary>
     public static readonly DiagnosticDescriptor CustomValidationAttribute = Descriptor(
         "VM0060", "Custom ValidationAttribute is not compiled",
-        "'{0}' on '{1}' derives from ValidationAttribute and carries arbitrary code, which cannot be compiled. It is not enforced; move the rule to a constraint or an IAsyncValidatorFor<T>",
+        "'{0}' on '{1}' derives from ValidationAttribute and carries arbitrary code, which cannot be compiled. {2}",
         DiagnosticSeverity.Warning);
+
+    /// <summary>VM0060's tail when the DataAnnotations front end is on.</summary>
+    public const string CustomValidationEnforceTail =
+        "It is not enforced; move the rule to a constraint or an IAsyncValidatorFor<T>";
+
+    /// <summary>VM0060's tail under <c>ValidationModules_DataAnnotations=Ignore</c>.</summary>
+    public const string CustomValidationIgnoreTail =
+        "ValidationModules is ignoring it because ValidationModules_DataAnnotations is set to Ignore; another validation system may still enforce it";
 
     public static readonly DiagnosticDescriptor CrossFieldAttribute = Descriptor(
         "VM0061", "Cross-field DataAnnotations attribute is not compiled",
@@ -265,10 +286,21 @@ public static class ValidationDiagnostics {
         "VM0065", "Range bounds do not match the member type",
         "The bounds on '{0}' do not parse as '{1}'", DiagnosticSeverity.Error);
 
+    /// <summary>
+    /// The same two-tail arrangement as VM0060, for the same reason.
+    /// </summary>
     public static readonly DiagnosticDescriptor ValidatableObjectNotCompiled = Descriptor(
         "VM0067", "IValidatableObject is not compiled",
-        "'{0}' implements IValidatableObject; its Validate method is not called by the generated validator",
+        "'{0}' implements IValidatableObject; {1}",
         DiagnosticSeverity.Warning);
+
+    /// <summary>VM0067's tail when the DataAnnotations front end is on.</summary>
+    public const string ValidatableObjectEnforceTail =
+        "its Validate method is not called by the generated validator";
+
+    /// <summary>VM0067's tail under <c>ValidationModules_DataAnnotations=Ignore</c>.</summary>
+    public const string ValidatableObjectIgnoreTail =
+        "ValidationModules is ignoring its Validate method because ValidationModules_DataAnnotations is set to Ignore; another validation system may still call it";
 
     /// <summary>
     /// Reported before any source is added, so the build fails here rather than on generated code
