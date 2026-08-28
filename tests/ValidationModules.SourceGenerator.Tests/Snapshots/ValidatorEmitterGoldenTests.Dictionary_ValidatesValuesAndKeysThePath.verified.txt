@@ -65,18 +65,20 @@ public sealed partial class PetValidator : IValidatorFor<global::Sample.Pet> {
     private IValidatorFor<global::Sample.Toy>[] ToysValidators =>
         _toysValidators ??= new IValidatorFor<global::Sample.Toy>[] { new global::Sample.ToyValidator() };
 
-    public void Validate(ref ValidationContext ctx, global::Sample.Pet value) {
+    public ValidationFlow Validate(ref ValidationContext ctx, global::Sample.Pet value) {
         if (value.Toys is { } entriesToys) {
             foreach (var pair in entriesToys) {
                 if (pair.Value is not null) {
                     var entryCtx = ctx.PushKey("toys", pair.Key?.ToString() ?? "");
                     var entryValidators = ToysValidators;
                     for (var vi = 0; vi < entryValidators.Length; vi++) {
-                        entryValidators[vi].Validate(ref entryCtx, pair.Value);
+                        if (entryValidators[vi].Validate(ref entryCtx, pair.Value).ShouldStop) return ValidationFlow.Stop;
                     }
                 }
             }
         }
+
+        return ValidationFlow.Continue;
     }
 
     /// <summary>
@@ -112,8 +114,10 @@ public sealed partial class ToyValidator : IValidatorFor<global::Sample.Toy> {
 
     public ToyValidator() { }
 
-    public void Validate(ref ValidationContext ctx, global::Sample.Toy value) {
-        if (string.IsNullOrWhiteSpace(value.Name)) ctx.AddRequired("name");
+    public ValidationFlow Validate(ref ValidationContext ctx, global::Sample.Toy value) {
+        if (string.IsNullOrWhiteSpace(value.Name) && ctx.ReportRequired("name").ShouldStop) return ValidationFlow.Stop;
+
+        return ValidationFlow.Continue;
     }
 
     /// <summary>

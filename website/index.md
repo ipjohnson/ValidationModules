@@ -123,11 +123,15 @@ What comes out the other side is the code you would have written by hand, in you
 public sealed partial class PetValidator : IValidatorFor<Pet> {
     public static readonly PetValidator Instance = new();
 
-    public void Validate(ref ValidationContext ctx, Pet value) {
-        if (string.IsNullOrWhiteSpace(value.Name))      ctx.AddRequired("name");
-        else if (value.Name.Length > 100)               ctx.AddStringLength("name", 1, 100);
+    public ValidationFlow Validate(ref ValidationContext ctx, Pet value) {
+        if (string.IsNullOrWhiteSpace(value.Name)) {
+            if (ctx.ReportRequired("name").ShouldStop) return ValidationFlow.Stop;
+        }
+        else if (value.Name.Length > 100) {
+            if (ctx.ReportStringLength("name", 1, 100).ShouldStop) return ValidationFlow.Stop;
+        }
 
-        if (value.Age < 0 || value.Age > 30)            ctx.AddRange("age", 0, 30);
+        if (value.Age < 0 || value.Age > 30)            ctx.ReportRange("age", 0, 30);
 
         if (value.Home is { } nestedHome) {
             var ctxHome = ctx.Push("home");

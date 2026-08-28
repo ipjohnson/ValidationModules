@@ -350,7 +350,7 @@ by `DescribedValidator<T>`. See [Rule classes](/guide/rule-classes).
 
 ```csharp
 public interface IValidatorFor<in T> {
-    void Validate(ref ValidationContext context, T value);
+    ValidationFlow Validate(ref ValidationContext context, T value);
 }
 
 public interface IAsyncValidatorFor<in T> {

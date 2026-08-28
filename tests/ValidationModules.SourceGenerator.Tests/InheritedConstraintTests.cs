@@ -52,9 +52,9 @@ public class InheritedConstraintTests {
     public void BaseClassConstraints_AreCheckedByTheDerivedValidator() {
         var body = Body(GeneratorHarness.Run(BaseChain), "CreateOrderValidator");
 
-        Assert.Contains("ctx.AddRequired(\"correlationId\")", body);
-        Assert.Contains("ctx.AddRequired(\"tenantId\")", body);
-        Assert.Contains("ctx.AddRequired(\"sku\")", body);
+        Assert.Contains("ctx.ReportRequired(\"correlationId\")", body);
+        Assert.Contains("ctx.ReportRequired(\"tenantId\")", body);
+        Assert.Contains("ctx.ReportRequired(\"sku\")", body);
     }
 
     /// <summary>
@@ -91,7 +91,7 @@ public class InheritedConstraintTests {
             public record Ping : BaseRequest;
             """);
 
-        Assert.Contains("ctx.AddRequired(\"correlationId\")", Body(result, "PingValidator"));
+        Assert.Contains("ctx.ReportRequired(\"correlationId\")", Body(result, "PingValidator"));
     }
 
     [Fact]
@@ -108,9 +108,9 @@ public class InheritedConstraintTests {
 
         var body = Body(result, "LeafValidator");
 
-        Assert.Contains("ctx.AddRequired(\"a\")", body);
-        Assert.Contains("ctx.AddRequired(\"b\")", body);
-        Assert.Contains("ctx.AddRequired(\"c\")", body);
+        Assert.Contains("ctx.ReportRequired(\"a\")", body);
+        Assert.Contains("ctx.ReportRequired(\"b\")", body);
+        Assert.Contains("ctx.ReportRequired(\"c\")", body);
     }
 
     // -- interfaces --------------------------------------------------------------------------
@@ -142,8 +142,8 @@ public class InheritedConstraintTests {
 
         var body = Body(result, "DocumentValidator");
 
-        Assert.Contains("ctx.AddRequired(\"title\")", body);
-        Assert.Contains("ctx.AddRequired(\"modifiedBy\")", body);
+        Assert.Contains("ctx.ReportRequired(\"title\")", body);
+        Assert.Contains("ctx.ReportRequired(\"modifiedBy\")", body);
     }
 
     /// <summary>
@@ -171,8 +171,8 @@ public class InheritedConstraintTests {
 
         var body = Body(result, "DocumentValidator");
 
-        Assert.Contains("ctx.AddRequired(\"modifiedBy\")", body);
-        Assert.Contains("ctx.AddStringLength(\"modifiedBy\", 1, 64)", body);
+        Assert.Contains("ctx.ReportRequired(\"modifiedBy\")", body);
+        Assert.Contains("ctx.ReportStringLength(\"modifiedBy\", 1, 64)", body);
     }
 
     // -- shadowing ---------------------------------------------------------------------------
@@ -203,9 +203,9 @@ public class InheritedConstraintTests {
 
         var body = Body(result, "DerivedValidator");
 
-        Assert.Contains("ctx.AddStringLength(\"name\", 1, 200)", body);
+        Assert.Contains("ctx.ReportStringLength(\"name\", 1, 200)", body);
         Assert.DoesNotContain("1, 10", body);
-        Assert.DoesNotContain("ctx.AddRequired(\"name\")", body);
+        Assert.DoesNotContain("ctx.ReportRequired(\"name\")", body);
 
         Assert.Contains(result.Diagnostics, d => d.Id == "VM0030");
     }
@@ -231,7 +231,7 @@ public class InheritedConstraintTests {
             """);
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0030");
-        Assert.Contains("ctx.AddRequired(\"name\")", Body(result, "DerivedValidator"));
+        Assert.Contains("ctx.ReportRequired(\"name\")", Body(result, "DerivedValidator"));
     }
 
     // -- across an assembly boundary ---------------------------------------------------------
@@ -271,9 +271,9 @@ public class InheritedConstraintTests {
 
         var body = Body(result, "CreateOrderValidator");
 
-        Assert.Contains("ctx.AddRequired(\"correlationId\")", body);
-        Assert.Contains("ctx.AddStringLength(\"tenantId\", 1, 64)", body);
-        Assert.Contains("ctx.AddRequired(\"sku\")", body);
+        Assert.Contains("ctx.ReportRequired(\"correlationId\")", body);
+        Assert.Contains("ctx.ReportStringLength(\"tenantId\", 1, 64)", body);
+        Assert.Contains("ctx.ReportRequired(\"sku\")", body);
     }
 
     /// <summary>
@@ -311,7 +311,7 @@ public class InheritedConstraintTests {
 
         var body = Body(result, "CreateOrderValidator");
 
-        Assert.Contains("ctx.AddRequired(\"visible\")", body);
+        Assert.Contains("ctx.ReportRequired(\"visible\")", body);
         Assert.DoesNotContain("Hidden", body);
     }
 

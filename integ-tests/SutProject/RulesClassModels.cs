@@ -27,12 +27,11 @@ public static partial class ReservationPatterns {
 public static class ReservationChecks {
 
     /// <summary>Applied by method group, emitted as a direct call. See API-SURFACE.md §19.6.</summary>
-    public static void GuestInitialMatchesReference(ref ValidationContext context, Reservation value) {
-        if (value.Guest is { Length: > 0 } guest && value.Reference is { Length: > 0 } reference &&
-            guest[0] != reference[0]) {
-            context.Add("reference", "guest_initial", "reference must start with the guest's initial.");
-        }
-    }
+    public static ValidationFlow GuestInitialMatchesReference(ref ValidationContext context, Reservation value) =>
+        value.Guest is { Length: > 0 } guest && value.Reference is { Length: > 0 } reference &&
+        guest[0] != reference[0]
+            ? context.Report("reference", "guest_initial", "reference must start with the guest's initial.")
+            : ValidationFlow.Continue;
 }
 
 /// <summary>

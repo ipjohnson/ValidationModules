@@ -48,14 +48,18 @@ public sealed class AddressValidator : IValidatorFor<Address> {
 
     private AddressValidator() { }
 
-    public void Validate(ref ValidationContext context, Address value) {
-        if (string.IsNullOrWhiteSpace(value.PostalCode)) {
-            context.Add("postalCode", "required", "postalCode is required.");
+    public ValidationFlow Validate(ref ValidationContext context, Address value) {
+        if (string.IsNullOrWhiteSpace(value.PostalCode) &&
+            context.Report("postalCode", "required", "postalCode is required.").ShouldStop) {
+            return ValidationFlow.Stop;
         }
 
-        if (value.Country is { Length: not 2 }) {
-            context.Add("country", "string_length", "country must be exactly 2 characters.");
+        if (value.Country is { Length: not 2 } &&
+            context.Report("country", "string_length", "country must be exactly 2 characters.").ShouldStop) {
+            return ValidationFlow.Stop;
         }
+
+        return ValidationFlow.Continue;
     }
 }
 
@@ -65,10 +69,13 @@ public sealed class ToyValidator : IValidatorFor<Toy> {
 
     private ToyValidator() { }
 
-    public void Validate(ref ValidationContext context, Toy value) {
-        if (string.IsNullOrWhiteSpace(value.Name)) {
-            context.Add("name", "required", "name is required.");
+    public ValidationFlow Validate(ref ValidationContext context, Toy value) {
+        if (string.IsNullOrWhiteSpace(value.Name) &&
+            context.Report("name", "required", "name is required.").ShouldStop) {
+            return ValidationFlow.Stop;
         }
+
+        return ValidationFlow.Continue;
     }
 }
 
@@ -78,30 +85,41 @@ public sealed class PetValidator : IValidatorFor<Pet> {
 
     private PetValidator() { }
 
-    public void Validate(ref ValidationContext context, Pet value) {
+    public ValidationFlow Validate(ref ValidationContext context, Pet value) {
         // Required suppresses the other constraints on the same field, so a null name produces one
         // error rather than one per rule. The generator emits exactly this else-if shape.
         if (string.IsNullOrWhiteSpace(value.Name)) {
-            context.Add("name", "required", "name is required.");
+            if (context.Report("name", "required", "name is required.").ShouldStop) {
+                return ValidationFlow.Stop;
+            }
         } else if (value.Name.Length > 10) {
-            context.Add("name", "string_length", "name must be at most 10 characters.");
+            if (context.Report("name", "string_length", "name must be at most 10 characters.").ShouldStop) {
+                return ValidationFlow.Stop;
+            }
         }
 
         if (value.Home is { } home) {
             var nested = context.Push("home");
 
-            AddressValidator.Instance.Validate(ref nested, home);
+            if (AddressValidator.Instance.Validate(ref nested, home).ShouldStop) {
+                return ValidationFlow.Stop;
+            }
         }
 
-        if (value.Toys.Count < 1) {
-            context.Add("toys", "array_bounds", "toys must contain at least 1 item.");
+        if (value.Toys.Count < 1 &&
+            context.Report("toys", "array_bounds", "toys must contain at least 1 item.").ShouldStop) {
+            return ValidationFlow.Stop;
         }
 
         for (var i = 0; i < value.Toys.Count; i++) {
             var item = context.PushIndex("toys", i);
 
-            ToyValidator.Instance.Validate(ref item, value.Toys[i]);
+            if (ToyValidator.Instance.Validate(ref item, value.Toys[i]).ShouldStop) {
+                return ValidationFlow.Stop;
+            }
         }
+
+        return ValidationFlow.Continue;
     }
 }
 
@@ -111,12 +129,17 @@ public sealed class PetValidatorV2 : IValidatorFor<Pet> {
 
     private PetValidatorV2() { }
 
-    public void Validate(ref ValidationContext context, Pet value) {
-        PetValidator.Instance.Validate(ref context, value);
-
-        if (value.Tag is null) {
-            context.Add("tag", "required", "tag is required.");
+    public ValidationFlow Validate(ref ValidationContext context, Pet value) {
+        if (PetValidator.Instance.Validate(ref context, value).ShouldStop) {
+            return ValidationFlow.Stop;
         }
+
+        if (value.Tag is null &&
+            context.Report("tag", "required", "tag is required.").ShouldStop) {
+            return ValidationFlow.Stop;
+        }
+
+        return ValidationFlow.Continue;
     }
 }
 
@@ -132,7 +155,7 @@ public sealed class PetNameUniquenessValidator : IAsyncValidatorFor<Pet> {
         await Task.Yield();
 
         if (value.Name is not null && _taken.Contains(value.Name)) {
-            context.Add("name", "duplicate", "name is already taken.");
+            context.Report("name", "duplicate", "name is already taken.");
         }
     }
 }

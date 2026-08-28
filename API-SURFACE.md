@@ -60,7 +60,7 @@ namespace ValidationModules;
 /// Structural validation. Generated, stateless, singleton, allocation-free on the success path.
 /// </summary>
 public interface IValidatorFor<in T> {
-    void Validate(ref ValidationContext context, T value);
+    ValidationFlow Validate(ref ValidationContext context, T value);
 }
 
 /// <summary>
@@ -133,12 +133,12 @@ public readonly struct ValidationContext {
     public ValidationContext PushIndex(string segment, int index);
 
     /// <summary>Records an error on a field of the current object. The 95% call.</summary>
-    public void Add(string field, string code, string message,
-                    ValidationSeverity severity = ValidationSeverity.Error);
+    public ValidationFlow Report(string field, string code, string message,
+                                 ValidationSeverity severity = ValidationSeverity.Error);
 
     /// <summary>Records an error on the current object itself — type-level and cross-field rules.</summary>
-    public void AddHere(string code, string message,
-                        ValidationSeverity severity = ValidationSeverity.Error);
+    public ValidationFlow ReportHere(string code, string message,
+                                     ValidationSeverity severity = ValidationSeverity.Error);
 
     /// <summary>True if anything in this pass has failed. Pass-wide, not subtree-scoped.</summary>
     public bool HasErrors { get; }
@@ -337,7 +337,10 @@ because it is already on the wire and renaming it would break existing API consu
   found it. Generated code short-circuits with an `else if`; the rule builder groups a field's rules
   into a chain that stops after a failed `Required`; errors arriving already pathed through
   `ValidationErrorCollector.Add(in ValidationError)` are suppressed there — see §4.3.
-- Nothing else short-circuits. All errors are collected; there is no first-failure exit.
+- Nothing else short-circuits **under the default `ValidationStopMode.CollectAll`**; all errors are
+  collected. `StopOnFirstError` is the opt-in exception (§4.4): every report answers a
+  `ValidationFlow`, and a rule site returning on `ShouldStop` leaves the rest of the pass — including
+  nested descent — unevaluated rather than evaluated and filtered.
 - `[ValidateNested]` does not recurse into a value that failed `[Required]`. That is the emitter's
   job, not the collector's: suppression matches whole field paths and is deliberately not a prefix
   match, so a failed `[Required]` on `home` does not silence `home.postalCode`.
@@ -849,13 +852,20 @@ public sealed partial class PetValidator : IValidatorFor<Pet> {
     [GeneratedRegex("^[A-Z]{3}$")]
     private static partial Regex SkuPattern();
 
-    public void Validate(ref ValidationContext ctx, Pet value) {
-        if (string.IsNullOrWhiteSpace(value.Name))  ctx.Add("name", "required", "name is required.");
-        else if (value.Name.Length > 100)           ctx.Add("name", "string_length", "name must be at most 100 characters.");
+    public ValidationFlow Validate(ref ValidationContext ctx, Pet value) {
+        if (string.IsNullOrWhiteSpace(value.Name)) {
+            if (ctx.Report("name", "required", "name is required.").ShouldStop) return ValidationFlow.Stop;
+        }
+        else if (value.Name.Length > 100) {
+            if (ctx.Report("name", "string_length", "name must be at most 100 characters.").ShouldStop)
+                return ValidationFlow.Stop;
+        }
 
-        if (value.Tag is null)                      ctx.Add("tag", "required", "tag is required.");
+        if (value.Tag is null &&
+            ctx.Report("tag", "required", "tag is required.").ShouldStop) return ValidationFlow.Stop;
 
-        if (!SkuPattern().IsMatch(value.Sku))       ctx.Add("sku", "pattern", "sku is not in the required format.");
+        if (!SkuPattern().IsMatch(value.Sku) &&
+            ctx.Report("sku", "pattern", "sku is not in the required format.").ShouldStop) return ValidationFlow.Stop;
 
         if (value.Home is { } home) {
             var nested = ctx.Push("home");
@@ -1070,9 +1080,14 @@ of plan §4's "keep a small path stack" is `ref readonly ValidationContext _pare
 `CS9050: a ref field cannot refer to a ref struct` (§14.8). Moot now that the context is not a ref
 struct, and recorded so it is not rediscovered.
 
-**13.3 `Add(code, message)` cannot name the field.** Plan §7.1's generated body calls
-`ctx.Add("required", "name is required.")` while the error must come out on field `name`. The
-surface takes `Add(field, code, message)`, with `AddHere(code, message)` for object-level rules.
+**13.3 `Report(code, message)` cannot name the field.** Plan §7.1's generated body calls
+`ctx.Report("required", "name is required.")` while the error must come out on field `name`. The
+surface takes `Report(field, code, message)`, with `ReportHere(code, message)` for object-level
+rules.
+
+The verb is `Report` rather than `Add` because the family reads at the call site as a finding rather
+than an item appended to a list, and because each member answers a `ValidationFlow` — `Add` returning
+a value that decides control flow reads as whether the add succeeded.
 
 **13.5 `[Required]` suppression is enforced by the collector, not the emitter.** Plan §4 specifies
 the rule and describes it as the `else if` shape generated code takes. The rule is kept exactly; the
@@ -1877,7 +1892,7 @@ namespace ValidationModules;
 /// </summary>
 public sealed class DescribedValidator<T> : IValidatorFor<T> {
     public DescribedValidator(IValidationRulesFor<T> rules);
-    public void Validate(ref ValidationContext context, T value);
+    public ValidationFlow Validate(ref ValidationContext context, T value);
 }
 ```
 

@@ -50,10 +50,12 @@ public sealed partial class PetValidator : IValidatorFor<global::Sample.Pet> {
 
     public PetValidator() { }
 
-    public void Validate(ref ValidationContext ctx, global::Sample.Pet value) {
-        if (value.Age is null) ctx.AddRequired("age");
-        if (value.Weight is not null && (value.Weight.Value < 0 || value.Weight.Value > 30)) ctx.AddRange("weight", 0, 30);
-        if ((value.Ratio < 0d || value.Ratio >= 1d)) ctx.AddRange("ratio", 0d, 1d);
+    public ValidationFlow Validate(ref ValidationContext ctx, global::Sample.Pet value) {
+        if (value.Age is null && ctx.ReportRequired("age").ShouldStop) return ValidationFlow.Stop;
+        if (value.Weight is not null && (value.Weight.Value < 0 || value.Weight.Value > 30) && ctx.ReportRange("weight", 0, 30).ShouldStop) return ValidationFlow.Stop;
+        if ((value.Ratio < 0d || value.Ratio >= 1d) && ctx.ReportRange("ratio", 0d, 1d).ShouldStop) return ValidationFlow.Stop;
+
+        return ValidationFlow.Continue;
     }
 
     /// <summary>

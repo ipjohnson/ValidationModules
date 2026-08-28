@@ -25,11 +25,10 @@ public sealed record Account {
 public sealed class AccountReservedHandleValidator : IValidatorFor<Account> {
     private static readonly string[] Reserved = { "admin", "root", "system" };
 
-    public void Validate(ref ValidationContext context, Account value) {
-        if (value.Handle is not null && Array.IndexOf(Reserved, value.Handle) >= 0) {
-            context.Add("handle", "reserved", "handle is reserved.");
-        }
-    }
+    public ValidationFlow Validate(ref ValidationContext context, Account value) =>
+        value.Handle is not null && Array.IndexOf(Reserved, value.Handle) >= 0
+            ? context.Report("handle", "reserved", "handle is reserved.")
+            : ValidationFlow.Continue;
 }
 
 /// <summary>
@@ -50,7 +49,7 @@ public sealed class AccountUniquenessValidator : IAsyncValidatorFor<Account> {
         }
 
         if (await _directory.IsTakenAsync(value.Handle, cancellationToken)) {
-            context.Add("handle", "duplicate", "handle is already taken.");
+            context.Report("handle", "duplicate", "handle is already taken.");
         }
     }
 }

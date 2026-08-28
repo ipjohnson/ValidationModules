@@ -23,11 +23,8 @@ public class ServiceCollectionExtensionsTests {
     private sealed class SampleValidator : IValidatorFor<Widget> {
         public static readonly SampleValidator Instance = new();
 
-        public void Validate(ref ValidationContext context, Widget value) {
-            if (string.IsNullOrWhiteSpace(value.Name)) {
-                context.AddRequired("name");
-            }
-        }
+        public ValidationFlow Validate(ref ValidationContext context, Widget value) =>
+            string.IsNullOrWhiteSpace(value.Name) ? context.ReportRequired("name") : ValidationFlow.Continue;
     }
 
     private static ValidatorRegistration[] Table() => [

@@ -182,22 +182,53 @@ Inside an `IValidatorFor<T>` or an [`IAsyncValidatorFor<T>`](/guide/async), the 
 report:
 
 ```csharp
-public void Validate(ref ValidationContext context, Pet value) {
-    if (value.Name is null) {
-        context.AddRequired("name");
+public ValidationFlow Validate(ref ValidationContext context, Pet value) {
+    if (value.Name is null && context.ReportRequired("name").ShouldStop) {
+        return ValidationFlow.Stop;
     }
 
     // on the object itself rather than a field of it — cross-field and type-level rules
-    if (value.Start > value.End) {
-        context.AddHere("date_order", "start must not be after end.");
+    if (value.Start > value.End && context.ReportHere("date_order", "start must not be after end.").ShouldStop) {
+        return ValidationFlow.Stop;
     }
+
+    return ValidationFlow.Continue;
 }
 ```
 
-`AddRequired`, `AddStringLength`, `AddRange`, `AddPattern`, `AddAllowedValues` and `AddItemCount`
-are extensions that compose the standard message and pass the standard code, so a hand-written
-validator produces errors indistinguishable from a generated one. `Add(field, code, message)` is
-there when you want your own.
+`ReportRequired`, `ReportStringLength`, `ReportRange`, `ReportPattern`, `ReportAllowedValues` and
+`ReportItemCount` are extensions that compose the standard message and pass the standard code, so a
+hand-written validator produces errors indistinguishable from a generated one.
+`Report(field, code, message)` is there when you want your own.
+
+## Stopping at the first failure {#stopping}
+
+Every `Report*` call answers a `ValidationFlow`, and so does `Validate` itself. Under
+the default `ValidationStopMode.CollectAll` the answer is always `ValidationFlow.Continue` and a
+validator that discards it behaves exactly as it always has. Under
+`ValidationStopMode.StopOnFirstError` the first blocking failure answers `ValidationFlow.Stop`, and
+a validator that propagates it leaves the remaining rules — and any nested descent — unevaluated:
+
+```csharp
+var result = validator.ValidateFirst(pet);   // at most one error, and the rest never ran
+```
+
+`ValidateFirst` is the entry point; the mode itself lives on the collector, so a caller owning one
+can set `StopMode` directly and `ValidateInto` it.
+
+This is genuinely less work, not a filtered result. Nothing is known about the rules that did not
+run, which is why the default stays `CollectAll`: a form or a 400 body wants every problem in one
+round trip.
+
+Warnings never stop a pass — a warning does not make a value invalid, so stopping on one would hide
+the error behind it.
+
+A hand-written `rules.Apply` or `IAsyncValidatorFor<T>` that discards the flow simply keeps going,
+the same carve-out those two already have for `IsValid`. It still reports one error: the collector
+closes the pass at its first blocking failure, so the *result* never depends on whether the code
+running it propagates the flow — only how much work it did to get there. That is also what makes
+[`ValidationModules_FailFast`](/reference/msbuild#validationmodules-failfast) a size trade rather
+than a behaviour switch.
 
 Composing the message at the call site rather than baking a literal is deliberate: the same message
 text would otherwise be duplicated into every generated validator, and the emitted binary would

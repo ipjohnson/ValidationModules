@@ -44,11 +44,10 @@ public partial class DescribedValidatorTests {
     }
 
     public static class Checks {
-        public static void SkuMatchesName(ref ValidationContext context, Booking value) {
-            if (value.Sku is { } sku && value.Name is { } name && !sku.StartsWith(name[..1])) {
-                context.Add("sku", "sku_prefix", "sku must start with the first letter of name.");
-            }
-        }
+        public static ValidationFlow SkuMatchesName(ref ValidationContext context, Booking value) =>
+            value.Sku is { } sku && value.Name is { } name && !sku.StartsWith(name[..1])
+                ? context.Report("sku", "sku_prefix", "sku must start with the first letter of name.")
+                : ValidationFlow.Continue;
     }
 
     private static readonly DescribedValidator<Booking> Validator = new(new BookingRules());

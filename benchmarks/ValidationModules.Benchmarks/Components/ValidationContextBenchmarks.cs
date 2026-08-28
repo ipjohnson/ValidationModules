@@ -42,7 +42,7 @@ public class ValidationContextBenchmarks {
         _collector.Reset();
 
         var context = new ValidationContext(_collector);
-        context.AddRequired("postalCode");
+        context.ReportRequired("postalCode");
 
         return _collector.Count;
     }
@@ -68,7 +68,7 @@ public class ValidationContextBenchmarks {
             context = context.Push("home");
         }
 
-        context.AddRequired("postalCode");
+        context.ReportRequired("postalCode");
 
         return _collector.Count;
     }
@@ -82,7 +82,7 @@ public class ValidationContextBenchmarks {
             context = context.PushIndex("lines", i);
         }
 
-        context.AddRequired("sku");
+        context.ReportRequired("sku");
 
         return _collector.Count;
     }
@@ -96,7 +96,7 @@ public class ValidationContextBenchmarks {
             context = context.PushKey("items", "sku-1");
         }
 
-        context.AddRequired("name");
+        context.ReportRequired("name");
 
         return _collector.Count;
     }
@@ -115,7 +115,7 @@ public class ValidationContextBenchmarks {
             context = context.Push("home");
         }
 
-        context.AddHere("conflict", "the address is inconsistent.");
+        context.ReportHere("conflict", "the address is inconsistent.");
 
         return _collector.Count;
     }
@@ -132,7 +132,7 @@ public class ValidationContextBenchmarks {
 
         var root = new ValidationContext(_collector);
         for (var i = 0; i < Depth; i++) {
-            root.PushIndex("lines", i).AddRequired("sku");
+            root.PushIndex("lines", i).ReportRequired("sku");
         }
 
         return _collector.Count;

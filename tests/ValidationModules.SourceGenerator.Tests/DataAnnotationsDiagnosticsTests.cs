@@ -231,8 +231,8 @@ public class DataAnnotationsDiagnosticsTests {
             """));
 
         var emitted = result.Sources["Sample.CustomerValidator.g.cs"];
-        Assert.Contains("AddStringLength", emitted);
-        Assert.Contains("AddItemCount", emitted);
+        Assert.Contains("ReportStringLength", emitted);
+        Assert.Contains("ReportItemCount", emitted);
     }
 
     // VM0067 — IValidatableObject, whose Validate method the generated validator does not call.

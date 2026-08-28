@@ -69,7 +69,7 @@ public sealed class DescribedValidator<T> : IValidatorFor<T> {
     }
 
     /// <inheritdoc/>
-    public void Validate(ref ValidationContext context, T value) {
+    public ValidationFlow Validate(ref ValidationContext context, T value) {
         // Every distinct condition, evaluated once, before any rule is tested. This is the runtime
         // engine's version of the locals the emitter hoists above a method body, and it exists for
         // the same reason: a condition may read live static state, so once per pass and once per
@@ -92,9 +92,12 @@ public sealed class DescribedValidator<T> : IValidatorFor<T> {
         for (var i = 0; i < _rules.Length; i++) {
             var rule = _rules[i];
 
-            if (conditions.Holds(rule.ConditionIndex)) {
-                rule.Apply(ref context, value, conditions);
+            if (conditions.Holds(rule.ConditionIndex) &&
+                rule.Apply(ref context, value, conditions).ShouldStop) {
+                return ValidationFlow.Stop;
             }
         }
+
+        return ValidationFlow.Continue;
     }
 }

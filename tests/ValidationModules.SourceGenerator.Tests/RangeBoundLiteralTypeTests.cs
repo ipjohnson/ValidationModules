@@ -18,7 +18,7 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// </para>
 /// <code>
 /// if (value.Limit &lt; 0 || value.Limit &gt; 4294967295)      // widens to long - fine
-///     ctx.AddRange("limit", 0, 4294967295);              // AddRange&lt;T&gt;(T, T) - CS0411
+///     ctx.ReportRange("limit", 0, 4294967295);              // ReportRange&lt;T&gt;(T, T) - CS0411
 /// </code>
 /// <para>
 /// Generic inference does not widen. It needs one <c>T</c> for both arguments, and neither
@@ -27,14 +27,14 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// fine, which is why this is rare rather than universal.
 /// </para>
 /// <para>
-/// <see cref="ValidationContextExtensions.AddRangeAtLeast{T}"/> and <c>AddRangeAtMost</c> take a
+/// <see cref="ValidationContextExtensions.ReportRangeAtLeast{T}"/> and <c>ReportRangeAtMost</c> take a
 /// single bound, so they have nothing to reconcile and are unaffected.
 /// </para>
 /// </remarks>
 public class RangeBoundLiteralTypeTests {
 
     /// <summary>
-    /// The reported case: 0 is int, 4294967295 is uint, and AddRange needs them to agree.
+    /// The reported case: 0 is int, 4294967295 is uint, and ReportRange needs them to agree.
     /// </summary>
     [Fact]
     public void Generate_BoundsStraddlingIntAndUInt_EmitsCompilableCode() {
@@ -133,7 +133,7 @@ public class RangeBoundLiteralTypeTests {
             """);
 
         Assert.Empty(result.CompilationErrors);
-        Assert.Contains("ctx.AddRange(\"hour\", 0, 23)", result.Sources["Api.LimitsValidator.g.cs"]);
+        Assert.Contains("ctx.ReportRange(\"hour\", 0, 23)", result.Sources["Api.LimitsValidator.g.cs"]);
     }
 
     /// <summary>
@@ -156,7 +156,7 @@ public class RangeBoundLiteralTypeTests {
         var source = result.Sources["Api.LimitsValidator.g.cs"];
 
         Assert.Empty(result.CompilationErrors);
-        Assert.Contains("ctx.AddRange(\"indexDiveLimit\", 0L, 4294967295L)", source);
+        Assert.Contains("ctx.ReportRange(\"indexDiveLimit\", 0L, 4294967295L)", source);
     }
 
     /// <summary>

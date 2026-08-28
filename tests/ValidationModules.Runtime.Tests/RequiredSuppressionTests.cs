@@ -43,8 +43,8 @@ public class RequiredSuppressionTests {
         var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
 
-        context.AddRequired("name");
-        context.AddStringLength("name", max: 10);
+        context.ReportRequired("name");
+        context.ReportStringLength("name", max: 10);
 
         Assert.Equal(2, collector.ToResult().Errors.Count);
     }
@@ -54,8 +54,8 @@ public class RequiredSuppressionTests {
         var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
 
-        context.AddRequired("name");
-        context.AddStringLength("tag", max: 10);
+        context.ReportRequired("name");
+        context.ReportStringLength("tag", max: 10);
 
         Assert.Equal(["name", "tag"], collector.ToResult().Errors.Select(error => error.Field));
     }
@@ -67,7 +67,7 @@ public class RequiredSuppressionTests {
         var context = new ValidationContext(collector);
 
         for (var i = 0; i < 3; i++) {
-            context.Push("two").Push("three").PushIndex("items", i).Push("five").AddRequired("req");
+            context.Push("two").Push("three").PushIndex("items", i).Push("five").ReportRequired("req");
         }
 
         var errors = collector.ToResult().Errors;
@@ -81,8 +81,8 @@ public class RequiredSuppressionTests {
         var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
 
-        context.Push("home").AddRequired("postalCode");
-        context.Push("work").AddStringLength("postalCode", max: 5);
+        context.Push("home").ReportRequired("postalCode");
+        context.Push("work").ReportStringLength("postalCode", max: 5);
 
         Assert.Equal(
             ["home.postalCode", "work.postalCode"],
@@ -97,8 +97,8 @@ public class RequiredSuppressionTests {
         var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
 
-        context.AddRequired("home");
-        context.Push("home").AddRequired("postalCode");
+        context.ReportRequired("home");
+        context.Push("home").ReportRequired("postalCode");
 
         Assert.Equal(
             ["home", "home.postalCode"],
@@ -112,8 +112,8 @@ public class RequiredSuppressionTests {
         var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
 
-        context.AddStringLength("name", max: 10);
-        context.AddRequired("name");
+        context.ReportStringLength("name", max: 10);
+        context.ReportRequired("name");
 
         Assert.Equal(
             [ValidationCodes.StringLength, ValidationCodes.Required],
@@ -127,8 +127,8 @@ public class RequiredSuppressionTests {
         var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
 
-        context.AddRequired("name", ValidationSeverity.Warning);
-        context.AddStringLength("name", max: 10);
+        context.ReportRequired("name", ValidationSeverity.Warning);
+        context.ReportStringLength("name", max: 10);
 
         Assert.Equal(2, collector.ToResult().Errors.Count);
     }
@@ -164,9 +164,9 @@ public class RequiredSuppressionTests {
         var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
 
-        context.AddRequired("name");
+        context.ReportRequired("name");
         await Task.Yield();
-        context.AddStringLength("name", max: 10);
+        context.ReportStringLength("name", max: 10);
 
         Assert.Equal(2, collector.ToResult().Errors.Count);
     }
@@ -175,10 +175,10 @@ public class RequiredSuppressionTests {
     public void Reset_ClearsSuppressionState() {
         // A pooled collector must not carry one request's missing field into the next.
         var collector = new ValidationErrorCollector();
-        new ValidationContext(collector).AddRequired("name");
+        new ValidationContext(collector).ReportRequired("name");
 
         collector.Reset();
-        new ValidationContext(collector).AddStringLength("name", max: 10);
+        new ValidationContext(collector).ReportStringLength("name", max: 10);
 
         Assert.Equal(
             ValidationCodes.StringLength,
@@ -193,7 +193,7 @@ public class RequiredSuppressionTests {
         var context = new ValidationContext(collector);
 
         for (var i = 0; i < 20; i++) {
-            context.AddStringLength($"f{i}", max: 10);
+            context.ReportStringLength($"f{i}", max: 10);
         }
 
         Assert.Equal(20, collector.ToResult().Errors.Count);
@@ -215,20 +215,16 @@ public class RequiredSuppressionTests {
     private sealed class RequiredOnly : IValidatorFor<Pet> {
         public static readonly RequiredOnly Instance = new();
 
-        public void Validate(ref ValidationContext context, Pet value) {
-            if (value.Name is null) {
-                context.AddRequired("name");
-            }
-        }
+        public ValidationFlow Validate(ref ValidationContext context, Pet value) =>
+            value.Name is null ? context.ReportRequired("name") : ValidationFlow.Continue;
     }
 
     private sealed class LengthOnly : IValidatorFor<Pet> {
         public static readonly LengthOnly Instance = new();
 
-        public void Validate(ref ValidationContext context, Pet value) {
-            if (value.Name is null || value.Name.Length > 3) {
-                context.AddStringLength("name", max: 3);
-            }
-        }
+        public ValidationFlow Validate(ref ValidationContext context, Pet value) =>
+            value.Name is null || value.Name.Length > 3
+                ? context.ReportStringLength("name", max: 3)
+                : ValidationFlow.Continue;
     }
 }

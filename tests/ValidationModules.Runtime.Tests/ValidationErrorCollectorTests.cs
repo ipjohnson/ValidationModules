@@ -15,10 +15,10 @@ public class ValidationErrorCollectorTests {
     [Fact]
     public void Reset_ClearsErrors() {
         var collector = new ValidationErrorCollector();
-        new ValidationContext(collector).Push("home").Add("postalCode", "required", "x");
+        new ValidationContext(collector).Push("home").Report("postalCode", "required", "x");
 
         collector.Reset();
-        new ValidationContext(collector).Push("work").Add("postalCode", "required", "x");
+        new ValidationContext(collector).Push("work").Report("postalCode", "required", "x");
 
         Assert.Equal("work.postalCode", Assert.Single(collector.ToResult().Errors).Field);
     }
@@ -31,7 +31,7 @@ public class ValidationErrorCollectorTests {
             collector.Reset();
 
             var context = new ValidationContext(collector);
-            context.PushIndex("toys", pass).Push("owner").Add("name", "required", "x");
+            context.PushIndex("toys", pass).Push("owner").Report("name", "required", "x");
 
             Assert.Equal($"toys[{pass}].owner.name", Assert.Single(collector.ToResult().Errors).Field);
         }
@@ -42,7 +42,7 @@ public class ValidationErrorCollectorTests {
         // A pooled collector resets under a result the caller is still holding. If ToResult wrapped
         // the live list instead of copying it, that result would silently empty.
         var collector = new ValidationErrorCollector();
-        new ValidationContext(collector).Add("name", "required", "x");
+        new ValidationContext(collector).Report("name", "required", "x");
 
         var result = collector.ToResult();
         collector.Reset();
@@ -58,7 +58,7 @@ public class ValidationErrorCollectorTests {
         // One at a time, as a generated loop does: the buffer slot for this depth is rewritten per
         // iteration and read before the next iteration touches it.
         for (var i = 0; i < 100; i++) {
-            context.PushIndex("toys", i).Add("name", "required", "x");
+            context.PushIndex("toys", i).Report("name", "required", "x");
         }
 
         var fields = collector.ToResult().Errors.Select(error => error.Field).ToArray();
@@ -79,7 +79,7 @@ public class ValidationErrorCollectorTests {
 
             var context = new ValidationContext(collector);
             for (var i = 0; i < 4 + pass; i++) {
-                context.Add($"field{i}", "required", $"pass {pass}");
+                context.Report($"field{i}", "required", $"pass {pass}");
             }
 
             var errors = collector.ToResult().Errors;
@@ -98,11 +98,11 @@ public class ValidationErrorCollectorTests {
         var first = new ValidationContext(collector);
 
         for (var i = 0; i < 10; i++) {
-            first.Add($"field{i}", "required", "x");
+            first.Report($"field{i}", "required", "x");
         }
 
         collector.Reset();
-        new ValidationContext(collector).Add("only", "required", "x");
+        new ValidationContext(collector).Report("only", "required", "x");
 
         Assert.Equal("only", Assert.Single(collector.ToResult().Errors).Field);
         Assert.Equal(1, collector.Count);
@@ -132,7 +132,7 @@ public class ValidationErrorCollectorTests {
 
             var collector = new ValidationErrorCollector();
             var context = new ValidationContext(collector);
-            context.PushIndex("toys", i).Add("name", "required", "x");
+            context.PushIndex("toys", i).Report("name", "required", "x");
 
             return collector.ToResult();
         })).ToArray();

@@ -91,7 +91,7 @@ public class PatternPolicyTests {
         // other constraint on the type still compiles.
         var emitted = result.Sources["Sample.PetValidator.g.cs"];
         Assert.DoesNotContain("new Regex(", emitted);
-        Assert.Contains("ctx.AddRequired(\"name\")", emitted);
+        Assert.Contains("ctx.ReportRequired(\"name\")", emitted);
     }
 
     [Fact]

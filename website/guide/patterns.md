@@ -45,7 +45,7 @@ public string? Sku { get; init; }
 
 ```csharp
 if (value.Sku is not null && !global::MyApp.PetPatterns.Sku().IsMatch(value.Sku))
-    ctx.AddPattern("sku");
+    ctx.ReportPattern("sku");
 ```
 
 `[GeneratedRegex]` is the .NET regex source generator: it emits a matcher specialised to that one

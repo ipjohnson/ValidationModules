@@ -19,16 +19,27 @@ namespace ValidationModules;
 public interface IValidatorFor<in T> {
 
     /// <summary>
-    /// Validates <paramref name="value"/>, adding any failures to <paramref name="context"/>.
+    /// Validates <paramref name="value"/>, reporting any failures to <paramref name="context"/>,
+    /// and answers whether the pass carries on.
     /// </summary>
     /// <remarks>
-    /// Errors are added in declaration order and every constraint is evaluated - there is no
-    /// first-failure exit. The one exception is <c>[Required]</c>, which suppresses the remaining
-    /// constraints on the same field.
+    /// <para>
+    /// Errors are reported in declaration order. Under
+    /// <see cref="ValidationStopMode.CollectAll"/> - the default - every constraint is evaluated
+    /// and the answer is always <see cref="ValidationFlow.Continue"/>; the one exception is
+    /// <c>[Required]</c>, which suppresses the remaining constraints on the same field. Under
+    /// <see cref="ValidationStopMode.StopOnFirstError"/> the first blocking failure answers
+    /// <see cref="ValidationFlow.Stop"/> and nothing after it is evaluated.
+    /// </para>
+    /// <para>
+    /// A caller composing validators must propagate the answer: returning
+    /// <see cref="ValidationFlow.Continue"/> after a nested validator asked to stop would carry on
+    /// walking a graph the pass has already finished with.
+    /// </para>
     /// </remarks>
     /// <param name="context">Accumulates failures and carries the current field path.</param>
     /// <param name="value">The value to validate.</param>
-    void Validate(ref ValidationContext context, T value);
+    ValidationFlow Validate(ref ValidationContext context, T value);
 
     /// <summary>
     /// Whether <paramref name="value"/> passes, without building the reasons it did not.

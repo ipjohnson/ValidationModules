@@ -23,8 +23,11 @@ public interface IDynamicValidator {
     /// <summary>The type this validates. The key it is registered under.</summary>
     Type ValidatedType { get; }
 
-    /// <summary>Validates <paramref name="value"/>, which must be of <see cref="ValidatedType"/>.</summary>
-    void Validate(ref ValidationContext context, object value);
+    /// <summary>
+    /// Validates <paramref name="value"/>, which must be of <see cref="ValidatedType"/>, and
+    /// answers whether the pass carries on.
+    /// </summary>
+    ValidationFlow Validate(ref ValidationContext context, object value);
 
     /// <summary>The boolean form, returning at the first failure.</summary>
     bool IsValid(object value);

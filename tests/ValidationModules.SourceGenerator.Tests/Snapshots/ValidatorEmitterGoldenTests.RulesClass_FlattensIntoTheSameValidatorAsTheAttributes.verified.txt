@@ -70,12 +70,14 @@ public sealed partial class ReservationValidator : IValidatorFor<global::Sample.
 
     public ReservationValidator() { }
 
-    public void Validate(ref ValidationContext ctx, global::Sample.Reservation value) {
+    public ValidationFlow Validate(ref ValidationContext ctx, global::Sample.Reservation value) {
         var missingGuest = string.IsNullOrWhiteSpace(value.Guest);
-        if (missingGuest) ctx.AddRequired("guest");
-        if (!missingGuest && (value.Guest is not null && (value.Guest.Length < 2 || value.Guest.Length > 40))) ctx.AddStringLength("guest", 2, 40);
-        if ((value.Nights < 1 || value.Nights > 30)) ctx.AddRange("nights", 1, 30);
-        if (!global::Sample.ReservationRules_Rules.Rule0(value)) ctx.Add("start", ValidationCodes.Predicate, "start < end.");
+        if (missingGuest && ctx.ReportRequired("guest").ShouldStop) return ValidationFlow.Stop;
+        if (!missingGuest && (value.Guest is not null && (value.Guest.Length < 2 || value.Guest.Length > 40)) && ctx.ReportStringLength("guest", 2, 40).ShouldStop) return ValidationFlow.Stop;
+        if ((value.Nights < 1 || value.Nights > 30) && ctx.ReportRange("nights", 1, 30).ShouldStop) return ValidationFlow.Stop;
+        if (!global::Sample.ReservationRules_Rules.Rule0(value) && ctx.Report("start", ValidationCodes.Predicate, "start < end.").ShouldStop) return ValidationFlow.Stop;
+
+        return ValidationFlow.Continue;
     }
 
     /// <summary>

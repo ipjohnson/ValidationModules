@@ -1,6 +1,6 @@
 # MSBuild properties
 
-Five properties govern the generator. All go in a `<PropertyGroup>` in the project that holds your
+Six properties govern the generator. All go in a `<PropertyGroup>` in the project that holds your
 models — not in the application, unless that is the same project.
 
 ```xml
@@ -9,6 +9,7 @@ models — not in the application, unless that is the same project.
     <ValidationModules_FieldNaming>SnakeCase</ValidationModules_FieldNaming>
     <ValidationModules_DataAnnotations>Ignore</ValidationModules_DataAnnotations>
     <ValidationModules_PatternPolicy>Error</ValidationModules_PatternPolicy>
+    <ValidationModules_FailFast>Disabled</ValidationModules_FailFast>
 </PropertyGroup>
 ```
 
@@ -52,6 +53,36 @@ If you use both engines, set this property and the registered namer to the same 
 :::
 
 `SnakeCase` handles acronyms: `HTTPStatusLine` becomes `http_status_line`.
+
+## `ValidationModules_FailFast` {#validationmodules-failfast}
+
+Whether a generated validator returns at its first blocking failure.
+
+| Value | Effect |
+|---|---|
+| *(unset)* / anything else | on — a failing rule returns, and the rules after it never run |
+| `Disabled` / `false` | off — every rule is evaluated and the answer discarded |
+
+On by default, because a validator that cannot stop makes
+[`ValidationStopMode.StopOnFirstError`](/guide/errors#stopping) a filter rather than an
+optimisation — and the person who would have to notice is the one who never asked for the mode.
+
+**Turning it off does not change any result.** The collector closes the pass at its first blocking
+failure regardless, so `ValidateFirst` returns the same single error either way; what you lose is
+the skipping. That also means an assembly built with it off still composes correctly with one built
+with it on.
+
+What it costs to leave on, measured on an `osx-arm64` Native AOT publish: **54 bytes per report
+site** — 27 KB across 500 sites, 1.1% of that binary, 2.2% of its `__managedcode` section. Nothing
+on the clean path: the return sits inside the failure branch, so a passing validation executes what
+it always did.
+
+The reason it needs a build-time switch at all is that it cannot be trimmed.
+`ValidationErrorCollector.StopMode` is a runtime field with a public setter, so ILC can never prove
+a consumer will not set it, and the branches stay in the binary whether or not anything uses them.
+
+Both spellings are accepted, case-insensitively. Taking only one would let the other pass silently,
+which is the failure this property exists to avoid.
 
 ## `ValidationModules_DataAnnotations`
 
