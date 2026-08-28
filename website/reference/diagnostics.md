@@ -65,6 +65,7 @@ silently does not is worse than one you know is missing.
 | [VM0076](#vm0076) | Warning | a conditional block declares no rules |
 | [VM0077](#vm0077) | Warning | a chained `When`/`Unless` applies to no rules |
 | [VM0078](#vm0078) | Error | a lifted predicate references a private member of the rules class |
+| [VM0079](#vm0079) | Error | a generic type cannot have a generated validator |
 
 ---
 
@@ -714,4 +715,41 @@ keeps all seventeen digits, an enum comes back as a cast, and `NaN` and the infi
 A bare `Max` failed here whatever its accessibility, `public` included, because the name resolved in
 the rules class's scope and the lifted method is not in it. Qualification is what fixes that; VM0078
 is the residue — the case qualification cannot reach.
+:::
+
+### VM0079 {#vm0079}
+
+**Error** — *`'Envelope' is generic, and a validator for it could not be registered`*
+
+```csharp
+public sealed record Envelope<T> {      // VM0079
+    [Required] public string? TraceId { get; init; }
+    public T? Payload { get; init; }
+}
+```
+
+The validator class itself would be fine — `EnvelopeValidator<T> : IValidatorFor<Envelope<T>>` is
+ordinary C#. Registering it is not. A container's open-generic support matches `Foo<>` to `Bar<>`,
+and here the type parameter sits *inside* another construction, so `IValidatorFor<Envelope<T>>` has
+no open form to register. Closing it per construction needs `MakeGenericType`, which this library
+does not use anywhere.
+
+Declare the constraints on a closed type:
+
+```csharp
+public sealed record OrderEnvelope {
+    [Required] public string? TraceId { get; init; }
+    [ValidateNested] public Order? Payload { get; init; }
+}
+```
+
+Or leave the envelope unconstrained and validate the payload on its own — `IValidatorFor<Order>` is
+resolvable, and a handler that already has the payload in hand rarely needs the wrapper validated.
+
+::: tip Why this is an error rather than a silent skip
+Emitting the validator and omitting it from `AddXValidators()` was the alternative. Resolving
+`IValidatorFor<Envelope<Order>>` would then find nothing and the value would go unvalidated while
+every other constraint still reported — which reads exactly like validation working. Before this
+diagnostic existed the generator emitted a *non-generic* validator referencing `T`, so the build
+failed with several CS0246 inside a generated file and nothing pointing at the cause.
 :::

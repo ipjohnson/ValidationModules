@@ -230,6 +230,16 @@ public sealed class AttributeFrontEnd {
             return null;
         }
 
+        // Reported here rather than before the walk, so that a generic type nobody asked anything
+        // of stays silent - it is only a problem once it declares rules. Returning null suppresses
+        // the validator and its registration entry: emitting either would put the type parameter
+        // into a non-generic class and a service table that cannot name it, which is the CS0246
+        // this replaces.
+        if (type.IsGenericType) {
+            Report(ValidationDiagnostics.GenericTypeCannotBeValidated, type, type.Name);
+            return null;
+        }
+
         if (ImplementsValidatableObject(type)) {
             Report(ValidationDiagnostics.ValidatableObjectNotCompiled, type, type.Name);
         }
@@ -442,8 +452,25 @@ public sealed class AttributeFrontEnd {
                 }
             } else if (type is INamedTypeSymbol namedType) {
                 shape = PropertyShape.Object;
-                elementValidatorName = QualifiedValidator(namedType, validatorNameFor);
-                nestedTarget = namedType;
+
+                // Nullable<Money> is not what the descent reaches - Money is. Reading the property's
+                // own type here named System.Nullable, and a validator name is the type name with
+                // Validator appended, so the emitted file called global::System.NullableValidator
+                // and the consumer's build failed on CS0246 inside generated code. The emitted
+                // pattern already unwraps: `value.Total is { } total` binds Money, not Money?.
+                var target = TypeFacts.IsNullableValueType(namedType)
+                    ? (INamedTypeSymbol)namedType.TypeArguments[0]
+                    : namedType;
+
+                // Carried explicitly for the nullable case. ElementType() falls back to the
+                // property's own type name when this is null, which would ask for
+                // IValidatorFor<Money?> - a different service from the one that is registered.
+                if (!SymbolEqualityComparer.Default.Equals(target, namedType)) {
+                    elementTypeName = target.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                }
+
+                elementValidatorName = QualifiedValidator(target, validatorNameFor);
+                nestedTarget = target;
             }
         }
 

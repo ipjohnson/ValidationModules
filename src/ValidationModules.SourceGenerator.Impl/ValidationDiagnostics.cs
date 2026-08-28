@@ -305,6 +305,27 @@ public static class ValidationDiagnostics {
         DiagnosticSeverity.Error);
 
     /// <summary>
+    /// A generic type cannot have a generated validator.
+    /// </summary>
+    /// <remarks>
+    /// The class itself is emittable - <c>EnvelopeValidator&lt;T&gt; :
+    /// IValidatorFor&lt;Envelope&lt;T&gt;&gt;</c> is ordinary C#. Registering it is not: MS.DI's
+    /// open-generic support matches <c>Foo&lt;&gt;</c> to <c>Bar&lt;&gt;</c>, and here the type
+    /// parameter is nested inside another construction, so there is no open form to register.
+    /// Closing it per construction needs <c>MakeGenericType</c>, which plan §2 rules out.
+    /// <para>
+    /// Emitting it anyway and leaving it out of <c>AddXValidators()</c> was the other option, and
+    /// it is worse: resolving <c>IValidatorFor&lt;Envelope&lt;Order&gt;&gt;</c> would find nothing
+    /// and the value would go unvalidated in silence, which is the failure this library refuses
+    /// everywhere else. So this is an error, and it names the way out.
+    /// </para>
+    /// </remarks>
+    public static readonly DiagnosticDescriptor GenericTypeCannotBeValidated = Descriptor(
+        "VM0079", "A generic type cannot have a generated validator",
+        "'{0}' is generic, and a validator for it could not be registered - the service type has its parameter nested inside a construction, which no container can resolve without MakeGenericType. Declare the constraints on a closed type instead ('{0}<Order>' written out as its own type), or validate the payload's own type and leave the envelope unconstrained",
+        DiagnosticSeverity.Error);
+
+    /// <summary>
     /// The message used to end "pass field: explicitly", which is the one fix that does not work.
     /// A rule is emitted inside its anchored property's chain so both engines agree on ordering
     /// (§4.2), so <c>field:</c> renames the error and does not detach the rule - passing it leaves
