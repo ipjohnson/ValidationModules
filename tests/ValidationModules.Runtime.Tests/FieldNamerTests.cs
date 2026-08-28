@@ -1,3 +1,4 @@
+using System.Text.Json;
 using ValidationModules.Naming;
 using Xunit;
 
@@ -8,11 +9,43 @@ public class FieldNamerTests {
     [Theory]
     [InlineData("PostalCode", "postalCode")]
     [InlineData("Name", "name")]
-    [InlineData("URL", "uRL")]
+    [InlineData("URL", "url")]
     [InlineData("alreadyCamel", "alreadyCamel")]
     [InlineData("", "")]
     public void CamelCase_ToFieldName(string input, string expected) {
         Assert.Equal(expected, CamelCaseFieldNamer.Instance.ToFieldName(input));
+    }
+
+    [Theory]
+    [InlineData("SKU", "sku")]
+    [InlineData("ID", "id")]
+    [InlineData("IPAddress", "ipAddress")]
+    [InlineData("HTTPStatus", "httpStatus")]
+    [InlineData("A", "a")]
+    [InlineData("AB", "ab")]
+    [InlineData("ABc", "aBc")]
+    public void CamelCase_LeadingAcronym_LowercasesTheWholeRun(string input, string expected) {
+        // Lowercasing [0] alone returned "sKU" for a property named SKU, so the error key named a
+        // field that is not in the payload the client sent. The whole leading uppercase run goes
+        // down, except a final capital that starts the next word.
+        Assert.Equal(expected, CamelCaseFieldNamer.Instance.ToFieldName(input));
+    }
+
+    [Theory]
+    [InlineData("PostalCode")]
+    [InlineData("Name")]
+    [InlineData("URL")]
+    [InlineData("SKU")]
+    [InlineData("ID")]
+    [InlineData("IPAddress")]
+    [InlineData("HTTPStatus")]
+    [InlineData("alreadyCamel")]
+    [InlineData("")]
+    public void CamelCase_MatchesTheSerializer(string input) {
+        // The contract this namer exists for: the XML doc says it produces what a JSON API puts on
+        // the wire. Asserted against the serializer itself rather than against a table, because the
+        // table is what drifted.
+        Assert.Equal(JsonNamingPolicy.CamelCase.ConvertName(input), CamelCaseFieldNamer.Instance.ToFieldName(input));
     }
 
     [Theory]

@@ -175,4 +175,39 @@ public class PatternPolicyTests {
 
         Assert.Contains("does not exist", Assert.Single(result.Diagnostics, d => d.Id == "VM0018").GetMessage());
     }
+
+    // MatchTimeoutMilliseconds - the attribute's only ReDoS mitigation.
+
+    [Fact]
+    public void MatchTimeout_IsPassedToTheEmittedRegex() {
+        // The property was public, documented, and had exactly one occurrence in src/ - its own
+        // declaration. A catastrophic pattern ran to completion however it was set.
+        var result = GeneratorHarness.Run("""
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public record Pet {
+                [Pattern("^(a+)+$", MatchTimeoutMilliseconds = 250)]
+                public string? Sku { get; init; }
+            }
+            """);
+
+        var emitted = result.Sources["Sample.PetValidator.g.cs"];
+
+        Assert.Contains("TimeSpan.FromMilliseconds(250)", emitted);
+    }
+
+    [Fact]
+    public void NoMatchTimeout_KeepsTheSingleArgumentConstructor() {
+        // Zero means no timeout, and the single-argument form is load-bearing: it lets ILC prove
+        // RegexOptions.Compiled is never set and trim the RegexCompiler path with it, measured at
+        // 713 KB. Honouring the timeout must not cost that where nobody asked for one.
+        var result = GeneratorHarness.Run(InlinePattern);
+
+        var emitted = result.Sources["Sample.PetValidator.g.cs"];
+
+        Assert.Contains("new Regex(", emitted);
+        Assert.DoesNotContain("TimeSpan", emitted);
+    }
 }
