@@ -1,0 +1,165 @@
+# ValidationModules — agent guide
+
+Compile-time validation for .NET. Rules are declared as attributes (or in a rules class) and
+flattened into straight-line C# by a source generator at build time. Native AOT is a hard
+requirement, not a supported configuration.
+
+This file is the source of truth for every agent working in this repo. `CLAUDE.md` points here.
+
+**Read `IMPLEMENTATION-PLAN.md` before starting work.** The traps in §7.2 were found the expensive
+way. It is not a description of what shipped: §6 (profiles) and overlays were deliberately not
+built. For what exists, the public surface is pinned by
+`tests/ValidationModules.Runtime.Tests/Snapshots/PublicApiTests.RuntimeApi.verified.txt`.
+
+---
+
+## If you already know FluentValidation
+
+You almost certainly do — it dominates the training data for .NET validation. Most of what you know
+transfers, but two things do not, and they are where agents reliably go wrong. Read the right-hand
+column before writing rules.
+
+| FluentValidation | Here | Note |
+|---|---|---|
+| `class V : AbstractValidator<T>` + ctor body | `class V : IValidationRulesFor<T>` + `Describe(ValidationRules<T> rules)` | Interface, not base class |
+| `RuleFor(x => x.Name)` | `rules.For(x => x.Name)` | Name only |
+| `Expression<Func<T,TValue>>` | `Func<T,TValue>` + `[CallerArgumentExpression]` | Same call site, no expression tree. This is why it is AOT-safe |
+| `.NotNull()`, `.NotEmpty()` | `.Required()`, `.RequiredAllowingEmpty()` | Name only |
+| `.Length(1,100)` | `.Length(1,100)` | Same |
+| `.InclusiveBetween(0,30)` | `.Range(0,30)` | Name only |
+| `.GreaterThanOrEqualTo(x)` / `.LessThanOrEqualTo(x)` | `.RangeAtLeast(x)` / `.RangeAtMost(x)` | Name only |
+| `.Matches(regex)` | `.Pattern(() => MyRegex())` | Takes a thunk; pair with `[GeneratedRegex]` |
+| `.SetValidator(child)` | `.Nested(x => x.Child)` or `[ValidateNested]` | Declarative; no child validator to wire |
+| `RuleForEach(x => x.Items)` | `.Each(x => x.Items)` | Name only |
+| `.When(p)` / `.Unless(p)` | `.When(p)` / `.Unless(p)`, plus block form `When(p, () => { … })` | Superset |
+| `.WithSeverity(...)` | `severity:` parameter | Name only |
+| separate statements per rule | `.And` chains back to `ValidationRules<T>` | Or just start a new statement |
+| `IValidator<T>` | **`IValidatorFor<T>`** | `IValidator<T>` belongs to FluentValidation. Never introduce it |
+| `.Must((model, value) => …)` | **`Ensure(Func<T,bool>)` — restricted, see below** | **Semantic difference** |
+| `.WithMessage("{PropertyName} …")` | `message:` parameter, no interpolation | **Semantic difference** |
+| `RuleSet` | none — deferred past 1.0.0 | Not a gap to work around; see Non-goals |
+
+### The two that are not name changes
+
+**`Ensure` is not `Must`.** A predicate must be self-contained: it may reference its own parameter
+and nothing else, because it is flattened into straight-line C# at build time rather than held as a
+closure. `VM0072` enforces this. Do not reach for `.Must((model, value) => ...)` patterns that close
+over outside state — extract a named static, or use a hand-written `IValidatorFor<T>` composed
+through DI when the rule genuinely needs a service.
+
+**Messages carry no interpolated values.** `ValidationError` is `Field, Code, Message, Severity`.
+Build UI and i18n off the stable `Code`, not by parsing the message.
+
+### The baseline is DataAnnotations, not FluentValidation
+
+The attribute surface is intentionally DataAnnotations-shaped, and there is a DataAnnotations front
+end for migrating existing models. When comparing or explaining this library, compare it to
+`System.ComponentModel.DataAnnotations` first — that is the surface it replaces and the audience it
+serves. FluentValidation is a secondary comparison.
+
+---
+
+## Non-goals
+
+These are deliberate. Do not report them as defects, design workarounds for them in library code, or
+"fix" them without an explicit decision to change scope.
+
+- **Arbitrary predicates in declared rules.** Rules are flattened at build time. A rule needing
+  arbitrary C#, an injected service, or captured state belongs in a hand-written `IValidatorFor<T>`
+  composed through DI.
+- **Rule sets / profiles / overlays.** Deferred past 1.0.0; declaration surfaces were withdrawn on
+  purpose. See `docs/deferred-features.md`.
+- **Localized message catalogues.** Not shipped. `Code` is the stable contract for a consumer's own
+  i18n layer.
+- **Runtime rule composition.** Architecturally excluded — the rule graph is built once at compile
+  time.
+- **Cross-assembly scanning.** Registration is emitted per assembly as `Add<Assembly>Validators()`.
+
+---
+
+## Non-negotiables
+
+From `IMPLEMENTATION-PLAN.md` §2, repeated because they are easy to violate by habit:
+
+- No `MakeGenericType`, `Activator.CreateInstance`, `Expression.Compile`, assembly scanning, or
+  `Type.GetMethod(...).Invoke`. Anywhere.
+- **Emitted C# is authored with CSharpAuthor** — `CSharpFileDefinition` + `OutputContext`, the same
+  path `DependencyFileWriter` takes in DependencyModules. Never `StringBuilder`, never a line of C#
+  built by interpolation, never a raw string literal holding a class body. Both generator projects
+  already reference the package. Runtime string building (`FieldNamer`, `RuleText`,
+  `ValidationContext`) is not covered — it builds values, not source. **The three emitters do not
+  comply yet** — they predate the rule and are `StringBuilder` throughout; `IMPLEMENTATION-PLAN.md`
+  §7.6 lists them. Match the rule, not the surrounding file, and do not add a fourth.
+- `[GeneratedRegex]`, never `new Regex(..., RegexOptions.Compiled)`.
+- Rule graphs are built once, never per validation call.
+- The service interface is `IValidatorFor<T>`.
+- Registration is emitted per assembly; there is no cross-assembly scanning, deliberately.
+
+`ValidationModules.Runtime` carries `IsAotCompatible` and escalates
+`IL2026;IL2055;IL2067;IL2072;IL2075;IL2087;IL3050` to errors, so the compiler enforces the above
+rather than review.
+
+## Diagnostics are the teaching surface
+
+A consumer — human or model — learns this library from compiler diagnostics far more than from
+docs. A diagnostic that names the member, explains the constraint, and prints the replacement call
+is worth more than a documentation page. `VM0017` is the standard to match. When adding or changing
+a diagnostic, state what to do instead, not only what is wrong.
+
+## Autonomy contract
+
+Work here is routinely fanned out across parallel agents; every stop-and-ask multiplies.
+
+**Decide and proceed. Do not ask.**
+
+- **Convention questions are answered** in `IMPLEMENTATION-PLAN.md` §13 — test framework, assertion
+  style, mocking, naming, brace style. Copy the nearest existing example.
+- **The plan is a specification.** Execute it; do not re-litigate it.
+- **Never block a fan-out.** Hit an ambiguity, pick the most reasonable option, write the test, note
+  the assumption in your final report.
+- **Batch uncertainty to the end** — one summary after the work.
+- **Partial blockage does not stop the rest.** Finish everything else and report what was left out.
+
+Stop only when proceeding would be destructive and irreversible, or when every reading of a
+requirement would make the work useless if guessed wrong. Neither is common.
+
+## Reviewing this library
+
+If you are evaluating rather than building:
+
+- **Lead with the task, not a competitor.** "Build this domain, report where a rule could not be
+  expressed" finds real gaps. "Check whether it can do what FluentValidation does" manufactures them
+  by making another library's surface the scoring rubric.
+- **Grade findings by reachability.** A finding needs a path from ordinary use — generated output, a
+  documented pattern, a plausible hand-written validator — before it ranks as a defect.
+- **Separate defects from non-goals.** The list above is scope, not failure.
+- **Date what you find.** `git log -S '<the line>'` distinguishes a regression from original design.
+
+## Commands
+
+```bash
+dotnet build --configuration Release
+dotnet test  --configuration Release
+dotnet test  --configuration Release --collect:"XPlat Code Coverage" --settings coverlet.runsettings
+UPDATE_SNAPSHOTS=1 dotnet test tests/ValidationModules.Runtime.Tests   # accept an intended API change
+```
+
+`TreatWarningsAsErrors` is on only when `ContinuousIntegrationBuild=true`. Leave the solution
+warning-free.
+
+## Permissions
+
+`git add` and `git commit` are fine — commit freely. Gated by design, do not route around:
+`git push`, `git merge`, `git rebase`, `git reset --hard`, `gh pr create`, `gh pr merge`,
+`gh release`, `dotnet nuget push`.
+
+## Publishing
+
+Follows the `ipjohnson-org` pattern: `secrets.GITHUB_TOKEN` with `permissions: packages: write`
+(not a PAT), explicit `--source` on `dotnet nuget push`, `actions/setup-dotnet@v4`, Release
+configuration throughout when packing with `--no-build`.
+
+## Related working directories
+
+- `~/DependencyModules` — the package this builds on. Copy its project layout, packaging and CI.
+- `~/Hardened` — the first consumer. `IMPLEMENTATION-PLAN.md` §9 and §10 reference it directly.

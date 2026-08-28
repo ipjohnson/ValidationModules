@@ -53,6 +53,18 @@ These are settled. Do not reopen them, and do not ask.
   `WarningsAsErrors=IL2026;IL2055;IL2067;IL2072;IL2075;IL2087;IL3050`, so the compiler enforces
   it rather than review.
 - **Generated validators are plain classes.** No attributes on them, no DI-framework knowledge.
+- **Emitted C# is authored with CSharpAuthor, never assembled as text.** Every character the
+  generator writes goes through `CSharpFileDefinition` and `OutputContext`, the path
+  `DependencyModules.SourceGenerator.Impl.DependencyFileWriter` already takes. Both generator
+  projects reference `CSharpAuthor` 1.1.1010 with `PackageCSharpAuthorIncludeSource=true`, so this
+  costs no new dependency and no new packaging story. A `StringBuilder` in an emitter, a line of
+  C# built by interpolation and appended to one, or a raw string literal holding a class body is a
+  defect rather than a style preference: hand-assembled source owns its own brace matching, its own
+  indentation, its own `global::` qualification and its own using list, and the compiler cannot see
+  any of those go wrong until the consumer's build breaks. This is scoped to *source* text.
+  `StringBuilder` for runtime string work — `FieldNamer`, `RuleText`, `ValidationContext`'s path
+  rendering — builds values, not code, and is untouched by this rule; CSharpAuthor must never be
+  referenced from `ValidationModules.Runtime`.
 - **Regex uses `[GeneratedRegex]`**, never `new Regex(..., RegexOptions.Compiled)`. See §10.2 for
   what happens when you get this wrong.
 - **Rule graphs are built once**, never per validation call.
@@ -433,6 +445,41 @@ generator (§9), so the check has a better place to live: the task can compare t
 `ValidationModules.Runtime` version at MSBuild time and fail with a project file attached. Build
 both — the marker-type probe for generator-hosted front-ends, and an MSBuild-time check the task can
 call. The second is the one Hardened hits first, and it produces the better error.
+
+### 7.6 The emitters are on `StringBuilder` — outstanding debt
+
+Recorded 2026-08-28. The §2 rule above says CSharpAuthor; what shipped does not, and the gap is
+total rather than partial — the repo contains no `using CSharpAuthor` at all, while both generator
+projects carry the package reference and the `PackageCSharpAuthorIncludeSource` property that make
+it available. Every file below emits C# as hand-assembled text and has to be converted:
+
+| File | Scale | Emits |
+|---|---|---|
+| `Emitters/ValidatorEmitter.cs` | 1093 lines, 12 builders, ~145 append calls | the whole validator: namespace, class, `Validate`, `IsValid`, `[GeneratedRegex]` partials, the dynamic adapter |
+| `Emitters/RegistrationEmitter.cs` | 200 lines, 3 builders, ~55 append calls | `Add<Assembly>Validators()`, the DM module part, the `DynamicValidatorRegistry` factory |
+| `Emitters/PredicateEmitter.cs` | 118 lines, 1 builder, ~15 append calls | the static container holding each rules class's `Ensure` predicates |
+
+Two things are deliberately *not* on this list, and neither is a violation:
+
+- `ValidationSourceGenerator.cs:375` and `:489` build an identifier and a snake-case name out of
+  characters. They transform strings; they do not write source, and CSharpAuthor has nothing to
+  offer them.
+- `Runtime/Naming/FieldNamer.cs`, `Runtime/Rules/RuleText.cs` and `Runtime/ValidationContext.cs`
+  build values at validation time. `FieldNamer` is on the benchmarked path
+  (`FieldNamerBenchmarks`), and `ValidationModules.Runtime` must not take a codegen dependency in
+  any case.
+
+`spikes-specdemo/SpecGen/ValidatorGenerator.cs` and `spikes-specdemo/SpecTask/ExtractSpec.cs` emit
+source by hand too. That tree is not in `ValidationModules.sln` and is not built; convert it only if
+it is ever promoted.
+
+Converting is not a refactor to slot into another change. `ValidatorEmitter` alone is the majority
+of the generator, and 16 golden snapshots under
+`tests/ValidationModules.SourceGenerator.Tests/Snapshots/` pin emitter output byte for byte — 12 for
+`ValidatorEmitter`, 4 for `RegistrationEmitter`. CSharpAuthor will not reproduce the current
+whitespace and comment placement exactly, so expect to re-accept all 16 in the same commit, and to
+read those diffs rather than blanket-accept them: they are the only thing standing between a
+formatting change and a behaviour change.
 
 ---
 
