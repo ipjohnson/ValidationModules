@@ -110,7 +110,7 @@ public class PolymorphicDescentTests {
         var body = Run("[ValidateNested(Polymorphism.CompileTime)]").Checkout;
 
         var switchStart = body.IndexOf("switch (nestedPayment)", StringComparison.Ordinal);
-        var defaultArm = body.IndexOf("default: {", switchStart, StringComparison.Ordinal);
+        var defaultArm = body.IndexOf("default:", switchStart, StringComparison.Ordinal);
         var loop = body.IndexOf("validatorsPayment[vi].Validate", StringComparison.Ordinal);
 
         Assert.True(defaultArm > switchStart, "the switch should have a default arm");
@@ -151,7 +151,8 @@ public class PolymorphicDescentTests {
         var isValid = body[body.IndexOf("public bool IsValid", StringComparison.Ordinal)..];
 
         Assert.Contains("switch (nestedPayment) {", isValid);
-        Assert.Contains("IsValid(__typed)) return false;", isValid);
+        Assert.Contains("if (!(_dispatch0 ??= new()).IsValid(__typed)) {", isValid);
+        Assert.Contains("return false;", isValid);
     }
 
     // -- VM0031 --------------------------------------------------------------------------------
@@ -295,8 +296,9 @@ public class PolymorphicDescentTests {
 
         Assert.Contains(
             "if (global::ValidationModules.DynamicValidation.Validate(ref ctxPayment, nestedPayment, " +
-            "\"payment\", \"Checkout\").ShouldStop) return ValidationFlow.Stop;",
+            "\"payment\", \"Checkout\").ShouldStop) {",
             body);
+        Assert.Contains("return global::ValidationModules.ValidationFlow.Stop;", body);
 
         Assert.DoesNotContain("switch (", body);
     }
@@ -327,11 +329,17 @@ public class PolymorphicDescentTests {
 
         var emitted = string.Concat(result.Sources.Values);
 
-        Assert.Contains("internal sealed class CardDynamicValidator : IDynamicValidator", emitted);
-        Assert.Contains("internal sealed class PremiumDynamicValidator : IDynamicValidator", emitted);
-        Assert.Contains("internal sealed class CheckoutDynamicValidator : IDynamicValidator", emitted);
-        Assert.Contains("services.AddSingleton<IDynamicValidator, global::Sample.CardDynamicValidator>();", emitted);
-        Assert.Contains("new DynamicValidatorRegistry(", emitted);
+        Assert.Contains(
+            "internal sealed class CardDynamicValidator : global::ValidationModules.IDynamicValidator", emitted);
+        Assert.Contains(
+            "internal sealed class PremiumDynamicValidator : global::ValidationModules.IDynamicValidator", emitted);
+        Assert.Contains(
+            "internal sealed class CheckoutDynamicValidator : global::ValidationModules.IDynamicValidator", emitted);
+        Assert.Contains(
+            "global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton<" +
+            "global::ValidationModules.IDynamicValidator, global::Sample.CardDynamicValidator>(services);",
+            emitted);
+        Assert.Contains("new global::ValidationModules.DynamicValidatorRegistry(", emitted);
     }
 
     /// <summary>

@@ -72,7 +72,7 @@ public class DslConditionTests {
                     rules.For(x => x.Reason).Length(2, 500).When(x => x.IsExpedited);
             """);
 
-        Assert.Contains("if (missingReason && ctx.ReportRequired(\"reason\").ShouldStop) return ValidationFlow.Stop;", body);
+        Assert.Contains("if (missingReason && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"reason\").ShouldStop) {", body);
         Assert.Contains("c0 && !missingReason && (", body);
     }
 
@@ -106,8 +106,8 @@ public class DslConditionTests {
             """);
 
         Assert.Contains("var c0 = global::Sample.ClaimRules_Rules.Cond0(value);", body);
-        Assert.Contains("if (c0 && (string.IsNullOrWhiteSpace(value.Plate)) && ctx.ReportRequired(\"plate\").ShouldStop) return ValidationFlow.Stop;", body);
-        Assert.Contains("if (c0 && (string.IsNullOrWhiteSpace(value.Reference)) && ctx.ReportRequired(\"reference\").ShouldStop) return ValidationFlow.Stop;", body);
+        Assert.Contains("if (c0 && (string.IsNullOrWhiteSpace(value.Plate)) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"plate\").ShouldStop) {", body);
+        Assert.Contains("if (c0 && (string.IsNullOrWhiteSpace(value.Reference)) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"reference\").ShouldStop) {", body);
     }
 
     /// <summary>
@@ -163,7 +163,7 @@ public class DslConditionTests {
 
         // Once each, per method body. Building the conjunction out of the operands rather than out
         // of the calls is the whole point.
-        var validate = Method(body, "public ValidationFlow Validate");
+        var validate = Method(body, "public global::ValidationModules.ValidationFlow Validate");
 
         Assert.Equal(1, Occurrences(validate, "Cond0(value)"));
         Assert.Equal(1, Occurrences(validate, "Cond1(value)"));
@@ -190,7 +190,7 @@ public class DslConditionTests {
                     rules.When(x => x.IsAuto, () => rules.Required(x => x.Plate));
             """);
 
-        Assert.Contains("if (c0 && (string.IsNullOrWhiteSpace(value.Plate)) && ctx.ReportRequired(\"plate\").ShouldStop) return ValidationFlow.Stop;", body);
+        Assert.Contains("if (c0 && (string.IsNullOrWhiteSpace(value.Plate)) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"plate\").ShouldStop) {", body);
     }
 
     // -- lifting -------------------------------------------------------------------------------

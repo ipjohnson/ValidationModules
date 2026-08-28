@@ -24,6 +24,8 @@
     <PropertyGroup>
         <PackageDependencyModuleIncludeSource>true</PackageDependencyModuleIncludeSource>
         <PackageCSharpAuthorIncludeSource>true</PackageCSharpAuthorIncludeSource>
+        <!-- Impl's PredicateEmitter uses the ITypeSymbol -> ITypeDefinition bridge. -->
+        <PackageCSharpAuthorIncludeRoslyn>true</PackageCSharpAuthorIncludeRoslyn>
     </PropertyGroup>
 
     <ItemGroup>
@@ -42,8 +44,8 @@
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <!-- Kept in step with the Impl project, which explains why 1.1.1010. -->
-        <PackageReference Include="CSharpAuthor" Version="1.1.1010">
+        <!-- Kept in step with the Impl project. -->
+        <PackageReference Include="CSharpAuthor" Version="2.0.0-preview1004">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>build</IncludeAssets>
         </PackageReference>

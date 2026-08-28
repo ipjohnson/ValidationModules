@@ -43,9 +43,9 @@ From `IMPLEMENTATION-PLAN.md` §2, repeated because they are easy to violate by 
   path `DependencyFileWriter` takes in DependencyModules. Never `StringBuilder`, never a line of C#
   built by interpolation, never a raw string literal holding a class body. Both generator projects
   already reference the package. Runtime string building (`FieldNamer`, `RuleText`,
-  `ValidationContext`) is not covered — it builds values, not source. **The three emitters do not
-  comply yet** — they predate the rule and are `StringBuilder` throughout; `IMPLEMENTATION-PLAN.md`
-  §7.6 lists them. Match the rule, not the surrounding file, and do not add a fourth.
+  `ValidationContext`) is not covered — it builds values, not source. **All three emitters comply
+  as of 2026-08-28** — `IMPLEMENTATION-PLAN.md` §7.6 records the conversion and the shared
+  settings in `Emitters/EmitterOutput.cs`. Do not add a non-compliant fourth.
 - `[GeneratedRegex]`, never `new Regex(..., RegexOptions.Compiled)`.
 - Rule graphs are built once, never per validation call.
 - The service interface is `IValidatorFor<T>` — `IValidator<T>` belongs to FluentValidation.

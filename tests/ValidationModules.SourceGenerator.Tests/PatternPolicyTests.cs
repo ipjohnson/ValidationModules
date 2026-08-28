@@ -48,7 +48,9 @@ public class PatternPolicyTests {
         var result = GeneratorHarness.Run(InlinePattern);
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0017");
-        Assert.Contains("new Regex(", result.Sources["Sample.PetValidator.g.cs"]);
+        Assert.Contains(
+            "new global::System.Text.RegularExpressions.Regex(",
+            result.Sources["Sample.PetValidator.g.cs"]);
     }
 
     [Fact]
@@ -90,8 +92,9 @@ public class PatternPolicyTests {
         // VM0017 and not also with a second, less useful error out of the generated file. Every
         // other constraint on the type still compiles.
         var emitted = result.Sources["Sample.PetValidator.g.cs"];
-        Assert.DoesNotContain("new Regex(", emitted);
-        Assert.Contains("ctx.ReportRequired(\"name\")", emitted);
+        Assert.DoesNotContain("new global::System.Text.RegularExpressions.Regex(", emitted);
+        Assert.Contains(
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\")", emitted);
     }
 
     [Fact]
@@ -101,7 +104,9 @@ public class PatternPolicyTests {
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0017");
         Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
-        Assert.Contains("new Regex(", result.Sources["Sample.PetValidator.g.cs"]);
+        Assert.Contains(
+            "new global::System.Text.RegularExpressions.Regex(",
+            result.Sources["Sample.PetValidator.g.cs"]);
     }
 
     [Fact]
@@ -128,7 +133,7 @@ public class PatternPolicyTests {
 
         var emitted = result.Sources["Sample.PetValidator.g.cs"];
         Assert.Contains("global::Sample.PetPatterns.Sku().IsMatch", emitted);
-        Assert.DoesNotContain("new Regex(", emitted);
+        Assert.DoesNotContain("new global::System.Text.RegularExpressions.Regex(", emitted);
     }
 
     [Theory]
@@ -207,7 +212,7 @@ public class PatternPolicyTests {
 
         var emitted = result.Sources["Sample.PetValidator.g.cs"];
 
-        Assert.Contains("new Regex(", emitted);
+        Assert.Contains("new global::System.Text.RegularExpressions.Regex(", emitted);
         Assert.DoesNotContain("TimeSpan", emitted);
     }
 }

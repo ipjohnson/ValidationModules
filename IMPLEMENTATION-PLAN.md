@@ -56,8 +56,9 @@ These are settled. Do not reopen them, and do not ask.
 - **Emitted C# is authored with CSharpAuthor, never assembled as text.** Every character the
   generator writes goes through `CSharpFileDefinition` and `OutputContext`, the path
   `DependencyModules.SourceGenerator.Impl.DependencyFileWriter` already takes. Both generator
-  projects reference `CSharpAuthor` 1.1.1010 with `PackageCSharpAuthorIncludeSource=true`, so this
-  costs no new dependency and no new packaging story. A `StringBuilder` in an emitter, a line of
+  projects reference `CSharpAuthor` 2.0.0-preview1004 with `PackageCSharpAuthorIncludeSource=true`
+  and `PackageCSharpAuthorIncludeRoslyn=true` (the `ITypeSymbol` → `ITypeDefinition` bridge), so
+  this costs no new dependency and no new packaging story. A `StringBuilder` in an emitter, a line of
   C# built by interpolation and appended to one, or a raw string literal holding a class body is a
   defect rather than a style preference: hand-assembled source owns its own brace matching, its own
   indentation, its own `global::` qualification and its own using list, and the compiler cannot see
@@ -446,40 +447,54 @@ generator (§9), so the check has a better place to live: the task can compare t
 both — the marker-type probe for generator-hosted front-ends, and an MSBuild-time check the task can
 call. The second is the one Hardened hits first, and it produces the better error.
 
-### 7.6 The emitters are on `StringBuilder` — outstanding debt
+### 7.6 The emitters are on CSharpAuthor — debt paid
 
-Recorded 2026-08-28. The §2 rule above says CSharpAuthor; what shipped does not, and the gap is
-total rather than partial — the repo contains no `using CSharpAuthor` at all, while both generator
-projects carry the package reference and the `PackageCSharpAuthorIncludeSource` property that make
-it available. Every file below emits C# as hand-assembled text and has to be converted:
+Recorded 2026-08-28 as `StringBuilder` debt; converted the same day, on CSharpAuthor
+`2.0.0-preview1004`. All three emitters — `ValidatorEmitter`, `RegistrationEmitter`,
+`PredicateEmitter` — author their output through `CSharpFileDefinition` + `OutputContext`, with
+the shared settings (`TypeOutputMode.Global`, K&R braces, one-line invokes, `\n` endings) and the
+IR-string → `ITypeDefinition` bridge in `Emitters/EmitterOutput.cs`.
 
-| File | Scale | Emits |
-|---|---|---|
-| `Emitters/ValidatorEmitter.cs` | 1093 lines, 12 builders, ~145 append calls | the whole validator: namespace, class, `Validate`, `IsValid`, `[GeneratedRegex]` partials, the dynamic adapter |
-| `Emitters/RegistrationEmitter.cs` | 200 lines, 3 builders, ~55 append calls | `Add<Assembly>Validators()`, the DM module part, the `DynamicValidatorRegistry` factory |
-| `Emitters/PredicateEmitter.cs` | 118 lines, 1 builder, ~15 append calls | the static container holding each rules class's `Ensure` predicates |
+The conversion was never a formatting exercise, and the output deliberately does **not** match the
+old text. The old emitters leaned on `using ValidationModules;` and short names, so a consumer
+type named `ValidationFlow`, `Regex` or `IValidatorFor` silently captured generated code — the
+"types aren't written correctly" class of defect. What holds now:
 
-Two things are deliberately *not* on this list, and neither is a violation:
+- **Generated files carry no using directives and every type is `global::`-qualified.**
+  Declarations go through the type model; the qualified-name strings the IR carries are converted
+  once at the emitter's edge (`EmitterOutput.TypeRef`), which throws on any shape a front end
+  should never produce rather than compiling it into the consumer's build.
+- **Extension methods are called in static form** —
+  `global::…ValidationContextExtensions.ReportX(ctx, …)`,
+  `global::…ServiceCollectionServiceExtensions.AddSingleton<…>(services)` — because a `global::`
+  name cannot reach an extension method, and a using-imported one could still be outranked by an
+  extension the consumer declares in the model's own namespace.
+- **A global-namespace model stays `global::Pet`.** CSharpAuthor writes an empty-namespace type
+  bare in every mode (the predefined keyword types share that shape, and `global::int` would not
+  compile), so `EmitterOutput.GlobalNamespaceType` supplies the qualifier until the library can
+  distinguish the two. Worth upstreaming into CSharpAuthor.
+- **`PredicateEmitter` keeps the one deliberate exception**: predicate bodies are the author's
+  source, and the copied usings exist to resolve them. Its structure is CSharpAuthor; the target
+  type comes off the symbol through the package's Roslyn bridge
+  (`PackageCSharpAuthorIncludeRoslyn=true`, now set in both generator projects — consumers that
+  compile Impl in from the package need the same property).
 
-- `ValidationSourceGenerator.cs:375` and `:489` build an identifier and a snake-case name out of
-  characters. They transform strings; they do not write source, and CSharpAuthor has nothing to
-  offer them.
+The golden snapshots under `tests/ValidationModules.SourceGenerator.Tests/Snapshots/` were
+re-accepted for the new shape and read line by line: every test expression, guard, bound, report
+argument and registration pair is byte-identical to the old output; what changed is
+qualification, bracing and member layout. Two stale snapshot files from renamed tests
+(`EmitsACompleteModule`, `EmitsAStaticTableOfFactories`) were deleted in the same pass — the live
+count is 14, not the 16 this section used to claim.
+
+Still deliberately out of scope, and still not violations:
+
+- `ValidationSourceGenerator.cs` builds an identifier and a snake-case name out of characters.
+  They transform strings; they do not write source.
 - `Runtime/Naming/FieldNamer.cs`, `Runtime/Rules/RuleText.cs` and `Runtime/ValidationContext.cs`
-  build values at validation time. `FieldNamer` is on the benchmarked path
-  (`FieldNamerBenchmarks`), and `ValidationModules.Runtime` must not take a codegen dependency in
-  any case.
-
-`spikes-specdemo/SpecGen/ValidatorGenerator.cs` and `spikes-specdemo/SpecTask/ExtractSpec.cs` emit
-source by hand too. That tree is not in `ValidationModules.sln` and is not built; convert it only if
-it is ever promoted.
-
-Converting is not a refactor to slot into another change. `ValidatorEmitter` alone is the majority
-of the generator, and 16 golden snapshots under
-`tests/ValidationModules.SourceGenerator.Tests/Snapshots/` pin emitter output byte for byte — 12 for
-`ValidatorEmitter`, 4 for `RegistrationEmitter`. CSharpAuthor will not reproduce the current
-whitespace and comment placement exactly, so expect to re-accept all 16 in the same commit, and to
-read those diffs rather than blanket-accept them: they are the only thing standing between a
-formatting change and a behaviour change.
+  build values at validation time, and `ValidationModules.Runtime` must never take a codegen
+  dependency.
+- `spikes-specdemo/` emits by hand, is not in `ValidationModules.sln` and is not built; convert it
+  only if it is ever promoted.
 
 ---
 
@@ -527,9 +542,10 @@ FluentValidation is Apache 2.0 and free, with no paid tier. Worth restating beca
 spec. The original text is kept below the line because most of it held; the summary here records
 what changed and why.
 
-The change is one fact about Impl: `ValidatorEmitter` and `RegistrationEmitter` are `StringBuilder`
-over the IR with no `Microsoft.CodeAnalysis` reference — only `FrontEnds/` and `ValidationDiagnostics`
-are Roslyn-coupled. So **an MSBuild task can drive the emitter**, and Hardened's spec front-end goes
+The change is one fact about Impl: `ValidatorEmitter` and `RegistrationEmitter` are CSharpAuthor
+writers over the IR with no `Microsoft.CodeAnalysis` reference — only `FrontEnds/`,
+`ValidationDiagnostics` and `PredicateEmitter` are Roslyn-coupled. *(They were `StringBuilder`
+when this was written; §7.6 records the conversion, which kept the Roslyn-free property.)* So **an MSBuild task can drive the emitter**, and Hardened's spec front-end goes
 there rather than into a Roslyn generator. Consequences:
 
 - **`[GeneratedRegex]` becomes available to spec-driven patterns.** A task writes ordinary source
