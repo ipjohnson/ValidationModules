@@ -34,14 +34,35 @@ foreach (var error in result.Errors) {
 
 ## Why
 
-FluentValidation compiles expression trees at runtime. Under Native AOT `Expression.Compile()`
-falls back to the LINQ interpreter rather than throwing, so it *works* — but property access is
-interpreted and you carry IL2026/IL3050 trim warnings. For a workload where AOT is a requirement,
-that is the gap this fills.
+Native AOT is a hard requirement here rather than a supported configuration, and that single
+decision produces the rest of the design. Rules are read at build time and flattened into
+straight-line C#: the generated validator is a sequence of `if` statements over your own properties,
+in a file you can open and read. Nothing is compiled on first use, no rule graph is walked per call,
+and there is no reflection on the path at all.
 
-`ValidationModules.Runtime` carries `IsAotCompatible` and escalates `IL2026;IL2055;IL2067;IL2072;
-IL2075;IL2087;IL3050` to errors, so the constraint is enforced by the compiler rather than by
-review.
+**It publishes clean, and the compiler is what says so.** `ValidationModules.Runtime` carries
+`IsAotCompatible` and escalates `IL2026;IL2055;IL2067;IL2072;IL2075;IL2087;IL3050` to errors, so the
+constraint is enforced at build time rather than by review. `scripts/verify-aot.sh` then publishes a
+real AOT binary and runs it — paths, nested descents, codes, the ASP.NET Core filter — so the claim
+is checked end to end on every release rather than asserted. There is no separate AOT path to keep
+in step, because there is no runtime code generation for AOT to have taken away.
+
+**A pass that finds nothing allocates nothing.** Not nearly nothing — `0 B`, on the hot path and
+through a pooled collector, flat and nested alike; `Validate` allocates only the small result object
+it hands back. That floor is defended rather than observed: *a validation pass that finds nothing
+must allocate nothing* is §4 of the plan restated as a benchmark, and
+`ValidationContextBenchmarks.Push_NoAdd` has to read `0 B` at every nesting depth or the change is a
+regression whatever its timings say. A clean flat pass runs in roughly 30 ns and a nested one in
+about 100 ns.
+
+**What you pay for is what failed.** Messages are composed by the runtime on the failure path rather
+than emitted as literals at every constraint site, which keeps them out of your assembly's string
+heap entirely — measured at 107 of the 313 native bytes a constraint would otherwise cost. A passing
+request allocates nothing to discover that it passed; a failing one composes a message immediately
+before a 400 response that costs considerably more to serialize.
+
+*Timings from `./scripts/benchmark.sh` on an Apple M3 Pro under .NET 10 — approximate, and the
+reason the script is in the repository rather than the numbers. The allocation figures are exact.*
 
 ## Status
 
