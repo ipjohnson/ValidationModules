@@ -257,13 +257,20 @@ public sealed class RulesFrontEnd {
                 return null;
             }
 
-            var field = ExplicitField(arguments) ?? _owner._fieldNamer(anchor.Name);
+            var explicitField = ExplicitField(arguments);
+            var field = _owner._fieldNamer(anchor.Name);
             var constraint = ConstraintFor(name, arguments, call);
 
             if (constraint is not null) {
-                AddRule(new DeclaredRule(anchor, field, constraint, Nesting.None));
+                // On the constraint, never on the property. A property carries several rules and
+                // each may name a different field, so a per-property name lets the first one win
+                // and repaths everything else anchored there - including a nested descent, which
+                // pushes the property's name as a path segment.
+                AddRule(new DeclaredRule(anchor, field, constraint with { Field = explicitField }, Nesting.None));
             } else if (name is "Nested" or "Each") {
-                AddRule(new DeclaredRule(anchor, field, null,
+                // A descent is the one rule with no constraint to carry a rename, and the segment
+                // it pushes is the property's name - so here the property is the right home for it.
+                AddRule(new DeclaredRule(anchor, explicitField ?? field, null,
                     name == "Nested" ? Nesting.Object : Nesting.Elements));
             } else if (name != "For") {
                 _owner.Report(ValidationDiagnostics.NotARuleDeclaration, call, _rulesClass.Name);
@@ -369,7 +376,9 @@ public sealed class RulesFrontEnd {
                 return;
             }
 
-            var field = ExplicitField(arguments) ?? _owner._fieldNamer(anchor.Name);
+            // Not ExplicitField(...) - that goes on the constraint below. The rule's own field is
+            // the anchor's, because it is what positions the rule in that property's chain.
+            var field = _owner._fieldNamer(anchor.Name);
             var lifted = $"Rule{_liftedRules++}";
             _predicates.Add(new LiftedPredicate(lifted, predicate, LiftBody(predicate)));
 
@@ -810,9 +819,7 @@ public sealed class RulesFrontEnd {
         /// </para>
         /// </remarks>
         private bool IsSelfContained(ExpressionSyntax predicate) {
-            var lambdaParameters = predicate is LambdaExpressionSyntax lambda
-                ? _model.GetSymbolInfo(lambda).Symbol as IMethodSymbol
-                : null;
+            var declared = SymbolsDeclaredWithin(predicate);
 
             foreach (var node in predicate.DescendantNodesAndSelf()) {
                 if (node is ThisExpressionSyntax or BaseExpressionSyntax) {
@@ -827,10 +834,11 @@ public sealed class RulesFrontEnd {
                 var symbol = _model.GetSymbolInfo(identifier).Symbol;
 
                 var captured = symbol switch {
-                    ILocalSymbol => true,
-                    IParameterSymbol parameter =>
-                        lambdaParameters is null ||
-                        !lambdaParameters.Parameters.Any(own => SymbolEqualityComparer.Default.Equals(own, parameter)),
+                    // A local or a parameter is a capture only when whatever declared it lies
+                    // outside the predicate. Inside covers the lambda's own parameter, an inner
+                    // lambda's parameter, a local the body declares for itself and a pattern
+                    // variable - none of which the lifted static method has to reach out for.
+                    ILocalSymbol or IParameterSymbol => !declared.Contains(symbol),
                     IFieldSymbol { IsStatic: false } field =>
                         SymbolEqualityComparer.Default.Equals(field.ContainingType, _rulesClass),
                     IPropertySymbol { IsStatic: false } property =>
@@ -847,6 +855,45 @@ public sealed class RulesFrontEnd {
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Every local and parameter the predicate declares anywhere inside itself.
+        /// </summary>
+        /// <remarks>
+        /// Collected up front rather than tracked as the walk descends, because the walk is flat -
+        /// <c>DescendantNodesAndSelf</c> yields an inner lambda's body without ever saying that a
+        /// scope was entered. Binding one parameter list and testing every identifier against it
+        /// scored <c>l</c> in <c>x =&gt; x.Total &lt;= x.Lines.Sum(l =&gt; l.Amount)</c> as a
+        /// capture, which blocks the ordinary shape of an aggregate rule.
+        /// </remarks>
+        private HashSet<ISymbol> SymbolsDeclaredWithin(ExpressionSyntax predicate) {
+            var declared = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+
+            foreach (var node in predicate.DescendantNodesAndSelf()) {
+                switch (node) {
+                    case AnonymousFunctionExpressionSyntax function:
+                        if (_model.GetSymbolInfo(function).Symbol is IMethodSymbol lambda) {
+                            foreach (var parameter in lambda.Parameters) {
+                                declared.Add(parameter);
+                            }
+                        }
+
+                        break;
+
+                    // `var span = ...` in a block-bodied predicate, and the loop variable of a
+                    // foreach in one.
+                    case VariableDeclaratorSyntax or ForEachStatementSyntax
+                        or SingleVariableDesignationSyntax or CatchDeclarationSyntax:
+                        if (_model.GetDeclaredSymbol(node) is { } local) {
+                            declared.Add(local);
+                        }
+
+                        break;
+                }
+            }
+
+            return declared;
         }
 
         /// <summary>

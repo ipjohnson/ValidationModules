@@ -154,7 +154,7 @@ message. A bound that does not parse is [VM0065](/reference/diagnostics#vm0065).
 | `RegexProvider` | `Type?` | — | reference form |
 | `RegexMember` | `string?` | — | reference form |
 | `Options` | `RegexOptions` | `None` | inline form only |
-| `MatchTimeoutMilliseconds` | `int` | `0` | |
+| `MatchTimeoutMilliseconds` | `int` | `0` | inline form only; `0` is no timeout |
 | `Anchored` | `bool` | `false` | |
 | `Code` | `string?` | `"pattern"` | |
 | `Message` | `string?` | *composed* | |
@@ -165,6 +165,14 @@ Constructors: `(string pattern)` and `(Type regexProvider, string regexMember)`.
 [Pattern("^[A-Z]{3}$")]
 [Pattern(typeof(PetPatterns), nameof(PetPatterns.Sku))]
 ```
+
+`MatchTimeoutMilliseconds` becomes the emitted `Regex`'s match timeout, and a pattern that exceeds
+it throws `RegexMatchTimeoutException` rather than returning a verdict — the same thing
+`[RegularExpression]` does. Worth setting for any pattern that can backtrack catastrophically on
+input you do not control. It applies to the inline form only: the reference form's `Regex` belongs
+to you, so set the timeout on your own `[GeneratedRegex]`. Setting it also passes `Options`
+explicitly, which costs the binary-size win described under
+[VM0017](/reference/diagnostics#vm0017) — paid only where a timeout was asked for.
 
 Strings only. Unanchored by default, following JSON Schema. `Options` is not consulted in the
 reference form — put them on your `[GeneratedRegex]`. `RegexOptions.Compiled` is

@@ -34,6 +34,13 @@ namespace ValidationModules;
 /// <see cref="ValidationContext.Report(string,string,string,ValidationSeverity)"/> with the literal, because at that point the text is one the
 /// author chose rather than one this file owns.
 /// </para>
+/// <para>
+/// <b>Why each takes a code.</b> A <c>Code</c> without a <c>Message</c> beside it is the common
+/// shape - errors.md calls the code a wire contract and the message prose - so overriding one must
+/// not require overriding the other. The alternative was for the generator to emit the composed
+/// text as a literal wherever a code was set, which would copy every string in this file into
+/// consumer assemblies and put the two copies on separate release schedules.
+/// </para>
 /// </remarks>
 public static class ValidationContextExtensions {
 
@@ -41,8 +48,9 @@ public static class ValidationContextExtensions {
     public static ValidationFlow ReportRequired(
         this ValidationContext context,
         string field,
-        ValidationSeverity severity = ValidationSeverity.Error) =>
-        context.Report(field, ValidationCodes.Required, string.Concat(field, " is required."), severity);
+        ValidationSeverity severity = ValidationSeverity.Error,
+        string? code = null) =>
+        context.Report(field, code ?? ValidationCodes.Required, string.Concat(field, " is required."), severity);
 
     /// <summary>
     /// Records that a string fell outside its length bounds.
@@ -52,13 +60,15 @@ public static class ValidationContextExtensions {
     /// <param name="min">The lower bound; zero means unbounded below.</param>
     /// <param name="max">The upper bound; <see cref="int.MaxValue"/> means unbounded above.</param>
     /// <param name="severity">Defaults to <see cref="ValidationSeverity.Error"/>.</param>
+    /// <param name="code">Overrides the default code for this check. Null keeps it.</param>
     public static ValidationFlow ReportStringLength(
         this ValidationContext context,
         string field,
         int min = 0,
         int max = int.MaxValue,
-        ValidationSeverity severity = ValidationSeverity.Error) =>
-        context.Report(field, ValidationCodes.StringLength, BoundsMessage(field, min, max, "character"), severity);
+        ValidationSeverity severity = ValidationSeverity.Error,
+        string? code = null) =>
+        context.Report(field, code ?? ValidationCodes.StringLength, BoundsMessage(field, min, max, "character"), severity);
 
     /// <summary>
     /// Records that a collection fell outside its element-count bounds.
@@ -68,13 +78,15 @@ public static class ValidationContextExtensions {
     /// <param name="min">The lower bound; zero means unbounded below.</param>
     /// <param name="max">The upper bound; <see cref="int.MaxValue"/> means unbounded above.</param>
     /// <param name="severity">Defaults to <see cref="ValidationSeverity.Error"/>.</param>
+    /// <param name="code">Overrides the default code for this check. Null keeps it.</param>
     public static ValidationFlow ReportItemCount(
         this ValidationContext context,
         string field,
         int min = 0,
         int max = int.MaxValue,
-        ValidationSeverity severity = ValidationSeverity.Error) =>
-        context.Report(field, ValidationCodes.ArrayBounds, BoundsMessage(field, min, max, "item"), severity);
+        ValidationSeverity severity = ValidationSeverity.Error,
+        string? code = null) =>
+        context.Report(field, code ?? ValidationCodes.ArrayBounds, BoundsMessage(field, min, max, "item"), severity);
 
     /// <summary>
     /// Records that a value was not an exact multiple of its divisor.
@@ -88,14 +100,16 @@ public static class ValidationContextExtensions {
     /// <param name="field">The field name.</param>
     /// <param name="divisor">The divisor the value had to be a multiple of.</param>
     /// <param name="severity">Defaults to <see cref="ValidationSeverity.Error"/>.</param>
+    /// <param name="code">Overrides the default code for this check. Null keeps it.</param>
     public static ValidationFlow ReportMultipleOf(
         this ValidationContext context,
         string field,
         decimal divisor,
-        ValidationSeverity severity = ValidationSeverity.Error) =>
+        ValidationSeverity severity = ValidationSeverity.Error,
+        string? code = null) =>
         context.Report(
             field,
-            ValidationCodes.MultipleOf,
+            code ?? ValidationCodes.MultipleOf,
             string.Concat(
                 field,
                 " must be a multiple of ",
@@ -114,10 +128,11 @@ public static class ValidationContextExtensions {
     public static ValidationFlow ReportUniqueItems(
         this ValidationContext context,
         string field,
-        ValidationSeverity severity = ValidationSeverity.Error) =>
+        ValidationSeverity severity = ValidationSeverity.Error,
+        string? code = null) =>
         context.Report(
             field,
-            ValidationCodes.UniqueItems,
+            code ?? ValidationCodes.UniqueItems,
             string.Concat(field, " must not contain duplicate items."),
             severity);
 
@@ -135,11 +150,12 @@ public static class ValidationContextExtensions {
         string field,
         T min,
         T max,
-        ValidationSeverity severity = ValidationSeverity.Error)
+        ValidationSeverity severity = ValidationSeverity.Error,
+        string? code = null)
         where T : IFormattable =>
         context.Report(
             field,
-            ValidationCodes.Range,
+            code ?? ValidationCodes.Range,
             string.Concat(
                 field,
                 " must be between ",
@@ -163,11 +179,12 @@ public static class ValidationContextExtensions {
         this ValidationContext context,
         string field,
         T min,
-        ValidationSeverity severity = ValidationSeverity.Error)
+        ValidationSeverity severity = ValidationSeverity.Error,
+        string? code = null)
         where T : IFormattable =>
         context.Report(
             field,
-            ValidationCodes.Range,
+            code ?? ValidationCodes.Range,
             string.Concat(field, " must be at least ", min.ToString(null, CultureInfo.InvariantCulture), "."),
             severity);
 
@@ -178,11 +195,12 @@ public static class ValidationContextExtensions {
         this ValidationContext context,
         string field,
         T max,
-        ValidationSeverity severity = ValidationSeverity.Error)
+        ValidationSeverity severity = ValidationSeverity.Error,
+        string? code = null)
         where T : IFormattable =>
         context.Report(
             field,
-            ValidationCodes.Range,
+            code ?? ValidationCodes.Range,
             string.Concat(field, " must be at most ", max.ToString(null, CultureInfo.InvariantCulture), "."),
             severity);
 
@@ -197,10 +215,11 @@ public static class ValidationContextExtensions {
     public static ValidationFlow ReportPattern(
         this ValidationContext context,
         string field,
-        ValidationSeverity severity = ValidationSeverity.Error) =>
+        ValidationSeverity severity = ValidationSeverity.Error,
+        string? code = null) =>
         context.Report(
             field,
-            ValidationCodes.Pattern,
+            code ?? ValidationCodes.Pattern,
             string.Concat(field, " is not in the required format."),
             severity);
 
@@ -215,14 +234,16 @@ public static class ValidationContextExtensions {
     /// than joining an array on every failure.
     /// </param>
     /// <param name="severity">Defaults to <see cref="ValidationSeverity.Error"/>.</param>
+    /// <param name="code">Overrides the default code for this check. Null keeps it.</param>
     public static ValidationFlow ReportAllowedValues(
         this ValidationContext context,
         string field,
         string allowedValues,
-        ValidationSeverity severity = ValidationSeverity.Error) =>
+        ValidationSeverity severity = ValidationSeverity.Error,
+        string? code = null) =>
         context.Report(
             field,
-            ValidationCodes.Enum,
+            code ?? ValidationCodes.Enum,
             string.Concat(field, " must be one of: ", allowedValues, "."),
             severity);
 

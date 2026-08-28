@@ -50,4 +50,39 @@ public class RecursiveModelTests {
 
         Assert.Equal("child.child.label", Assert.Single(validator.Validate(node).Errors).Field);
     }
+
+    [Fact]
+    public void MutuallyRecursiveModels_DoNotBlockContainerValidation() {
+        // A cycle of length two is not visibly different to the container, so testing for a
+        // self-reference by identity would have fixed the shape that was reported and left this one.
+        using var provider = Provider();
+
+        Assert.NotNull(provider.GetRequiredService<IValidatorFor<Author>>());
+        Assert.NotNull(provider.GetRequiredService<IValidatorFor<Book>>());
+    }
+
+    [Fact]
+    public void MutuallyRecursiveModels_StillValidateThroughEachOther() {
+        using var provider = Provider();
+
+        var author = new Author { Name = "Le Guin", Latest = new Book() };
+
+        Assert.Equal(
+            "latest.title",
+            Assert.Single(provider.GetRequiredService<IValidatorFor<Author>>().Validate(author).Errors).Field);
+    }
+
+    [Fact]
+    public void MutuallyRecursiveCycle_IsValid_ThrowsRatherThanAbortingTheProcess() {
+        var author = new Author { Name = "Le Guin" };
+        var book = new Book { Title = "The Dispossessed" };
+
+        author.Latest = book;
+        book.Writer = author;
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => new AuthorValidator().IsValid(author));
+
+        Assert.Contains("cycle", exception.Message);
+    }
 }

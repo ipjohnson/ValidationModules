@@ -77,3 +77,19 @@ public sealed record Payment {
     [EnumDefined] public PaymentMethod? Fallback { get; init; }
 }
 
+
+/// <summary>
+/// A cycle through two types rather than one. Invisible to an identity test and identical to the
+/// container: <c>AuthorValidator</c> asking for <c>IValidatorFor&lt;Book&gt;</c> and
+/// <c>BookValidator</c> asking for <c>IValidatorFor&lt;Author&gt;</c> is still a circular
+/// dependency, and still stops the application from starting.
+/// </summary>
+public sealed class Author {
+    [Required] public string? Name { get; set; }
+    [ValidateNested] public Book? Latest { get; set; }
+}
+
+public sealed class Book {
+    [Required] public string? Title { get; set; }
+    [ValidateNested] public Author? Writer { get; set; }
+}

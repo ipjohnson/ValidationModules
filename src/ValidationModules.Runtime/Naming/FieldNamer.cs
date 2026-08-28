@@ -28,6 +28,16 @@ public abstract class FieldNamer : IValidationFieldNamer {
 /// <c>PostalCode</c> becomes <c>postalCode</c>. The default, because it matches what a JSON API
 /// puts on the wire.
 /// </summary>
+/// <remarks>
+/// Deliberately <c>JsonNamingPolicy.CamelCase</c>'s algorithm rather than a lowercased first
+/// character. The two agree on <c>PostalCode</c> and part company on a leading acronym: a property
+/// named <c>SKU</c> serializes as <c>sku</c> and used to be reported as <c>sKU</c>, so the error
+/// named a field that was not in the payload the caller sent and no client could match it. The
+/// whole leading uppercase run goes down, except a final capital that begins the next word -
+/// <c>IPAddress</c> is <c>ipAddress</c>, not <c>ipaddress</c>. Reimplemented rather than called
+/// because the runtime does not reference System.Text.Json, and pinned to the serializer by a test
+/// that asserts against it directly.
+/// </remarks>
 public sealed class CamelCaseFieldNamer : FieldNamer {
 
     /// <summary>The shared instance. Stateless.</summary>
@@ -41,7 +51,30 @@ public sealed class CamelCaseFieldNamer : FieldNamer {
             return clrPropertyName;
         }
 
-        return string.Concat(char.ToLowerInvariant(clrPropertyName[0]).ToString(), clrPropertyName.Substring(1));
+        return string.Create(clrPropertyName.Length, clrPropertyName, static (destination, source) => {
+            source.AsSpan().CopyTo(destination);
+
+            for (var i = 0; i < destination.Length; i++) {
+                // A second character that is already lowercase means the first was a word on its
+                // own, and it has been dealt with.
+                if (i == 1 && !char.IsUpper(destination[i])) {
+                    break;
+                }
+
+                var hasNext = i + 1 < destination.Length;
+
+                // The run has ended: this capital starts the next word and keeps its case.
+                if (i > 0 && hasNext && !char.IsUpper(destination[i + 1])) {
+                    if (destination[i + 1] == ' ') {
+                        destination[i] = char.ToLowerInvariant(destination[i]);
+                    }
+
+                    break;
+                }
+
+                destination[i] = char.ToLowerInvariant(destination[i]);
+            }
+        });
     }
 }
 
