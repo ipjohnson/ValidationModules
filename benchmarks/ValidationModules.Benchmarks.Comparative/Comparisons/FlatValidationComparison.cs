@@ -20,6 +20,14 @@ namespace ValidationModules.Benchmarks.Comparative.Comparisons;
 /// <c>ValidatorConstructionComparison</c> shows what that state costs to build, and §10.2 of the
 /// implementation plan records a real framework that was paying it per request.
 /// </para>
+/// <para>
+/// <b>Every cross-engine row does the same work: a full pass that materializes a result.</b>
+/// The generated boolean fast path - <c>IsValid</c>, which returns at the first failure and
+/// builds nothing - is measured as its own labelled row and never against FluentValidation's
+/// <c>Validate</c>, because FluentValidation has no boolean-only entry point to pair it with.
+/// This class briefly drifted into exactly that pairing when the fast path was generated
+/// (2026-08-26) under benchmarks written before it existed; the labelled row is the fix.
+/// </para>
 /// </remarks>
 [MemoryDiagnoser]
 [BenchmarkCategory(ComparativeCategories.Flat)]
@@ -72,35 +80,38 @@ public class FlatValidationComparison {
     }
 
     // ---- Clean payload: the path production traffic actually takes ------------------------------
+    // Both engines run the full pass and materialize their result object - like for like.
 
     [Benchmark(Baseline = true, Description = "ValidationModules - clean")]
-    public bool Vm_Clean() => CustomerValidatorShared.IsValid(_valid);
+    public ValidationResult Vm_Clean() => CustomerValidatorShared.Validate(_valid);
 
     [Benchmark(Description = "FluentValidation - clean")]
-    public bool Fv_Clean() => CustomerFluentValidator.Instance.Validate(_valid).IsValid;
+    public FluentValidation.Results.ValidationResult Fv_Clean() =>
+        CustomerFluentValidator.Instance.Validate(_valid);
 
     [Benchmark(Description = "DataAnnotations - clean")]
     public bool Da_Clean() => DataAnnotationsEngine.TryValidate(CheckedAnnotations(_validAnnotated), _annotationResults);
 
-    // ---- Failing payload: every rule violated ---------------------------------------------------
+    // ---- Failing payload: every rule violated, every error reported -----------------------------
 
     [Benchmark(Description = "ValidationModules - 5 failures")]
-    public bool Vm_Failing() => CustomerValidatorShared.IsValid(_invalid);
+    public ValidationResult Vm_Failing() => CustomerValidatorShared.Validate(_invalid);
 
     [Benchmark(Description = "FluentValidation - 5 failures")]
-    public bool Fv_Failing() => CustomerFluentValidator.Instance.Validate(_invalid).IsValid;
+    public FluentValidation.Results.ValidationResult Fv_Failing() =>
+        CustomerFluentValidator.Instance.Validate(_invalid);
 
     [Benchmark(Description = "DataAnnotations - 5 failures")]
     public bool Da_Failing() => DataAnnotationsEngine.TryValidate(CheckedAnnotations(_invalidAnnotated), _annotationResults);
 
-    // ---- Clean payload, with each engine's errors materialized -----------------------------------
+    // ---- Shapes with no cross-engine equivalent, measured alone ---------------------------------
 
     /// <summary>
     /// The pooled-collector shape, which has no equivalent in either competitor: the caller owns the
     /// buffer, so a clean pass allocates nothing at all. This is what a generated request filter
-    /// emits, and the gap against the two below is most of why the library exists.
+    /// emits, and the gap against the rows above is most of why the library exists.
     /// </summary>
-    [Benchmark(Description = "ValidationModules - clean, pooled collector")]
+    [Benchmark(Description = "ValidationModules - clean, pooled collector (no FV/DA equivalent)")]
     public bool Vm_Clean_Pooled() {
         _pooled.Reset();
 
@@ -109,10 +120,12 @@ public class FlatValidationComparison {
         return !_pooled.HasErrors;
     }
 
-    [Benchmark(Description = "ValidationModules - clean, materialized result")]
-    public ValidationResult Vm_Clean_Result() => CustomerValidatorShared.Validate(_valid);
-
-    [Benchmark(Description = "FluentValidation - clean, materialized result")]
-    public FluentValidation.Results.ValidationResult Fv_Clean_Result() =>
-        CustomerFluentValidator.Instance.Validate(_valid);
+    /// <summary>
+    /// The generated boolean fast path: straight-line tests that return at the first failure and
+    /// build no path, message or error record. Not compared to FluentValidation because it has no
+    /// boolean-only API - pairing this against its <c>Validate</c> would measure two different
+    /// amounts of work.
+    /// </summary>
+    [Benchmark(Description = "ValidationModules - clean, boolean fast path (no FV/DA equivalent)")]
+    public bool Vm_Clean_Bool() => CustomerValidatorShared.IsValid(_valid);
 }

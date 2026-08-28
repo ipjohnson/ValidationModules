@@ -122,6 +122,13 @@ Four further choices, all of which cut against this library:
 - **FluentValidation resolves through a scope, because that is what its own registration
   extension asks for.** The scope is part of what a request pays and is included rather than
   factored out.
+- **Cross-engine rows always materialize a result on both sides.** The generated boolean fast
+  path — `IsValid`, which returns at the first failure and builds nothing — is measured as its
+  own row, labelled *no FV/DA equivalent*, and never against FluentValidation's `Validate`:
+  FluentValidation has no boolean-only API, so that pairing would compare two different amounts
+  of work. The suite drifted into exactly that pairing for ten days when the fast path was
+  generated (2026-08-26) under benchmarks written before it existed; an audit caught it before
+  any number produced that way was published, and the labelled rows are the fix.
 
 ### The DataAnnotations caveat
 

@@ -4,7 +4,8 @@ Generated from `BenchmarkDotNet.Artifacts/results` by the run described below. C
 that a number quoted on the website has a source someone else can check, and so that the next
 run can be diffed against this one rather than against memory.
 
-**Run date:** 2026-08-16 · **Commit:** see git history for this file
+**Run date:** flat, nested and collection tables 2026-08-28; DI and construction tables
+2026-08-16 · **Commit:** see git history for this file
 
 ```
 BenchmarkDotNet v0.15.4, macOS 26.5.2 (25F84) [Darwin 25.5.0]
@@ -14,7 +15,15 @@ Apple M3 Pro, 1 CPU, 11 logical and 11 physical cores
   jit    : .NET 10.0.10 (10.0.10, 10.0.1026.32716), Arm64 RyuJIT armv8.0-a
 ```
 
-Method, and the four choices made in FluentValidation's favour: [`benchmarks/README.md`](README.md).
+Method, and the choices made in FluentValidation's favour: [`benchmarks/README.md`](README.md).
+
+**Re-measured 2026-08-28 after re-pairing the rows.** The generated boolean fast path
+(`IsValid`, 2026-08-26) post-dated this suite, which silently turned the cross-engine rows into
+short-circuit-versus-full-report comparisons on the next run. Every cross-engine row now runs the
+full pass and materializes a result on both sides; `IsValid` and the pooled collector are
+measured as their own rows, labelled *no FV/DA equivalent*. The ValidationModules result rows
+also moved from 40 B to 56 B between runs — the runtime's result object changed shape in the
+interim — and the ratios below are computed against that, not against the older figure.
 
 ## Reading these
 
@@ -36,53 +45,57 @@ would be needed to publish a number for them.
 
 `Job=jit Runtime=.NET 10.0 IterationCount=15 IterationTime=100ms WarmupCount=5 Categories=flat`
 
-| Method                                           | Mean        | Error     | StdDev    | Ratio | RatioSD | Gen0   | Allocated | Alloc Ratio |
-|------------------------------------------------- |------------:|----------:|----------:|------:|--------:|-------:|----------:|------------:|
-| &#39;ValidationModules - clean&#39;                      |    26.36 ns |  1.022 ns |  0.956 ns |  1.00 |    0.05 | 0.0047 |      40 B |        1.00 |
-| &#39;FluentValidation - clean&#39;                       |   196.03 ns |  4.108 ns |  3.843 ns |  7.45 |    0.29 | 0.0779 |     664 B |       16.60 |
-| &#39;DataAnnotations - clean&#39;                        | 1,030.71 ns | 10.986 ns | 10.276 ns | 39.15 |    1.37 | 0.3166 |    2696 B |       67.40 |
-| &#39;ValidationModules - 5 failures&#39;                 |   158.85 ns |  2.822 ns |  2.640 ns |  6.03 |    0.23 | 0.1118 |     936 B |       23.40 |
-| &#39;FluentValidation - 5 failures&#39;                  | 2,537.56 ns | 58.037 ns | 54.287 ns | 96.38 |    3.81 | 1.1621 |    9904 B |      247.60 |
-| &#39;DataAnnotations - 5 failures&#39;                   | 1,699.73 ns | 23.724 ns | 22.191 ns | 64.55 |    2.32 | 0.4880 |    4136 B |      103.40 |
-| &#39;ValidationModules - clean, pooled collector&#39;    |    23.40 ns |  0.189 ns |  0.177 ns |  0.89 |    0.03 |      - |         - |        0.00 |
-| &#39;ValidationModules - clean, materialized result&#39; |    28.33 ns |  0.269 ns |  0.251 ns |  1.08 |    0.04 | 0.0045 |      40 B |        1.00 |
-| &#39;FluentValidation - clean, materialized result&#39;  |   192.26 ns |  3.215 ns |  3.007 ns |  7.30 |    0.27 | 0.0785 |     664 B |       16.60 |
+| Method                                                               | Mean        | Error     | StdDev    | Ratio | RatioSD | Gen0   | Allocated | Alloc Ratio |
+|--------------------------------------------------------------------- |------------:|----------:|----------:|------:|--------:|-------:|----------:|------------:|
+| 'ValidationModules - clean'                                          |    31.92 ns |  0.284 ns |  0.266 ns |  1.00 |    0.01 | 0.0065 |      56 B |        1.00 |
+| 'FluentValidation - clean'                                           |   178.93 ns |  0.770 ns |  0.721 ns |  5.61 |    0.05 | 0.0791 |     664 B |       11.86 |
+| 'DataAnnotations - clean'                                            |   957.56 ns | 15.816 ns | 14.020 ns | 30.00 |    0.49 | 0.3129 |    2696 B |       48.14 |
+| 'ValidationModules - 5 failures'                                     |   169.32 ns |  2.093 ns |  1.957 ns |  5.31 |    0.07 | 0.1265 |    1072 B |       19.14 |
+| 'FluentValidation - 5 failures'                                      | 2,404.30 ns | 11.018 ns | 10.306 ns | 75.33 |    0.68 | 1.1676 |    9904 B |      176.86 |
+| 'DataAnnotations - 5 failures'                                       | 1,582.04 ns |  9.297 ns |  7.763 ns | 49.57 |    0.46 | 0.4890 |    4136 B |       73.86 |
+| 'ValidationModules - clean, pooled collector (no FV/DA equivalent)'  |    29.79 ns |  0.265 ns |  0.248 ns |  0.93 |    0.01 |      - |         - |        0.00 |
+| 'ValidationModules - clean, boolean fast path (no FV/DA equivalent)' |    23.48 ns |  0.282 ns |  0.235 ns |  0.74 |    0.01 |      - |         - |        0.00 |
 
 ## Nested validation
 
 `Job=jit Runtime=.NET 10.0 IterationCount=15 IterationTime=100ms WarmupCount=5 Categories=nested`
 
-| Method                                                       | Mean       | Error    | StdDev   | Ratio | RatioSD | Gen0   | Allocated | Alloc Ratio |
-|------------------------------------------------------------- |-----------:|---------:|---------:|------:|--------:|-------:|----------:|------------:|
-| &#39;ValidationModules - clean&#39;                                  |   104.2 ns |  1.24 ns |  1.10 ns |  1.00 |    0.01 | 0.0042 |      40 B |        1.00 |
-| &#39;FluentValidation - clean&#39;                                   | 1,803.7 ns | 19.39 ns | 16.19 ns | 17.32 |    0.23 | 0.6073 |    5224 B |      130.60 |
-| &#39;DataAnnotations - clean, TOP LEVEL ONLY (does not descend)&#39; |   588.0 ns |  7.58 ns |  7.09 ns |  5.65 |    0.09 | 0.2159 |    1824 B |       45.60 |
-| &#39;ValidationModules - clean, pooled collector&#39;                |   119.3 ns |  4.48 ns |  4.19 ns |  1.15 |    0.04 |      - |         - |        0.00 |
-| &#39;ValidationModules - 1 failure per level&#39;                    |   263.4 ns |  4.47 ns |  3.96 ns |  2.53 |    0.04 | 0.1241 |    1056 B |       26.40 |
-| &#39;FluentValidation - 1 failure per level&#39;                     | 3,973.5 ns | 73.60 ns | 65.24 ns | 38.15 |    0.72 | 1.5303 |   13080 B |      327.00 |
-| &#39;DataAnnotations - failing, TOP LEVEL ONLY (finds 1 of 4)&#39;   |   706.3 ns | 10.53 ns |  9.85 ns |  6.78 |    0.11 | 0.2352 |    2016 B |       50.40 |
+| Method                                                               | Mean        | Error     | StdDev    | Ratio | RatioSD | Gen0   | Allocated | Alloc Ratio |
+|--------------------------------------------------------------------- |------------:|----------:|----------:|------:|--------:|-------:|----------:|------------:|
+| 'ValidationModules - clean'                                          |   110.32 ns |  1.836 ns |  1.717 ns |  1.00 |    0.02 | 0.0057 |      56 B |        1.00 |
+| 'FluentValidation - clean'                                           | 1,817.27 ns | 68.309 ns | 63.896 ns | 16.48 |    0.61 | 0.6245 |    5224 B |       93.29 |
+| 'DataAnnotations - clean, TOP LEVEL ONLY (does not descend)'         |   580.60 ns | 20.724 ns | 19.386 ns |  5.26 |    0.19 | 0.2153 |    1824 B |       32.57 |
+| 'ValidationModules - clean, pooled collector (no FV/DA equivalent)'  |   102.71 ns |  3.785 ns |  3.541 ns |  0.93 |    0.03 |      - |         - |        0.00 |
+| 'ValidationModules - clean, boolean fast path (no FV/DA equivalent)' |    84.69 ns |  1.454 ns |  1.289 ns |  0.77 |    0.02 |      - |         - |        0.00 |
+| 'ValidationModules - 1 failure per level'                            |   266.05 ns |  2.983 ns |  2.790 ns |  2.41 |    0.04 | 0.1258 |    1072 B |       19.14 |
+| 'FluentValidation - 1 failure per level'                             | 3,688.30 ns | 33.852 ns | 31.665 ns | 33.44 |    0.58 | 1.5553 |   13080 B |      233.57 |
+| 'DataAnnotations - failing, TOP LEVEL ONLY (finds 1 of 4)'           |   665.24 ns |  3.814 ns |  2.978 ns |  6.03 |    0.09 | 0.2394 |    2016 B |       36.00 |
 
 ## Collection scaling
 
 `Job=jit Runtime=.NET 10.0 IterationCount=15 IterationTime=100ms WarmupCount=5 Categories=collection`
 
-| Method                                 | Elements | Mean          | Error        | StdDev       | Ratio | RatioSD | Gen0    | Allocated | Alloc Ratio |
-|--------------------------------------- |--------- |--------------:|-------------:|-------------:|------:|--------:|--------:|----------:|------------:|
-| ValidationModules                      | 1        |      18.39 ns |     0.208 ns |     0.185 ns |  1.00 |    0.01 |  0.0047 |      40 B |        1.00 |
-| &#39;ValidationModules - pooled collector&#39; | 1        |      16.13 ns |     0.190 ns |     0.177 ns |  0.88 |    0.01 |       - |         - |        0.00 |
-| FluentValidation                       | 1        |     432.59 ns |     8.500 ns |     7.950 ns | 23.53 |    0.48 |  0.2198 |    1856 B |       46.40 |
-|                                        |          |               |              |              |       |         |         |           |             |
-| ValidationModules                      | 10       |     128.73 ns |     1.782 ns |     1.580 ns |  1.00 |    0.02 |  0.0040 |      40 B |        1.00 |
-| &#39;ValidationModules - pooled collector&#39; | 10       |     128.60 ns |     1.648 ns |     1.542 ns |  1.00 |    0.02 |       - |         - |        0.00 |
-| FluentValidation                       | 10       |   2,667.94 ns |    40.305 ns |    37.701 ns | 20.73 |    0.37 |  1.0711 |    9056 B |      226.40 |
-|                                        |          |               |              |              |       |         |         |           |             |
-| ValidationModules                      | 100      |   1,274.39 ns |     4.955 ns |     4.138 ns |  1.00 |    0.00 |       - |      40 B |        1.00 |
-| &#39;ValidationModules - pooled collector&#39; | 100      |   1,232.77 ns |    14.549 ns |    13.609 ns |  0.97 |    0.01 |       - |         - |        0.00 |
-| FluentValidation                       | 100      |  25,644.46 ns |   504.530 ns |   471.938 ns | 20.12 |    0.36 |  9.6154 |   81776 B |    2,044.40 |
-|                                        |          |               |              |              |       |         |         |           |             |
-| ValidationModules                      | 1000     |  11,970.31 ns |    84.952 ns |    70.939 ns |  1.00 |    0.01 |       - |      40 B |        1.00 |
-| &#39;ValidationModules - pooled collector&#39; | 1000     |  12,473.42 ns |   203.520 ns |   190.373 ns |  1.04 |    0.02 |       - |         - |        0.00 |
-| FluentValidation                       | 1000     | 250,119.47 ns | 6,895.225 ns | 5,757.825 ns | 20.90 |    0.48 | 93.7500 |  845776 B |   21,144.40 |
+| Method                                                     | Elements | Mean          | Error        | StdDev       | Ratio | RatioSD | Gen0    | Allocated | Alloc Ratio |
+|----------------------------------------------------------- |--------- |--------------:|-------------:|-------------:|------:|--------:|--------:|----------:|------------:|
+| ValidationModules                                          | 1        |      25.88 ns |     0.288 ns |     0.225 ns |  1.00 |    0.01 |  0.0065 |      56 B |        1.00 |
+| FluentValidation                                           | 1        |     416.74 ns |     5.065 ns |     4.490 ns | 16.10 |    0.21 |  0.2181 |    1856 B |       33.14 |
+| 'ValidationModules - pooled collector (no FV equivalent)'  | 1        |      19.47 ns |     0.405 ns |     0.339 ns |  0.75 |    0.01 |       - |         - |        0.00 |
+| 'ValidationModules - boolean fast path (no FV equivalent)' | 1        |      12.42 ns |     0.104 ns |     0.092 ns |  0.48 |    0.01 |       - |         - |        0.00 |
+|                                                            |          |               |              |              |       |         |         |           |             |
+| ValidationModules                                          | 10       |     171.42 ns |     1.778 ns |     1.663 ns |  1.00 |    0.01 |  0.0051 |      56 B |        1.00 |
+| FluentValidation                                           | 10       |   2,480.17 ns |    18.168 ns |    16.106 ns | 14.47 |    0.16 |  1.0673 |    9056 B |      161.71 |
+| 'ValidationModules - pooled collector (no FV equivalent)'  | 10       |     156.83 ns |     0.823 ns |     0.769 ns |  0.91 |    0.01 |       - |         - |        0.00 |
+| 'ValidationModules - boolean fast path (no FV equivalent)' | 10       |     116.49 ns |     0.315 ns |     0.279 ns |  0.68 |    0.01 |       - |         - |        0.00 |
+|                                                            |          |               |              |              |       |         |         |           |             |
+| ValidationModules                                          | 100      |   1,568.10 ns |     7.158 ns |     6.346 ns |  1.00 |    0.01 |       - |      56 B |        1.00 |
+| FluentValidation                                           | 100      |  23,962.75 ns |   174.609 ns |   163.329 ns | 15.28 |    0.12 |  9.6525 |   81776 B |    1,460.29 |
+| 'ValidationModules - pooled collector (no FV equivalent)'  | 100      |   1,339.43 ns |     5.056 ns |     3.947 ns |  0.85 |    0.00 |       - |         - |        0.00 |
+| 'ValidationModules - boolean fast path (no FV equivalent)' | 100      |   1,087.22 ns |     3.405 ns |     3.185 ns |  0.69 |    0.00 |       - |         - |        0.00 |
+|                                                            |          |               |              |              |       |         |         |           |             |
+| ValidationModules                                          | 1000     |  15,378.69 ns |    79.699 ns |    74.550 ns |  1.00 |    0.01 |       - |      56 B |        1.00 |
+| FluentValidation                                           | 1000     | 236,261.66 ns | 2,313.763 ns | 2,164.296 ns | 15.36 |    0.15 | 98.2143 |  845776 B |   15,103.14 |
+| 'ValidationModules - pooled collector (no FV equivalent)'  | 1000     |  14,946.94 ns |   295.846 ns |   230.977 ns |  0.97 |    0.02 |       - |         - |        0.00 |
+| 'ValidationModules - boolean fast path (no FV equivalent)' | 1000     |  10,801.08 ns |    25.153 ns |    23.529 ns |  0.70 |    0.00 |       - |         - |        0.00 |
 
 ## Dependency injection
 
