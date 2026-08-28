@@ -48,10 +48,17 @@ public class CollectionScalingComparison {
         _ = BasketFluentValidator.Instance.Validate(_basket);
     }
 
-    [Benchmark(Baseline = true, Description = "ValidationModules")]
-    public bool Vm() => BasketValidatorShared.IsValid(_basket);
+    // Both engines run the full pass and materialize their result object - like for like. The
+    // boolean fast path is measured alone below, because FluentValidation has no boolean-only API.
 
-    [Benchmark(Description = "ValidationModules - pooled collector")]
+    [Benchmark(Baseline = true, Description = "ValidationModules")]
+    public ValidationResult Vm() => BasketValidatorShared.Validate(_basket);
+
+    [Benchmark(Description = "FluentValidation")]
+    public FluentValidation.Results.ValidationResult Fv() =>
+        BasketFluentValidator.Instance.Validate(_basket);
+
+    [Benchmark(Description = "ValidationModules - pooled collector (no FV equivalent)")]
     public bool Vm_Pooled() {
         _pooled.Reset();
 
@@ -60,6 +67,6 @@ public class CollectionScalingComparison {
         return !_pooled.HasErrors;
     }
 
-    [Benchmark(Description = "FluentValidation")]
-    public bool Fv() => BasketFluentValidator.Instance.Validate(_basket).IsValid;
+    [Benchmark(Description = "ValidationModules - boolean fast path (no FV equivalent)")]
+    public bool Vm_Bool() => BasketValidatorShared.IsValid(_basket);
 }

@@ -70,16 +70,20 @@ public class NestedValidationComparison {
         _ = DataAnnotationsEngine.TryValidate(_validAnnotated, _annotationResults);
     }
 
+    // Both engines run the full pass and materialize their result object - like for like. The
+    // boolean fast path is measured alone below, because FluentValidation has no boolean-only API.
+
     [Benchmark(Baseline = true, Description = "ValidationModules - clean")]
-    public bool Vm_Clean() => OrderValidatorShared.IsValid(_valid);
+    public ValidationResult Vm_Clean() => OrderValidatorShared.Validate(_valid);
 
     [Benchmark(Description = "FluentValidation - clean")]
-    public bool Fv_Clean() => OrderFluentValidator.Instance.Validate(_valid).IsValid;
+    public FluentValidation.Results.ValidationResult Fv_Clean() =>
+        OrderFluentValidator.Instance.Validate(_valid);
 
     [Benchmark(Description = "DataAnnotations - clean, TOP LEVEL ONLY (does not descend)")]
     public bool Da_Clean() => DataAnnotationsEngine.TryValidate(CheckedAnnotations(_validAnnotated), _annotationResults);
 
-    [Benchmark(Description = "ValidationModules - clean, pooled collector")]
+    [Benchmark(Description = "ValidationModules - clean, pooled collector (no FV/DA equivalent)")]
     public bool Vm_Clean_Pooled() {
         _pooled.Reset();
 
@@ -87,6 +91,9 @@ public class NestedValidationComparison {
 
         return !_pooled.HasErrors;
     }
+
+    [Benchmark(Description = "ValidationModules - clean, boolean fast path (no FV/DA equivalent)")]
+    public bool Vm_Clean_Bool() => OrderValidatorShared.IsValid(_valid);
 
     /// <summary>
     /// One failure at each level, so all three engines - the two that descend, anyway - have to
