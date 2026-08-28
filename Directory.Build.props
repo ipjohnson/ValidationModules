@@ -53,6 +53,7 @@
         <RepositoryType>git</RepositoryType>
         <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
         <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageIcon>icon.png</PackageIcon>
         <PackageTags>validation;source-generator;roslyn;aot;native-aot;trimming;servicecollection</PackageTags>
         <PackageReleaseNotes>https://github.com/ipjohnson/ValidationModules/releases</PackageReleaseNotes>
     </PropertyGroup>

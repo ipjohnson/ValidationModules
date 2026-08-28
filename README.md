@@ -1,3 +1,12 @@
+<!-- Absolute URLs so the image survives being packed into the NuGet README; GitHub swaps the
+     variant with its theme. -->
+<picture>
+  <source media="(prefers-color-scheme: dark)"
+          srcset="https://raw.githubusercontent.com/ipjohnson/ValidationModules/main/assets/logo-dark.svg">
+  <img src="https://raw.githubusercontent.com/ipjohnson/ValidationModules/main/assets/logo.svg"
+       alt="An attribute bracket pair holding a check" width="88" height="88">
+</picture>
+
 # ValidationModules
 
 Compile-time validation for .NET. Rules are declared as attributes and flattened into straight-line

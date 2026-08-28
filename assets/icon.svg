@@ -1,6 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img"
      aria-label="ValidationModules: an attribute bracket pair holding a check">
-  <!-- The tiled form of the mark; assets/icon.svg at the repo root is the source of truth. -->
+  <!--
+    The tiled form of the mark, for surfaces that need their own ground: the NuGet package icon
+    and the favicon. The tile is the brand ink, so the icon reads the same on light and dark
+    hosts; the bare mark (logo.svg / logo-dark.svg) is for surfaces that supply a ground.
+  -->
   <rect width="64" height="64" rx="12" fill="#16211B"/>
   <g fill="none" stroke-linecap="round" stroke-linejoin="round" transform="translate(8 8) scale(2)">
     <path d="M8 4.5H4.7V19.5H8" stroke="#EAF2ED" stroke-width="2.1"/>
