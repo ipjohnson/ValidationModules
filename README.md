@@ -1,13 +1,6 @@
 <!-- Absolute URLs so the image survives being packed into the NuGet README; GitHub swaps the
-     variant with its theme. -->
-<picture>
-  <source media="(prefers-color-scheme: dark)"
-          srcset="https://raw.githubusercontent.com/ipjohnson/ValidationModules/main/assets/logo-dark.svg">
-  <img src="https://raw.githubusercontent.com/ipjohnson/ValidationModules/main/assets/logo.svg"
-       alt="An attribute bracket pair holding a module" width="88" height="88">
-</picture>
-
-# ValidationModules
+     variant with its theme. The logo rides inside the heading so mark and name share a line. -->
+# <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ipjohnson/ValidationModules/main/assets/logo-dark.svg"><img src="https://raw.githubusercontent.com/ipjohnson/ValidationModules/main/assets/logo.svg" alt="" width="42" height="42" align="absmiddle"></picture> ValidationModules
 
 Compile-time validation for .NET. Attributes on your models become straight-line C# at build time,
 so a validation pass is a handful of `if` statements: **~32 ns and 56 B** for a clean pass over a
