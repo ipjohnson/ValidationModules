@@ -33,6 +33,8 @@ export default defineConfig({
   ],
 
   themeConfig: {
+    // The bare mark; the navbar supplies the ground, so each theme gets its own ink.
+    logo: { light: '/logo.svg', dark: '/logo-dark.svg' },
     siteTitle: 'ValidationModules',
 
     nav: [

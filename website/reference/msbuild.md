@@ -1,6 +1,6 @@
 # MSBuild properties
 
-Six properties govern the generator. All go in a `<PropertyGroup>` in the project that holds your
+These properties govern the generator. All go in a `<PropertyGroup>` in the project that holds your
 models — not in the application, unless that is the same project.
 
 ```xml
@@ -10,6 +10,7 @@ models — not in the application, unless that is the same project.
     <ValidationModules_DataAnnotations>Ignore</ValidationModules_DataAnnotations>
     <ValidationModules_PatternPolicy>Error</ValidationModules_PatternPolicy>
     <ValidationModules_FailFast>Disabled</ValidationModules_FailFast>
+    <GeneratedCodeStyle>KAndR</GeneratedCodeStyle>
 </PropertyGroup>
 ```
 
@@ -120,6 +121,20 @@ build.
 Set `Error` explicitly in a library that ships to AOT consumers.
 
 See [Patterns and regex](/guide/patterns).
+
+## `GeneratedCodeStyle` {#generatedcodestyle}
+
+Which brace style generated files are written in.
+
+| Value | Effect |
+|---|---|
+| *(unset)* / anything unrecognised | Allman — braces on their own lines |
+| `KAndR` / `K&R` (case-insensitive) | the opening brace joins the declaration line |
+
+The name carries no `ValidationModules_` prefix on purpose: the property is shared across source
+generators — DependencyModules reads the same one — so one csproj line styles all of your
+generated code. It only moves braces; the code the generator emits is otherwise identical, which
+is also why an unrecognised value falls back to Allman silently instead of raising a diagnostic.
 
 ## Properties read but not owned
 

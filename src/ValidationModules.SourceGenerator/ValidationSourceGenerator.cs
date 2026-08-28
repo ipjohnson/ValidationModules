@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using CSharpAuthor;
 using Microsoft.CodeAnalysis;
 using ValidationModules.SourceGenerator.Impl;
 using ValidationModules.SourceGenerator.Impl.Emitters;
@@ -43,11 +44,12 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             provider.GlobalOptions.TryGetValue("build_property.ValidationModules_DataAnnotations", out var dataAnnotations);
             provider.GlobalOptions.TryGetValue("build_property.ValidationModules_PatternPolicy", out var patternPolicy);
             provider.GlobalOptions.TryGetValue("build_property.ValidationModules_FailFast", out var failFast);
+            provider.GlobalOptions.TryGetValue(Impl.Emitters.GeneratedCodeStyle.BuildProperty, out var codeStyle);
             provider.GlobalOptions.TryGetValue("build_property.PublishAot", out var publishAot);
             provider.GlobalOptions.TryGetValue("build_property.IsAotCompatible", out var aotCompatible);
 
             return new GeneratorOptions(registration, naming, dataAnnotations, patternPolicy, failFast,
-                IsTrue(publishAot) || IsTrue(aotCompatible));
+                IsTrue(publishAot) || IsTrue(aotCompatible), codeStyle);
         });
 
         // Probed once. An IncrementalValueProvider<bool> so downstream stages invalidate only when
@@ -91,10 +93,12 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             .Combine(options)
             .Select(static (input, _) => BuildModels(input.Left.Left, input.Left.Right, input.Right));
 
-        var failFastOption = options.Select(static (option, _) => option.EmitFailFast);
+        // The two settings the validator stage needs, projected together so the stage caches on
+        // the pair rather than re-running on unrelated option edits.
+        var emitterSettings = options.Select(static (option, _) => (option.EmitFailFast, option.CodeStyle));
 
-        context.RegisterSourceOutput(models.Combine(failFastOption), static (production, input) => {
-            var (results, emitFailFast) = (input.Left, input.Right);
+        context.RegisterSourceOutput(models.Combine(emitterSettings), static (production, input) => {
+            var (results, (emitFailFast, codeStyle)) = (input.Left, input.Right);
 
             // An IDynamicValidator adapter is only worth emitting for an assembly that actually
             // dispatches dynamically. Registering one per validated type roots every adapter, so
@@ -121,7 +125,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
                 if (result.Model is { } model) {
                     production.AddSource(
                         HintNameFor(model),
-                        new ValidatorEmitter().Emit(model, dispatchesDynamically, emitFailFast, nesting));
+                        new ValidatorEmitter().Emit(model, dispatchesDynamically, emitFailFast, nesting, codeStyle));
                 }
 
                 if (result.Predicates is { } predicates) {
@@ -162,7 +166,8 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
                 model.Properties.Any(property => property.Polymorphism == PolymorphismMode.Runtime));
 
             if (new RegistrationEmitter().Emit(
-                    ordered, mode, ns, generatorOptions.Naming, withAdapters) is { } source) {
+                    ordered, mode, ns, generatorOptions.Naming, withAdapters,
+                    generatorOptions.CodeStyle) is { } source) {
                 production.AddSource("GeneratedValidatorRegistration.g.cs", source);
             }
         });
@@ -231,7 +236,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
 
             list.Add(declaration);
 
-            if (new PredicateEmitter().Emit(declaration) is { } predicates) {
+            if (new PredicateEmitter().Emit(declaration, options.CodeStyle) is { } predicates) {
                 results.Add(new ModelResult(
                     null,
                     ImmutableArray<Diagnostic>.Empty,
@@ -399,7 +404,13 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
 
     private sealed record GeneratorOptions(
         string? Registration, string? Naming, string? DataAnnotations, string? PatternPolicySetting,
-        string? FailFastSetting, bool IsAotFacing) {
+        string? FailFastSetting, bool IsAotFacing, string? CodeStyleSetting = null) {
+
+        /// <summary>
+        /// The brace style generated files are written in, from the shared
+        /// <c>GeneratedCodeStyle</c> property. Allman unless the project says otherwise.
+        /// </summary>
+        public BraceStyle CodeStyle => Impl.Emitters.GeneratedCodeStyle.Parse(CodeStyleSetting);
 
         /// <summary>
         /// Auto gates on the project's own AOT posture rather than on PublishAot alone. PublishAot

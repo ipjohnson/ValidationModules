@@ -52,11 +52,14 @@ internal static class EmitterOutput {
         file.AddLeadingTrait(new NullableEnableComponent(true));
     }
 
-    /// <summary>Serializes a file with this package's output settings.</summary>
-    public static string Render(CSharpFileDefinition file) {
+    /// <summary>
+    /// Serializes a file with this package's output settings. The brace style is the caller's,
+    /// resolved from the <c>GeneratedCodeStyle</c> build property; everything else is fixed.
+    /// </summary>
+    public static string Render(CSharpFileDefinition file, BraceStyle style) {
         var context = new OutputContext(new OutputContextOptions {
             TypeOutputMode = TypeOutputMode.Global,
-            BraceStyle = BraceStyle.KAndR,
+            BraceStyle = style,
 
             // Registrations and Regex constructions read better as the one line a person would
             // have written; nothing this package emits carries an argument list long enough to

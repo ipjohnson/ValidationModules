@@ -17,6 +17,8 @@
         <CompilerVisibleProperty Include="PublishAot"/>
         <CompilerVisibleProperty Include="IsAotCompatible"/>
         <CompilerVisibleProperty Include="ExcludeGeneratedCodeFromCoverage"/>
+        <!-- Unprefixed on purpose: shared across source generators, so one csproj line styles all of them. -->
+        <CompilerVisibleProperty Include="GeneratedCodeStyle"/>
     </ItemGroup>
 
     <ItemGroup Condition="'$(PackageValidationModulesIncludeSource)' == 'true'">

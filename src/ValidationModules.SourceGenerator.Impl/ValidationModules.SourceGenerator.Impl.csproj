@@ -21,8 +21,8 @@
             NU5104 used to be suppressed here. This is the one package that cannot hide a
             dependency behind PrivateAssets - a source-only package's dependencies are the point of
             it - and DependencyModules.SourceGenerator.Impl published only as 1.0.0-rc*, which
-            NU5104 rejects under a stable version. DependencyModules 1.0.0 has shipped and the
-            reference below is pinned to it, so the suppression is deleted rather than carried: if a
+            NU5104 rejects under a stable version. DependencyModules ships stable now and the
+            reference below is pinned to a stable release, so the suppression is deleted rather than carried: if a
             prerelease DM dependency ever returns, that should be a warning again rather than
             something a stale NoWarn hides.
         -->
@@ -77,7 +77,7 @@
     <!-- These deps intentionally flow: consumers compile the shipped sources into their own generator. -->
     <ItemGroup>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.10.0"/>
-        <PackageReference Include="DependencyModules.SourceGenerator.Impl" Version="1.0.0"/>
+        <PackageReference Include="DependencyModules.SourceGenerator.Impl" Version="1.2.0"/>
         <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

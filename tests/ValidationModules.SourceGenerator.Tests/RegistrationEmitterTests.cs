@@ -102,7 +102,7 @@ public class RegistrationEmitterTests {
     public void TheExtensionLandsInTheDependencyInjectionNamespace() {
         // Where a composition root has already imported, so the method turns up on IntelliSense
         // after `services.Add` without a second using.
-        Assert.Contains("namespace Microsoft.Extensions.DependencyInjection {", Registration());
+        Assert.Contains("namespace Microsoft.Extensions.DependencyInjection", Registration());
     }
 
     [Fact]

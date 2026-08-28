@@ -78,7 +78,7 @@ public class PolymorphicDescentTests {
     public void CompileTime_EmitsATypeSwitchOverTheSubtypes() {
         var body = Run("[ValidateNested(Polymorphism.CompileTime)]").Checkout;
 
-        Assert.Contains("switch (nestedPayment) {", body);
+        Assert.Contains("switch (nestedPayment)", body);
         Assert.Contains("case global::Sample.Premium __typed:", body);
         Assert.Contains("case global::Sample.Card __typed:", body);
         Assert.Contains("case global::Sample.Bank __typed:", body);
@@ -150,8 +150,8 @@ public class PolymorphicDescentTests {
         var body = Run("[ValidateNested(Polymorphism.CompileTime)]").Checkout;
         var isValid = body[body.IndexOf("public bool IsValid", StringComparison.Ordinal)..];
 
-        Assert.Contains("switch (nestedPayment) {", isValid);
-        Assert.Contains("if (!(_dispatch0 ??= new()).IsValid(__typed)) {", isValid);
+        Assert.Contains("switch (nestedPayment)", isValid);
+        Assert.Contains("if (!(_dispatch0 ??= new()).IsValid(__typed))", isValid);
         Assert.Contains("return false;", isValid);
     }
 
@@ -227,8 +227,8 @@ public class PolymorphicDescentTests {
         var body = result.Sources.Single(s => s.Key.Contains("CheckoutValidator")).Value;
 
         Assert.Contains("var c0 = value.IsPaid;", body);
-        Assert.Contains("if (c0 && (value.Payment is { } nestedPayment)) {", body);
-        Assert.Contains("switch (nestedPayment) {", body);
+        Assert.Contains("if (c0 && (value.Payment is { } nestedPayment))", body);
+        Assert.Contains("switch (nestedPayment)", body);
     }
 
     /// <summary>
@@ -254,7 +254,7 @@ public class PolymorphicDescentTests {
 
         var body = result.Sources.Single(s => s.Key.Contains("CheckoutValidator")).Value;
 
-        Assert.Contains("switch (element) {", body);
+        Assert.Contains("switch (element)", body);
         Assert.Contains("case global::Sample.Premium __typed:", body);
     }
 
@@ -296,7 +296,7 @@ public class PolymorphicDescentTests {
 
         Assert.Contains(
             "if (global::ValidationModules.DynamicValidation.Validate(ref ctxPayment, nestedPayment, " +
-            "\"payment\", \"Checkout\").ShouldStop) {",
+            "\"payment\", \"Checkout\").ShouldStop)",
             body);
         Assert.Contains("return global::ValidationModules.ValidationFlow.Stop;", body);
 

@@ -452,8 +452,9 @@ call. The second is the one Hardened hits first, and it produces the better erro
 Recorded 2026-08-28 as `StringBuilder` debt; converted the same day, on CSharpAuthor
 `2.0.0-preview1004`. All three emitters — `ValidatorEmitter`, `RegistrationEmitter`,
 `PredicateEmitter` — author their output through `CSharpFileDefinition` + `OutputContext`, with
-the shared settings (`TypeOutputMode.Global`, K&R braces, one-line invokes, `\n` endings) and the
-IR-string → `ITypeDefinition` bridge in `Emitters/EmitterOutput.cs`.
+the shared settings (`TypeOutputMode.Global`, one-line invokes, `\n` endings; braces are Allman
+unless the shared `GeneratedCodeStyle` build property says `KAndR`) and the IR-string →
+`ITypeDefinition` bridge in `Emitters/EmitterOutput.cs`.
 
 The conversion was never a formatting exercise, and the output deliberately does **not** match the
 old text. The old emitters leaned on `using ValidationModules;` and short names, so a consumer

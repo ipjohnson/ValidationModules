@@ -78,7 +78,8 @@ public sealed class RegistrationEmitter {
         RegistrationMode mode,
         string assemblyNamespace,
         string? fieldNamer = null,
-        bool withDynamicAdapters = false) {
+        bool withDynamicAdapters = false,
+        BraceStyle style = BraceStyle.Allman) {
 
         if (models.Count == 0 || mode == RegistrationMode.None) {
             return null;
@@ -103,7 +104,7 @@ public sealed class RegistrationEmitter {
             EmitModule(consumer, assemblyNamespace);
         }
 
-        return Render(file);
+        return Render(file, style);
     }
 
     private static void EmitExtension(
