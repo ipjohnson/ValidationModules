@@ -4,7 +4,7 @@
   <source media="(prefers-color-scheme: dark)"
           srcset="https://raw.githubusercontent.com/ipjohnson/ValidationModules/main/assets/logo-dark.svg">
   <img src="https://raw.githubusercontent.com/ipjohnson/ValidationModules/main/assets/logo.svg"
-       alt="An attribute bracket pair holding a check" width="88" height="88">
+       alt="An attribute bracket pair holding a module" width="88" height="88">
 </picture>
 
 # ValidationModules

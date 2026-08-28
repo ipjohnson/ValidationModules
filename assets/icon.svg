@@ -1,14 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img"
-     aria-label="ValidationModules: an attribute bracket pair holding a check">
+     aria-label="ValidationModules: an attribute bracket pair holding a module">
   <!--
     The tiled form of the mark, for surfaces that need their own ground: the NuGet package icon
     and the favicon. The tile is the brand ink, so the icon reads the same on light and dark
     hosts; the bare mark (logo.svg / logo-dark.svg) is for surfaces that supply a ground.
   -->
   <rect width="64" height="64" rx="12" fill="#16211B"/>
-  <g fill="none" stroke-linecap="round" stroke-linejoin="round" transform="translate(8 8) scale(2)">
-    <path d="M8 4.5H4.7V19.5H8" stroke="#EAF2ED" stroke-width="2.1"/>
-    <path d="M16 4.5H19.3V19.5H16" stroke="#EAF2ED" stroke-width="2.1"/>
-    <path d="M8.6 12.6 11.3 15.4 15.6 9.2" stroke="#2FCF9C" stroke-width="2.4"/>
+  <g transform="translate(8 8) scale(2)">
+    <g fill="none" stroke="#EAF2ED" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M8 4.5H4.7V19.5H8"/>
+      <path d="M16 4.5H19.3V19.5H16"/>
+    </g>
+    <rect x="9.1" y="9.1" width="5.8" height="5.8" rx="1.3" fill="#2FCF9C"/>
   </g>
 </svg>
