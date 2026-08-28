@@ -65,50 +65,29 @@ foreach (var error in result.Errors) {
 
 ## Performance
 
-Measured against FluentValidation and DataAnnotations on the same models, same rules
-(BenchmarkDotNet, Apple M3 Pro, .NET 10). Every cross-engine row does the same work — a full
-pass that materializes a result on both sides:
-
 | Scenario | ValidationModules | FluentValidation | DataAnnotations |
 |---|---|---|---|
-| Clean pass, flat model | **32 ns · 56 B** | 179 ns · 664 B | 958 ns · 2,696 B |
-| Clean pass, boolean fast path¹ | **23 ns · 0 B** | — | — |
-| Five failures, flat model | **169 ns · 1,072 B** | 2,404 ns · 9,904 B | 1,582 ns · 4,136 B |
-| Clean pass, nested graph | **110 ns · 56 B** | 1,817 ns · 5,224 B | 581 ns · top level only² |
-| 1,000-element collection | **15.4 µs · 56 B** | 236 µs · 826 KB | — |
+| Clean pass, flat model | 32 ns · 56 B | 179 ns · 664 B | 958 ns · 2,696 B |
+| Clean pass, boolean fast path¹ | 23 ns · 0 B | — | — |
+| Five failures, flat model | 169 ns · 1,072 B | 2,404 ns · 9,904 B | 1,582 ns · 4,136 B |
+| Clean pass, nested graph | 110 ns · 56 B | 1,817 ns · 5,224 B | 581 ns · top level only² |
+| 1,000-element collection | 15.4 µs · 56 B | 236 µs · 826 KB | — |
 
-The 56 B is the result object handed back; the pass itself allocates nothing, at every nesting
-depth and every collection size — that is why the collection row stays at 56 B while
-FluentValidation's allocation grows to 15,000× as much. *A pass that finds nothing allocates
-nothing* is enforced as a benchmark: `Push_NoAdd` must read `0 B` or the change is a regression.
+Measured with BenchmarkDotNet (Apple M3 Pro, .NET 10.0.10, FluentValidation 12.1.1) on identical
+models carrying the same rules; every cross-engine row is a full pass that materializes a result
+on both sides. Allocations are counted, not timed, and are exact — the 56 B is the result object,
+and the pass itself allocates nothing at any nesting depth or collection size. ¹The generated
+`IsValid` returns at the first failure and builds no report; it is measured on its own row
+because neither competitor has a boolean-only API to pair it with. ²DataAnnotations does not
+descend into nested objects or collection elements. A parity check refuses to run the suite
+unless all three engines find the same failure counts, FluentValidation runs with
+`CascadeMode.Stop` and the same `[GeneratedRegex]` instances as the generated code, and every
+validator is constructed once in setup. Full tables with error terms are in
+[`benchmarks/RESULTS.md`](benchmarks/RESULTS.md), the methodology in
+[`benchmarks/README.md`](benchmarks/README.md); reproduce with
+`./scripts/benchmark.sh --comparative`.
 
-¹ The generated `IsValid` — straight-line tests that return at the first failure and build no
-report. Measured on its own row because neither competitor has a boolean-only API to pair it
-with. The pooled-collector shape a generated request filter uses is also 0 B; see the full
-tables.
-² DataAnnotations does not descend into nested objects; its number covers the top level only.
-
-Allocations are exact (counted, not timed). Timings reproduce within a few percent; full tables
-with error bars are committed in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md), and
-[`benchmarks/README.md`](benchmarks/README.md) records the four choices the suite deliberately
-makes in FluentValidation's favour. Reproduce with:
-
-```bash
-./scripts/benchmark.sh                     # this library alone, JIT and Native AOT
-./scripts/benchmark.sh --comparative       # against FluentValidation and DataAnnotations
-```
-
-### Where the speed comes from
-
-- **The work happens at build time.** Rules are read once by a source generator and flattened
-  into plain `if` statements over your properties — a file you can open under `obj/`. Nothing
-  builds a rule graph, walks one per call, or reflects. Ever.
-- **Validators are singletons with nothing to construct.** No per-request construction, no
-  scope to resolve through, no first-use compilation to warm up.
-- **You pay on failure, not on success.** Messages are composed only when a rule fails; a
-  passing request never touches the string heap to find out that it passed.
-
-### Native AOT
+## Native AOT
 
 `ValidationModules.Runtime` carries `IsAotCompatible` and escalates the trim/AOT warnings
 (`IL2026`, `IL3050`, and friends) to errors, so the compiler enforces the constraint.
