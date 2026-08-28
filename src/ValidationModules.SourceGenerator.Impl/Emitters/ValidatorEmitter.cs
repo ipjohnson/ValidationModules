@@ -131,11 +131,17 @@ public sealed class ValidatorEmitter {
     /// evaluates every rule regardless of the collector's
     /// <c>ValidationStopMode</c> - the answer is the same, the work is not.
     /// </param>
+    /// <param name="style">
+    /// Where the braces go, from the shared <c>GeneratedCodeStyle</c> build property. Purely a
+    /// serialization decision - the tree this builds is style-independent, which is what makes the
+    /// property safe to flip on a whim.
+    /// </param>
     public string Emit(
         ValidatedTypeModel model,
         bool withDynamicAdapter = false,
         bool failFast = true,
-        NestingGraph? nesting = null) {
+        NestingGraph? nesting = null,
+        BraceStyle style = BraceStyle.Allman) {
 
         var graph = nesting ?? NestingGraph.Empty;
         var patterns = new List<(string Field, ConstraintModel Constraint)>();
@@ -283,7 +289,7 @@ public sealed class ValidatorEmitter {
             EmitDynamicAdapter(file, model);
         }
 
-        return Render(file);
+        return Render(file, style);
     }
 
     /// <summary>

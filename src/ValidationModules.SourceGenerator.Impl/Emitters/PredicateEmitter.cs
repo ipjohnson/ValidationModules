@@ -42,7 +42,7 @@ public sealed class PredicateEmitter {
     public static string ContainerFor(INamedTypeSymbol rulesClass) => $"{rulesClass.Name}_Rules";
 
     /// <summary>Emits the container, or null when the rules class declared no predicates.</summary>
-    public string? Emit(RulesDeclaration declaration) {
+    public string? Emit(RulesDeclaration declaration, BraceStyle style = BraceStyle.Allman) {
         if (declaration.Predicates.Count == 0) {
             return null;
         }
@@ -88,7 +88,7 @@ public sealed class PredicateEmitter {
             method.Return(predicate.Body);
         }
 
-        return Render(file);
+        return Render(file, style);
     }
 
     /// <summary>

@@ -45,7 +45,7 @@ public class FailFastGateTests {
     public void Unset_EmitsTheReturns() {
         var body = Emit();
 
-        Assert.Contains("if (string.IsNullOrWhiteSpace(value.Name) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\").ShouldStop) {", body);
+        Assert.Contains("if (string.IsNullOrWhiteSpace(value.Name) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\").ShouldStop)", body);
         Assert.Contains("return global::ValidationModules.ValidationFlow.Stop;", body);
     }
 
@@ -57,7 +57,7 @@ public class FailFastGateTests {
     public void TurnedOff_DiscardsTheAnswerInstead(string setting) {
         var body = Emit(("ValidationModules_FailFast", setting));
 
-        Assert.Contains("if (string.IsNullOrWhiteSpace(value.Name)) {", body);
+        Assert.Contains("if (string.IsNullOrWhiteSpace(value.Name))", body);
         Assert.Contains("global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\");", body);
         Assert.DoesNotContain("ShouldStop", body);
         Assert.DoesNotContain("return global::ValidationModules.ValidationFlow.Stop;", body);

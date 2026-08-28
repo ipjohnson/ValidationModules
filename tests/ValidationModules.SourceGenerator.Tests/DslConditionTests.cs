@@ -72,7 +72,7 @@ public class DslConditionTests {
                     rules.For(x => x.Reason).Length(2, 500).When(x => x.IsExpedited);
             """);
 
-        Assert.Contains("if (missingReason && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"reason\").ShouldStop) {", body);
+        Assert.Contains("if (missingReason && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"reason\").ShouldStop)", body);
         Assert.Contains("c0 && !missingReason && (", body);
     }
 
@@ -106,8 +106,8 @@ public class DslConditionTests {
             """);
 
         Assert.Contains("var c0 = global::Sample.ClaimRules_Rules.Cond0(value);", body);
-        Assert.Contains("if (c0 && (string.IsNullOrWhiteSpace(value.Plate)) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"plate\").ShouldStop) {", body);
-        Assert.Contains("if (c0 && (string.IsNullOrWhiteSpace(value.Reference)) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"reference\").ShouldStop) {", body);
+        Assert.Contains("if (c0 && (string.IsNullOrWhiteSpace(value.Plate)) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"plate\").ShouldStop)", body);
+        Assert.Contains("if (c0 && (string.IsNullOrWhiteSpace(value.Reference)) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"reference\").ShouldStop)", body);
     }
 
     /// <summary>
@@ -190,7 +190,7 @@ public class DslConditionTests {
                     rules.When(x => x.IsAuto, () => rules.Required(x => x.Plate));
             """);
 
-        Assert.Contains("if (c0 && (string.IsNullOrWhiteSpace(value.Plate)) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"plate\").ShouldStop) {", body);
+        Assert.Contains("if (c0 && (string.IsNullOrWhiteSpace(value.Plate)) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"plate\").ShouldStop)", body);
     }
 
     // -- lifting -------------------------------------------------------------------------------
