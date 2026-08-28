@@ -101,7 +101,13 @@ public sealed class ValidatorEmitter {
     /// per type: the adapters are only useful when something dispatches dynamically, and rooting
     /// them all would charge every consumer for a mode most never use.
     /// </param>
-    public string Emit(ValidatedTypeModel model, bool withDynamicAdapter = false) {
+    /// <param name="failFast">
+    /// Whether a rule that fails returns rather than falling through to the next one. On by
+    /// default; <c>ValidationModules_FailFast</c> turns it off, and a validator emitted without it
+    /// evaluates every rule regardless of the collector's
+    /// <c>ValidationStopMode</c> - the answer is the same, the work is not.
+    /// </param>
+    public string Emit(ValidatedTypeModel model, bool withDynamicAdapter = false, bool failFast = true) {
         var builder = new StringBuilder();
         var patterns = new List<(string Field, ConstraintModel Constraint)>();
 
@@ -135,14 +141,17 @@ public sealed class ValidatorEmitter {
         var fastConditions = new ConditionScope();
 
         foreach (var property in model.Properties) {
-            EmitProperty(body, fast, property, model, patterns, bodyConditions, fastConditions, dispatchers);
+            EmitProperty(
+                body, fast, property, model, patterns, bodyConditions, fastConditions, dispatchers, failFast);
         }
 
         // Applied rules own no property, so they run once every property has been walked. Ordering
         // them last rather than at their declaration point is §19.7: they are the only rules whose
         // position in the body says nothing about which field they concern.
         foreach (var rule in model.AppliedRules) {
-            body.AppendLine($"        if ({rule}(ref ctx, value).ShouldStop) return ValidationFlow.Stop;");
+            body.AppendLine(failFast
+                ? $"        if ({rule}(ref ctx, value).ShouldStop) return ValidationFlow.Stop;"
+                : $"        {rule}(ref ctx, value);");
         }
 
         foreach (var (field, constraint) in patterns) {
@@ -447,7 +456,8 @@ public sealed class ValidatorEmitter {
         List<(string, ConstraintModel)> patterns,
         ConditionScope conditions,
         ConditionScope fastConditions,
-        List<string> dispatchers) {
+        List<string> dispatchers,
+        bool failFast) {
 
         var access = $"value.{Escape(property.PropertyName)}";
         var field = Quote(property.FieldName);
@@ -494,8 +504,7 @@ public sealed class ValidatorEmitter {
                 guard = missing;
             }
 
-            builder.AppendLine(
-                $"        if ({Conjoin(guard, Report(field, required, "ReportRequired", ""))}) return ValidationFlow.Stop;");
+            builder.AppendLine(Rule(guard, Report(field, required, "ReportRequired", ""), failFast));
             fast.AppendLine(
                 $"        if ({Guarded(fastConditions, required.Condition, RequiredTest(access, property, required))}) return false;");
         }
@@ -527,9 +536,8 @@ public sealed class ValidatorEmitter {
 
             var reportedField = constraint.Field is { } renamed ? Quote(renamed) : field;
 
-            builder.AppendLine(
-                $"        if ({Conjoin(string.Join(" && ", conjuncts), ReportFor(reportedField, constraint, property))})" +
-                " return ValidationFlow.Stop;");
+            builder.AppendLine(Rule(
+                string.Join(" && ", conjuncts), ReportFor(reportedField, constraint, property), failFast));
 
             // No guard on the boolean path: a failed Required has already returned, so anything
             // still running has a value to test.
@@ -542,7 +550,8 @@ public sealed class ValidatorEmitter {
             }
         }
 
-        EmitNested(builder, fast, property, access, conditions, fastConditions, dispatchers, model.TypeName);
+        EmitNested(
+            builder, fast, property, access, conditions, fastConditions, dispatchers, model.TypeName, failFast);
     }
 
     /// <summary>
@@ -571,17 +580,21 @@ public sealed class ValidatorEmitter {
         string validators,
         string owner,
         List<string> dispatchers,
-        bool boolean) {
+        bool boolean,
+        bool failFast = true) {
 
         if (property.Polymorphism == PolymorphismMode.Runtime) {
             // The boolean path is not emitted for a type that dispatches dynamically, so this only
             // ever runs for Validate. Guarded rather than assumed, so that a future caller cannot
             // quietly get a services-less lookup.
             if (!boolean) {
-                builder.AppendLine(
-                    $"{indent}if (global::ValidationModules.DynamicValidation.Validate(" +
-                    $"ref {context}, {value}, {Quote(property.FieldName)}, {Quote(owner)})" +
-                    ".ShouldStop) return ValidationFlow.Stop;");
+                var dynamicCall =
+                    $"global::ValidationModules.DynamicValidation.Validate(" +
+                    $"ref {context}, {value}, {Quote(property.FieldName)}, {Quote(owner)})";
+
+                builder.AppendLine(failFast
+                    ? $"{indent}if ({dynamicCall}.ShouldStop) return ValidationFlow.Stop;"
+                    : $"{indent}{dynamicCall};");
             }
 
             return;
@@ -590,7 +603,7 @@ public sealed class ValidatorEmitter {
         var subtypes = property.Subtypes;
 
         if (property.Polymorphism != PolymorphismMode.CompileTime || subtypes.Count == 0) {
-            EmitDeclaredCall(builder, property, value, context, indent, validators, boolean);
+            EmitDeclaredCall(builder, property, value, context, indent, validators, boolean, failFast);
             return;
         }
 
@@ -606,14 +619,16 @@ public sealed class ValidatorEmitter {
 
             var call = boolean
                 ? $"if (!(_dispatch{index} ??= new()).IsValid(__typed)) return false;"
-                : $"if ((_dispatch{index} ??= new()).Validate(ref {context}, __typed).ShouldStop) " +
-                  "return ValidationFlow.Stop;";
+                : failFast
+                    ? $"if ((_dispatch{index} ??= new()).Validate(ref {context}, __typed).ShouldStop) " +
+                      "return ValidationFlow.Stop;"
+                    : $"(_dispatch{index} ??= new()).Validate(ref {context}, __typed);";
 
             builder.AppendLine($"{indent}    case {subtype.QualifiedTypeName} __typed: {call} break;");
         }
 
         builder.AppendLine($"{indent}    default: {{");
-        EmitDeclaredCall(builder, property, value, context, indent + "        ", validators, boolean);
+        EmitDeclaredCall(builder, property, value, context, indent + "        ", validators, boolean, failFast);
         builder.AppendLine($"{indent}        break;");
         builder.AppendLine($"{indent}    }}");
         builder.AppendLine($"{indent}}}");
@@ -627,14 +642,17 @@ public sealed class ValidatorEmitter {
         string context,
         string indent,
         string validators,
-        bool boolean) {
+        bool boolean,
+        bool failFast = true) {
 
         builder.AppendLine($"{indent}var {validators} = {Accessor(property)};");
         builder.AppendLine($"{indent}for (var vi = 0; vi < {validators}.Length; vi++) {{");
 
         builder.AppendLine(boolean
             ? $"{indent}    if (!{validators}[vi].IsValid({value})) return false;"
-            : $"{indent}    if ({validators}[vi].Validate(ref {context}, {value}).ShouldStop) return ValidationFlow.Stop;");
+            : failFast
+                ? $"{indent}    if ({validators}[vi].Validate(ref {context}, {value}).ShouldStop) return ValidationFlow.Stop;"
+                : $"{indent}    {validators}[vi].Validate(ref {context}, {value});");
 
         builder.AppendLine($"{indent}}}");
     }
@@ -647,7 +665,8 @@ public sealed class ValidatorEmitter {
         ConditionScope conditions,
         ConditionScope fastConditions,
         List<string> dispatchers,
-        string owner) {
+        string owner,
+        bool failFast) {
         if (property.ElementValidatorName is null) {
             return;
         }
@@ -669,7 +688,7 @@ public sealed class ValidatorEmitter {
             builder.AppendLine($"            foreach (var pair in {entries}) {{");
             builder.AppendLine("                if (pair.Value is not null) {");
             builder.AppendLine($"                    var entryCtx = ctx.PushKey({Quote(property.FieldName)}, pair.Key?.ToString() ?? \"\");");
-            EmitDescent(builder, property, "pair.Value", "entryCtx", "                    ", "entryValidators", owner, dispatchers, boolean: false);
+            EmitDescent(builder, property, "pair.Value", "entryCtx", "                    ", "entryValidators", owner, dispatchers, boolean: false, failFast);
             builder.AppendLine("                }");
             builder.AppendLine("            }");
             builder.AppendLine("        }");
@@ -689,7 +708,7 @@ public sealed class ValidatorEmitter {
             builder.AppendLine($"            var ctx{property.PropertyName} = ctx.Push({Quote(property.FieldName)});");
             EmitDescent(
                 builder, property, $"nested{property.PropertyName}", $"ctx{property.PropertyName}",
-                "            ", $"validators{property.PropertyName}", owner, dispatchers, boolean: false);
+                "            ", $"validators{property.PropertyName}", owner, dispatchers, boolean: false, failFast);
             builder.AppendLine("        }");
 
             fast.AppendLine($"        if ({Enter(fastConditions, $"{access} is {{ }} nested{property.PropertyName}")}) {{");
@@ -717,7 +736,7 @@ public sealed class ValidatorEmitter {
 
         builder.AppendLine("                if (element is not null) {");
         builder.AppendLine($"                    var elementCtx = ctx.PushIndex({Quote(property.FieldName)}, {index});");
-        EmitDescent(builder, property, "element", "elementCtx", "                    ", "elementValidators", owner, dispatchers, boolean: false);
+        EmitDescent(builder, property, "element", "elementCtx", "                    ", "elementValidators", owner, dispatchers, boolean: false, failFast);
         builder.AppendLine("                }");
 
         if (!property.IsIndexable) {
@@ -874,6 +893,20 @@ public sealed class ValidatorEmitter {
                 return null;
         }
     }
+
+    /// <summary>
+    /// One rule: its test, its report, and - when the assembly emits fail-fast - the return that
+    /// makes a stop actually skip what follows.
+    /// </summary>
+    /// <remarks>
+    /// Without fail-fast the report is a statement whose answer is discarded, which is the shape
+    /// this emitted before <c>ValidationFlow</c> existed. The collector still stops recording, so
+    /// the two shapes answer alike under <c>StopOnFirstError</c>; only one of them stops working.
+    /// </remarks>
+    private static string Rule(string test, string report, bool failFast) =>
+        failFast
+            ? $"        if ({Conjoin(test, report)}) return ValidationFlow.Stop;"
+            : $"        if ({test}) {report};";
 
     /// <summary>
     /// Joins a rule's test to its report so the pair reads as one condition, and the report only

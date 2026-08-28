@@ -187,6 +187,61 @@ public class FailFastTests {
         Assert.True(Validator().ValidateFirst(order).IsValid);
     }
 
+    // -- a validator that cannot stop still gets the mode's answer --------------------------------
+
+    /// <summary>
+    /// The collector closes the pass at its first blocking failure, so the result does not depend on
+    /// whether the validator running it propagates the flow.
+    /// </summary>
+    /// <remarks>
+    /// This is what lets <c>ValidationModules_FailFast</c> be a size trade rather than a behaviour
+    /// change: an assembly emitted without the returns evaluates every rule, and still reports one
+    /// error. The same covers a hand-written rule that discards its flow, and an
+    /// <see cref="IAsyncValidatorFor{T}"/>, neither of which the emitter controls.
+    /// </remarks>
+    [Fact]
+    public void StopOnFirstError_HoldsForAValidatorThatIgnoresTheFlow() {
+        var collector = new ValidationErrorCollector { StopMode = ValidationStopMode.StopOnFirstError };
+
+        IgnoresTheFlow.Instance.ValidateInto(collector, new Order());
+
+        Assert.Equal("a", Assert.Single(collector.ToResult().Errors).Field);
+    }
+
+    [Fact]
+    public void CollectAll_ForTheSameValidator_ReportsAll() {
+        var collector = new ValidationErrorCollector();
+
+        IgnoresTheFlow.Instance.ValidateInto(collector, new Order());
+
+        Assert.Equal(3, collector.ToResult().Errors.Count);
+    }
+
+    /// <summary>A warning before the failure is kept; it is not what closes the pass.</summary>
+    [Fact]
+    public void StopOnFirstError_KeepsAWarningRecordedBeforeTheFailure() {
+        var collector = new ValidationErrorCollector { StopMode = ValidationStopMode.StopOnFirstError };
+        var context = new ValidationContext(collector);
+
+        context.Report("w", "advisory", "x", ValidationSeverity.Warning);
+        context.Report("e", "blocked", "x");
+        context.Report("z", "blocked", "dropped");
+
+        Assert.Equal(["w", "e"], collector.ToResult().Errors.Select(error => error.Field));
+    }
+
+    private sealed class IgnoresTheFlow : IValidatorFor<Order> {
+        public static readonly IgnoresTheFlow Instance = new();
+
+        public ValidationFlow Validate(ref ValidationContext context, Order value) {
+            context.Report("a", "blocked", "x");
+            context.Report("b", "blocked", "x");
+            context.Report("c", "blocked", "x");
+
+            return ValidationFlow.Continue;
+        }
+    }
+
     // -- ValidationFlow --------------------------------------------------------------------------
 
     [Fact]

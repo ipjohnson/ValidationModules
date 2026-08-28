@@ -42,10 +42,11 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             provider.GlobalOptions.TryGetValue("build_property.ValidationModules_FieldNaming", out var naming);
             provider.GlobalOptions.TryGetValue("build_property.ValidationModules_DataAnnotations", out var dataAnnotations);
             provider.GlobalOptions.TryGetValue("build_property.ValidationModules_PatternPolicy", out var patternPolicy);
+            provider.GlobalOptions.TryGetValue("build_property.ValidationModules_FailFast", out var failFast);
             provider.GlobalOptions.TryGetValue("build_property.PublishAot", out var publishAot);
             provider.GlobalOptions.TryGetValue("build_property.IsAotCompatible", out var aotCompatible);
 
-            return new GeneratorOptions(registration, naming, dataAnnotations, patternPolicy,
+            return new GeneratorOptions(registration, naming, dataAnnotations, patternPolicy, failFast,
                 IsTrue(publishAot) || IsTrue(aotCompatible));
         });
 
@@ -90,7 +91,11 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             .Combine(options)
             .Select(static (input, _) => BuildModels(input.Left.Left, input.Left.Right, input.Right));
 
-        context.RegisterSourceOutput(models, static (production, results) => {
+        var failFastOption = options.Select(static (option, _) => option.EmitFailFast);
+
+        context.RegisterSourceOutput(models.Combine(failFastOption), static (production, input) => {
+            var (results, emitFailFast) = (input.Left, input.Right);
+
             // An IDynamicValidator adapter is only worth emitting for an assembly that actually
             // dispatches dynamically. Registering one per validated type roots every adapter, so
             // ILC cannot trim them - which would charge every consumer for a mode most never use.
@@ -107,7 +112,8 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
 
                 if (result.Model is { } model) {
                     production.AddSource(
-                        HintNameFor(model), new ValidatorEmitter().Emit(model, dispatchesDynamically));
+                        HintNameFor(model),
+                        new ValidatorEmitter().Emit(model, dispatchesDynamically, emitFailFast));
                 }
 
                 if (result.Predicates is { } predicates) {
@@ -384,7 +390,8 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
     private static bool IsTrue(string? value) => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
 
     private sealed record GeneratorOptions(
-        string? Registration, string? Naming, string? DataAnnotations, string? PatternPolicySetting, bool IsAotFacing) {
+        string? Registration, string? Naming, string? DataAnnotations, string? PatternPolicySetting,
+        string? FailFastSetting, bool IsAotFacing) {
 
         /// <summary>
         /// Auto gates on the project's own AOT posture rather than on PublishAot alone. PublishAot
@@ -402,6 +409,32 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
 
         public bool CompileDataAnnotations =>
             !string.Equals(DataAnnotations, "Ignore", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Whether generated validators return at the first blocking failure, which is what makes
+        /// <c>ValidationStopMode.StopOnFirstError</c> skip work rather than only shorten its answer.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// On unless the project turns it off, because a validator that cannot stop makes the mode
+        /// a filter rather than an optimization - and a consumer who never sets the mode is the one
+        /// who would have to notice the difference, which is backwards.
+        /// </para>
+        /// <para>
+        /// Off costs nothing and loses nothing but the skipping: the collector still stops
+        /// recording, so <c>ValidateFirst</c> returns the same single error either way. Measured at
+        /// 54 bytes per report site on an osx-arm64 Native AOT publish - 27 KB across 500 sites,
+        /// 1.1% of that binary - which is the number to weigh when turning it off.
+        /// </para>
+        /// <para>
+        /// Both <c>Disabled</c> and <c>false</c> are accepted, case-insensitively. Taking only one
+        /// spelling would let the other pass silently, and silently paying for a feature you asked
+        /// to drop is the failure this property exists to avoid.
+        /// </para>
+        /// </remarks>
+        public bool EmitFailFast =>
+            !string.Equals(FailFastSetting, "Disabled", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(FailFastSetting, "false", StringComparison.OrdinalIgnoreCase);
 
         public Func<string, string> FieldNamer => Naming switch {
             "PascalCase" or "AsDeclared" => static name => name,

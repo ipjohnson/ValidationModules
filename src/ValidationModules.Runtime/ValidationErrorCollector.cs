@@ -223,6 +223,10 @@ public sealed class ValidationErrorCollector {
     /// second, path-keyed rule here would only ever fire when two positions rendered alike.
     /// </summary>
     internal ValidationFlow AddDirect(in ValidationError error) {
+        if (Finished) {
+            return ValidationFlow.Stop;
+        }
+
         Record(in error);
 
         return Flow(in error);
@@ -233,6 +237,10 @@ public sealed class ValidationErrorCollector {
     /// field name from another engine rather than walking a path.
     /// </summary>
     public ValidationFlow Add(in ValidationError error) {
+        if (Finished) {
+            return ValidationFlow.Stop;
+        }
+
         AddCore(in error);
 
         return Flow(in error);
@@ -317,6 +325,31 @@ public sealed class ValidationErrorCollector {
     }
 
     /// <summary>
+    /// Whether this pass has already answered what it was asked for and is closed to further
+    /// errors.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Only ever true under <see cref="ValidationStopMode.StopOnFirstError"/>, where it makes the
+    /// result independent of whether the validator running it can stop. A generated validator with
+    /// <c>ValidationModules_FailFast</c> turned off, a hand-written rule that discards its
+    /// <see cref="ValidationFlow"/>, an <see cref="IAsyncValidatorFor{T}"/> - all of them keep
+    /// going, and without this each would report a different number of errors for the same request.
+    /// The mode promises one error; this is what makes that true of every engine rather than of the
+    /// well-behaved ones.
+    /// </para>
+    /// <para>
+    /// It does not make skipping the work unnecessary. Dropping an error still evaluated the rule
+    /// that produced it, which is the difference the emitted return exists to remove.
+    /// </para>
+    /// <para>
+    /// The walk is bounded: once one blocking error is recorded nothing further is, so the chain it
+    /// scans is at most that one error and whatever warnings preceded it.
+    /// </para>
+    /// </remarks>
+    private bool Finished => StopMode == ValidationStopMode.StopOnFirstError && HasBlockingErrors;
+
+    /// <summary>
     /// Whether the pass that just recorded <paramref name="error"/> should stop.
     /// </summary>
     /// <remarks>
@@ -329,8 +362,9 @@ public sealed class ValidationErrorCollector {
     /// <para>
     /// A suppressed error reaches here having recorded nothing, and answers
     /// <see cref="ValidationFlow.Continue"/> on its severity alone. That is unreachable in
-    /// practice - suppression needs an earlier failed Required on the same field, which would
-    /// already have stopped the pass - and continuing is the harmless direction if it ever is.
+    /// practice - suppression needs an earlier failed Required on the same field, which
+    /// <see cref="Finished"/> would already have closed the pass on - and continuing is the
+    /// harmless direction if it ever is.
     /// </para>
     /// </remarks>
     private ValidationFlow Flow(in ValidationError error) =>

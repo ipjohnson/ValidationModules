@@ -221,8 +221,14 @@ run, which is why the default stays `CollectAll`: a form or a 400 body wants eve
 round trip.
 
 Warnings never stop a pass — a warning does not make a value invalid, so stopping on one would hide
-the error behind it. And a hand-written `rules.Apply` or `IAsyncValidatorFor<T>` that discards the
-flow simply keeps going, the same carve-out those two already have for `IsValid`.
+the error behind it.
+
+A hand-written `rules.Apply` or `IAsyncValidatorFor<T>` that discards the flow simply keeps going,
+the same carve-out those two already have for `IsValid`. It still reports one error: the collector
+closes the pass at its first blocking failure, so the *result* never depends on whether the code
+running it propagates the flow — only how much work it did to get there. That is also what makes
+[`ValidationModules_FailFast`](/reference/msbuild#validationmodules-failfast) a size trade rather
+than a behaviour switch.
 
 Composing the message at the call site rather than baking a literal is deliberate: the same message
 text would otherwise be duplicated into every generated validator, and the emitted binary would
