@@ -231,37 +231,26 @@ services.AddSingleton<IValidatorFor<Pet>, MyExtraPetValidator>();
 Both run, and both sets of errors appear. Registration is `Add`, not `TryAdd`, precisely so this
 works.
 
-## Rule classes without the generator
+## Rule classes register like everything else
 
-If a [rule class](/guide/rule-classes) has not been compiled by this generator — because it came
-from a referenced assembly, or another generator emitted it — register it to be *run* instead:
-
-```csharp
-services.AddDescribedValidator<Pet, PetRules>();
-```
-
-That constructs a `DescribedValidator<Pet>`, which calls `Describe` once in its constructor and
-walks the rules it recorded. Singleton, so `Describe` runs once per process.
-
-::: warning Do not do both for one type
-If this generator compiled the rules class it also registered the validator it emitted. Calling
-`AddDescribedValidator` as well registers a second, slower validator for the same type — and since
-`ValidationRunner<T>` merges every registered validator, every error appears twice. Within one
-compilation that is VM0074.
-:::
+A [rule class](/guide/rule-classes) is read by the generator and expanded into the same validator
+the attributes produce, so it needs nothing of its own here — `AddSampleValidators()` covers it.
+There is no runtime engine to register: a rules class in an assembly the generator never ran over
+declares nothing, which is why [fragments travel as source](/guide/rule-classes#fragments) and
+shared *types* ship their own generated validators for consumers to compose.
 
 ## The field namer
 
-The generated registration and `AddDescribedValidator` both register `IValidationFieldNamer` with
-`TryAdd`, so a namer you registered first survives:
+The generated registration registers `IValidationFieldNamer` with `TryAdd`, so a namer you
+registered first survives:
 
 ```csharp
 services.AddSingleton<IValidationFieldNamer>(SnakeCaseFieldNamer.Instance);
 services.AddSampleValidators();   // keeps yours
 ```
 
-This only affects engines that compute names at run time — the FluentValidation adapter and
-`DescribedValidator<T>`. Generated validators have their field names baked in as literals at build
-time, so changing the registered namer does **not** rename their errors. Use
+This only affects code that computes names at run time — principally the FluentValidation adapter.
+Generated validators have their field names baked in as literals at build time, so changing the
+registered namer does **not** rename their errors. Use
 [`ValidationModules_FieldNaming`](/reference/msbuild#validationmodules-fieldnaming) for those, and
-set both to the same policy if you use both engines.
+set both to the same policy if you use both.

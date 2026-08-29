@@ -13,7 +13,7 @@ drifting silently.
 
 | Code | Constant | Emitted by |
 |---|---|---|
-| `required` | `ValidationCodes.Required` | `[Required]`, `rules.Required(…)` |
+| `required` | `ValidationCodes.Required` | `[Required]`, `rules.Require(…)` |
 | `string_length` | `ValidationCodes.StringLength` | `[StringLength]`, `.Length(…)` |
 | `range` | `ValidationCodes.Range` | `[Range]`, `.Range(…)` |
 | `pattern` | `ValidationCodes.Pattern` | `[Pattern]`, `.Pattern(…)` |
@@ -79,7 +79,7 @@ public string? Name { get; init; }
 ```
 
 ```csharp
-rules.Ensure(x => x.Discount <= x.Price * 0.5m, code: "discount_too_large");
+rules.Ensure(x.Discount <= x.Price * 0.5m, code: "discount_too_large");
 ```
 
 That promotes one rule into your contract deliberately, which is the intended way to let a client

@@ -41,11 +41,12 @@ column before writing rules.
 
 ### The two that are not name changes
 
-**`Ensure` is not `Must`.** A predicate must be self-contained: it may reference its own parameter
-and nothing else, because it is flattened into straight-line C# at build time rather than held as a
-closure. `VM0072` enforces this. Do not reach for `.Must((model, value) => ...)` patterns that close
-over outside state — extract a named static, or use a hand-written `IValidatorFor<T>` composed
-through DI when the rule genuinely needs a service.
+**`Ensure` is not `Must`.** `rules.Ensure(x.Start < x.End)` takes a plain bool the generator
+captures syntactically and transcribes into the region — `Describe` is static, so `this` cannot
+exist, and a `private` member of the rules class is `VM0088` ("make it internal"; a private
+const bakes by value). Do not reach for `.Must((model, value) => ...)` patterns — write the
+condition inline, or use a hand-written `IValidatorFor<T>` composed through DI when the rule
+genuinely needs a service.
 
 **Messages carry no interpolated values.** `ValidationError` is `Field, Code, Message, Severity`.
 Build UI and i18n off the stable `Code`, not by parsing the message.
@@ -91,7 +92,9 @@ From `IMPLEMENTATION-PLAN.md` §2, repeated because they are easy to violate by 
   as of 2026-08-28** — `IMPLEMENTATION-PLAN.md` §7.6 records the conversion and the shared
   settings in `Emitters/EmitterOutput.cs`. Do not add a non-compliant fourth.
 - `[GeneratedRegex]`, never `new Regex(..., RegexOptions.Compiled)`.
-- Rule graphs are built once, never per validation call.
+- Nothing expensive is constructed per validation call — no graph building, no compiled-regex
+  construction, no hot-path allocation. (Rules-class computation runs per call by design;
+  `docs/active-rules-redesign.md`.)
 - The service interface is `IValidatorFor<T>`.
 - Registration is emitted per assembly; there is no cross-assembly scanning, deliberately.
 

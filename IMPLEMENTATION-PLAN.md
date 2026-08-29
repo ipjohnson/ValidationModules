@@ -68,7 +68,11 @@ These are settled. Do not reopen them, and do not ask.
   referenced from `ValidationModules.Runtime`.
 - **Regex uses `[GeneratedRegex]`**, never `new Regex(..., RegexOptions.Compiled)`. See §10.2 for
   what happens when you get this wrong.
-- **Rule graphs are built once**, never per validation call.
+- **Nothing expensive is constructed per validation call.** *(Reworded 2026-08-29 from "rule
+  graphs are built once": rules-class computation now runs per call by design — the redesign in
+  `docs/active-rules-redesign.md` — while the actual intent, per Hardened §10.2's per-request
+  `Regex`, is unchanged: no graph building, no compiled-regex construction, no allocation on the
+  hot path.)*
 - **The service interface is `IValidatorFor<T>`, not `IValidator<T>`.** FluentValidation owns
   `IValidator<T>` and the adapter's authors will have both namespaces imported.
 - **Profiles are opt-in.** A codebase that declares no profiles must never see the concept, and
@@ -680,11 +684,10 @@ What remains there is filter *attachment* off the spec path, not generation — 
 
 **Spec-file-to-profile mapping is not done**, and cannot be until Stage 3 exists.
 
-**Stage 6 — FluentValidation adapter and the conformance suite.** Not started. Note that §19's
-declarative rule classes add a second engine to conform — the suite gains an adapter running it
-against `DescribedValidator<T>` as well as against generated validators, and §19.9 records the one
-place the two legitimately diverge (field naming from `[JsonPropertyName]`, which the runtime cannot
-read without reflection).
+**Stage 6 — FluentValidation adapter and the conformance suite.** Not started. *(Amended
+2026-08-29: there is one engine to conform now — the 2026-08-29 redesign deleted
+`DescribedValidator<T>` and with it the second adapter and the §19.9 divergence; rules classes
+are read by the generator, never run.)*
 
 ---
 
@@ -693,11 +696,11 @@ read without reflection).
 1. ~~Overlay declaration syntax for types you do not own (§6, known gap). Needed by Stage 3 at the
    latest; prototype before committing to the attribute shape.~~ **Answered 2026-08-13 —
    API-SURFACE.md §19, declarative rule classes.** A class implementing `IValidationRulesFor<T>`
-   describes rules in a method body, which the generator reads at build time and
-   `DescribedValidator<T>` runs at runtime. It gets name and type checking from the C# compiler
-   rather than from `VM0030`/`VM0031`, does not restate the target's property list, expresses
-   cross-field rules that no attribute form can, and runs without this package's generator — which
-   the mirror-property overlay could not. §6.4 stays specced and unimplemented.
+   describes rules in a method body the generator reads at build time. It gets name and type
+   checking from the C# compiler rather than from `VM0030`/`VM0031`, does not restate the
+   target's property list, and expresses cross-field rules that no attribute form can. §6.4
+   stays specced and unimplemented. *(The runtime engine that also ran the body was deleted in
+   the 2026-08-29 redesign — rules classes are read, never run.)*
 2. Default profile — a distinct `Default` type, or the absence of a profile?
 3. Does `Severity` enter the error model, or is dropping it from FluentValidation documented?
 4. ~~Should validation failures throw, or write the response directly?~~ **Resolved 2026-08-12 —

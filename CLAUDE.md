@@ -47,7 +47,9 @@ From `IMPLEMENTATION-PLAN.md` §2, repeated because they are easy to violate by 
   as of 2026-08-28** — `IMPLEMENTATION-PLAN.md` §7.6 records the conversion and the shared
   settings in `Emitters/EmitterOutput.cs`. Do not add a non-compliant fourth.
 - `[GeneratedRegex]`, never `new Regex(..., RegexOptions.Compiled)`.
-- Rule graphs are built once, never per validation call.
+- Nothing expensive is constructed per validation call — no graph building, no compiled-regex
+  construction, no hot-path allocation. (Rules-class computation runs per call by design;
+  `docs/active-rules-redesign.md`.)
 - The service interface is `IValidatorFor<T>` — `IValidator<T>` belongs to FluentValidation.
 - Registration is emitted per assembly as `Add<Assembly>Validators()`; there is no cross-assembly
   scanning, deliberately.

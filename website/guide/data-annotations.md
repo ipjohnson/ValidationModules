@@ -132,8 +132,8 @@ same rule beside the model:
 
 ```csharp
 public sealed class CustomerRules : IValidationRulesFor<Customer> {
-    public void Describe(ValidationRules<Customer> rules) {
-        rules.Ensure(x => x.Age % 2 == 0, code: "even_age");
+    public static void Describe(ValidationRules<Customer> rules, Customer x) {
+        rules.Ensure(x.Age % 2 == 0, code: "even_age");
     }
 }
 ```
@@ -157,8 +157,8 @@ declaration form that *can* express a rule spanning two properties:
 
 ```csharp
 public sealed class CustomerRules : IValidationRulesFor<Customer> {
-    public void Describe(ValidationRules<Customer> rules) {
-        rules.Ensure(x => x.Password == x.Confirm, code: "password_mismatch");
+    public static void Describe(ValidationRules<Customer> rules, Customer x) {
+        rules.Ensure(x.Password == x.Confirm, code: "password_mismatch");
     }
 }
 ```

@@ -68,9 +68,11 @@ public interface IValidatorProvider {
 }
 ```
 
-`net8.0` is the floor and supports these, so this costs nothing. The interface was kept rather than
-deleted because it has a live, profile-free job: `DescribedValidator<T>` resolves nested validators
-through `GetValidator<T>()` on the generator-less path.
+`net8.0` is the floor and supports these, so this costs nothing. *(Amended 2026-08-29: the
+profile-free job this interface was kept for — `DescribedValidator<T>` resolving nested
+validators on the generator-less path — went away with the runtime engine, and
+`IValidatorProvider` was deleted with it. Whatever resolves per-profile registrations, if
+profiles return, gets designed fresh against the note above.)*
 
 ### VM0019 is retired, not reserved
 

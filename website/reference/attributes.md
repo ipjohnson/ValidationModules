@@ -55,8 +55,8 @@ discriminated-union case: the half of a model its discriminator says to ignore r
 ::: tip A condition is evaluated once per validation pass
 Not once per constraint that names it. Conditions may read live static state, so the two are
 different answers rather than two spellings of one. The generated validator hoists each distinct
-condition into a local above the method body; `DescribedValidator<T>` evaluates them into a
-stack-allocated span before testing any rule.
+condition into a local above the method body. (This is the attribute surface's rule — in a
+[rule class](/guide/rule-classes), conditions are `if` statements and evaluate where written.)
 
 One consequence worth knowing: hoisting means a condition runs even when a condition it is nested
 inside is false, so `x => x.Auto.Wheels > 0` under `x => x.Auto != null` will throw rather than
@@ -347,12 +347,12 @@ compiled.
 
 ```csharp
 public interface IValidationRulesFor<T> {
-    void Describe(ValidationRules<T> rules);
+    static abstract void Describe(ValidationRules<T> rules, T x);
 }
 ```
 
-Declares rules for `T` from outside it. Read at build time by the generator and runnable at run time
-by `DescribedValidator<T>`. See [Rule classes](/guide/rule-classes).
+Declares rules for `T` from outside it, in a body that is read at build time and never run. See
+[Rule classes](/guide/rule-classes).
 
 ### `IValidatorFor<T>` and `IAsyncValidatorFor<T>`
 

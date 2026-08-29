@@ -1,5 +1,11 @@
 # Conditional rules and polymorphism — merged execution plan
 
+> **Partially superseded 2026-08-29.** The DSL half of the conditions work — chained and block
+> `When`/`Unless`, condition lifting, VM0034/VM0076/VM0077 — was deleted with the rules-surface
+> redesign (`docs/active-rules-redesign.md`): control flow in a rules class is `if`/`else`,
+> evaluated where written. The *attribute* conditions (`When`/`Unless` members, VM0028/29/33)
+> and everything on the polymorphism side shipped and stand. Kept as the design record.
+
 Merges two independently-written specs that overlap in four files and collide on two diagnostic ids:
 
 - **“The Declared-Type Problem”** — inherited constraints, polymorphic descent, services on the collector.

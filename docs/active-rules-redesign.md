@@ -1,9 +1,31 @@
 # Active rule classes — redesign of the `IValidationRulesFor<T>` surface
 
-**Status:** agreed 2026-08-29, not yet implemented. Supersedes `API-SURFACE.md` §19 and the
-rules surface shipped in 1.0.0. Breaking, deliberately: no consumer outside this repo references
-the rules surface (verified against `~/Hardened` — zero hits), so the break is priced at a
-snapshot re-verify and a `RuntimeContract.Version` bump, and it only stays that cheap now.
+**Status:** agreed 2026-08-29; **implemented the same day** (RuntimeContract 7 → 8; the
+checklist below is done except the additive facet composition). Supersedes `API-SURFACE.md` §19
+as shipped in 1.0.0 — §19 is rewritten from this document. Breaking, deliberately: no consumer
+outside this repo referenced the rules surface (verified against `~/Hardened` — zero hits).
+
+**Deviations settled during implementation**, recorded here rather than silently:
+
+- **Suppression is chain-scoped** (§3, redrawn in place): the collector's path-keyed rule stays
+  on the adapter path — extending it to the context path re-introduced the bounded-path
+  sibling-aliasing regression `RequiredSuppressionTests` pins.
+- **Fragments expand into companion methods, not textual inlining** (§7): a fragment's body
+  resolves against its own file's usings — the predicate-lifting hazard — so each fragment (per
+  concrete target) becomes a method in `{DeclaringType}_Fragments` carrying the fragment file's
+  usings, called in place and shared by every caller. Ordering, the shared collector and baked
+  field names are unchanged; `return` inside a fragment ends the fragment.
+- **A type with regions falls back to the interface-default `IsValid`**: regions carry free-form
+  computation and runtime-severity reports a boolean path with no collector cannot always
+  project. The applied-rules trade, applied again; projection is a later optimization.
+- **Final diagnostic IDs are VM0085–VM0090** — the proposed 0076–0080 were all taken by shipped
+  features. §13's table is updated in place.
+- **The contract bump is 7 → 8** — 6 → 7 had been taken by `IConstraintFor<T>` before
+  implementation started.
+- **Bare `Require` on a non-nullable value type still fails in the compiler** (inference cannot
+  unwrap `Nullable`); the explicit-type-argument spelling is VM0090.
+- **Nested/Each inside a fragment is rejected for v1** — descents belong in the rules class
+  body, which keeps the injected-array plumbing region-local.
 
 **Origin:** designed across a working session on 2026-08-28/29. This document is self-contained;
 implement from it without that session's history. Where it contradicts `API-SURFACE.md` §19 or
@@ -77,7 +99,7 @@ internal sealed class OrderRules : IValidationRulesFor<Order> {
             rules.Require(x.CustomsCode).Pattern(Patterns.CustomsCode);
         }
 
-        var total = x.Lines.Sum(l => l.Price * l.Qty);        // computation: transcribed, runs per validation
+        var total = x.Lines?.Sum(l => l.Price * l.Qty) ?? 0m; // computation: transcribed, runs per validation - unguarded, so guard your own dereferences
         rules.Ensure(total <= x.CreditLimit);                 // message: "total <= creditLimit."
 
         if (!Luhn.Validates(x.AccountNumber)) {               // free-form logic + reporter tier (§9)
@@ -444,22 +466,26 @@ runtime.**
 
 ## 13. Diagnostics
 
-IDs above VM0075 are proposals — the implementer assigns final numbers and updates
-`AnalyzerReleases.Shipped/Unshipped.md` per plan §13.
+Final, as shipped; `AnalyzerReleases.Unshipped.md` tracks them.
 
 | ID | Severity | Meaning | Status |
 |---|---|---|---|
 | VM0070 | Error | statement in `Describe`/fragment is not transcribable (blacklist §5) | **repurposed** — was "not on the whitelist" |
 | VM0071 | Error | island value argument is not a member path on `x` and no `field:` given | kept |
-| VM0072 | — | — | **retired** (§11) |
+| VM0072 | — | — | **retired** (§11), with VM0034/VM0076/VM0077/VM0078 |
 | VM0073 | Info | free-form check matches a vocabulary constraint | still reserved, unimplemented |
 | VM0074 | — | — | **retired** (§11) |
-| VM0075 | Error | `Ensure` has no inferable anchor and no `field:` | kept |
-| VM0076 | Error | fragment target is compiled IL from a referenced assembly — fragments must be in this compilation (shared project / source package, §7) | **new** |
-| VM0077 | Error | fragment call cycle | **new** |
-| VM0078 | Error | `rules` (or a chain value) in a flow the generator cannot follow — stored, captured, delegate-converted, returned, or passed to an instance/virtual/non-void target | **new** — invariant 1 |
-| VM0079 | Error | transcribed code references a member inaccessible from the emission site (`private`, `file`-local) — "make it internal" | **new** — invariant 2 |
-| VM0080 | Error | island call inside a loop, lambda, or local function | **new** |
+| VM0075 | Error | `Ensure` has no inferable anchor and no `field:` — `field:` anchors now | kept, relaxed |
+| VM0085 | Error | fragment target is compiled IL from a referenced assembly — fragments must be in this compilation (shared project / source package, §7) | **new** |
+| VM0086 | Error | fragment call cycle | **new** |
+| VM0087 | Error | `rules` (or a chain value) in a flow the generator cannot follow — stored, captured, delegate-converted, returned, or passed to an instance/virtual/non-void target | **new** — invariant 1 |
+| VM0088 | Error | transcribed code references a member unreachable from the companion (`private`; a private `const` bakes by value; an explicit interface implementation on a generic fragment's target) — "make it internal" | **new** — invariant 2 |
+| VM0089 | Error | island call inside a loop, lambda, or local function | **new** |
+| VM0090 | Error | `Require<T>` on a non-nullable value type can never fail | **new** — the overload matrix's value-form hole |
+
+*(The proposed 0076–0080 collided with shipped IDs — conditional-block warnings, the lifted-
+predicate diagnostic, generic-type and `[CustomValidation]` errors — so the family landed at
+0085–0090 per the implementer's-numbers rule above.)*
 
 ## 14. Documents to redraw
 
