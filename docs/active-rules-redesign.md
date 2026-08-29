@@ -242,22 +242,42 @@ VM0076's message teaches the fix: *"fragment 'AuditRules.Standard' is compiled I
 referenced assembly; fragments must be part of this compilation — use a shared project or a
 source package."*
 
-**Reserved, additive — delegation for rules classes** (build when IL-shipping demand is real):
-a shared assembly declares `AuditRules : IValidationRulesFor<IAudited>` (interface targets are
-already legal — `[GenerateValidator]` allows `AttributeTargets.Interface`), runs the generator
-itself, and ships the generated `IValidatorFor<IAudited>`. A consumer writes
-`AuditRules.Describe(rules, x)` — the same call shape, typechecking through the static abstract —
-and the consumer's generator, finding the target cross-assembly, emits a direct call to the
-shipped validator, located by its deterministic name via `GetTypeByMetadataName`. No scanning;
-§7.2-aligned (each assembly emits its own validators, consumers compose by direct reference);
-`IValidatorFor<in T>`'s contravariance also lets DI registration compose it. Fidelity is lower
-and documented: field names resolve at the *interface* (a consumer renaming the implementing
-property's wire name diverges), struct implementers box through the interface call, and
-`RuleText` stays in the declaring assembly. A cross-assembly target whose validator cannot be
-found (the shared assembly never ran the generator) is its own §7.5-grade diagnostic. The
-furthest rung — a compiled-companion protocol (`ValidationFlow Standard<T>(ref
-ValidationContext, T) where T : IAudited` plus a marker attribute read from metadata) that keeps
-constraint-genericity without boxing — is noted, not designed.
+**Designed, additive — facet composition through DI** (the cross-assembly route when shipping
+IL): a shared assembly declares rules for an *interface* — any declaration form works:
+constraint attributes on the interface (`[GenerateValidator]` already allows
+`AttributeTargets.Interface`) or a rules class `AuditRules : IValidationRulesFor<IAudited>` —
+runs the generator itself, and its module registers the generated `IValidatorFor<IAudited>`
+(§7.3's composition model, which already crosses assemblies). The consumer opts in, in the body:
+
+```csharp
+rules.As<IAudited>(x);          // validate x as its IAudited facet
+```
+
+The generator emits a statically-closed resolution and a direct call —
+`(IValidatorFor<IAudited>)context.Services.GetService(typeof(IValidatorFor<IAudited>))` then
+`.Validate(ref ctx, value)`. No scanning, no naming protocol, no `MakeGenericType`: the facet
+type is written in source, so the service type is closed at build time. This is the
+`Polymorphism.Runtime` / `IDynamicValidator` composition philosophy with the type known
+statically, so the lookup is the closed generic service instead of a `Type`-keyed registry.
+Semantics:
+
+- **Missing registration, or a collector without services, throws** with a message naming the
+  module to add — loud, never a silent drop. Implementing the facet is the compiler's check
+  (`As<IAudited>(x)` will not compile unless `x` converts).
+- **The path does not push** — facet fields report at the current level (`createdBy`, not
+  `audited.createdBy`); suppression shares the collector as everywhere.
+- **Honest trades, documented:** field names resolve where the facet's validator was compiled
+  (the interface's assembly — a consumer renaming an implementing property's wire name
+  diverges); struct implementers box through the interface-typed call; `RuleText` lives in the
+  declaring assembly; DI (or a services-carrying collector) is required at the `As` site.
+- **If a per-pass `GetService` ever shows in a profile**, the alternative is constructor
+  injection of the facet validator via a closed factory registration (a deliberate exception to
+  §7.1's parameterless-`Instance` pattern, still reflection-free) — resolved once at singleton
+  construction, failing at startup instead of first validation.
+
+A compiled-companion protocol (`ValidationFlow Standard<T>(ref ValidationContext, T) where T :
+IAudited` plus a marker attribute read from metadata), which would keep constraint-genericity
+without boxing, remains noted, not designed.
 
 ## 8. Field names: `nameof` through the parameter
 
@@ -425,8 +445,9 @@ Settled during design — do not relitigate without new information:
 | `rules.Context` typed as the full `ValidationContext` (raw alias) | Rejected: raw field strings bypass the namer, manual flow protocol, invites `Push`/`Services` rope — superseded by the reporter interface |
 | `rules.Field(x.Name)` island for wire names | Superseded by `nameof(x.…)` rewrite (§8) |
 | Instance `Describe` | `static abstract`: no phantom instance, `this` impossible |
-| Cross-assembly fragment inlining from IL | Impossible: metadata has no syntax, and IDE-held compilations would fork IDE vs. CLI output. v1: fragments travel as source (shared project / source package). Delegation to shipped interface validators reserved as the additive follow-up (§7) |
+| Cross-assembly fragment inlining from IL | Impossible: metadata has no syntax, and IDE-held compilations would fork IDE vs. CLI output. v1: fragments travel as source (shared project / source package). Facet composition through DI (`rules.As<TFacet>`) designed as the additive follow-up (§7) |
 | Exact fragment shape `(ValidationRules<T>, T)` required | Relaxed 2026-08-29: any static `void` same-compilation method receiving `rules` is followed; extra parameters bind as locals at the call site. The blacklist is unfollowable flows, not signatures |
+| Static cross-assembly delegation — locate the shared validator by deterministic name via `GetTypeByMetadataName` | Rejected same day for DI facet composition: no naming protocol to invent, aligns with §7.2/§7.3 module composition and the existing `Polymorphism.Runtime`/`IDynamicValidator` precedent, and failure is a loud error naming the missing module |
 | Expression-tree selectors | Banned from the start (plan §2: no `Expression.Compile`) |
 
 ## 16. Implementation checklist
@@ -460,6 +481,11 @@ Settled during design — do not relitigate without new information:
       `if`, auto-wrap of a user helper returning `ValidationFlow`
 - [ ] A project that *compiles* emitted output (plan §13); delete `DescribedValidator` tests;
       re-point suppression/fail-fast coverage at generated validators
+
+**Additive, may trail v1** — facet composition (§7): the inert `As<TFacet>(TFacet value)`
+vocabulary member on `ValidationRules<T>`; generator recognition emitting the closed
+`Services` resolution, the throw-on-missing path, and no path push; a golden test against a
+facet interface validated from a second module.
 
 **Docs:** §14 above, in the same change.
 
