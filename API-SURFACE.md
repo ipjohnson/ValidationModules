@@ -1766,7 +1766,12 @@ The interface is the marker; there is no attribute. The rules class is not the v
 generator still emits `PetValidator`, because `Pet` may also carry attributes and both fold into
 one class. The validator runs its regions in a fixed order — the attribute-declared checks first
 (source order), then one region per rules class, classes ordered by name (ordinal), statements in
-body order. `Apply` rules run last. Two rules classes for one type are two regions.
+body order. `Apply` rules run last. Two rules classes for one type are two regions — and one
+class may target several types, implementing `IValidationRulesFor<T>` once each with one
+`Describe` overload per target (explicit implementations included; pairing goes through
+`FindImplementationForInterfaceMember`, never a name lookup). Its regions share one companion
+file of overloads, and the class's own members — consts, helpers, fragments — serve every
+region under the same qualification and baking rules.
 
 A type with any region loses the straight-line `IsValid` and falls back to the interface default
 (walks `Validate` into a throwaway collector) — regions carry free-form computation and reporter

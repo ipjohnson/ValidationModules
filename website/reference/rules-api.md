@@ -95,6 +95,10 @@ Arguments are **values**, not selectors — `rules.Require(x.Name)`. The generat
 argument as a symbol; nothing here executes. The builder is inert by construction: its constructor
 is internal, its members throw, and nothing ever calls `Describe`.
 
+A class may implement the interface once per type it describes — one `Describe` overload each,
+implicit or explicit — and every target gets its own validator. See
+[One class, several targets](/guide/rule-classes#one-class-several-targets).
+
 ## Values and field names
 
 An island's value must be a member path on the subject parameter. Nested paths and `?.` are the

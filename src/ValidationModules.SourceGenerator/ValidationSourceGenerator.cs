@@ -234,17 +234,23 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
                 : Array.Empty<(INamedTypeSymbol, int)>();
 
         foreach (var candidate in candidates) {
-            if (rulesFrontEnd.Build(candidate, compilation) is { } declaration) {
-                declarations.Add(declaration);
+            var declared = rulesFrontEnd.Build(candidate, compilation);
+
+            if (declared.Count > 0) {
+                declarations.AddRange(declared);
             } else {
                 plain.Add(candidate);
             }
         }
 
-        // Ordinal by name so two rules classes for one type contribute deterministically (§19.7) and
-        // the emitted text does not reshuffle between builds.
-        declarations.Sort(static (left, right) =>
-            string.CompareOrdinal(left.RulesClass.Name, right.RulesClass.Name));
+        // Ordinal by name so two rules classes for one type contribute deterministically, with the
+        // target as tiebreak - a multi-target class contributes several declarations, and an
+        // unstable sort must not reshuffle its regions between builds.
+        declarations.Sort(static (left, right) => {
+            var byClass = string.CompareOrdinal(left.RulesClass.Name, right.RulesClass.Name);
+
+            return byClass != 0 ? byClass : string.CompareOrdinal(left.Target.Name, right.Target.Name);
+        });
 
         var byTarget = new Dictionary<INamedTypeSymbol, List<RulesDeclaration>>(SymbolEqualityComparer.Default);
 
@@ -254,12 +260,17 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             }
 
             list.Add(declaration);
+        }
 
+        // One companion file per rules class, whatever it targets: a multi-target class becomes
+        // one container of Describe overloads, and one hint name.
+        foreach (var companion in declarations
+                     .GroupBy(static declaration => declaration.RulesClass, SymbolEqualityComparer.Default)) {
             results.Add(new ModelResult(
                 null,
                 ImmutableArray<Diagnostic>.Empty,
-                new RegionEmitter().EmitRegion(declaration, options.CodeStyle),
-                $"{QualifiedName(declaration.RulesClass)}_Rules.g.cs"));
+                new RegionEmitter().EmitRegion(companion.ToList(), options.CodeStyle),
+                $"{QualifiedName((INamedTypeSymbol)companion.Key!)}_Rules.g.cs"));
         }
 
         // Fragment containers are shared across every rules class that called into them, so they
