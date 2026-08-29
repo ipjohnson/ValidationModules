@@ -71,7 +71,8 @@ internal sealed class ValidationEndpointFilter<T> : IEndpointFilter where T : cl
 
         return result.IsValid
             ? await next(context).ConfigureAwait(false)
-            : ValidationProblem.ToResult(result, _options);
+            : ValidationProblem.ToResult(
+                result, _options.WithFormatterFrom(context.HttpContext.RequestServices));
     }
 
     private static T? Argument(EndpointFilterInvocationContext context) {

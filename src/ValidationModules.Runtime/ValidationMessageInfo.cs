@@ -122,8 +122,35 @@ public sealed class ValidationMessageInfo {
     public string Render(in ValidationError error, IFormatProvider? formatProvider = null) {
         var template = Provider?.Template(in error) ?? Template;
 
-        return RenderTemplate(template, Leaf(error.Field), formatProvider ?? CultureInfo.InvariantCulture);
+        return RenderTemplate(
+            template, Leaf(error.Field), _args, DataAnnotationsHoles,
+            formatProvider ?? CultureInfo.InvariantCulture);
     }
+
+    /// <summary>
+    /// Renders an alternate template - a language pack's - with this info's own arguments. The
+    /// override dialect is always the library's (<c>{field}</c>, <c>{0}</c>…), whatever dialect
+    /// the baked template used: packs are authored against the key inventory, not against
+    /// DataAnnotations' conventions.
+    /// </summary>
+    /// <param name="error">The error being rendered. Its field fills <c>{field}</c>.</param>
+    /// <param name="template">The replacement template, holes included.</param>
+    /// <param name="formatProvider">Formats the arguments; null means invariant.</param>
+    public string Render(in ValidationError error, string template, IFormatProvider? formatProvider = null) {
+        ArgumentNullException.ThrowIfNull(template);
+
+        return RenderTemplate(
+            template, Leaf(error.Field), _args, daHoles: false,
+            formatProvider ?? CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Renders a template for an error that carries no info - a finished-string error a language
+    /// pack matched at the code level. Only <c>{field}</c> can be filled; argument holes render
+    /// verbatim, per the tolerant-renderer rule.
+    /// </summary>
+    internal static string RenderStandalone(string template, string field, IFormatProvider? formatProvider = null) =>
+        RenderTemplate(template, Leaf(field), None, daHoles: false, formatProvider ?? CultureInfo.InvariantCulture);
 
     /// <summary>
     /// The last segment of a field path: <c>toys[3].name</c> renders as "name must …", never
@@ -145,7 +172,8 @@ public sealed class ValidationMessageInfo {
     /// nothing else. The composed helpers this replaced were a single <c>string.Concat</c>, and a
     /// render that cost several times that would have moved the price rather than deferred it.
     /// </summary>
-    private string RenderTemplate(string template, string field, IFormatProvider formatProvider) {
+    private static string RenderTemplate(
+        string template, string field, object[] args, bool daHoles, IFormatProvider formatProvider) {
         // Pass 1: locate and resolve the holes into locals. Every template this library writes
         // carries at most three substitutions ({field} and two arguments), so four slots cover the
         // realistic shapes without touching the heap; a hand-written template beyond that takes
@@ -166,7 +194,7 @@ public sealed class ValidationMessageInfo {
                 (holeLength, replacement) = (2, "}");
             }
             else if (current == '{' && template.IndexOf('}', i + 1) is var close && close >= 0 &&
-                Resolve(template.AsSpan(i + 1, close - i - 1), field, formatProvider) is { } resolved) {
+                Resolve(template.AsSpan(i + 1, close - i - 1), field, args, daHoles, formatProvider) is { } resolved) {
                 (holeLength, replacement) = (close - i + 1, resolved);
             }
             else {
@@ -178,7 +206,7 @@ public sealed class ValidationMessageInfo {
                 case 1: (start1, length1, replacement1) = (i, holeLength, replacement); break;
                 case 2: (start2, length2, replacement2) = (i, holeLength, replacement); break;
                 case 3: (start3, length3, replacement3) = (i, holeLength, replacement); break;
-                default: return RenderSlow(template, field, formatProvider);
+                default: return RenderSlow(template, field, args, daHoles, formatProvider);
             }
 
             count++;
@@ -235,7 +263,8 @@ public sealed class ValidationMessageInfo {
     /// <summary>
     /// The rare-shape fallback: more holes than the scratch buffer. Correctness over exactness.
     /// </summary>
-    private string RenderSlow(string template, string field, IFormatProvider formatProvider) {
+    private static string RenderSlow(
+        string template, string field, object[] args, bool daHoles, IFormatProvider formatProvider) {
         var builder = new StringBuilder(template.Length + 32);
 
         for (var i = 0; i < template.Length; i++) {
@@ -264,7 +293,7 @@ public sealed class ValidationMessageInfo {
                 continue;
             }
 
-            if (Resolve(template.AsSpan(i + 1, close - i - 1), field, formatProvider) is { } replacement) {
+            if (Resolve(template.AsSpan(i + 1, close - i - 1), field, args, daHoles, formatProvider) is { } replacement) {
                 builder.Append(replacement);
                 i = close;
             }
@@ -280,7 +309,8 @@ public sealed class ValidationMessageInfo {
     /// A hole's replacement text, or null when the hole is not one this info can fill and should
     /// render verbatim.
     /// </summary>
-    private string? Resolve(ReadOnlySpan<char> hole, string field, IFormatProvider formatProvider) {
+    private static string? Resolve(
+        ReadOnlySpan<char> hole, string field, object[] args, bool daHoles, IFormatProvider formatProvider) {
         if (hole.SequenceEqual("field")) {
             return field;
         }
@@ -292,7 +322,7 @@ public sealed class ValidationMessageInfo {
         var position = hole[0] - '0';
 
         // DataAnnotations' own convention puts the field at {0} and shifts the arguments up one.
-        if (DataAnnotationsHoles) {
+        if (daHoles) {
             if (position == 0) {
                 return field;
             }
@@ -300,11 +330,11 @@ public sealed class ValidationMessageInfo {
             position--;
         }
 
-        if (position >= _args.Length) {
+        if (position >= args.Length) {
             return null;
         }
 
-        var argument = _args[position];
+        var argument = args[position];
 
         return argument is IFormattable formattable
             ? formattable.ToString(null, formatProvider)

@@ -69,4 +69,26 @@ public sealed class ValidationProblemOptions {
     /// </para>
     /// </remarks>
     public ValidationMessageFormatter? MessageFormatter { get; set; }
+
+    /// <summary>
+    /// These options with the container's <see cref="ValidationMessageFormatter"/> filled in,
+    /// when none was set explicitly - which is what makes a registered language pack localize
+    /// problem details with no options code at all. An explicit formatter always wins, and
+    /// options that already have one (or a container that has none) come back unchanged.
+    /// </summary>
+    internal ValidationProblemOptions WithFormatterFrom(IServiceProvider services) {
+        if (MessageFormatter is not null ||
+            services.GetService(typeof(ValidationMessageFormatter)) is not ValidationMessageFormatter formatter) {
+            return this;
+        }
+
+        return new ValidationProblemOptions {
+            Title = Title,
+            Type = Type,
+            StatusCode = StatusCode,
+            IncludeCodes = IncludeCodes,
+            IncludeNonErrors = IncludeNonErrors,
+            MessageFormatter = formatter,
+        };
+    }
 }

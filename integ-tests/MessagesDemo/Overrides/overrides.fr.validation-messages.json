@@ -1,0 +1,6 @@
+{
+    "culture": "fr",
+    "templates": {
+        "required": "Merci de renseigner {field}."
+    }
+}

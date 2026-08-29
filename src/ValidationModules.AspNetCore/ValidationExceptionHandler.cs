@@ -51,7 +51,8 @@ internal sealed class ValidationExceptionHandler : IExceptionHandler {
             return false;
         }
 
-        var problem = ValidationProblem.ToProblemDetails(validation.Result, _options);
+        var problem = ValidationProblem.ToProblemDetails(
+            validation.Result, _options.WithFormatterFrom(httpContext.RequestServices));
 
         httpContext.Response.StatusCode = problem.Status ?? _options.StatusCode;
 

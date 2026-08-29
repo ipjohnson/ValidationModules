@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <IsPackable>True</IsPackable>
+        <PackageId>ValidationModules.Messages</PackageId>
+        <Description>Every built-in language for ValidationModules' error messages, shipped as data: the *.validation-messages.json files compile into your assembly at your build, validated against your runtime's shape inventory. All languages by default; set &lt;ValidationModulesLanguages&gt;fr;de&lt;/ValidationModulesLanguages&gt; to compile exactly those, or 'none' to opt out - excluded languages are absent from the binary, not carried and ignored.</Description>
+        <!--
+            The soft-publish shape (docs/language-packs.md): this package ships no assembly. The
+            props below hand the JSON to the consumer's own generator, so validation and the
+            VM0105 coverage check run against the consumer's template inventory - drift is visible
+            to the build it affects - and trimming is exact because the packs are the consumer's
+            own code. The dependencies are the version floor: a runtime old enough not to know
+            packs fails the contract gate rather than failing inside generated code.
+        -->
+        <IncludeBuildOutput>false</IncludeBuildOutput>
+        <NoWarn>$(NoWarn);NU5128</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\ValidationModules.Runtime\ValidationModules.Runtime.csproj"/>
+        <ProjectReference Include="..\ValidationModules.SourceGenerator\ValidationModules.SourceGenerator.csproj"/>
+    </ItemGroup>
+
+    <!--
+        PackagePath must use a forward slash: a trailing backslash packs to "build//" on Linux and
+        macOS, which breaks NuGet's build/$(PackageId).props convention.
+    -->
+    <ItemGroup>
+        <None Remove="Package\ValidationModules.Messages.props"/>
+        <Content Include="Package\ValidationModules.Messages.props">
+            <Pack>true</Pack>
+            <PackagePath>build/</PackagePath>
+        </Content>
+        <None Include="messages\*.validation-messages.json" Pack="true" PackagePath="messages/"/>
+    </ItemGroup>
+
+</Project>

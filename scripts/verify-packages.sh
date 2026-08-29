@@ -18,7 +18,7 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "${FEED}" "${WORK}"' EXIT
 
 echo "Packing ${VERSION}"
-for project in Runtime AspNetCore SourceGenerator SourceGenerator.Impl; do
+for project in Runtime AspNetCore SourceGenerator SourceGenerator.Impl Messages; do
     dotnet pack "${REPO_ROOT}/src/ValidationModules.${project}/ValidationModules.${project}.csproj" \
         --configuration Release --output "${FEED}" --nologo \
         "/p:PackageVersion=${VERSION}" > /dev/null
@@ -72,6 +72,19 @@ expect "${ASPNETCORE_FILES}" "lib/net10.0/ValidationModules.AspNetCore.dll" \
 reject "${ASPNETCORE_FILES}" "analyzers/dotnet/cs" \
     "the ASP.NET Core package ships an analyzer"
 
+# The Messages package is data plus props and nothing else: the JSON compiles at the consumer's
+# build, so a lib/ here would mean the soft-publish shape regressed into an assembly.
+MESSAGES_FILES="$(unzip -l "${FEED}/ValidationModules.Messages.${VERSION}.nupkg")"
+
+expect "${MESSAGES_FILES}" "messages/fr.validation-messages.json" \
+    "the French pack is missing from messages/"
+expect "${MESSAGES_FILES}" "messages/ja.validation-messages.json" \
+    "the Japanese pack is missing from messages/"
+expect "${MESSAGES_FILES}" "build/ValidationModules.Messages.props" \
+    "build props missing, so the JSON never reaches a consumer's AdditionalFiles"
+reject "${MESSAGES_FILES}" "lib/" \
+    "the Messages package ships an assembly; it must ship data"
+
 echo "Consuming from a clean project"
 cat > "${WORK}/nuget.config" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
@@ -103,6 +116,8 @@ cat > "${WORK}/Consumer.csproj" <<EOF
   <ItemGroup>
     <PackageReference Include="ValidationModules.Runtime" Version="${VERSION}"/>
     <PackageReference Include="ValidationModules.SourceGenerator" Version="${VERSION}" PrivateAssets="all"/>
+    <PackageReference Include="ValidationModules.Messages" Version="${VERSION}"/>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1"/>
   </ItemGroup>
 </Project>
 EOF
@@ -125,6 +140,28 @@ if (actual != expected) {
 // A global-namespace type must get its validator in the global namespace, not in one of ours.
 if (new GlobalPetValidator().Validate(new GlobalPet()).Errors.Count != 1) {
     Console.Error.WriteLine("FAILED: global-namespace type did not validate");
+    Environment.Exit(1);
+}
+
+// The Messages package, end to end from the feed: its props put the JSON into this build, the
+// generator compiled and registered the packs, and one registration call localises per culture.
+System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo("fr");
+
+// Static-form calls, because this file's usings sit above and extension syntax would need the DI
+// namespace imported - the same reason the generated registration calls them this way.
+var collection = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+
+Microsoft.Extensions.DependencyInjection.ConsumerValidationExtensions.AddConsumerValidators(collection);
+
+using var provider = Microsoft.Extensions.DependencyInjection.ServiceCollectionContainerBuilderExtensions
+    .BuildServiceProvider(collection);
+
+var formatter = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+    .GetRequiredService<ValidationMessageFormatter>(provider);
+var required = new PetValidator().Validate(new Pet()).Errors.First(e => e.Code == "required");
+
+if (required.ToMessage(formatter) != "name est obligatoire.") {
+    Console.Error.WriteLine($"FAILED: French pack did not render; got '{required.ToMessage(formatter)}'");
     Environment.Exit(1);
 }
 

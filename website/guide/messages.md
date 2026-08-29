@@ -26,7 +26,15 @@ the measurements.
 
 ## Start in one language
 
-Do nothing. Every constraint renders the same default text it always has — `name is required.`,
+Do nothing. And when a second language's moment comes, the whole setup is: reference
+`ValidationModules.Messages` (every built-in language, compiled into your assembly at your build),
+or drop a `*.validation-messages.json` of your own anywhere in the project - if you call your
+assembly's `Add…Validators()` and validate through the endpoint filter, you are already done.
+Trim the bundle in the csproj: `<ValidationModulesLanguages>fr;de</ValidationModulesLanguages>`
+compiles exactly those, `none` opts out - excluded languages are absent from the binary, not
+carried and ignored.
+
+The defaults themselves need none of that: Every constraint renders the same default text it always has — `name is required.`,
 `age must be between 0 and 30.` — from templates that live once, in
 `ValidationMessageTemplates`. The defaults compose from the *leaf* of the field path (an error at
 `toys[3].name` reads "name is required.", because the path is already in `Field` and prose is not

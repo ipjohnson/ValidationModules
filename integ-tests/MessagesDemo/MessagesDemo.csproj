@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFrameworks>$(LibraryTargetFrameworks)</TargetFrameworks>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+        <!--
+            The point of this project: the language-pack pipeline end to end, over the exact files
+            ValidationModules.Messages ships - included here by path the way the package's props
+            include them by props, with the same ValidationModulesLanguages filter.
+            MessagesDemo.Filtered.Tests compiles these same sources with the property set to prove
+            that opting out removes a language from the binary rather than carrying it disabled.
+        -->
+        <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+        <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)generated</CompilerGeneratedFilesOutputPath>
+        <ValidationModulesLanguages Condition="'$(ValidationModulesLanguages)' == ''">all</ValidationModulesLanguages>
+    </PropertyGroup>
+
+    <!-- The all-in-one shape: unset means every language compiles in. -->
+    <ItemGroup Condition="'$(ValidationModulesLanguages)' == 'all'">
+        <AdditionalFiles Include="..\..\src\ValidationModules.Messages\messages\*.validation-messages.json"/>
+    </ItemGroup>
+
+    <!-- The opt-out shape: 'fr;de' compiles exactly those; 'none' compiles none. -->
+    <ItemGroup Condition="'$(ValidationModulesLanguages)' != 'all' AND '$(ValidationModulesLanguages)' != 'none'">
+        <_ValidationModulesLanguage Include="$(ValidationModulesLanguages)"/>
+        <AdditionalFiles
+            Include="@(_ValidationModulesLanguage->'..\..\src\ValidationModules.Messages\messages\%(Identity).validation-messages.json')"/>
+    </ItemGroup>
+
+    <!--
+        The app-local override, included after the packs: MSBuild item order is registration
+        order, and the layering rule makes the later registration win per key - so this one file
+        rewords exactly one French message and inherits the rest.
+    -->
+    <ItemGroup>
+        <AdditionalFiles Include="Overrides/overrides.fr.validation-messages.json"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\src\ValidationModules.Runtime\ValidationModules.Runtime.csproj"/>
+        <ProjectReference Include="..\..\src\ValidationModules.SourceGenerator\ValidationModules.SourceGenerator.csproj"
+                          OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
+    </ItemGroup>
+
+</Project>
