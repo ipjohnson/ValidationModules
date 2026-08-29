@@ -371,6 +371,38 @@ public static class ValidationDiagnostics {
         DiagnosticSeverity.Error);
 
     /// <summary>
+    /// An attribute implementing <c>IConstraintFor&lt;T&gt;</c> that cannot be compiled: no
+    /// implemented instantiation accepts the member, more than one does, an argument in the
+    /// declaration is not a renderable constant, or the class mixes the instance contract with
+    /// another custom shape.
+    /// </summary>
+    /// <remarks>
+    /// The VM0080/VM0082 arrangement - an error with the reason in the tail - for the same reason:
+    /// a mistake in a native shape is a build error naming the fix, never a rule that silently
+    /// stops running.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor ConstraintInterfaceUnusable = Descriptor(
+        "VM0083", "IConstraintFor<T> attribute is unusable",
+        "'{0}' on '{1}' cannot be compiled: {2}",
+        DiagnosticSeverity.Error);
+
+    /// <summary>
+    /// A constraint attribute opted out of the shared instance, so every check constructs one.
+    /// </summary>
+    /// <remarks>
+    /// Info at the site that pays, the VM0060 reasoning: nothing is wrong - the class asked for
+    /// isolation and gets it - but this is the one constraint cost a clean pass pays, on a path
+    /// that otherwise allocates nothing, so it is stated where it is incurred rather than only on
+    /// the class that caused it.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor PerValidationInstanceCost = Descriptor(
+        "VM0084", "Constraint instance is constructed per check",
+        "'{0}' is marked [PerValidationInstance], so checking '{1}' constructs a new instance on " +
+        "every validation pass, passing values included - the allocation a shared instance would " +
+        "not cost",
+        DiagnosticSeverity.Info);
+
+    /// <summary>
     /// Reported before any source is added, so the build fails here rather than on generated code
     /// calling a runtime member that does not exist. Plan §7.5.
     /// </summary>

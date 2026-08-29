@@ -70,6 +70,17 @@ public enum ConstraintKind {
     CustomCheck,
 
     /// <summary>
+    /// An attribute implementing <c>IConstraintFor&lt;T&gt;</c>: the author's own instance,
+    /// constructed by generated code from <c>CustomConstruction</c> and invoked through the two
+    /// members the interface pins - <c>IsValid</c> on the boolean path, <c>Validate</c> on the
+    /// reporting one. The stateful middle of the custom family: cheaper than
+    /// <see cref="CustomAttribute"/> because nothing boxes and no context is built, richer than
+    /// <see cref="CustomCheck"/> because the constructor may precompute and the reporting side
+    /// sees the pass's context.
+    /// </summary>
+    CustomInstance,
+
+    /// <summary>
     /// A predicate declared with <c>rules.Ensure(…)</c>. Carries no bounds and composes no message -
     /// its message was rendered from its own source text when it was read. See API-SURFACE.md §19.5.
     /// </summary>
@@ -222,4 +233,39 @@ public sealed record ConstraintModel(
     /// parameter takes the DataAnnotations <c>ValidationContext</c>, which the emitted call then
     /// builds through <c>DataAnnotationsSupport.CreateContext</c>.
     /// </summary>
-    bool CustomTakesContext = false) : IEquatable<ConstraintModel>;
+    bool CustomTakesContext = false,
+
+    /// <summary>
+    /// <see cref="ConstraintKind.CustomInstance"/> only: the attribute class, fully qualified. It
+    /// types the hoisted field, so the woven calls stay direct - and inlineable - whenever the
+    /// class implements the interface implicitly.
+    /// </summary>
+    string? InstanceType = null,
+
+    /// <summary>
+    /// <see cref="ConstraintKind.CustomInstance"/> only: the <c>IConstraintFor&lt;T&gt;</c>
+    /// instantiation the member matched, fully qualified. A call the class cannot bind - a member
+    /// left to the interface's default implementation, or implemented explicitly - goes through a
+    /// cast to this.
+    /// </summary>
+    string? InstanceInterface = null,
+
+    /// <summary>
+    /// <see cref="ConstraintKind.CustomInstance"/> only: <c>Validate</c> is not a public method of
+    /// the class, so the woven call must go through <see cref="InstanceInterface"/>.
+    /// </summary>
+    bool ValidateThroughInterface = false,
+
+    /// <summary>
+    /// The same question for <c>IsValid</c>, answered separately: an author who overrides
+    /// <c>Validate</c> but implements <c>IsValid</c> explicitly - or the reverse - gets each call
+    /// bound the cheapest way it can be.
+    /// </summary>
+    bool IsValidThroughInterface = false,
+
+    /// <summary>
+    /// <see cref="ConstraintKind.CustomInstance"/> only: <c>[PerValidationInstance]</c> is on the
+    /// attribute class, so the emitter constructs the attribute at every check instead of hoisting
+    /// one instance into a static field.
+    /// </summary>
+    bool PerPassInstance = false) : IEquatable<ConstraintModel>;

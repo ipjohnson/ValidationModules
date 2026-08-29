@@ -362,8 +362,9 @@ public sealed class AttributeFrontEnd {
             }
 
             // A CustomConstraintAttribute subclass is native vocabulary wherever it is declared,
-            // independent of the DataAnnotations switch.
-            if (DerivesFromCustomConstraint(attributeClass)) {
+            // independent of the DataAnnotations switch. An IConstraintFor<T> implementer is the
+            // same vocabulary's instance shape, and counts for the same reason.
+            if (DerivesFromCustomConstraint(attributeClass) || ImplementsConstraintInterface(attributeClass)) {
                 return true;
             }
 
@@ -652,7 +653,7 @@ public sealed class AttributeFrontEnd {
             return true;
         }
 
-        if (DerivesFromCustomConstraint(attributeClass)) {
+        if (DerivesFromCustomConstraint(attributeClass) || ImplementsConstraintInterface(attributeClass)) {
             return true;
         }
 
@@ -1032,6 +1033,26 @@ public sealed class AttributeFrontEnd {
             }
 
             if (ns != KnownTypes.DataAnnotationsNamespace) {
+                // The instance shape is read first, so an attribute that also subclasses
+                // ValidationAttribute takes the native path - that combination is the migration
+                // story, one class that goes fast here and keeps working under MVC and
+                // Validator.TryValidateObject. Combining it with the static shape is refused
+                // instead: both are native, both were opted into deliberately, and the two
+                // disagree about who runs the check.
+                if (ConstraintInterfacesOf(attributeClass) is { Count: > 0 } contracts) {
+                    if (DerivesFromCustomConstraint(attributeClass)) {
+                        Report(ValidationDiagnostics.ConstraintInterfaceUnusable, member,
+                            attributeClass.Name, member.Name,
+                            "it derives from CustomConstraintAttribute and also implements " +
+                            "IConstraintFor<T>, and the two shapes disagree about who runs the " +
+                            "check - pick one");
+                        continue;
+                    }
+
+                    ReadInstanceConstraint(member, memberType, attributeClass, attribute, contracts, constraints);
+                    continue;
+                }
+
                 if (DerivesFromCustomConstraint(attributeClass)) {
                     ReadCustomConstraint(member, memberType, attributeClass, attribute, constraints);
                     continue;
@@ -1524,6 +1545,178 @@ public sealed class AttributeFrontEnd {
             Values: new EquatableArray<string>(arguments.ToImmutableArray()));
 
         constraints.Add(ResolveCondition(constraint, member));
+    }
+
+    /// <summary>
+    /// Reads an <c>IConstraintFor&lt;T&gt;</c> implementer: matches the member against the
+    /// implemented instantiations, resolves how each of the two members has to be called, renders
+    /// the declaration back into its construction, and produces the constraint the emitter weaves.
+    /// </summary>
+    /// <remarks>
+    /// Everything that can be wrong here is VM0083 with the reason, the arrangement VM0080 and
+    /// VM0082 established: a mistake in a native shape is a build error naming the fix, never a
+    /// rule that silently stops running.
+    /// </remarks>
+    private void ReadInstanceConstraint(
+        ISymbol member,
+        ITypeSymbol memberType,
+        INamedTypeSymbol attributeClass,
+        AttributeData attribute,
+        List<INamedTypeSymbol> contracts,
+        List<ConstraintModel> constraints) {
+
+        // The hoisted field is typed as the attribute class, and TypeRef refuses a constructed
+        // generic name - the same narrowing VM0079 applies to models, for the same reason.
+        if (attributeClass.IsGenericType) {
+            Report(ValidationDiagnostics.ConstraintInterfaceUnusable, member,
+                attributeClass.Name, member.Name,
+                "it is a generic attribute class, which the field holding the shared instance " +
+                "cannot name; declare a closed subclass");
+            return;
+        }
+
+        // The value the emitted call passes has been null-guarded and - for a nullable value type -
+        // unwrapped, so instantiations are matched against the member's non-nullable shape.
+        var unwrapped = TypeFacts.IsNullableValueType(memberType)
+            ? ((INamedTypeSymbol)memberType).TypeArguments[0]
+            : memberType;
+
+        INamedTypeSymbol? matched = null;
+
+        foreach (var contract in contracts) {
+            if (SymbolEqualityComparer.Default.Equals(contract.TypeArguments[0], unwrapped)) {
+                matched = contract;
+                break;
+            }
+        }
+
+        if (matched is null) {
+            var fits = contracts.Where(c => AcceptsMember(c.TypeArguments[0], unwrapped)).ToList();
+
+            if (fits.Count == 0) {
+                Report(ValidationDiagnostics.ConstraintInterfaceUnusable, member,
+                    attributeClass.Name, member.Name,
+                    $"it implements {ContractDisplay(contracts)}, and none of those accepts this " +
+                    $"member's '{memberType.ToDisplayString()}'");
+                return;
+            }
+
+            if (fits.Count > 1) {
+                // The suggested instantiation drops the nullable annotation: the null guard means
+                // the check receives a value, so IConstraintFor<string?> is never what to write.
+                Report(ValidationDiagnostics.ConstraintInterfaceUnusable, member,
+                    attributeClass.Name, member.Name,
+                    $"more than one implemented instantiation accepts this member's " +
+                    $"'{memberType.ToDisplayString()}' ({ContractDisplay(fits)}); implement " +
+                    $"IConstraintFor<{unwrapped.WithNullableAnnotation(NullableAnnotation.NotAnnotated).ToDisplayString()}> " +
+                    "to say which one runs");
+                return;
+            }
+
+            matched = fits[0];
+        }
+
+        if (AttributeConstructionRenderer.Render(attribute) is not { } construction) {
+            Report(ValidationDiagnostics.ConstraintInterfaceUnusable, member,
+                attributeClass.Name, member.Name,
+                "an argument in its declaration is not a renderable constant");
+            return;
+        }
+
+        var perPass = HasPerValidationInstance(attributeClass);
+
+        if (perPass) {
+            Report(ValidationDiagnostics.PerValidationInstanceCost, member,
+                attributeClass.Name, member.Name);
+        }
+
+        // The base's condition knobs are read only off the base that declares them; on a plain
+        // Attribute implementer, a property that happens to be called When is the author's and
+        // rides into the construction like any other.
+        var conditional = DerivesFromValidationConstraint(attributeClass);
+
+        var constraint = new ConstraintModel(
+            ConstraintKind.CustomInstance,
+            WhenMember: conditional ? NativeConstraintReader.Named(attribute, "When") as string : null,
+            UnlessMember: conditional ? NativeConstraintReader.Named(attribute, "Unless") as string : null,
+            CustomConstruction: construction,
+            InstanceType: attributeClass.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+            InstanceInterface: matched.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+            ValidateThroughInterface: ThroughInterface(attributeClass, matched, "Validate"),
+            IsValidThroughInterface: ThroughInterface(attributeClass, matched, "IsValid"),
+            PerPassInstance: perPass);
+
+        constraints.Add(ResolveCondition(constraint, member));
+    }
+
+    /// <summary>The implemented instantiations as the diagnostic should name them.</summary>
+    private static string ContractDisplay(IEnumerable<INamedTypeSymbol> contracts) =>
+        string.Join(" and ", contracts.Select(c => $"IConstraintFor<{c.TypeArguments[0].ToDisplayString()}>"));
+
+    /// <summary>
+    /// Whether a woven call to <paramref name="memberName"/> must go through the interface: the
+    /// class left it to the interface's default implementation, or implemented it explicitly, so
+    /// no public method of that name binds on the class itself.
+    /// </summary>
+    private static bool ThroughInterface(
+        INamedTypeSymbol attributeClass, INamedTypeSymbol contract, string memberName) {
+
+        var definition = contract.GetMembers(memberName).OfType<IMethodSymbol>().FirstOrDefault();
+
+        if (definition is null) {
+            return true;
+        }
+
+        return attributeClass.FindImplementationForInterfaceMember(definition) is not IMethodSymbol {
+                MethodKind: MethodKind.Ordinary,
+                DeclaredAccessibility: Accessibility.Public,
+            } implementation
+            || implementation.ContainingType.TypeKind == TypeKind.Interface;
+    }
+
+    /// <summary>
+    /// The <c>IConstraintFor&lt;T&gt;</c> instantiations a class implements. Inherited and
+    /// re-implemented ones included, which is what <c>AllInterfaces</c> answers.
+    /// </summary>
+    private static List<INamedTypeSymbol> ConstraintInterfacesOf(INamedTypeSymbol attributeClass) {
+        var contracts = new List<INamedTypeSymbol>();
+
+        foreach (var contract in attributeClass.AllInterfaces) {
+            if (contract.OriginalDefinition.ToDisplayString() == KnownTypes.ConstraintForInterface) {
+                contracts.Add(contract);
+            }
+        }
+
+        return contracts;
+    }
+
+    private static bool ImplementsConstraintInterface(INamedTypeSymbol attributeClass) =>
+        attributeClass.AllInterfaces.Any(contract =>
+            contract.OriginalDefinition.ToDisplayString() == KnownTypes.ConstraintForInterface);
+
+    /// <summary>
+    /// Whether <c>[PerValidationInstance]</c> is on the class or a base of it. The base chain
+    /// counts because statefulness is a property of the implementation a subclass inherits.
+    /// </summary>
+    private static bool HasPerValidationInstance(INamedTypeSymbol attributeClass) {
+        for (INamedTypeSymbol? current = attributeClass; current is not null; current = current.BaseType) {
+            if (current.GetAttributes().Any(marker =>
+                    marker.AttributeClass?.ToDisplayString() == KnownTypes.PerValidationInstanceAttribute)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool DerivesFromValidationConstraint(INamedTypeSymbol attributeClass) {
+        for (var current = attributeClass.BaseType; current is not null; current = current.BaseType) {
+            if (current.ToDisplayString() == KnownTypes.ValidationConstraintAttribute) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

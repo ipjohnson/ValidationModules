@@ -50,3 +50,5 @@ VM0079 | ValidationModules.Usage | Error | A generic type cannot have a generate
 VM0080 | ValidationModules.Usage | Error | A [CustomValidation] target does not resolve to a callable public static ValidationResult method.
 VM0081 | ValidationModules.Usage | Warning | Resource-based ErrorMessage resolution reflects at run time and may break under trimming.
 VM0082 | ValidationModules.Usage | Error | A CustomConstraintAttribute subclass has no usable public static bool IsValid, or its parameters do not line up with the constructor.
+VM0083 | ValidationModules.Usage | Error | An IConstraintFor<T> attribute cannot be compiled: no implemented instantiation accepts the member, several do, an argument is not renderable, or the class mixes custom shapes.
+VM0084 | ValidationModules.Usage | Info | A [PerValidationInstance] constraint constructs a new attribute instance on every check.

@@ -69,6 +69,8 @@ silently does not is worse than one you know is missing.
 | [VM0080](#vm0080) | Error | a `[CustomValidation]` target cannot be called |
 | [VM0081](#vm0081) | Warning | resource-based `ErrorMessage` resolves reflectively |
 | [VM0082](#vm0082) | Error | a custom constraint attribute's `IsValid` is missing or the wrong shape |
+| [VM0083](#vm0083) | Error | an `IConstraintFor<T>` attribute does not fit the member, or mixes shapes |
+| [VM0084](#vm0084) | Info | a `[PerValidationInstance]` constraint constructs an instance at every check |
 
 ---
 
@@ -635,6 +637,28 @@ silently never arrives.
 
 Catching the shape at build time is the feature. The invoked DataAnnotations form discovers the
 same mistakes at run time, or never.
+
+### VM0083 {#vm0083}
+
+**Error** — *`'EvenAttribute' on 'Code' cannot be compiled: it implements IConstraintFor<int>, and none of those accepts this member's 'string?'`*
+
+An attribute implementing [`IConstraintFor<T>`](/guide/custom-constraints#when-the-check-needs-an-instance)
+that cannot be compiled, with the reason in the tail: no implemented instantiation accepts the
+member's type, more than one does (implement the member's own type — an exact instantiation always
+wins outright), an argument in the declaration is not a renderable constant, the attribute class
+is generic, or the class also derives from `CustomConstraintAttribute` — two native shapes that
+disagree about who runs the check.
+
+Deriving from DataAnnotations' `ValidationAttribute` *and* implementing the interface is not an
+error — it is the migration story, and the interface wins.
+
+### VM0084 {#vm0084}
+
+**Info** — *`'StampedAttribute' is marked [PerValidationInstance], so checking 'Sequence' constructs a new instance on every validation pass, passing values included - the allocation a shared instance would not cost`*
+
+Nothing is wrong: the class asked for per-check isolation and gets it. But a clean pass otherwise
+allocates nothing, and this is the one constraint cost that breaks that — so it is stated at every
+site that pays it, not only on the class that caused it.
 
 ---
 

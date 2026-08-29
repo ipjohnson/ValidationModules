@@ -99,7 +99,9 @@ public static class DataAnnotationsSupport {
     /// null for a type-level result, which reports against the object itself.
     /// </param>
     /// <param name="namer">
-    /// Converts the CLR names in <see cref="ValidationResult.MemberNames"/> to wire field names.
+    /// Converts the CLR names in
+    /// <see cref="System.ComponentModel.DataAnnotations.ValidationResult.MemberNames"/> to wire
+    /// field names.
     /// Generated code passes the same policy its own literals were baked with, so a member named
     /// at run time lands on the same path a compiled constraint would have used.
     /// </param>

@@ -54,6 +54,11 @@ namespace ValidationModules
     {
         System.Threading.Tasks.ValueTask ValidateAsync(ValidationModules.ValidationContext context, T value, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IConstraintFor<in T>
+    {
+        bool IsValid(T value);
+        ValidationModules.ValidationFlow Validate(ref ValidationModules.ValidationContext context, T value, string field);
+    }
     public interface IDynamicValidator
     {
         System.Type ValidatedType { get; }
@@ -109,7 +114,7 @@ namespace ValidationModules
     public delegate ValidationModules.ValidationFlow RuleAction<in T>(ref ValidationModules.ValidationContext context, T value);
     public static class RuntimeContract
     {
-        public const int Version = 6;
+        public const int Version = 7;
     }
     public static class ValidationCodes
     {
@@ -334,6 +339,11 @@ namespace ValidationModules.Constraints
         public string? Pattern { get; }
         public string? RegexMember { get; }
         public System.Type? RegexProvider { get; }
+    }
+    [System.AttributeUsage(System.AttributeTargets.Class)]
+    public sealed class PerValidationInstanceAttribute : System.Attribute
+    {
+        public PerValidationInstanceAttribute() { }
     }
     public enum Polymorphism
     {

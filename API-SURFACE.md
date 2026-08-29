@@ -1552,6 +1552,34 @@ custom property setters included (a static check has no instance to read one fro
 "high performance custom attribute" answer: DataAnnotations subclasses remain the migration
 path, `CustomConstraintAttribute` is what an author writes when they get to choose.
 
+The instance shape completes the family (2026-08-28): `IConstraintFor<T>`, for the check a static
+method cannot express because it needs something built once and kept - a lookup table computed
+from the constructor's arguments, a `SearchValues`, custom reporting. An attribute implements
+`bool IsValid(T)` and optionally overrides the interface's default `Validate(ref
+ValidationContext, T, string)`; the generator constructs it once from the declaration - every
+argument re-rendered fully qualified, the CustomConstruction machinery the invoked-DataAnnotations
+path built - into a static field *typed as the attribute class*, so both woven calls bind direct
+wherever the implementation is implicit, and go through a cast to the interface exactly where the
+class left a member to the default or implemented it explicitly. Null skips, a nullable value type
+unwraps (`decimal?` matches `IConstraintFor<decimal>`), and the two engine paths split the
+contract: `IsValid` is the boolean path's form and must return the blocking verdict, `Validate`
+the reporting one. The base's knobs split the same way when the attribute also derives from
+`ValidationConstraintAttribute`: `When`/`Unless` weave as generator conditions outside the call,
+`Code`/`Message` ride into the instance and are honoured by the default `Validate`, `{field}`
+substituted at reporting time because one instance serves every field it is declared on. The
+shared instance is called concurrently and must be immutable after construction;
+`[PerValidationInstance]` opts a class out, trading the field for a construction at every check -
+priced by a `VM0084` Info at each site, the one constraint cost a clean pass pays. Every wrong
+shape is `VM0083` with the reason: no implemented instantiation accepting the member, more than
+one (exact match wins first; the fix names the member's own instantiation), an unrenderable
+argument, a generic attribute class, or mixing this contract with `CustomConstraintAttribute` -
+whereas subclassing `ValidationAttribute` *and* implementing the interface is not a mistake but
+the migration story, and the interface wins: one class that runs fast here and keeps working under
+MVC and `Validator.TryValidateObject`. One ergonomic caught by the tests: a file importing both
+`ValidationModules` and `System.ComponentModel.DataAnnotations` hits CS0104 on the bare
+`ValidationContext` in a `Validate` override - qualify it, the collision the Constraints
+namespace's own design note already documents from the other side.
+
 The format validators — `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]`,
 `[FileExtensions]` — **compile** (2026-08-28), to straight-line reproductions in
 `ConstraintChecks`, with a per-use `VM0063` Info stating the exact check emitted. This reverses
@@ -1667,6 +1695,9 @@ Added to the table in §11:
 | VM0067 | Info | type implements `IValidatableObject` — invoked last, gated on a clean pass (2026-08-28; formerly a Warning that it was not compiled) |
 | VM0080 | Error | `[CustomValidation]` target does not resolve to a callable public static `ValidationResult` method |
 | VM0081 | Warning | resource-based `ErrorMessage` resolution reflects at run time; trimming can break it |
+| VM0082 | Error | `CustomConstraintAttribute` subclass has no usable `public static bool IsValid`, its parameters do not line up with the constructor, or a property is set that the static check cannot receive |
+| VM0083 | Error | `IConstraintFor<T>` attribute cannot be compiled: no implemented instantiation accepts the member, more than one does, an argument is not renderable, the class is generic, or it mixes shapes with `CustomConstraintAttribute` |
+| VM0084 | Info | `[PerValidationInstance]` — the constraint constructs a fresh instance at every check; the cost model, stated where it is paid |
 
 Warnings rather than errors throughout, except where the attribute is simply wrong for the member.
 A build should not break because a model picked up `[Compare]` for some other consumer's benefit;

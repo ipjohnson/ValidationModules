@@ -33,6 +33,61 @@ public class ValidatorEmitterGoldenTests {
     }
 
     [Fact]
+    public void ConstraintInterfaceAttributes_HoistAndInvokeTheInstance() {
+        // The instance shape of a custom constraint, every binding it can need: both members
+        // public (direct calls), only IsValid (Validate casts to the interface default), the
+        // constraint base's knobs riding into the construction with When woven outside the call,
+        // a nullable member guarded and unwrapped, and [PerValidationInstance] trading the
+        // hoisted field for a construction at the check.
+        Snapshot.Match(Emit("""
+            using System;
+            using ValidationModules;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed class ChannelAttribute : Attribute, IConstraintFor<string> {
+                private readonly string[] _allowed;
+
+                public ChannelAttribute(params string[] allowed) { _allowed = allowed; }
+
+                public bool IsValid(string value) => Array.IndexOf(_allowed, value) >= 0;
+
+                public ValidationFlow Validate(ref ValidationContext context, string value, string field) =>
+                    IsValid(value)
+                        ? ValidationFlow.Continue
+                        : context.Report(field, "channel", $"{field} must be one of: {string.Join(", ", _allowed)}.");
+            }
+
+            public sealed class EvenAttribute : ValidationConstraintAttribute, IConstraintFor<int> {
+                public bool IsValid(int value) => value % 2 == 0;
+            }
+
+            [PerValidationInstance]
+            public sealed class StampAttribute : Attribute, IConstraintFor<int> {
+                public bool IsValid(int value) => value >= 0;
+
+                public ValidationFlow Validate(ref ValidationContext context, int value, string field) =>
+                    IsValid(value) ? ValidationFlow.Continue : context.ReportCustom(field);
+            }
+
+            public record Broadcast {
+                public bool IsScheduled { get; init; }
+
+                [Required]
+                [Channel("email", "sms")]
+                public string? Channel { get; init; }
+
+                [Even(Code = "pair", Message = "{field} must come in pairs", When = nameof(IsScheduled))]
+                public int? Batch { get; init; }
+
+                [Stamp]
+                public int Sequence { get; init; }
+            }
+            """));
+    }
+
+    [Fact]
     public void FlatModel_EveryConstraintKind() {
         Snapshot.Match(Emit("""
             using System;

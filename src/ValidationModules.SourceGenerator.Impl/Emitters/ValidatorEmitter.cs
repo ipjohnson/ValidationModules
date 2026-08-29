@@ -165,6 +165,10 @@ public sealed class ValidatorEmitter {
         // applied to an attribute that is itself the rule.
         var customAttributes = new List<(string Field, ConstraintModel Constraint)>();
 
+        // IConstraintFor<T> instances, hoisted for the same reason - except the ones marked
+        // [PerValidationInstance], which are constructed at the check and never land here.
+        var instanceConstraints = new List<(string Field, ConstraintModel Constraint)>();
+
         // One field per distinct subtype validator this type dispatches to, shared across every
         // property that dispatches to it. Indexed rather than named after the type: two subtypes in
         // different namespaces can share a simple name, and the case arm beside each use already
@@ -192,7 +196,7 @@ public sealed class ValidatorEmitter {
         foreach (var property in model.Properties) {
             EmitProperty(
                 body, fast, property, model, patterns, extensionSets, customAttributes,
-                bodyConditions, fastConditions, dispatchers, failFast, fieldNamer);
+                instanceConstraints, bodyConditions, fastConditions, dispatchers, failFast, fieldNamer);
         }
 
         // Applied rules own no property, so they run once every property has been walked. Ordering
@@ -272,6 +276,17 @@ public sealed class ValidatorEmitter {
             // ValidationAttribute, and the construction on the right already names the real class.
             var instance = validator.AddField(
                 TypeDefinition.Get("System.ComponentModel.DataAnnotations", "ValidationAttribute"), field);
+
+            instance.Modifiers = ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
+            instance.InitializeValue = new CodeOutputComponent(constraint.CustomConstruction!) { Indented = false };
+        }
+
+        foreach (var (field, constraint) in instanceConstraints) {
+            // Held as the concrete attribute class, unlike the bridge fields above: there is no
+            // bridge, the calls bind on the class, and a public implicit implementation stays a
+            // direct - inlineable - call. The sites the class cannot bind go through a cast the
+            // front end already decided on.
+            var instance = validator.AddField(TypeRef(constraint.InstanceType!), field);
 
             instance.Modifiers = ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
             instance.InitializeValue = new CodeOutputComponent(constraint.CustomConstruction!) { Indented = false };
@@ -634,6 +649,7 @@ public sealed class ValidatorEmitter {
         List<(string, ConstraintModel)> patterns,
         List<(string, ConstraintModel)> extensionSets,
         List<(string, ConstraintModel)> customAttributes,
+        List<(string, ConstraintModel)> instanceConstraints,
         ConditionScope conditions,
         ConditionScope fastConditions,
         List<string> dispatchers,
@@ -656,8 +672,10 @@ public sealed class ValidatorEmitter {
                 continue;
             }
 
-            if (constraint.Kind is ConstraintKind.CustomAttribute or ConstraintKind.CustomValidationMethod) {
-                var (flow, boolean) = CustomCalls(access, property, constraint, customAttributes, fieldNamer);
+            if (constraint.Kind is ConstraintKind.CustomAttribute or ConstraintKind.CustomValidationMethod
+                or ConstraintKind.CustomInstance) {
+                var (flow, boolean) = CustomCalls(
+                    access, property, constraint, customAttributes, instanceConstraints, fieldNamer);
 
                 others.Add((constraint, flow, boolean));
                 continue;
@@ -703,10 +721,12 @@ public sealed class ValidatorEmitter {
         }
 
         foreach (var (constraint, test, booleanTest) in others) {
-            // A custom DataAnnotations rule reports for itself, so its call is the whole rule:
-            // guarded like any other constraint - DataAnnotations also skips a property's
-            // remaining attributes after Required fails - but never null-guarded, because the
-            // attribute owns its null semantics and most pass null deliberately.
+            // A custom rule reports for itself, so its call is the whole rule: guarded like any
+            // other constraint - DataAnnotations also skips a property's remaining attributes
+            // after Required fails. A DataAnnotations rule is never null-guarded, because the
+            // attribute owns its null semantics and most pass null deliberately; an
+            // IConstraintFor<T> check is, because its contract says null never arrives - the same
+            // guard-and-skip every structural constraint gets.
             if (booleanTest is not null) {
                 var guards = new List<string>();
 
@@ -716,6 +736,11 @@ public sealed class ValidatorEmitter {
 
                 if (missing is not null) {
                     guards.Add($"!{missing}");
+                }
+
+                if (constraint.Kind == ConstraintKind.CustomInstance &&
+                    (property.IsReferenceType || property.IsNullableValueType)) {
+                    guards.Add($"{access} is not null");
                 }
 
                 if (failFast) {
@@ -1016,20 +1041,56 @@ public sealed class ValidatorEmitter {
     }
 
     /// <summary>
-    /// The two forms of one custom DataAnnotations rule: the flow-returning call the Validate body
-    /// writes, and the boolean test the fast path writes. Built together because an attribute's
-    /// pair shares the hoisted instance field.
+    /// The two forms of one custom rule: the flow-returning call the Validate body writes, and the
+    /// boolean test the fast path writes. Built together because an attribute's pair shares the
+    /// hoisted instance field.
     /// </summary>
     private static (string Flow, string Boolean) CustomCalls(
         string access,
         ValidatedPropertyModel property,
         ConstraintModel constraint,
         List<(string, ConstraintModel)> customAttributes,
+        List<(string, ConstraintModel)> instanceConstraints,
         string? fieldNamer) {
 
         var fieldLiteral = QuoteString(property.FieldName);
         var memberLiteral = QuoteString(property.PropertyName);
         var displayLiteral = QuoteString(property.DisplayName ?? property.PropertyName);
+
+        // An IConstraintFor<T> check: the author's instance, its two members bound the cheapest
+        // way each can be - on the class when it declares the method publicly, through the
+        // interface when the default or an explicit implementation is what answers. The value is
+        // unwrapped here; the null guard sits with the caller, where the boolean form carries its
+        // own because the fast path has no guard list to join.
+        if (constraint.Kind == ConstraintKind.CustomInstance) {
+            var unwrapped = property.IsNullableValueType ? $"{access}.Value" : access;
+
+            string instance;
+
+            if (constraint.PerPassInstance) {
+                // [PerValidationInstance]: constructed at the check, exactly as asked. VM0084
+                // already told the author what that costs.
+                instance = constraint.CustomConstruction!;
+            } else {
+                instance = $"{property.PropertyName}Constraint{instanceConstraints.Count}";
+                instanceConstraints.Add((instance, constraint));
+            }
+
+            var validateTarget = constraint.ValidateThroughInterface
+                ? $"(({constraint.InstanceInterface}){instance})"
+                : instance;
+            var isValidTarget = constraint.IsValidThroughInterface
+                ? $"(({constraint.InstanceInterface}){instance})"
+                : instance;
+
+            var nullGuard = property.IsReferenceType || property.IsNullableValueType
+                ? $"{access} is not null && "
+                : string.Empty;
+
+            return (
+                $"{validateTarget}.Validate(ref ctx, {unwrapped}, {fieldLiteral})",
+                $"{nullGuard}!{isValidTarget}.IsValid({unwrapped})");
+        }
 
         if (constraint.Kind == ConstraintKind.CustomAttribute) {
             var instance = $"{property.PropertyName}Custom{customAttributes.Count}";

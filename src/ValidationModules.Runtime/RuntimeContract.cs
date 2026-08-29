@@ -71,10 +71,15 @@ public static class RuntimeContract {
     // contract-5 runtime. One bump for both, because no release shipped between them; additive, as
     // the rule below requires.
 
+    // 6 -> 7: IConstraintFor<T> arrived - the instance shape of a custom constraint. The emitter
+    // hoists the constructed attribute into a static field (or constructs it per check under
+    // [PerValidationInstance]) and weaves calls to its IsValid and Validate members, neither of
+    // which a contract-6 runtime declares. Additive, as the rule below requires.
+
     /// <summary>
     /// The contract this runtime implements. Compared against
     /// <c>EmitterContract.RequiredRuntimeContract</c> by the generator, and against
     /// <c>$(ValidationModulesRuntimeContract)</c> by build tasks driving the emitter.
     /// </summary>
-    public const int Version = 6;
+    public const int Version = 7;
 }
