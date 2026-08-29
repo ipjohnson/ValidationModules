@@ -1,46 +1,44 @@
 # Getting started
 
-## The problem
-
-Every .NET application validates its inputs, and the layer that does it is the one most likely to be
-quietly reflective.
+Declare constraints on the model they belong to, and a source generator writes the checks into your
+assembly **while the project builds**:
 
 ```csharp
-// FluentValidation
-RuleFor(x => x.Name).NotNull().Length(1, 100);
+using ValidationModules.Constraints;
+
+public sealed record Pet {
+    [Required]
+    [StringLength(min: 1, max: 100)]
+    public string? Name { get; init; }
+
+    [Range(0, 30)]
+    public int Age { get; init; }
+}
 ```
+
+That is the whole declaration. No `PetValidator` to write, no registration call to remember — and
+because the result is ordinary C# in your own assembly, there is nothing to reflect over at
+startup, nothing for the trimmer to lose, and nothing between the attribute you wrote and the
+branch that runs.
+
+When a rule outgrows an attribute — a cross-field fact, a computed total, a type you do not own —
+the same generator reads a [rules class](/guide/rule-classes): full C#, read at build time and
+never run.
 
 ```csharp
-// DataAnnotations
-Validator.TryValidateObject(model, context, results, validateAllProperties: true);
+public sealed class PetRules : IValidationRulesFor<Pet> {
+    public static void Describe(ValidationRules<Pet> rules, Pet x) {
+        if (x.Age > 20) {
+            rules.Require(x.Name).Length(2, 40);   // control flow is just C#
+        }
+
+        rules.Ensure(x.Age != 13, code: "unlucky");
+    }
+}
 ```
 
-Both work. Both put reflection on the path a request takes. FluentValidation compiles an expression
-tree per property access; `TryValidateObject` walks attributes and invokes each one.
-
-Under Native AOT this does not fail loudly, which is the awkward part. `Expression.Compile()` falls
-back to the LINQ interpreter rather than throwing, so the rules still run — just interpreted, and
-with `IL2026`/`IL3050` trim warnings carried into the published build. You find out from a
-benchmark, or from a warning you learned to ignore, rather than from a crash.
-
-The second problem is quieter still. A constraint that never fires looks exactly like a constraint
-that passes:
-
-```csharp
-public sealed record Pet([Required] string Name);   // the attribute lands on the parameter, not the property
-```
-
-Nothing tells you. The model reads as validated and validates nothing.
-
-## How ValidationModules helps
-
-You declare the constraint on the property, and a source generator writes the check into your
-assembly **while the project builds**.
-
-Because the result is ordinary C# in your own assembly, there is nothing to reflect over at startup,
-nothing for the trimmer to lose, and nothing between the attribute you wrote and the branch that
-runs. And because the generator has the full compilation in front of it, the mistakes above become
-build errors instead of silence.
+The rest of this page walks the attribute path end to end; rules classes get
+[their own guide](/guide/rule-classes).
 
 ## Install
 
@@ -64,35 +62,13 @@ consumers:
 <PackageReference Include="ValidationModules.SourceGenerator" Version="…" PrivateAssets="all" />
 ```
 
-## Your first validator
-
-Put constraints on the model:
-
-```csharp
-using ValidationModules.Constraints;
-
-namespace MyApp;
-
-public sealed record Pet {
-    [Required]
-    [StringLength(min: 1, max: 100)]
-    public string? Name { get; init; }
-
-    [Range(0, 30)]
-    public int Age { get; init; }
-}
-```
-
-That is the whole declaration. There is no `PetValidator` to write and no registration call to
-remember — the generator finds any type carrying a constraint and emits a validator for it.
-
 ::: tip Two namespaces, and you will want both — in different files
 The constraint attributes live in `ValidationModules.Constraints`, on purpose: five of the names —
 `Required`, `StringLength`, `Range`, `AllowedValues` and the length family — collide with
 `System.ComponentModel.DataAnnotations`, and keeping them apart means the ambiguity is only
 reachable from a file that asks for both.
 
-A file that *declares* a model needs `ValidationModules.Constraints`, as above. A file that *runs* a
+A file that *declares* a model needs `ValidationModules.Constraints`. A file that *runs* a
 validator needs `ValidationModules`, where `Validate`, `IsValid`, `ValidateAndThrow` and
 `ValidateInto` live. Miss the second one and the call does not compile — see
 [Running it](#running-it).
@@ -148,6 +124,23 @@ implementation detail:
   parameter is CS0051, so the emitter matches the model's accessibility.
 - **No attributes on the generated type.** Source generators cannot see each other's output, so an
   attribute here would be read by nothing. Registration is emitted by the same generator instead.
+
+## Why the build, and not the request
+
+Because the generator has the full compilation in front of it, mistakes become build errors instead
+of silence. The classic:
+
+```csharp
+public sealed record Pet([Required] string Name);   // the attribute lands on the parameter, not the property
+```
+
+Under reflective validation, nothing tells you — the model reads as validated and validates
+nothing. Here it is a [VM diagnostic](/reference/diagnostics) in the IDE, along with a length
+constraint on an `int`, a pattern that will not parse, and the rest of the nonsense-pairing family.
+
+The same choice is what makes Native AOT a requirement rather than a hope: no reflection, no
+expression trees, no regex compiled at startup, and the trim warnings escalated to errors — see
+[Trimming and AOT](/guide/aot).
 
 ## Running it
 
@@ -228,12 +221,37 @@ You do not choose between these — the generator probes for `IDependencyModule`
 fits. [Registration and DI](/guide/registration) covers forcing the choice, and what
 `ValidationRunner<T>` adds once more than one validator exists for a type.
 
+## Coming from another library
+
+**DataAnnotations** is migration support, not a rewrite: models already carrying
+`System.ComponentModel.DataAnnotations` attributes compile as-is — the generator reads them into
+the same validators, with the BCL's exact semantics stated per attribute. Migrate the declarations
+to the native vocabulary at your own pace, or not at all. See
+[DataAnnotations](/guide/data-annotations).
+
+**FluentValidation** translates rather than ports — the vocabulary maps almost one to one, into
+attributes for per-property facts and a [rules class](/guide/rule-classes) for everything else:
+
+| FluentValidation | Here |
+|---|---|
+| `class V : AbstractValidator<T>` + ctor body | attributes on the model, or `class V : IValidationRulesFor<T>` with a static `Describe` |
+| `RuleFor(x => x.Name).NotNull().Length(1, 100)` | `[Required, StringLength(min: 1, max: 100)]` — or `rules.Require(x.Name).Length(1, 100)` |
+| `.Must(…)` | `rules.Ensure(condition)` — a plain bool, rendered into its own message |
+| `.When(…)` / `.Unless(…)` | `if (…) { … }` — control flow in a rules class is just C# |
+| `.SetValidator(child)` | `[ValidateNested]`, or `rules.Nested(x.Child)` |
+| `RuleForEach(x => x.Items)` | `rules.Each(x.Items)` |
+| `.MustAsync(…)` | [`IAsyncValidatorFor<T>`](/guide/async) — I/O never lives in a declaration |
+| `IValidator<T>` | `IValidatorFor<T>` — the FV name stays FV's |
+
+The deeper differences — one error shape, stable wire codes, no interpolated values in messages —
+are the [error model](/guide/errors)'s, and they hold whichever way you declare.
+
 ## Where to go next
 
 - [Constraints](/guide/constraints) — the constraint attributes and what each emits.
+- [Rule classes](/guide/rule-classes) — cross-field rules, computation, fragments, and types you do
+  not own.
 - [Nesting and collections](/guide/nesting) — `[ValidateNested]`, element paths, dictionaries.
 - [The error model](/guide/errors) — ordering, codes, field paths, severity.
-- [Rule classes](/guide/rule-classes) — declaring rules for a type you do not own, and cross-field
-  rules that no attribute can express.
 - [ASP.NET Core](/guide/aspnetcore) — validating a request before the handler runs.
 - [Trimming and AOT](/guide/aot) — what is enforced, and the one thing that needs your attention.

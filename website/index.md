@@ -82,24 +82,9 @@ features:
 
 <div class="vm-sample">
 
-## The problem
+## Declare, and the check is built
 
-Validation is the layer most likely to be quietly reflective. FluentValidation compiles expression
-trees; `System.ComponentModel.DataAnnotations` walks attributes with `Validator.TryValidateObject`.
-Both work — and both put reflection on the request path:
-
-```csharp
-RuleFor(x => x.Name).NotNull().Length(1, 100);
-```
-
-Under Native AOT `Expression.Compile()` does not throw. It falls back to the LINQ interpreter, so
-property access is interpreted rather than compiled, and you carry `IL2026`/`IL3050` trim warnings
-into a published build. The rules still run; they just cost more than they look like they cost, in
-the configuration where you can least afford it.
-
-## What it looks like instead
-
-Declare the constraint on the property. The check is written for you during the build.
+Constraints live on the model. A source generator writes the validator during the build:
 
 ```csharp
 using ValidationModules.Constraints;
@@ -121,22 +106,40 @@ What comes out the other side is the code you would have written by hand, in you
 
 ```csharp
 public sealed partial class PetValidator : IValidatorFor<Pet> {
-    public static readonly PetValidator Instance = new();
 
     public ValidationFlow Validate(ref ValidationContext ctx, Pet value) {
         if (string.IsNullOrWhiteSpace(value.Name)) {
             if (ctx.ReportRequired("name").ShouldStop) return ValidationFlow.Stop;
         }
-        else if (value.Name.Length > 100) {
+        else if (value.Name is not null && (value.Name.Length < 1 || value.Name.Length > 100)) {
             if (ctx.ReportStringLength("name", 1, 100).ShouldStop) return ValidationFlow.Stop;
         }
 
-        if (value.Age < 0 || value.Age > 30)            ctx.ReportRange("age", 0, 30);
+        if ((value.Age < 0 || value.Age > 30) && ctx.ReportRange("age", 0, 30).ShouldStop)
+            return ValidationFlow.Stop;
 
         if (value.Home is { } nestedHome) {
             var ctxHome = ctx.Push("home");
-            HomeValidators[0].Validate(ref ctxHome, nestedHome);
+            if (HomeValidators[0].Validate(ref ctxHome, nestedHome).ShouldStop)
+                return ValidationFlow.Stop;
         }
+
+        return ValidationFlow.Continue;
+    }
+}
+```
+
+And when a rule outgrows an attribute — cross-field facts, computation, a type you do not own — a
+[rules class](/guide/rule-classes) is full C# that is **read at build time and never run**:
+
+```csharp
+public sealed class PetRules : IValidationRulesFor<Pet> {
+    public static void Describe(ValidationRules<Pet> rules, Pet x) {
+        if (x.Age > 20) {
+            rules.Require(x.Name).Length(2, 40);   // control flow is just C#
+        }
+
+        rules.Ensure(x.Age != 13, code: "unlucky");
     }
 }
 ```
@@ -156,6 +159,20 @@ foreach (var error in result.Errors) {
 // home.postalCode  required
 // toys[3].name     required
 ```
+
+## Why the build, and not the request
+
+Validation is the layer most likely to be quietly reflective. FluentValidation compiles an
+expression tree per property access; `System.ComponentModel.DataAnnotations` walks attributes with
+`Validator.TryValidateObject`. Both work — and under Native AOT neither fails loudly:
+`Expression.Compile()` falls back to the LINQ interpreter, so the rules still run, just interpreted
+and carrying `IL2026`/`IL3050` trim warnings into the published build. They cost more than they
+look like they cost, in the configuration where you can least afford it.
+
+Both have a home here anyway: existing DataAnnotations models
+[compile as-is](/guide/data-annotations) — migration support, at your own pace — and
+FluentValidation [translates almost one to one](/guide/getting-started#coming-from-another-library)
+into attributes and rules classes.
 
 ## What it costs
 
