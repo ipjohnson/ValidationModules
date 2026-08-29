@@ -21,23 +21,26 @@ column before writing rules.
 
 | FluentValidation | Here | Note |
 |---|---|---|
-| `class V : AbstractValidator<T>` + ctor body | `class V : IValidationRulesFor<T>` + `Describe(ValidationRules<T> rules)` | Interface, not base class |
-| `RuleFor(x => x.Name)` | `rules.For(x => x.Name)` | Name only |
-| `Expression<Func<T,TValue>>` | `Func<T,TValue>` + `[CallerArgumentExpression]` | Same call site, no expression tree. This is why it is AOT-safe |
-| `.NotNull()`, `.NotEmpty()` | `.Required()`, `.RequiredAllowingEmpty()` | Name only |
+| `class V : AbstractValidator<T>` + ctor body | `class V : IValidationRulesFor<T>` + `static Describe(ValidationRules<T> rules, T x)` | Interface, not base class — and the body is **read at build time, never run** |
+| `RuleFor(x => x.Name)` | `rules.Require(x.Name)` etc. — the entry call carries the value | Values, not selectors; the generator resolves `x.Name` as a symbol |
+| `Expression<Func<T,TValue>>` | plain values on a symbolic `x` | No expression tree, no delegate. This is why it is AOT-safe and fully trimmable |
+| `.NotNull()`, `.NotEmpty()` | `.Require()`, `.RequireAllowingEmpty()` | Name only |
 | `.Length(1,100)` | `.Length(1,100)` | Same |
 | `.InclusiveBetween(0,30)` | `.Range(0,30)` | Name only |
 | `.GreaterThanOrEqualTo(x)` / `.LessThanOrEqualTo(x)` | `.RangeAtLeast(x)` / `.RangeAtMost(x)` | Name only |
 | `.Matches(regex)` | `.Pattern(() => MyRegex())` | Takes a thunk; pair with `[GeneratedRegex]` |
-| `.SetValidator(child)` | `.Nested(x => x.Child)` or `[ValidateNested]` | Declarative; no child validator to wire |
-| `RuleForEach(x => x.Items)` | `.Each(x => x.Items)` | Name only |
-| `.When(p)` / `.Unless(p)` | `.When(p)` / `.Unless(p)`, plus block form `When(p, () => { … })` | Superset |
+| `.SetValidator(child)` | `rules.Nested(x.Child)` or `[ValidateNested]` | Declarative; no child validator to wire |
+| `RuleForEach(x => x.Items)` | `rules.Each(x.Items)` | Name only |
+| `.When(p)` / `.Unless(p)` | `if (p) { … }` / `if (!p) { … }` | Control flow is C#, evaluated where written |
 | `.WithSeverity(...)` | `severity:` parameter | Name only |
-| separate statements per rule | `.And` chains back to `ValidationRules<T>` | Or just start a new statement |
-| `IValidator<T>` | **`IValidatorFor<T>`** | `IValidator<T>` belongs to FluentValidation. Never introduce it |
-| `.Must((model, value) => …)` | **`Ensure(Func<T,bool>)` — restricted, see below** | **Semantic difference** |
+| `.Must((model, value) => …)` | **`Ensure(bool)` — a plain condition, see below** | **Semantic difference** |
 | `.WithMessage("{PropertyName} …")` | `message:` parameter, no interpolation | **Semantic difference** |
+| `IValidator<T>` | **`IValidatorFor<T>`** | `IValidator<T>` belongs to FluentValidation. Never introduce it |
 | `RuleSet` | none — deferred past 1.0.0 | Not a gap to work around; see Non-goals |
+
+Shared rule sets are [fragments](docs/active-rules-redesign.md) — a `static void` method receiving
+`rules`, expanded by the generator, generics included. Free-form findings report through
+`rules.Context`; a chain is one statement and its own suppression unit.
 
 ### The two that are not name changes
 
