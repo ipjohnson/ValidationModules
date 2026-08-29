@@ -523,4 +523,34 @@ public static class ValidationDiagnostics {
         "it, so this would check nothing. Give the facet constraint attributes or a rules class",
         DiagnosticSeverity.Error);
 
+    // Language packs (docs/language-packs.md). The block starts at VM0100 so the pack suite reads
+    // as its own family; the point of compiling packs is that these fire at the build they affect.
+
+    public static readonly DiagnosticDescriptor LanguagePackUnreadable = Descriptor(
+        "VM0100", "Language pack cannot be read",
+        "'{0}' was skipped: {1}", DiagnosticSeverity.Error);
+
+    public static readonly DiagnosticDescriptor LanguagePackUnknownShape = Descriptor(
+        "VM0101", "Language pack names an unknown shape key",
+        "'{0}' in '{1}' names no known shape; the nearest is '{2}'. The entry was skipped",
+        DiagnosticSeverity.Warning);
+
+    public static readonly DiagnosticDescriptor LanguagePackHoleOutOfRange = Descriptor(
+        "VM0102", "Template hole exceeds the shape's arguments",
+        "'{0}' uses {{{1}}}, but the shape carries {2} argument(s); the entry in '{3}' was skipped",
+        DiagnosticSeverity.Error);
+
+    public static readonly DiagnosticDescriptor LanguagePackDuplicateKey = Descriptor(
+        "VM0103", "Language pack repeats a key",
+        "'{0}' appears more than once in '{1}'; entries after the first were skipped",
+        DiagnosticSeverity.Error);
+
+    public static readonly DiagnosticDescriptor LanguagePackNameMismatch = Descriptor(
+        "VM0104", "Language pack file name and culture disagree",
+        "'{0}' is named for '{1}' but declares culture '{2}'; the body wins",
+        DiagnosticSeverity.Warning);
+
+    public static readonly DiagnosticDescriptor LanguagePackCoverage = Descriptor(
+        "VM0105", "Language pack coverage",
+        "'{0}' covers {1} of {2} shapes; missing: {3}", DiagnosticSeverity.Info);
 }

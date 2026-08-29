@@ -76,6 +76,14 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         var assemblyNamespace = context.CompilationProvider.Select(static (compilation, _) =>
             SanitizeNamespace(compilation.AssemblyName));
 
+        // Language packs ride AdditionalFiles, so the same feature serves every provenance: a
+        // file in the project, one delivered by a package's props, or a pack author's own build
+        // (docs/language-packs.md). Item order is preserved - it is the layering order.
+        var languagePackFiles = context.AdditionalTextsProvider
+            .Where(static text => text.Path.EndsWith(".validation-messages.json", StringComparison.OrdinalIgnoreCase))
+            .Select(static (text, token) => new LanguagePackFile(text.Path, text.GetText(token)?.ToString() ?? string.Empty))
+            .Collect();
+
         var candidates = context.SyntaxProvider
             .CreateSyntaxProvider(
                 static (node, _) => node is Microsoft.CodeAnalysis.CSharp.Syntax.TypeDeclarationSyntax,
@@ -140,6 +148,25 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             }
         });
 
+        context.RegisterSourceOutput(
+            languagePackFiles.Combine(assemblyNamespace).Combine(emitterSettings),
+            static (production, input) => {
+                var ((files, ns), settings) = input;
+
+                for (var i = 0; i < files.Length; i++) {
+                    var outcome = LanguagePackReader.Read(files[i], i);
+
+                    foreach (var diagnostic in outcome.Diagnostics) {
+                        production.ReportDiagnostic(diagnostic);
+                    }
+
+                    if (outcome.Model is { } pack) {
+                        production.AddSource(
+                            pack.HintName, new LanguagePackEmitter().Emit(pack, ns, settings.CodeStyle));
+                    }
+                }
+            });
+
         var registrationInput = models
             .SelectMany(static (results, _) => results
                 .Select(result => result.Model)
@@ -148,10 +175,21 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             .Collect()
             .Combine(hasDependencyModules)
             .Combine(options)
-            .Combine(assemblyNamespace);
+            .Combine(assemblyNamespace)
+            .Combine(languagePackFiles);
 
         context.RegisterSourceOutput(registrationInput, static (production, input) => {
-            var (((collected, hasDm), generatorOptions), ns) = input;
+            var ((((collected, hasDm), generatorOptions), ns), packFiles) = input;
+
+            // Re-read rather than re-plumbed: the read is deterministic and cheap, and carrying
+            // the models through a second provider would double-report their diagnostics.
+            var languagePacks = new List<LanguagePackModel>(packFiles.Length);
+
+            for (var i = 0; i < packFiles.Length; i++) {
+                if (LanguagePackReader.Read(packFiles[i], i).Model is { } pack) {
+                    languagePacks.Add(pack);
+                }
+            }
 
             var mode = generatorOptions.Registration switch {
                 "DependencyModules" => RegistrationMode.DependencyModules,
@@ -173,7 +211,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
 
             if (new RegistrationEmitter().Emit(
                     ordered, mode, ns, generatorOptions.Naming, withAdapters,
-                    generatorOptions.CodeStyle) is { } source) {
+                    generatorOptions.CodeStyle, languagePacks) is { } source) {
                 production.AddSource("GeneratedValidatorRegistration.g.cs", source);
             }
         });

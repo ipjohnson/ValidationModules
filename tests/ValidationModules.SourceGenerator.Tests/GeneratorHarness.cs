@@ -105,12 +105,32 @@ public static class GeneratorHarness {
     /// Assemblies to reference beyond the ambient set - the cross-assembly cases build these with
     /// <see cref="CompileToReference"/>.
     /// </param>
+    /// <summary>
+    /// Runs the generator with additional files beside the source - the language-pack pipeline's
+    /// input. Paths are as given, so tests exercise the name conventions too.
+    /// </summary>
+    public static Result RunWithFiles(
+        string source,
+        IReadOnlyCollection<(string Path, string Content)> additionalFiles,
+        params (string Key, string Value)[] buildProperties) =>
+        Run(source, "GeneratorTests", OutputKind.DynamicallyLinkedLibrary,
+            Array.Empty<MetadataReference>(), buildProperties, additionalFiles);
+
     public static Result Run(
         string source,
         string assemblyName,
         OutputKind outputKind,
         IReadOnlyCollection<MetadataReference> extraReferences,
-        params (string Key, string Value)[] buildProperties) {
+        params (string Key, string Value)[] buildProperties) =>
+        Run(source, assemblyName, outputKind, extraReferences, buildProperties, additionalFiles: null);
+
+    private static Result Run(
+        string source,
+        string assemblyName,
+        OutputKind outputKind,
+        IReadOnlyCollection<MetadataReference> extraReferences,
+        (string Key, string Value)[] buildProperties,
+        IReadOnlyCollection<(string Path, string Content)>? additionalFiles) {
         var references = BaseReferences();
         references.AddRange(extraReferences);
 
@@ -120,8 +140,13 @@ public static class GeneratorHarness {
             references,
             new CSharpCompilationOptions(outputKind, nullableContextOptions: NullableContextOptions.Enable));
 
+        var texts = (additionalFiles ?? Array.Empty<(string, string)>())
+            .Select(static file => (AdditionalText)new InMemoryAdditionalText(file.Item1, file.Item2))
+            .ToImmutableArray();
+
         var driver = CSharpGeneratorDriver
             .Create(new ValidationSourceGenerator())
+            .AddAdditionalTexts(texts)
             .WithUpdatedAnalyzerConfigOptions(new OptionsProvider(buildProperties))
             .RunGeneratorsAndUpdateCompilation(compilation, out var output, out var diagnostics);
 
@@ -217,5 +242,19 @@ public static class GeneratorHarness {
 
             public override bool TryGetValue(string key, out string value) => _values.TryGetValue(key, out value!);
         }
+    }
+
+    /// <summary>An additional file that exists only in the test, path and all.</summary>
+    private sealed class InMemoryAdditionalText : AdditionalText {
+        private readonly Microsoft.CodeAnalysis.Text.SourceText _text;
+
+        public InMemoryAdditionalText(string path, string content) {
+            Path = path;
+            _text = Microsoft.CodeAnalysis.Text.SourceText.From(content);
+        }
+
+        public override string Path { get; }
+
+        public override Microsoft.CodeAnalysis.Text.SourceText GetText(CancellationToken cancellationToken = default) => _text;
     }
 }

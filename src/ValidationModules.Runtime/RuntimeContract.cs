@@ -105,10 +105,16 @@ public static class RuntimeContract {
     // rc window, which is the only time they are cheap; the number cannot express either, so they
     // are written down here, per the rule above.
 
+    // 9 -> 10: language packs (docs/language-packs.md). Generated pack classes implement
+    // IValidationLanguagePack, and the registration extension registers them and TryAdds a
+    // LanguagePackFormatter over the set - none of which a contract-9 runtime declares. The shape
+    // keys arrive with them: ValidationMessageTemplates.KeyOf/TemplatesByKey/KnownKeys, and the
+    // renderer's override-template entry points. Additive, as the rule below requires.
+
     /// <summary>
     /// The contract this runtime implements. Compared against
     /// <c>EmitterContract.RequiredRuntimeContract</c> by the generator, and against
     /// <c>$(ValidationModulesRuntimeContract)</c> by build tasks driving the emitter.
     /// </summary>
-    public const int Version = 9;
+    public const int Version = 10;
 }

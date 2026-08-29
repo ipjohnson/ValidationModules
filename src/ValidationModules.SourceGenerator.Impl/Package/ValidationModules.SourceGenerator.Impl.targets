@@ -25,4 +25,10 @@
     <ItemGroup Condition="'$(PackageValidationModulesIncludeSource)' == 'true'">
         <Compile Include="$(MSBuildThisFileDirectory)../src/**/*.cs" Visible="false"/>
     </ItemGroup>
+    <ItemGroup>
+        <!-- Language packs: any *.validation-messages.json in the project compiles into an
+             IValidationLanguagePack, validated against the shape inventory at this build.
+             docs/language-packs.md. -->
+        <AdditionalFiles Include="**/*.validation-messages.json" Exclude="$(DefaultItemExcludes)" />
+    </ItemGroup>
 </Project>

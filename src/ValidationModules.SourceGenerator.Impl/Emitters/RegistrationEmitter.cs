@@ -62,6 +62,9 @@ public sealed class RegistrationEmitter {
     private static readonly ITypeDefinition RunnerExtensions =
         TypeDefinition.Get(DependencyInjection, "ValidationModulesServiceCollectionExtensions");
 
+    private static readonly ITypeDefinition LanguagePack =
+        TypeDefinition.Get(TypeDefinitionEnum.InterfaceDefinition, "ValidationModules", "IValidationLanguagePack");
+
     private static readonly ITypeDefinition DynamicValidator =
         TypeDefinition.Get(TypeDefinitionEnum.InterfaceDefinition, "ValidationModules", "IDynamicValidator");
 
@@ -79,9 +82,14 @@ public sealed class RegistrationEmitter {
         string assemblyNamespace,
         string? fieldNamer = null,
         bool withDynamicAdapters = false,
-        BraceStyle style = BraceStyle.Allman) {
+        BraceStyle style = BraceStyle.Allman,
+        IReadOnlyList<LanguagePackModel>? languagePacks = null) {
 
-        if (models.Count == 0 || mode == RegistrationMode.None) {
+        var packs = languagePacks ?? Array.Empty<LanguagePackModel>();
+
+        // A pack-only assembly - five languages, zero validated types - still earns the extension;
+        // language packs are a legitimate reason for it to exist.
+        if ((models.Count == 0 && packs.Count == 0) || mode == RegistrationMode.None) {
             return null;
         }
 
@@ -95,7 +103,7 @@ public sealed class RegistrationEmitter {
         var di = new NamespaceDefinition(DependencyInjection);
 
         file.AddComponent(di);
-        EmitExtension(di, models, assemblyNamespace, fieldNamer, withDynamicAdapters);
+        EmitExtension(di, models, assemblyNamespace, fieldNamer, withDynamicAdapters, packs);
 
         if (mode == RegistrationMode.DependencyModules) {
             var consumer = new NamespaceDefinition(assemblyNamespace);
@@ -112,7 +120,8 @@ public sealed class RegistrationEmitter {
         IReadOnlyList<ValidatedTypeModel> models,
         string ns,
         string? fieldNamer,
-        bool withDynamicAdapters) {
+        bool withDynamicAdapters,
+        IReadOnlyList<LanguagePackModel> languagePacks) {
 
         var extensions = di.AddClass($"{Identifier(ns)}ValidationExtensions");
 
@@ -180,6 +189,31 @@ public sealed class RegistrationEmitter {
                 services));
         }
 
+        if (languagePacks.Count > 0) {
+            BlankLine(add);
+            add.AddLineComment(
+                "The language packs this assembly compiled, in additional-files order - which\n" +
+                "is what makes the layering rule hold: MSBuild adds package-delivered files\n" +
+                "before project items, so an app-local file registers later and wins per key.");
+
+            foreach (var pack in languagePacks) {
+                add.AddIndentedStatement(InvokeGeneric(
+                    ServiceExtensions, "AddSingleton",
+                    new[] { LanguagePack, NamedType(ns, pack.ClassName) },
+                    services));
+            }
+
+            BlankLine(add);
+            add.AddLineComment(
+                "TryAdd and a factory: every assembly contributes packs, one formatter reads\n" +
+                "them all, and an app that installed its own formatter first keeps it.");
+            add.AddIndentedStatement(InvokeGeneric(
+                DescriptorExtensions, "TryAddSingleton",
+                new[] { (ITypeDefinition)TypeDefinition.Get("ValidationModules", "ValidationMessageFormatter") },
+                services,
+                PackFormatter()));
+        }
+
         BlankLine(add);
         add.AddLineComment(
             "TryAdd, so a namer the consumer registered first survives. The policy here is\n" +
@@ -208,6 +242,20 @@ public sealed class RegistrationEmitter {
             "GetServices", new[] { DynamicValidator }, "provider");
 
         var construct = New(TypeDefinition.Get("ValidationModules", "DynamicValidatorRegistry"), resolve);
+
+        return new WrapStatement(construct, new CodeOutputComponent("provider => ") { Indented = false }, null);
+    }
+
+    /// <summary>
+    /// The formatter factory: <c>provider =&gt; new LanguagePackFormatter(GetServices…)</c>, the
+    /// same closed-type shape as <see cref="Registry"/> so nothing constructs reflectively.
+    /// </summary>
+    private static IOutputComponent PackFormatter() {
+        var resolve = InvokeGeneric(
+            TypeDefinition.Get(DependencyInjection, "ServiceProviderServiceExtensions"),
+            "GetServices", new[] { LanguagePack }, "provider");
+
+        var construct = New(TypeDefinition.Get("ValidationModules", "LanguagePackFormatter"), resolve);
 
         return new WrapStatement(construct, new CodeOutputComponent("provider => ") { Indented = false }, null);
     }

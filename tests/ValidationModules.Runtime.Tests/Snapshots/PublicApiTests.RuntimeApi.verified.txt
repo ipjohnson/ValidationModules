@@ -65,6 +65,11 @@ namespace ValidationModules
         ValidationModules.ValidationFlow Report(string field, string code, object? value, ValidationModules.ValidationMessageInfo messageInfo, ValidationModules.ValidationSeverity severity = 0);
         ValidationModules.ValidationFlow ReportHere(string code, string message, ValidationModules.ValidationSeverity severity = 0);
     }
+    public interface IValidationLanguagePack
+    {
+        string Culture { get; }
+        string? Template(string key);
+    }
     public interface IValidationMessageProvider
     {
         string Template(in ValidationModules.ValidationError error);
@@ -77,6 +82,11 @@ namespace ValidationModules
     {
         bool IsValid(T value);
         ValidationModules.ValidationFlow Validate(ref ValidationModules.ValidationContext context, T value);
+    }
+    public sealed class LanguagePackFormatter : ValidationModules.ValidationMessageFormatter
+    {
+        public LanguagePackFormatter(System.Collections.Generic.IEnumerable<ValidationModules.IValidationLanguagePack> packs) { }
+        public override string Format(in ValidationModules.ValidationError error) { }
     }
     public static class PropertyRulesExtensions
     {
@@ -109,7 +119,7 @@ namespace ValidationModules
     public delegate ValidationModules.ValidationFlow RuleAction<in T>(ref ValidationModules.ValidationContext context, T value);
     public static class RuntimeContract
     {
-        public const int Version = 9;
+        public const int Version = 10;
     }
     public static class ValidationCodes
     {
@@ -256,6 +266,7 @@ namespace ValidationModules
         public ValidationModules.IValidationMessageProvider? Provider { get; init; }
         public string Template { get; }
         public string Render(in ValidationModules.ValidationError error, System.IFormatProvider? formatProvider = null) { }
+        public string Render(in ValidationModules.ValidationError error, string template, System.IFormatProvider? formatProvider = null) { }
     }
     public sealed class ValidationMessageMap : ValidationModules.ValidationMessageFormatter
     {
@@ -300,6 +311,9 @@ namespace ValidationModules
         public static readonly string StringLengthBetweenSingular;
         public static readonly string UniqueItems;
         public static readonly string Url;
+        public static System.Collections.Generic.IReadOnlyCollection<string> KnownKeys { get; }
+        public static System.Collections.Generic.IReadOnlyDictionary<string, string> TemplatesByKey { get; }
+        public static string? KeyOf(string? template) { }
     }
     public enum ValidationPathMode
     {

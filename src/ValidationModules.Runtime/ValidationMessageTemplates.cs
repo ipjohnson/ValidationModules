@@ -132,4 +132,79 @@ public static class ValidationMessageTemplates {
 
     /// <summary>A custom constraint failed and declared no message of its own.</summary>
     public static readonly string Custom = "{field} is invalid.";
+
+    /// <summary>
+    /// Every template above, by its stable shape key - <c>string_length.at_most</c>,
+    /// <c>range.greater_and_less</c>, <c>enum.denied</c>. The key vocabulary language packs are
+    /// authored against (docs/language-packs.md): the first segment is the wire code, the second
+    /// exists only for the four codes whose sentence varies with their arguments.
+    /// </summary>
+    /// <remarks>
+    /// A shape key is a contract the way a code is: its argument list is append-only, and a
+    /// change to what a hole means is a new key, never a mutation. The map is built from the
+    /// fields, so rewording any template's text changes nothing here - which is the whole point
+    /// of keys that are not wording.
+    /// </remarks>
+    public static IReadOnlyDictionary<string, string> TemplatesByKey { get; } =
+        new Dictionary<string, string>(StringComparer.Ordinal) {
+            ["required"] = Required,
+            ["string_length.between"] = StringLengthBetween,
+            ["string_length.between_singular"] = StringLengthBetweenSingular,
+            ["string_length.at_most"] = StringLengthAtMost,
+            ["string_length.at_most_singular"] = StringLengthAtMostSingular,
+            ["string_length.at_least"] = StringLengthAtLeast,
+            ["string_length.at_least_singular"] = StringLengthAtLeastSingular,
+            ["array_bounds.between"] = ItemCountBetween,
+            ["array_bounds.between_singular"] = ItemCountBetweenSingular,
+            ["array_bounds.at_most"] = ItemCountAtMost,
+            ["array_bounds.at_most_singular"] = ItemCountAtMostSingular,
+            ["array_bounds.at_least"] = ItemCountAtLeast,
+            ["array_bounds.at_least_singular"] = ItemCountAtLeastSingular,
+            ["range.between"] = RangeBetween,
+            ["range.greater_and_at_most"] = RangeGreaterAndAtMost,
+            ["range.at_least_and_less"] = RangeAtLeastAndLess,
+            ["range.greater_and_less"] = RangeGreaterAndLess,
+            ["range.at_least"] = RangeAtLeast,
+            ["range.greater_than"] = RangeGreaterThan,
+            ["range.at_most"] = RangeAtMost,
+            ["range.less_than"] = RangeLessThan,
+            ["multiple_of"] = MultipleOf,
+            ["unique_items"] = UniqueItems,
+            ["pattern"] = Pattern,
+            ["enum"] = AllowedValues,
+            ["enum.denied"] = DeniedValues,
+            ["enum.flags"] = EnumFlags,
+            ["email"] = Email,
+            ["phone"] = Phone,
+            ["url"] = Url,
+            ["credit_card"] = CreditCard,
+            ["base64"] = Base64,
+            ["file_extension"] = FileExtension,
+            ["custom"] = Custom,
+        };
+
+    /// <summary>The key vocabulary, for pack tooling and the coverage check.</summary>
+    public static IReadOnlyCollection<string> KnownKeys => TemplatesByKey.Keys as IReadOnlyCollection<string> ?? [.. TemplatesByKey.Keys];
+
+    private static readonly Dictionary<string, string> KeysByTemplate = BuildReverse();
+
+    private static Dictionary<string, string> BuildReverse() {
+        var reverse = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var pair in TemplatesByKey) {
+            reverse[pair.Value] = pair.Key;
+        }
+
+        return reverse;
+    }
+
+    /// <summary>
+    /// The shape key for one of the templates above, or null for a template this library did not
+    /// write - a custom Message, a resx-backed provider's text. Built from the fields at first
+    /// use, so it survives any rewording of the defaults; nothing here ever compares against
+    /// wording a caller supplied.
+    /// </summary>
+    /// <param name="template">The template to identify - usually <c>ValidationMessageInfo.Template</c>.</param>
+    public static string? KeyOf(string? template) =>
+        template is not null && KeysByTemplate.TryGetValue(template, out var key) ? key : null;
 }
