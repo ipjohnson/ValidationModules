@@ -43,8 +43,8 @@ public class LanguagePackGenerationTests {
         var pack = result.Sources["LanguagePack.fr.0.g.cs"];
 
         Assert.Contains("internal sealed class FrLanguagePack0 : global::ValidationModules.IValidationLanguagePack", pack);
-        Assert.Contains("if (key == \"string_length.between\")", pack);
-        Assert.Contains("return \"{field} doit contenir entre {0} et {1} caractères.\";", pack);
+        Assert.Contains("new(\"string_length.between\", \"{field} doit contenir entre {0} et {1} caractères.\")", pack);
+        Assert.Contains("Templates => Entries;", pack);
 
         var registration = result.Sources["GeneratedValidatorRegistration.g.cs"];
 
@@ -112,7 +112,8 @@ public class LanguagePackGenerationTests {
             """)]);
 
         Assert.Single(result.Diagnostics, d => d.Id == "VM0103");
-        Assert.Contains("return \"a\";", result.Sources["LanguagePack.fr.0.g.cs"]);
+        Assert.Contains("new(\"required\", \"a\")", result.Sources["LanguagePack.fr.0.g.cs"]);
+        Assert.DoesNotContain(", \"b\")", result.Sources["LanguagePack.fr.0.g.cs"]);
     }
 
     [Fact]

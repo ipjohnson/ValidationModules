@@ -68,7 +68,7 @@ namespace ValidationModules
     public interface IValidationLanguagePack
     {
         string Culture { get; }
-        string? Template(string key);
+        System.Collections.Generic.IReadOnlyList<System.Collections.Generic.KeyValuePair<string, string>> Templates { get; }
     }
     public interface IValidationMessageProvider
     {
