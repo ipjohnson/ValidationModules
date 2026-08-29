@@ -48,4 +48,25 @@ public sealed class ValidationProblemOptions {
     /// not reject it.
     /// </remarks>
     public bool IncludeNonErrors { get; set; }
+
+    /// <summary>
+    /// Renders each failure's message for the response body, in place of the default render.
+    /// Null - the default - keeps <see cref="ValidationError.Message"/> exactly as before.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the HTTP boundary's read-side hook from docs/structured-errors.md: errors carry
+    /// data, and the reader decides the text. A <see cref="ValidationMessageMap"/> here is how a
+    /// second language reaches the <c>errors</c> object - the formatter runs inside the request,
+    /// after localization middleware has set <c>CurrentUICulture</c>, so a map that reads the
+    /// ambient culture localises per request with nothing else configured.
+    /// </para>
+    /// <para>
+    /// The <c>validationCodes</c> extension is untouched by design - it is the stable vocabulary,
+    /// and rendering is exactly the thing it must not depend on. And this hook is also the one
+    /// place a response can opt into echoing <see cref="ValidationError.Value"/>, which no default
+    /// ever does - that decision rides with the formatter that makes it.
+    /// </para>
+    /// </remarks>
+    public ValidationMessageFormatter? MessageFormatter { get; set; }
 }

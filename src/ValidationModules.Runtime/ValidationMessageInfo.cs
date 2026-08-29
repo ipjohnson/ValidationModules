@@ -139,14 +139,113 @@ public sealed class ValidationMessageInfo {
     }
 
     /// <summary>
-    /// The hole filler. Tolerant by design: an unknown or out-of-range hole renders verbatim,
-    /// because a failing validation is the wrong moment to throw over a template typo.
+    /// The hole filler. Tolerant by design - an unknown or out-of-range hole renders verbatim,
+    /// because a failing validation is the wrong moment to throw over a template typo - and
+    /// exact-size by design: the common path allocates the argument strings and one final string,
+    /// nothing else. The composed helpers this replaced were a single <c>string.Concat</c>, and a
+    /// render that cost several times that would have moved the price rather than deferred it.
     /// </summary>
     private string RenderTemplate(string template, string field, IFormatProvider formatProvider) {
-        var builder = new StringBuilder(template.Length + 24);
+        // Pass 1: locate and resolve the holes into locals. Every template this library writes
+        // carries at most three substitutions ({field} and two arguments), so four slots cover the
+        // realistic shapes without touching the heap; a hand-written template beyond that takes
+        // the builder fallback and merely costs more.
+        var count = 0;
+        int start0 = 0, length0 = 0, start1 = 0, length1 = 0, start2 = 0, length2 = 0, start3 = 0, length3 = 0;
+        string? replacement0 = null, replacement1 = null, replacement2 = null, replacement3 = null;
 
         for (var i = 0; i < template.Length; i++) {
             var current = template[i];
+            int holeLength;
+            string replacement;
+
+            if (current == '{' && i + 1 < template.Length && template[i + 1] == '{') {
+                (holeLength, replacement) = (2, "{");
+            }
+            else if (current == '}' && i + 1 < template.Length && template[i + 1] == '}') {
+                (holeLength, replacement) = (2, "}");
+            }
+            else if (current == '{' && template.IndexOf('}', i + 1) is var close && close >= 0 &&
+                Resolve(template.AsSpan(i + 1, close - i - 1), field, formatProvider) is { } resolved) {
+                (holeLength, replacement) = (close - i + 1, resolved);
+            }
+            else {
+                continue;
+            }
+
+            switch (count) {
+                case 0: (start0, length0, replacement0) = (i, holeLength, replacement); break;
+                case 1: (start1, length1, replacement1) = (i, holeLength, replacement); break;
+                case 2: (start2, length2, replacement2) = (i, holeLength, replacement); break;
+                case 3: (start3, length3, replacement3) = (i, holeLength, replacement); break;
+                default: return RenderSlow(template, field, formatProvider);
+            }
+
+            count++;
+            i += holeLength - 1;
+        }
+
+        if (count == 0) {
+            return template;
+        }
+
+        var length = template.Length
+            + replacement0!.Length - length0
+            + (count > 1 ? replacement1!.Length - length1 : 0)
+            + (count > 2 ? replacement2!.Length - length2 : 0)
+            + (count > 3 ? replacement3!.Length - length3 : 0);
+
+        // Pass 2: one exact-size string, filled left to right. The state tuple is copied, not
+        // captured, so the whole render allocates the argument strings and this result.
+        return string.Create(
+            length,
+            (template, count, start0, length0, replacement0, start1, length1, replacement1,
+                start2, length2, replacement2, start3, length3, replacement3),
+            static (span, state) => {
+                var read = 0;
+                var written = 0;
+
+                Fill(span, state.template, state.start0, state.length0, state.replacement0!, ref read, ref written);
+                if (state.count > 1) {
+                    Fill(span, state.template, state.start1, state.length1, state.replacement1!, ref read, ref written);
+                }
+
+                if (state.count > 2) {
+                    Fill(span, state.template, state.start2, state.length2, state.replacement2!, ref read, ref written);
+                }
+
+                if (state.count > 3) {
+                    Fill(span, state.template, state.start3, state.length3, state.replacement3!, ref read, ref written);
+                }
+
+                state.template.AsSpan(read).CopyTo(span[written..]);
+            });
+    }
+
+    private static void Fill(
+        Span<char> span, string template, int start, int holeLength, string replacement,
+        ref int read, ref int written) {
+        template.AsSpan(read, start - read).CopyTo(span[written..]);
+        written += start - read;
+        replacement.CopyTo(span[written..]);
+        written += replacement.Length;
+        read = start + holeLength;
+    }
+
+    /// <summary>
+    /// The rare-shape fallback: more holes than the scratch buffer. Correctness over exactness.
+    /// </summary>
+    private string RenderSlow(string template, string field, IFormatProvider formatProvider) {
+        var builder = new StringBuilder(template.Length + 32);
+
+        for (var i = 0; i < template.Length; i++) {
+            var current = template[i];
+
+            if (current == '{' && i + 1 < template.Length && template[i + 1] == '{') {
+                builder.Append('{');
+                i++;
+                continue;
+            }
 
             if (current == '}' && i + 1 < template.Length && template[i + 1] == '}') {
                 builder.Append('}');
@@ -159,21 +258,14 @@ public sealed class ValidationMessageInfo {
                 continue;
             }
 
-            if (i + 1 < template.Length && template[i + 1] == '{') {
-                builder.Append('{');
-                i++;
-                continue;
-            }
-
             var close = template.IndexOf('}', i + 1);
             if (close < 0) {
                 builder.Append(current);
                 continue;
             }
 
-            var hole = template.AsSpan(i + 1, close - i - 1);
-
-            if (TryFillHole(builder, hole, field, formatProvider)) {
+            if (Resolve(template.AsSpan(i + 1, close - i - 1), field, formatProvider) is { } replacement) {
+                builder.Append(replacement);
                 i = close;
             }
             else {
@@ -184,14 +276,17 @@ public sealed class ValidationMessageInfo {
         return builder.ToString();
     }
 
-    private bool TryFillHole(StringBuilder builder, ReadOnlySpan<char> hole, string field, IFormatProvider formatProvider) {
+    /// <summary>
+    /// A hole's replacement text, or null when the hole is not one this info can fill and should
+    /// render verbatim.
+    /// </summary>
+    private string? Resolve(ReadOnlySpan<char> hole, string field, IFormatProvider formatProvider) {
         if (hole.SequenceEqual("field")) {
-            builder.Append(field);
-            return true;
+            return field;
         }
 
         if (hole.Length != 1 || hole[0] is < '0' or > '9') {
-            return false;
+            return null;
         }
 
         var position = hole[0] - '0';
@@ -199,22 +294,20 @@ public sealed class ValidationMessageInfo {
         // DataAnnotations' own convention puts the field at {0} and shifts the arguments up one.
         if (DataAnnotationsHoles) {
             if (position == 0) {
-                builder.Append(field);
-                return true;
+                return field;
             }
 
             position--;
         }
 
         if (position >= _args.Length) {
-            return false;
+            return null;
         }
 
         var argument = _args[position];
-        builder.Append(argument is IFormattable formattable
-            ? formattable.ToString(null, formatProvider)
-            : argument.ToString());
 
-        return true;
+        return argument is IFormattable formattable
+            ? formattable.ToString(null, formatProvider)
+            : argument.ToString() ?? string.Empty;
     }
 }

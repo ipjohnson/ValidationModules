@@ -42,7 +42,12 @@ public static class ValidationProblem {
                 grouped[error.Field] = messages = new List<string>(1);
             }
 
-            messages.Add(error.Message);
+            // The read-side render: a configured formatter, otherwise the error's own default.
+            // This line is where "the message is data until someone reads it" becomes a response
+            // body - the codes dictionary below stays formatter-independent on purpose.
+            messages.Add(options.MessageFormatter is { } formatter
+                ? formatter.Format(in error)
+                : error.Message);
         }
 
         var byField = new Dictionary<string, string[]>(grouped.Count, StringComparer.Ordinal);

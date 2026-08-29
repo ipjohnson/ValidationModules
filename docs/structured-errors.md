@@ -143,6 +143,32 @@ hand-written `Report(field, code, message)`. They carry `MessageInfo == null` an
 `Ensure`'s rendered-condition messages are compile-time source and stay literal; `code:` is the
 route into the map, as documented.
 
+## Measured (2026-08-29, osx-arm64, Release, net10.0)
+
+The two go/no-go numbers, plus the ones worth knowing. Baseline is rc1012 measured on the same
+machine against the same four-failing-constraint flat model during the evaluation that produced
+the backlog.
+
+| Path | rc1012 | structured | Δ |
+|---|---|---|---|
+| `IsValid`, valid | 0.0 B/op | 0.0 B/op | unchanged |
+| `Validate()`, valid | 56 B/op | 56 B/op | unchanged |
+| `Validate()`, 4 errors, messages never read | 800 B/op | 608 B/op | **−24%** |
+| pooled `ValidateInto`, 4 errors, unread | 568 B/op | 312 B/op | **−45%** |
+| `Validate()`, 4 errors, all messages read | 800 B/op | 936 B/op | +17%, paid only when read |
+
+Rendering costs ~82 B per message read (exact-size `string.Create`, two passes, no builder on the
+≤4-hole path) against ~56 B for the old eager compose - the price moved to the reader and grew a
+fifth, while every consumer that never reads prose stopped paying entirely.
+
+Binary size: the SUT integration project (124 report sites, deduplicated to 31 hoisted infos)
+grew **2,560 bytes ≈ 21 B/site** - a fifth of the 107 B/site that per-site message literals cost
+before the helpers existed, which was the budget this design had to beat. The runtime grew 9 KB
+once (templates, info, map, renderer), which is the text and machinery existing in one place
+instead of per assembly. `scripts/verify-aot.sh` passes end to end: zero-allocation clean pass,
+paths, codes, the ASP.NET Core filter and exception handler, all under ILC - the emitted static
+lambdas and `string.Create` render included.
+
 ## Contract 8 → 9
 
 The emitter now writes `ctx.Report(field, code, value, info)` calls, references

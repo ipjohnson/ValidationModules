@@ -29,6 +29,7 @@ namespace ValidationModules.AspNetCore
         public ValidationProblemOptions() { }
         public bool IncludeCodes { get; set; }
         public bool IncludeNonErrors { get; set; }
+        public ValidationModules.ValidationMessageFormatter? MessageFormatter { get; set; }
         public int StatusCode { get; set; }
         public string Title { get; set; }
         public string Type { get; set; }
