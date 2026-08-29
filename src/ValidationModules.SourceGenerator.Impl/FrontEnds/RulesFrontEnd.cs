@@ -41,13 +41,21 @@ public sealed class RulesFrontEnd {
     private readonly List<Diagnostic> _diagnostics = new();
     private readonly Func<string, string> _fieldNamer;
 
+    /// <summary>Whether a type is the target of a rules class somewhere in this compilation -
+    /// supplied by the caller, which sees every candidate, so a facet whose rules are declared
+    /// externally is not accused of having none.</summary>
+    private readonly Func<INamedTypeSymbol, bool>? _rulesTarget;
+
     /// <summary>Fragment methods accumulated across every rules class in the pass, keyed by
     /// (fragment, concrete target) so two callers share one method.</summary>
     private readonly Dictionary<string, FragmentMethod> _fragments = new(StringComparer.Ordinal);
 
     private readonly List<FragmentContainer> _containers = new();
 
-    public RulesFrontEnd(Func<string, string> fieldNamer) => _fieldNamer = fieldNamer;
+    public RulesFrontEnd(Func<string, string> fieldNamer, Func<INamedTypeSymbol, bool>? rulesTarget = null) {
+        _fieldNamer = fieldNamer;
+        _rulesTarget = rulesTarget;
+    }
 
     public IReadOnlyList<Diagnostic> Diagnostics => _diagnostics;
 
@@ -108,7 +116,8 @@ public sealed class RulesFrontEnd {
             describe.Parameters[1].Name,
             writer.Lines,
             writer.Dependencies,
-            writer.AppliedRules);
+            writer.AppliedRules,
+            writer.Fields);
     }
 
     private void Report(DiagnosticDescriptor descriptor, SyntaxNode node, params object?[] args) =>
@@ -227,7 +236,8 @@ public sealed class RulesFrontEnd {
             builder: definition.Parameters[IndexOf(definition, builder)],
             subject: subject is null ? null : definition.Parameters[IndexOf(definition, subject)],
             expanding: expanding.Concat(new[] { definition }).ToList(),
-            insideFragment: true);
+            insideFragment: true,
+            fieldPrefix: $"_{name}Facet");
 
         if (syntax.Body is { } block) {
             writer.ReadBlock(block.Statements, depth: 0);
@@ -236,6 +246,7 @@ public sealed class RulesFrontEnd {
         }
 
         method.BodyLines.AddRange(writer.Lines);
+        method.Fields.AddRange(writer.Fields);
 
         return _diagnostics.Count > before ? null : method;
     }
@@ -290,6 +301,8 @@ public sealed class RulesFrontEnd {
         private readonly List<string> _lines = new();
         private readonly List<RegionDependency> _dependencies = new();
         private readonly List<string> _applied = new();
+        private readonly List<CompanionField> _fields = new();
+        private readonly string _fieldPrefix;
 
         /// <summary>One counter for every generated local, so expansions cannot collide with each
         /// other whatever the author named things.</summary>
@@ -320,8 +333,10 @@ public sealed class RulesFrontEnd {
             IParameterSymbol builder,
             IParameterSymbol? subject,
             List<IMethodSymbol>? expanding = null,
-            bool insideFragment = false) {
+            bool insideFragment = false,
+            string fieldPrefix = "_facet") {
 
+            _fieldPrefix = fieldPrefix;
             _owner = owner;
             _compilation = compilation;
             _model = model;
@@ -338,6 +353,46 @@ public sealed class RulesFrontEnd {
         public IReadOnlyList<RegionDependency> Dependencies => _dependencies;
 
         public IReadOnlyList<string> AppliedRules => _applied;
+
+        /// <summary>The lazily-built facet validators this region caches, emitted as fields on the
+        /// companion class.</summary>
+        public IReadOnlyList<CompanionField> Fields => _fields;
+
+        private string CompanionField(string typeQualified) {
+            var field = new CompanionField(typeQualified, $"{_fieldPrefix}{_fields.Count}");
+
+            _fields.Add(field);
+
+            return field.Name;
+        }
+
+        /// <summary>
+        /// Whether anything in this compilation declares rules for a facet: the attribute on the
+        /// facet itself, constraint attributes on its properties, or a rules class targeting it.
+        /// An As over a facet with none would be a silent no-op, which is VM0091 instead.
+        /// </summary>
+        private bool FacetHasRules(INamedTypeSymbol facet) {
+            if (facet.GetAttributes().Any(attribute =>
+                    attribute.AttributeClass?.ToDisplayString() == KnownTypes.GenerateValidatorAttribute)) {
+                return true;
+            }
+
+            if (_owner._rulesTarget?.Invoke(facet) == true) {
+                return true;
+            }
+
+            foreach (var property in facet.GetMembers().OfType<IPropertySymbol>()) {
+                foreach (var attribute in property.GetAttributes()) {
+                    var ns = attribute.AttributeClass?.ContainingNamespace?.ToDisplayString();
+
+                    if (ns == KnownTypes.ConstraintsNamespace || ns == KnownTypes.DataAnnotationsNamespace) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
 
         public void ReadBlock(
             IEnumerable<StatementSyntax> statements, int depth, bool inLoop = false, bool inSwitch = false) {
@@ -1131,6 +1186,10 @@ public sealed class RulesFrontEnd {
                     return ReadApply(call, arguments);
                 }
 
+                if (name == "As") {
+                    return ReadFacet(call, method, arguments);
+                }
+
                 // The entry call carries the value; chained calls inherit its anchor.
                 if (arguments.TryGetValue("value", out var value)) {
                     _value = value;
@@ -1193,6 +1252,101 @@ public sealed class RulesFrontEnd {
                         return true;
                     }
                 }
+            }
+
+            /// <summary>
+            /// <c>rules.As&lt;TFacet&gt;(x)</c>: validate the subject as one of its facets. One
+            /// spelling, two bindings - a facet generated in this compilation binds statically
+            /// through a lazily-built validator cached on the companion; a facet from a referenced
+            /// assembly resolves the closed <c>IValidatorFor&lt;TFacet&gt;</c> through the pass's
+            /// services, and a missing registration throws naming the module to compose. The path
+            /// does not push; suppression shares the collector as everywhere.
+            /// </summary>
+            private bool ReadFacet(
+                InvocationExpressionSyntax call,
+                IMethodSymbol method,
+                IReadOnlyDictionary<string, ExpressionSyntax> arguments) {
+
+                if (!arguments.TryGetValue("value", out var subjectArgument) ||
+                    subjectArgument is not IdentifierNameSyntax name ||
+                    !SymbolEqualityComparer.Default.Equals(
+                        _writer._model.GetSymbolInfo(name).Symbol, _writer._subject)) {
+                    _writer._owner.Report(ValidationDiagnostics.RulesFlowNotFollowable, call,
+                        "validate a facet of anything but the subject itself - a facet of a child is Nested's territory");
+                    return false;
+                }
+
+                if (method.TypeArguments.Length != 1 ||
+                    method.TypeArguments[0] is not INamedTypeSymbol facet) {
+                    return false;
+                }
+
+                var subject = _writer._subject!.Name;
+                var facetQualified = facet.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+                if (SymbolEqualityComparer.Default.Equals(
+                        facet.ContainingAssembly, _writer._compilation.Assembly)) {
+                    if (!_writer.FacetHasRules(facet)) {
+                        _writer._owner.Report(ValidationDiagnostics.FacetDeclaresNoRules, call, facet.Name);
+                        return false;
+                    }
+
+                    var ns = facet.ContainingNamespace.IsGlobalNamespace
+                        ? string.Empty
+                        : facet.ContainingNamespace.ToDisplayString() + ".";
+                    var validator = $"global::{ns}{facet.Name}Validator";
+                    var field = _writer.CompanionField(validator);
+
+                    _writer.Line(_depth,
+                        $"if (({field} ??= new {validator}()).Validate(ref ctx, {subject}).ShouldStop) {{");
+                    _writer.Line(_depth + 1, $"return {Flow}.Stop;");
+                    _writer.Line(_depth, "}");
+
+                    return true;
+                }
+
+                // Statically closed: the facet type is written in source, so the service type is
+                // closed at build time - no scanning, no naming protocol, no MakeGenericType. The
+                // exception message can name the module because the generator knows the facet's
+                // assembly and the Add{Assembly}Validators convention.
+                var service = $"global::ValidationModules.IValidatorFor<{facetQualified}>";
+                var local = $"facet{_writer._locals++}";
+                var assembly = facet.ContainingAssembly.Name;
+                var module = $"Add{ModuleIdentifier(assembly)}Validators";
+                var message = SymbolDisplay.FormatLiteral(
+                    $"No IValidatorFor<{facet.Name}> is registered. Compose the validators from " +
+                    $"assembly '{assembly}' ({module}()).", quote: true);
+
+                _writer.Line(_depth,
+                    $"var {local} = ({service}?)ctx.Services?.GetService(typeof({service})) ?? " +
+                    $"throw new global::System.InvalidOperationException({message});");
+                _writer.Line(_depth, $"if ({local}.Validate(ref ctx, {subject}).ShouldStop) {{");
+                _writer.Line(_depth + 1, $"return {Flow}.Stop;");
+                _writer.Line(_depth, "}");
+
+                return true;
+            }
+
+            /// <summary>The Add{X}Validators identifier for an assembly name, mirroring the
+            /// registration emitter: namespace-sanitized, dots removed.</summary>
+            private static string ModuleIdentifier(string assemblyName) {
+                var builder = new System.Text.StringBuilder(assemblyName.Length);
+
+                foreach (var part in assemblyName.Split('.')) {
+                    if (part.Length == 0) {
+                        continue;
+                    }
+
+                    if (!char.IsLetter(part[0]) && part[0] != '_') {
+                        builder.Append('_');
+                    }
+
+                    foreach (var character in part) {
+                        builder.Append(char.IsLetterOrDigit(character) || character == '_' ? character : '_');
+                    }
+                }
+
+                return builder.Length == 0 ? "Generated" : builder.ToString();
             }
 
             private bool ReadDescent(
@@ -1677,7 +1831,13 @@ public sealed record RulesDeclaration(
     string SubjectParameterName,
     IReadOnlyList<string> BodyLines,
     IReadOnlyList<RegionDependency> Dependencies,
-    IReadOnlyList<string> AppliedRules);
+    IReadOnlyList<string> AppliedRules,
+    IReadOnlyList<CompanionField> Fields);
+
+/// <summary>A lazily-built facet validator a region caches, emitted as a nullable static field on
+/// the companion class. The race on first use is benign - two threads build equivalent validators
+/// and one wins, the same reasoning the validator's own nested arrays rely on.</summary>
+public sealed record CompanionField(string TypeQualified, string Name);
 
 /// <summary>
 /// One fragment method: a static, void, same-compilation method that received the builder,
@@ -1717,6 +1877,8 @@ public sealed class FragmentMethod {
     public IReadOnlyList<IParameterSymbol> ExtraParameters { get; }
 
     public List<string> BodyLines { get; } = new();
+
+    public List<CompanionField> Fields { get; } = new();
 }
 
 /// <summary>
@@ -1726,7 +1888,7 @@ public sealed class FragmentMethod {
 /// </summary>
 public sealed record DeclaredRule(
     IPropertySymbol? Property,
-    string Field,
+    string? Field,
     Models.ConstraintModel? Constraint,
     Nesting Nesting,
     string? Condition = null);

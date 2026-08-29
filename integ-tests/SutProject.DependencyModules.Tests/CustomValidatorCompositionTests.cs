@@ -6,6 +6,12 @@ using Xunit;
 
 namespace SutProject.DependencyModules.Tests;
 
+// The SutProject reference (the cross-assembly facet) declares its own Account in namespace
+// SutProject, which the enclosing-namespace walk reaches before the compilation unit's usings.
+// Inside the namespace, the alias wins, keeping this file on the type it has always meant.
+using Account = SutProject.Dm.Account;
+using AccountValidator = SutProject.Dm.AccountValidator;
+
 /// <summary>
 /// The DependencyModules branch: the generator saw IDependencyModule in the compilation and emitted
 /// a module rather than a static table, and hand-written validators registered through DM's own

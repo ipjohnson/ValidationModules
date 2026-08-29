@@ -85,6 +85,8 @@ public sealed class ValidationRules<T> {
     public ValidationRules<T> Ensure(bool condition, string? field = null, string? code = null,
         string? message = null, ValidationSeverity severity = ValidationSeverity.Error);
 
+    public ValidationRules<T> As<TFacet>(TFacet value);
+
     public ValidationRules<T> Apply(RuleAction<T> rule);
 }
 ```
@@ -238,6 +240,19 @@ public static void Standard<T>(ValidationRules<T> rules, T audited) where T : IA
 See [the guide](/guide/rule-classes#fragments) for the rules — same compilation
 ([VM0085](/reference/diagnostics#vm0085)), subject argument, cycles
 ([VM0086](/reference/diagnostics#vm0086)).
+
+## `As<TFacet>`
+
+```csharp
+rules.As<IAudited>(x);   // validate x as its IAudited facet
+```
+
+Validates the subject as one of its facets — the route when shared rules ship as compiled IL. A
+facet generated in this compilation binds statically (no rules for it is
+[VM0091](/reference/diagnostics#vm0091)); a facet from a referenced assembly resolves the closed
+`IValidatorFor<TFacet>` through the pass's services, and a missing registration throws naming the
+module to compose. The path does not push. Declare facet rules in a rules class targeting the
+facet, not as attributes on it — see [the guide](/guide/rule-classes#facets).
 
 ## `Apply`
 

@@ -234,6 +234,7 @@ namespace ValidationModules
         public ValidationModules.IValidationContextReporter Context { get; }
         public ValidationModules.PropertyRules<T, TValue> AllowedValues<TValue>(TValue value, TValue[] allowed, string? field = null) { }
         public ValidationModules.ValidationRules<T> Apply(ValidationModules.RuleAction<T> rule) { }
+        public ValidationModules.ValidationRules<T> As<TFacet>(TFacet value) { }
         public ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Count<TElement>(System.Collections.Generic.IReadOnlyList<TElement>? value, int min = 0, int max = 2147483647, string? field = null) { }
         public ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Each<TElement>(System.Collections.Generic.IReadOnlyList<TElement>? value, string? field = null)
             where TElement :  class { }

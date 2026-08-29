@@ -53,3 +53,4 @@ VM0087 | ValidationModules.Usage | Error | The rules builder flows somewhere the
 VM0088 | ValidationModules.Usage | Error | Transcribed code references a member that is not accessible from the companion file.
 VM0089 | ValidationModules.Usage | Error | A rule declaration sits inside a loop, lambda, or local function.
 VM0090 | ValidationModules.Usage | Error | Require on a non-nullable value type can never fail.
+VM0091 | ValidationModules.Usage | Error | A facet validated with As declares no rules in this compilation.

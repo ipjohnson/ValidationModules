@@ -513,4 +513,14 @@ public static class ValidationDiagnostics {
         "fail. Constrain the value instead, or make the property nullable",
         DiagnosticSeverity.Error);
 
+    /// <summary>
+    /// A facet declared in this compilation with no rules at all would make <c>As</c> a silent
+    /// no-op - the failure this library refuses everywhere else.
+    /// </summary>
+    public static readonly DiagnosticDescriptor FacetDeclaresNoRules = Descriptor(
+        "VM0091", "Facet declares no rules",
+        "'{0}' is validated as a facet here, but nothing in this compilation declares rules for " +
+        "it, so this would check nothing. Give the facet constraint attributes or a rules class",
+        DiagnosticSeverity.Error);
+
 }

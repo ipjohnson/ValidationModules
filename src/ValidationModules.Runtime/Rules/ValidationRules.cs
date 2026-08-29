@@ -175,6 +175,27 @@ public sealed class ValidationRules<T> {
         ValidationSeverity severity = ValidationSeverity.Error) => throw Inert();
 
     /// <summary>
+    /// Validates the subject as one of its facets - an interface or base type whose rules are
+    /// declared where the facet is.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The argument must be the subject parameter: a facet of a <i>child</i> is
+    /// <see cref="Nested{TValue}"/>'s territory, where the path pushes. Here the path does not
+    /// push - facet fields report at the current level - and suppression shares the collector as
+    /// everywhere.
+    /// </para>
+    /// <para>
+    /// One spelling, two bindings. A facet whose validator is generated in this compilation binds
+    /// statically; a facet from a referenced assembly resolves
+    /// <c>IValidatorFor&lt;TFacet&gt;</c> through the pass's services - closed at build time, no
+    /// scanning - and a missing registration throws naming the module to compose. Never a silent
+    /// skip.
+    /// </para>
+    /// </remarks>
+    public ValidationRules<T> As<TFacet>(TFacet value) => throw Inert();
+
+    /// <summary>
     /// Applies a hand-written rule, taken as a method group. Emitted as a direct call, ordered
     /// after everything else; the rule owns what it records.
     /// </summary>

@@ -72,6 +72,7 @@ silently does not is worse than one you know is missing.
 | [VM0088](#vm0088) | Error | transcribed code references a member the companion file cannot reach |
 | [VM0089](#vm0089) | Error | a rule declaration sits inside a loop, lambda, or local function |
 | [VM0090](#vm0090) | Error | `Require` on a non-nullable value type can never fail |
+| [VM0091](#vm0091) | Error | a facet validated with `As` declares no rules in this compilation |
 
 ---
 
@@ -786,6 +787,17 @@ rules.Require<int>(x.Nights);    // VM0090 — compiles, and can never fail
 The bare spelling still fails in the compiler; the explicit type argument gets past inference, so
 the generator diagnoses the rule that cannot fail. Constrain the value instead, or make the
 property nullable.
+
+### VM0091 {#vm0091}
+
+**Error** — *`'IAudited' is validated as a facet here, but nothing in this compilation declares rules for it, so this would check nothing. Give the facet constraint attributes or a rules class`*
+
+`rules.As<IAudited>(x)` binds to the facet's own generated validator. A facet declared in this
+compilation with nothing declaring rules for it would make the `As` a silent no-op — the failure
+this library refuses everywhere else. Declare the facet's rules in a rules class targeting it
+(`AuditRules : IValidationRulesFor<IAudited>`) — the sound pairing, since an interface's
+*attribute* constraints already reach every implementer through constraint inheritance, and an
+`As` on top of those would report every facet error twice.
 
 ### VM0079 {#vm0079}
 

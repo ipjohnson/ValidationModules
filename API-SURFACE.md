@@ -1836,8 +1836,22 @@ are unchanged by the difference; `return` inside a fragment ends the fragment.
 
 Cross-assembly: a referenced assembly ships IL with no body to read, so a plain
 `ProjectReference` is VM0085 — fragments travel as source (shared project, or the §7.4
-source-only-package pattern). Facet composition (`rules.As<TFacet>`) is the designed additive
-follow-up for shipping IL; see `docs/active-rules-redesign.md` §7 — not yet implemented.
+source-only-package pattern).
+
+**Facet composition — `rules.As<TFacet>(x)`** is the route when shipping IL, and the general
+spelling for "validate `x` as one of its facets." One spelling, two bindings: a facet whose
+validator is generated in this compilation binds statically through a validator cached lazily
+on the companion (a facet with no rules here is VM0091, never a silent no-op); a facet from a
+referenced assembly resolves the closed `IValidatorFor<TFacet>` through the pass's services —
+no scanning, no `MakeGenericType` — and a missing registration throws naming the module to
+compose (`AddSharedValidators()`). The argument must be the subject (a facet of a child is
+`Nested`'s territory); the path does not push, so facet fields report at the current level.
+
+Pair `As` with a **rules class targeting the facet** (`AuditRules :
+IValidationRulesFor<IAudited>`). An interface's *attribute* constraints already reach every
+implementer through constraint inheritance — `As` over an attribute-constrained facet declares
+the same rules twice and reports every facet error twice. `As` exists for exactly the rules
+inheritance cannot see.
 
 ### 19.8 The two invariants, and the blacklist
 

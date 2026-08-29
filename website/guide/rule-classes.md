@@ -232,7 +232,46 @@ public sealed class OrderRules : IValidationRulesFor<Order> {
 A fragment is read from syntax, and a referenced assembly ships IL — there is no body to read, so a
 plain `ProjectReference` is on the wrong side of the line
 ([VM0085](/reference/diagnostics#vm0085)). Share fragments through a shared project or a
-source-only package.
+source-only package — or ship the rules as a compiled facet, below.
+:::
+
+## Facets — `rules.As<TFacet>` {#facets}
+
+The route when shared rules ship as IL, and the general spelling for "validate `x` as one of its
+facets":
+
+```csharp
+// The shared assembly declares the facet and its rules, and runs the generator itself:
+public interface IAudited {
+    string? CreatedBy { get; }
+}
+
+public sealed class AuditRules : IValidationRulesFor<IAudited> {
+    public static void Describe(ValidationRules<IAudited> rules, IAudited x) {
+        rules.Require(x.CreatedBy);
+    }
+}
+
+// Consumers opt in, in the body:
+rules.As<IAudited>(x);
+```
+
+One spelling, two bindings. A facet whose validator is generated in **this** compilation binds
+statically — no DI involved, and a facet with no rules here is
+[VM0091](/reference/diagnostics#vm0091), never a silent no-op. A facet from a **referenced**
+assembly resolves the closed `IValidatorFor<TFacet>` through the pass's services — compose the
+facet's own `Add…Validators()` at your root, and a missing registration throws naming exactly
+that, never silently skipping.
+
+The argument must be the subject — a facet of a child is `Nested`'s territory, where the path
+pushes. Here it does not: facet fields report at the current level (`createdBy`, not
+`audited.createdBy`).
+
+::: tip Declare facet rules in a rules class, not as attributes on the interface
+An interface's *attribute* constraints already reach every implementer through
+[constraint inheritance](/guide/constraints) — an `As` on top of those reports every facet error
+twice. `As` exists for exactly the rules inheritance cannot see: a rules class targeting the
+facet.
 :::
 
 ## `Apply` — a hand-written rule

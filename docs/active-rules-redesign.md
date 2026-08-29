@@ -1,7 +1,7 @@
 # Active rule classes — redesign of the `IValidationRulesFor<T>` surface
 
-**Status:** agreed 2026-08-29; **implemented the same day** (RuntimeContract 7 → 8; the
-checklist below is done except the additive facet composition). Supersedes `API-SURFACE.md` §19
+**Status:** agreed 2026-08-29; **implemented the same day, facet composition included**
+(RuntimeContract 7 → 8; the checklist below is done). Supersedes `API-SURFACE.md` §19
 as shipped in 1.0.0 — §19 is rewritten from this document. Breaking, deliberately: no consumer
 outside this repo referenced the rules surface (verified against `~/Hardened` — zero hits).
 
@@ -26,6 +26,14 @@ outside this repo referenced the rules surface (verified against `~/Hardened` �
   unwrap `Nullable`); the explicit-type-argument spelling is VM0090.
 - **Nested/Each inside a fragment is rejected for v1** — descents belong in the rules class
   body, which keeps the injected-array plumbing region-local.
+- **`rules.As<TFacet>` pairs with rules-class-declared facet rules**, and the docs say so: an
+  interface's *attribute* constraints already reach every implementer through constraint
+  inheritance, so `As` over an attribute-constrained facet reports every facet error twice —
+  §7's own `[GenerateValidator] interface IAudited` example is self-duplicating for an
+  implementing subject. The sound shape is `AuditRules : IValidationRulesFor<IAudited>`, whose
+  rules inheritance cannot see; the integ suites pin both bindings that way. Same-compilation
+  binding caches the facet validator lazily on the companion (generated validators have no
+  `Instance` field); a facet with no rules in this compilation is VM0091.
 
 **Origin:** designed across a working session on 2026-08-28/29. This document is self-contained;
 implement from it without that session's history. Where it contradicts `API-SURFACE.md` §19 or

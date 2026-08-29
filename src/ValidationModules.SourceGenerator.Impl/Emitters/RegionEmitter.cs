@@ -49,6 +49,8 @@ public sealed class RegionEmitter {
         container.Comment =
             $"The transcribed Describe body of {declaration.RulesClass.Name}: read from the rules class, run from here.";
 
+        Fields(container, declaration.Fields);
+
         var method = container.AddMethod("Describe");
 
         method.Modifiers = ComponentModifier.Public | ComponentModifier.Static;
@@ -86,6 +88,8 @@ public sealed class RegionEmitter {
             $"The transcribed fragments of {fragments.DeclaringType.Name}, one method per concrete target.";
 
         foreach (var fragment in fragments.Methods) {
+            Fields(container, fragment.Fields);
+
             var method = container.AddMethod(fragment.Name);
 
             method.Modifiers = ComponentModifier.Public | ComponentModifier.Static;
@@ -106,6 +110,17 @@ public sealed class RegionEmitter {
         }
 
         return Render(file, style);
+    }
+
+    /// <summary>
+    /// The lazily-built facet validators a region caches: nullable static fields, filled on first
+    /// use with the benign race the validator's own nested arrays already accept.
+    /// </summary>
+    private static void Fields(ClassDefinition container, IReadOnlyList<FrontEnds.CompanionField> fields) {
+        foreach (var field in fields) {
+            container.AddField(TypeRef(field.TypeQualified).MakeNullable(), field.Name).Modifiers =
+                ComponentModifier.Private | ComponentModifier.Static;
+        }
     }
 
     /// <summary>

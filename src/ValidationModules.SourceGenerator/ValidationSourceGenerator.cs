@@ -209,7 +209,22 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
 
         var results = ImmutableArray.CreateBuilder<ModelResult>();
         var declarations = new List<RulesDeclaration>();
-        var rulesFrontEnd = new RulesFrontEnd(options.FieldNamer);
+
+        // Pre-scanned before any body is read, so an As over a facet whose rules arrive from a
+        // rules class later in the candidate list is not accused of having none.
+        var declaredTargets = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+
+        foreach (var candidate in candidates) {
+            var contract = candidate.AllInterfaces.FirstOrDefault(i =>
+                i.ConstructedFrom.ToDisplayString() == KnownTypes.ValidationRulesForInterface);
+
+            if (contract is { TypeArguments.Length: 1 } &&
+                contract.TypeArguments[0] is INamedTypeSymbol declaredTarget) {
+                declaredTargets.Add(declaredTarget);
+            }
+        }
+
+        var rulesFrontEnd = new RulesFrontEnd(options.FieldNamer, declaredTargets.Contains);
         var plain = new List<INamedTypeSymbol>();
         var subtypes = InvertBaseChains(candidates);
 
