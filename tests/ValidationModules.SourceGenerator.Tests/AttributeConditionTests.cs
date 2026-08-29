@@ -43,7 +43,7 @@ public class AttributeConditionTests {
             """);
 
         Assert.Contains("var c0 = value.IsAuto;", body);
-        Assert.Contains("if (c0 && (string.IsNullOrWhiteSpace(value.PolicyNumber)) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"policyNumber\").ShouldStop)", body);
+        Assert.Contains("if (c0 && (string.IsNullOrWhiteSpace(value.PolicyNumber)) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"policyNumber\", value: value.PolicyNumber).ShouldStop)", body);
     }
 
     [Fact]
@@ -191,7 +191,7 @@ public class AttributeConditionTests {
                 public string? PolicyNumber { get; init; }
             """);
 
-        Assert.Contains("if (missingPolicyNumber && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"policyNumber\").ShouldStop)", body);
+        Assert.Contains("if (missingPolicyNumber && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"policyNumber\", value: value.PolicyNumber).ShouldStop)", body);
         Assert.Contains("if (c0 && !missingPolicyNumber && (", body);
     }
 

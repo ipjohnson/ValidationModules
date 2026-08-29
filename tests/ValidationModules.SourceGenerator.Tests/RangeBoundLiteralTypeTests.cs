@@ -133,7 +133,7 @@ public class RangeBoundLiteralTypeTests {
             """);
 
         Assert.Empty(result.CompilationErrors);
-        Assert.Contains("global::ValidationModules.ValidationContextExtensions.ReportRange(ctx, \"hour\", 0, 23)", result.Sources["Api.LimitsValidator.g.cs"]);
+        Assert.Contains("new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.RangeBetween, 0, 23)", result.Sources["Api.LimitsValidator.g.cs"]);
     }
 
     /// <summary>
@@ -156,7 +156,7 @@ public class RangeBoundLiteralTypeTests {
         var source = result.Sources["Api.LimitsValidator.g.cs"];
 
         Assert.Empty(result.CompilationErrors);
-        Assert.Contains("global::ValidationModules.ValidationContextExtensions.ReportRange(ctx, \"indexDiveLimit\", 0L, 4294967295L)", source);
+        Assert.Contains("new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.RangeBetween, 0L, 4294967295L)", source);
     }
 
     /// <summary>

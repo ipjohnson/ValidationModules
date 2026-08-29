@@ -29,6 +29,11 @@ namespace ValidationModules
         public static ValidationModules.ValidationFlow Validate(ref ValidationModules.ValidationContext context, System.ComponentModel.DataAnnotations.ValidationAttribute attribute, object instance, object? value, string field, string memberName, string displayName) { }
         public static ValidationModules.ValidationFlow ValidateObject(ref ValidationModules.ValidationContext context, System.ComponentModel.DataAnnotations.IValidatableObject value, ValidationModules.Naming.IValidationFieldNamer namer) { }
     }
+    public sealed class DelegateMessageProvider : ValidationModules.IValidationMessageProvider
+    {
+        public DelegateMessageProvider(System.Func<string> template) { }
+        public string Template(in ValidationModules.ValidationError error) { }
+    }
     public static class DynamicValidation
     {
         public static bool IsValid(System.IServiceProvider? services, object value, string property, string owner) { }
@@ -57,7 +62,12 @@ namespace ValidationModules
     public interface IValidationContextReporter
     {
         ValidationModules.ValidationFlow Report(string field, string code, string message, ValidationModules.ValidationSeverity severity = 0);
+        ValidationModules.ValidationFlow Report(string field, string code, object? value, ValidationModules.ValidationMessageInfo messageInfo, ValidationModules.ValidationSeverity severity = 0);
         ValidationModules.ValidationFlow ReportHere(string code, string message, ValidationModules.ValidationSeverity severity = 0);
+    }
+    public interface IValidationMessageProvider
+    {
+        string Template(in ValidationModules.ValidationError error);
     }
     public interface IValidationRulesFor<T>
     {
@@ -99,7 +109,7 @@ namespace ValidationModules
     public delegate ValidationModules.ValidationFlow RuleAction<in T>(ref ValidationModules.ValidationContext context, T value);
     public static class RuntimeContract
     {
-        public const int Version = 8;
+        public const int Version = 9;
     }
     public static class ValidationCodes
     {
@@ -132,55 +142,64 @@ namespace ValidationModules
         public ValidationModules.ValidationContext PushIndex(string segment, int index) { }
         public ValidationModules.ValidationContext PushKey(string segment, string key) { }
         public ValidationModules.ValidationFlow Report(string field, string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
+        public ValidationModules.ValidationFlow Report(string field, string code, object? value, ValidationModules.ValidationMessageInfo messageInfo, ValidationModules.ValidationSeverity severity = 0) { }
         public ValidationModules.ValidationFlow ReportHere(string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
     }
     public static class ValidationContextExtensions
     {
-        public static ValidationModules.ValidationFlow ReportAllowedValues<TReporter>(this TReporter context, string field, string allowedValues, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+        public static ValidationModules.ValidationFlow ReportAllowedValues<TReporter>(this TReporter context, string field, string allowedValues, ValidationModules.ValidationSeverity severity = 0, string? code = null, object? value = null)
             where TReporter : ValidationModules.IValidationContextReporter { }
-        public static ValidationModules.ValidationFlow ReportBase64<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+        public static ValidationModules.ValidationFlow ReportBase64<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null, object? value = null)
             where TReporter : ValidationModules.IValidationContextReporter { }
-        public static ValidationModules.ValidationFlow ReportCreditCard<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+        public static ValidationModules.ValidationFlow ReportCreditCard<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null, object? value = null)
             where TReporter : ValidationModules.IValidationContextReporter { }
-        public static ValidationModules.ValidationFlow ReportCustom<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+        public static ValidationModules.ValidationFlow ReportCustom<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null, object? value = null)
             where TReporter : ValidationModules.IValidationContextReporter { }
-        public static ValidationModules.ValidationFlow ReportEmail<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+        public static ValidationModules.ValidationFlow ReportDeniedValues<TReporter>(this TReporter context, string field, string deniedValues, ValidationModules.ValidationSeverity severity = 0, string? code = null, object? value = null)
             where TReporter : ValidationModules.IValidationContextReporter { }
-        public static ValidationModules.ValidationFlow ReportFileExtension<TReporter>(this TReporter context, string field, string extensions, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+        public static ValidationModules.ValidationFlow ReportEmail<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null, object? value = null)
             where TReporter : ValidationModules.IValidationContextReporter { }
-        public static ValidationModules.ValidationFlow ReportItemCount<TReporter>(this TReporter context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+        public static ValidationModules.ValidationFlow ReportFileExtension<TReporter>(this TReporter context, string field, string extensions, ValidationModules.ValidationSeverity severity = 0, string? code = null, object? value = null)
             where TReporter : ValidationModules.IValidationContextReporter { }
-        public static ValidationModules.ValidationFlow ReportMultipleOf<TReporter>(this TReporter context, string field, decimal divisor, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+        public static ValidationModules.ValidationFlow ReportItemCount<TReporter>(this TReporter context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0, string? code = null, object? value = null)
             where TReporter : ValidationModules.IValidationContextReporter { }
-        public static ValidationModules.ValidationFlow ReportPattern<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+        public static ValidationModules.ValidationFlow ReportMultipleOf<TReporter>(this TReporter context, string field, decimal divisor, ValidationModules.ValidationSeverity severity = 0, string? code = null, object? value = null)
             where TReporter : ValidationModules.IValidationContextReporter { }
-        public static ValidationModules.ValidationFlow ReportPhone<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+        public static ValidationModules.ValidationFlow ReportPattern<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null, object? value = null)
             where TReporter : ValidationModules.IValidationContextReporter { }
-        public static ValidationModules.ValidationFlow ReportRange<TReporter, T>(this TReporter context, string field, T min, T max, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+        public static ValidationModules.ValidationFlow ReportPhone<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null, object? value = null)
+            where TReporter : ValidationModules.IValidationContextReporter { }
+        public static ValidationModules.ValidationFlow ReportRange<TReporter, T>(this TReporter context, string field, T min, T max, ValidationModules.ValidationSeverity severity = 0, string? code = null, object? value = null, bool exclusiveMin = false, bool exclusiveMax = false)
             where TReporter : ValidationModules.IValidationContextReporter
             where T : System.IFormattable { }
-        public static ValidationModules.ValidationFlow ReportRangeAtLeast<TReporter, T>(this TReporter context, string field, T min, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+        public static ValidationModules.ValidationFlow ReportRangeAtLeast<TReporter, T>(this TReporter context, string field, T min, ValidationModules.ValidationSeverity severity = 0, string? code = null, object? value = null, bool exclusive = false)
             where TReporter : ValidationModules.IValidationContextReporter
             where T : System.IFormattable { }
-        public static ValidationModules.ValidationFlow ReportRangeAtMost<TReporter, T>(this TReporter context, string field, T max, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+        public static ValidationModules.ValidationFlow ReportRangeAtMost<TReporter, T>(this TReporter context, string field, T max, ValidationModules.ValidationSeverity severity = 0, string? code = null, object? value = null, bool exclusive = false)
             where TReporter : ValidationModules.IValidationContextReporter
             where T : System.IFormattable { }
-        public static ValidationModules.ValidationFlow ReportRequired<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+        public static ValidationModules.ValidationFlow ReportRequired<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null, object? value = null)
             where TReporter : ValidationModules.IValidationContextReporter { }
-        public static ValidationModules.ValidationFlow ReportStringLength<TReporter>(this TReporter context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+        public static ValidationModules.ValidationFlow ReportStringLength<TReporter>(this TReporter context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0, string? code = null, object? value = null)
             where TReporter : ValidationModules.IValidationContextReporter { }
-        public static ValidationModules.ValidationFlow ReportUniqueItems<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+        public static ValidationModules.ValidationFlow ReportUniqueItems<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null, object? value = null)
             where TReporter : ValidationModules.IValidationContextReporter { }
-        public static ValidationModules.ValidationFlow ReportUrl<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+        public static ValidationModules.ValidationFlow ReportUrl<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null, object? value = null)
             where TReporter : ValidationModules.IValidationContextReporter { }
     }
     public readonly struct ValidationError : System.IEquatable<ValidationModules.ValidationError>
     {
-        public ValidationError(string Field, string Code, string Message) { }
+        public ValidationError(string field, string code, string message) { }
+        public ValidationError(string field, string code, object? value, ValidationModules.ValidationMessageInfo messageInfo) { }
         public string Code { get; init; }
         public string Field { get; init; }
-        public string Message { get; init; }
+        public string Message { get; }
+        public ValidationModules.ValidationMessageInfo? MessageInfo { get; init; }
         public ValidationModules.ValidationSeverity Severity { get; init; }
+        public object? Value { get; init; }
+        public void Deconstruct(out string field, out string code, out string message) { }
+        public string ToMessage(ValidationModules.ValidationMessageFormatter formatter) { }
+        public override string ToString() { }
     }
     public sealed class ValidationErrorCollector
     {
@@ -214,6 +233,73 @@ namespace ValidationModules
         public override string ToString() { }
         public static bool operator !=(ValidationModules.ValidationFlow left, ValidationModules.ValidationFlow right) { }
         public static bool operator ==(ValidationModules.ValidationFlow left, ValidationModules.ValidationFlow right) { }
+    }
+    public abstract class ValidationMessageFormatter
+    {
+        protected ValidationMessageFormatter() { }
+        public abstract string Format(in ValidationModules.ValidationError error);
+    }
+    public sealed class ValidationMessageInfo
+    {
+        public static readonly ValidationModules.ValidationMessageInfo Base64;
+        public static readonly ValidationModules.ValidationMessageInfo CreditCard;
+        public static readonly ValidationModules.ValidationMessageInfo Custom;
+        public static readonly ValidationModules.ValidationMessageInfo Email;
+        public static readonly ValidationModules.ValidationMessageInfo Pattern;
+        public static readonly ValidationModules.ValidationMessageInfo Phone;
+        public static readonly ValidationModules.ValidationMessageInfo Required;
+        public static readonly ValidationModules.ValidationMessageInfo UniqueItems;
+        public static readonly ValidationModules.ValidationMessageInfo Url;
+        public ValidationMessageInfo(string template, params object[]? args) { }
+        public System.Collections.Generic.IReadOnlyList<object> Args { get; }
+        public bool DataAnnotationsHoles { get; init; }
+        public ValidationModules.IValidationMessageProvider? Provider { get; init; }
+        public string Template { get; }
+        public string Render(in ValidationModules.ValidationError error, System.IFormatProvider? formatProvider = null) { }
+    }
+    public sealed class ValidationMessageMap : ValidationModules.ValidationMessageFormatter
+    {
+        public ValidationMessageMap() { }
+        public override string Format(in ValidationModules.ValidationError error) { }
+        public ValidationModules.ValidationMessageMap Map(string code, ValidationModules.ValidationMessageMap.MessageRenderer renderer) { }
+        public delegate string MessageRenderer(in ValidationModules.ValidationError error);
+    }
+    public static class ValidationMessageTemplates
+    {
+        public static readonly string AllowedValues;
+        public static readonly string Base64;
+        public static readonly string CreditCard;
+        public static readonly string Custom;
+        public static readonly string DeniedValues;
+        public static readonly string Email;
+        public static readonly string EnumFlags;
+        public static readonly string FileExtension;
+        public static readonly string ItemCountAtLeast;
+        public static readonly string ItemCountAtLeastSingular;
+        public static readonly string ItemCountAtMost;
+        public static readonly string ItemCountAtMostSingular;
+        public static readonly string ItemCountBetween;
+        public static readonly string ItemCountBetweenSingular;
+        public static readonly string MultipleOf;
+        public static readonly string Pattern;
+        public static readonly string Phone;
+        public static readonly string RangeAtLeast;
+        public static readonly string RangeAtLeastAndLess;
+        public static readonly string RangeAtMost;
+        public static readonly string RangeBetween;
+        public static readonly string RangeGreaterAndAtMost;
+        public static readonly string RangeGreaterAndLess;
+        public static readonly string RangeGreaterThan;
+        public static readonly string RangeLessThan;
+        public static readonly string Required;
+        public static readonly string StringLengthAtLeast;
+        public static readonly string StringLengthAtLeastSingular;
+        public static readonly string StringLengthAtMost;
+        public static readonly string StringLengthAtMostSingular;
+        public static readonly string StringLengthBetween;
+        public static readonly string StringLengthBetweenSingular;
+        public static readonly string UniqueItems;
+        public static readonly string Url;
     }
     public enum ValidationPathMode
     {

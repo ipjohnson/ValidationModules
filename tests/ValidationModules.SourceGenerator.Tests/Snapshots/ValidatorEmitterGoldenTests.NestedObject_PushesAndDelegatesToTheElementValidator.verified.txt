@@ -52,7 +52,7 @@ public sealed partial class AddressValidator : global::ValidationModules.IValida
 
     public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Address value)
     {
-        if (string.IsNullOrWhiteSpace(value.Street) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "street").ShouldStop)
+        if (string.IsNullOrWhiteSpace(value.Street) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "street", value: value.Street).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
@@ -104,7 +104,7 @@ public sealed partial class PetValidator : global::ValidationModules.IValidatorF
 
     public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Pet value)
     {
-        if (string.IsNullOrWhiteSpace(value.Name) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "name").ShouldStop)
+        if (string.IsNullOrWhiteSpace(value.Name) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "name", value: value.Name).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }

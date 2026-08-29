@@ -339,7 +339,7 @@ public class ConstraintDiagnosticsTests {
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0051");
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\")",
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\", value: value.Name)",
             result.Sources["Sample.PetValidator.g.cs"]);
     }
 
@@ -706,7 +706,7 @@ public class ConstraintDiagnosticsTests {
 
         var emitted = Assert.Single(result.Sources, pair => pair.Key.EndsWith("Validator.g.cs")).Value;
 
-        Assert.Contains("ReportRequired(ctx, \"name\")", emitted);
+        Assert.Contains("ReportRequired(ctx, \"name\", value: value.Name)", emitted);
         Assert.DoesNotContain("Quantity", emitted);
     }
 

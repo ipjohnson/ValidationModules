@@ -268,4 +268,31 @@ public sealed record ConstraintModel(
     /// attribute class, so the emitter constructs the attribute at every check instead of hoisting
     /// one instance into a static field.
     /// </summary>
-    bool PerPassInstance = false) : IEquatable<ConstraintModel>;
+    bool PerPassInstance = false,
+
+    /// <summary>
+    /// The <see cref="Message"/> came from a DataAnnotations attribute and follows that dialect:
+    /// <c>{0}</c> is the member's display name. The reader bakes every other placeholder in - the
+    /// remaining arguments are compile-time constants - and the emitter substitutes <c>{0}</c>
+    /// with the property's resolved display name, so the wire carries finished text where
+    /// DataAnnotations would have called <c>string.Format</c> per failure.
+    /// </summary>
+    bool DataAnnotationsMessage = false,
+
+    /// <summary>
+    /// A DataAnnotations attribute whose message lives in a resx:
+    /// <c>ErrorMessageResourceType</c>/<c>ErrorMessageResourceName</c> resolved to the accessor
+    /// property, fully qualified - <c>global::My.Resources.NameRequired</c>. The emitter wraps it
+    /// in a <c>DelegateMessageProvider</c> read per render, so culture fallback works and nothing
+    /// resolves reflectively. Null everywhere else, including when <see cref="Message"/> is set -
+    /// DataAnnotations itself treats an explicit <c>ErrorMessage</c> as winning.
+    /// </summary>
+    string? MessageResourceAccessor = null,
+
+    /// <summary>
+    /// The template arguments a resx message's <c>{1}</c>… placeholders refer to, as C# constant
+    /// expressions, in the declaring attribute's own <c>FormatErrorMessage</c> order - which is not
+    /// this model's Min/Max order for every attribute ([StringLength] formats max before min).
+    /// Meaningful only beside <see cref="MessageResourceAccessor"/>.
+    /// </summary>
+    EquatableArray<string> MessageResourceArgs = default) : IEquatable<ConstraintModel>;

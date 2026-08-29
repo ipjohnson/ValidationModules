@@ -5,13 +5,24 @@ from a fixed vocabulary. That determinism is what lets two different engines be 
 it is pinned rather than incidental.
 
 ```csharp
-public readonly record struct ValidationError(string Field, string Code, string Message) {
+public readonly record struct ValidationError {
+    public string Field { get; }
+    public string Code { get; }
+    public object? Value { get; }                    // captured, never rendered by any default
     public ValidationSeverity Severity { get; init; }
+    public ValidationMessageInfo? MessageInfo { get; }
+
+    public string Message { get; }                   // rendered by this read
 }
 ```
 
-`(Field, Code, Message)` is also the argument order of `context.Add`, so the two never have to be
-mentally transposed.
+The message is data until something reads it: a structural failure stores the constraint's
+template and arguments — one shared `ValidationMessageInfo` per constraint site — and `Message`
+renders on read, which is what lets one result render per reader. The three-argument
+`ValidationError(field, code, message)` constructor still exists for errors that arrive as
+finished text, and `(Field, Code, Message)` is still the argument order everywhere, so the two
+never have to be mentally transposed. [Messages and translation](/guide/messages) is the whole
+story, the attempted value's redaction rules included.
 
 ## `ValidationResult`
 
@@ -230,6 +241,7 @@ running it propagates the flow — only how much work it did to get there. That 
 [`ValidationModules_FailFast`](/reference/msbuild#validationmodules-failfast) a size trade rather
 than a behaviour switch.
 
-Composing the message at the call site rather than baking a literal is deliberate: the same message
-text would otherwise be duplicated into every generated validator, and the emitted binary would
-carry a copy per constraint.
+Nothing composes a message at the call site anymore — a failing rule records the template and
+arguments and moves on, and the text exists once, in the runtime's `ValidationMessageTemplates`,
+rather than duplicated into every generated validator. The prose is built by whoever reads it —
+see [Messages and translation](/guide/messages).

@@ -44,6 +44,9 @@ namespace Sample;
 public sealed partial class CustomerValidator : global::ValidationModules.IValidatorFor<global::Sample.Customer>
 {
     private static readonly global::System.Text.RegularExpressions.Regex SkuPattern0 = new global::System.Text.RegularExpressions.Regex("\\A(?:^[A-Z]{3}$)\\z");
+    private static readonly global::ValidationModules.ValidationMessageInfo _message0 = new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.StringLengthBetween, 1, 100);
+    private static readonly global::ValidationModules.ValidationMessageInfo _message1 = new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.RangeBetween, 0, 120);
+    private static readonly global::ValidationModules.ValidationMessageInfo _message2 = new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.ItemCountAtMost, 5);
 
     public CustomerValidator()
     {
@@ -52,23 +55,23 @@ public sealed partial class CustomerValidator : global::ValidationModules.IValid
     public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Customer value)
     {
         var missingName = string.IsNullOrWhiteSpace(value.Name);
-        if (missingName && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "name").ShouldStop)
+        if (missingName && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "name", value: value.Name).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (!missingName && (value.Name is not null && (value.Name.Length < 1 || value.Name.Length > 100)) && global::ValidationModules.ValidationContextExtensions.ReportStringLength(ctx, "name", 1, 100).ShouldStop)
+        if (!missingName && (value.Name is not null && (value.Name.Length < 1 || value.Name.Length > 100)) && ctx.Report("name", global::ValidationModules.ValidationCodes.StringLength, value.Name, _message0).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if ((value.Age < 0 || value.Age > 120) && global::ValidationModules.ValidationContextExtensions.ReportRange(ctx, "age", 0, 120).ShouldStop)
+        if ((value.Age < 0 || value.Age > 120) && ctx.Report("age", global::ValidationModules.ValidationCodes.Range, value.Age, _message1).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (value.Sku is not null && !SkuPattern0.IsMatch(value.Sku) && global::ValidationModules.ValidationContextExtensions.ReportPattern(ctx, "sku").ShouldStop)
+        if (value.Sku is not null && !SkuPattern0.IsMatch(value.Sku) && global::ValidationModules.ValidationContextExtensions.ReportPattern(ctx, "sku", value: value.Sku).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (value.Tags is not null && (value.Tags.Count > 5) && global::ValidationModules.ValidationContextExtensions.ReportItemCount(ctx, "tags", 0, 5).ShouldStop)
+        if (value.Tags is not null && (value.Tags.Count > 5) && ctx.Report("tags", global::ValidationModules.ValidationCodes.ArrayBounds, value.Tags, _message2).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }

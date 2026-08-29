@@ -131,7 +131,7 @@ public sealed partial class ToyValidator : global::ValidationModules.IValidatorF
 
     public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Toy value)
     {
-        if (string.IsNullOrWhiteSpace(value.Name) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "name").ShouldStop)
+        if (string.IsNullOrWhiteSpace(value.Name) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "name", value: value.Name).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }

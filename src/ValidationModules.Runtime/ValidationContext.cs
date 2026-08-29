@@ -171,6 +171,27 @@ public readonly struct ValidationContext : IValidationContextReporter {
     }
 
     /// <summary>
+    /// Records a structured failure against a field of the current object: code, attempted value
+    /// and message ingredients. Nothing is composed here - the message renders when something
+    /// reads it, which is what lets one result render per reader.
+    /// </summary>
+    /// <param name="field">The field name, appended to the current path.</param>
+    /// <param name="code">A stable machine-readable code.</param>
+    /// <param name="value">The attempted value, or null when capture is off or nothing applies.</param>
+    /// <param name="messageInfo">The constraint's template and arguments. Shared, not per-error.</param>
+    /// <param name="severity">Defaults to <see cref="ValidationSeverity.Error"/>.</param>
+    public ValidationFlow Report(
+        string field,
+        string code,
+        object? value,
+        ValidationMessageInfo messageInfo,
+        ValidationSeverity severity = ValidationSeverity.Error) {
+        var error = new ValidationError(BuildPath(field), code, value, messageInfo) { Severity = severity };
+
+        return _collector.AddDirect(in error);
+    }
+
+    /// <summary>
     /// Records a failure against the current object itself, for type-level and cross-field rules.
     /// </summary>
     /// <param name="code">A stable machine-readable code.</param>

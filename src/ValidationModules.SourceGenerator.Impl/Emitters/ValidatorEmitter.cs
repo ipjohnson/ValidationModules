@@ -24,10 +24,15 @@ namespace ValidationModules.SourceGenerator.Impl.Emitters;
 /// the same reason.
 /// </para>
 /// <para>
-/// Messages are composed by the runtime through the <c>ctx.Report*</c> helpers rather than emitted as
-/// literals here. That is worth 107 of the 313 native bytes a constraint site would otherwise cost,
-/// because every message embeds its field name and so nothing deduplicates in the string heap. A
-/// constraint carrying an explicit message is the exception and emits a literal <c>ctx.Report</c>.
+/// Messages are never emitted as literals here, and since docs/structured-errors.md they are never
+/// composed at all: a parameterized constraint hoists a <c>static readonly ValidationMessageInfo</c>
+/// - template reference plus constant arguments, deduplicated per validator - and reports it
+/// structured, while the parameterless ones report the runtime's shared singletons through the
+/// <c>ctx.Report*</c> helpers. The template text lives once, in the runtime's
+/// <c>ValidationMessageTemplates</c> fields, which keeps the 107-of-313 native bytes a per-site
+/// message literal used to cost out of consumer assemblies. A constraint carrying an explicit
+/// message is the exception and emits a literal <c>ctx.Report</c>, its <c>{field}</c> substituted
+/// at generation time.
 /// </para>
 /// </remarks>
 public sealed class ValidatorEmitter {
@@ -51,6 +56,38 @@ public sealed class ValidatorEmitter {
     /// using-imported one without either file naming it.
     /// </summary>
     private const string ContextExtensions = "global::ValidationModules.ValidationContextExtensions";
+
+    private const string MessageInfoType = "global::ValidationModules.ValidationMessageInfo";
+
+    private const string MessageTemplates = "global::ValidationModules.ValidationMessageTemplates";
+
+    private const string MessageProviderType = "global::ValidationModules.DelegateMessageProvider";
+
+    /// <summary>
+    /// The <c>static readonly ValidationMessageInfo</c> fields one validator hoists, deduplicated
+    /// by initializer text so ten properties sharing <c>[StringLength(1, 100)]</c> share one field.
+    /// The parameterless constraints never land here - they use the runtime's shared singletons -
+    /// so a field only exists where the arguments made the info site-specific.
+    /// </summary>
+    internal sealed class MessageInfoPool {
+        private readonly Dictionary<string, string> _byInitializer = new(StringComparer.Ordinal);
+        private readonly List<(string Field, string Initializer)> _fields = new();
+
+        public IReadOnlyList<(string Field, string Initializer)> Fields => _fields;
+
+        public string Get(string initializer) {
+            if (_byInitializer.TryGetValue(initializer, out var existing)) {
+                return existing;
+            }
+
+            var name = $"_message{_fields.Count}";
+
+            _byInitializer[initializer] = name;
+            _fields.Add((name, initializer));
+
+            return name;
+        }
+    }
 
     /// <summary>
     /// The distinct conditions one method body references, each hoisted into a local evaluated once
@@ -150,10 +187,16 @@ public sealed class ValidatorEmitter {
         bool failFast = true,
         NestingGraph? nesting = null,
         BraceStyle style = BraceStyle.Allman,
-        string? fieldNamer = null) {
+        string? fieldNamer = null,
+        bool captureValues = true) {
 
         var graph = nesting ?? NestingGraph.Empty;
         var patterns = new List<(string Field, ConstraintModel Constraint)>();
+
+        // The per-site message infos, hoisted like the patterns below. When
+        // ValidationModules_CaptureValues is off the pool still fills - capture governs the value
+        // argument, not the message ingredients.
+        var messageInfos = new MessageInfoPool();
 
         // [FileExtensions] sets, hoisted into static fields the way patterns are: the set is a
         // compile-time constant and the check walks it, so building the array per call would
@@ -196,7 +239,8 @@ public sealed class ValidatorEmitter {
         foreach (var property in model.Properties) {
             EmitProperty(
                 body, fast, property, model, patterns, extensionSets, customAttributes,
-                instanceConstraints, bodyConditions, fastConditions, dispatchers, failFast, fieldNamer);
+                instanceConstraints, bodyConditions, fastConditions, dispatchers, failFast, fieldNamer,
+                messageInfos, captureValues);
         }
 
         // The rules-class regions, after the attribute-declared checks and in rules-class name
@@ -306,6 +350,17 @@ public sealed class ValidatorEmitter {
 
             instance.Modifiers = ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
             instance.InitializeValue = new CodeOutputComponent(constraint.CustomConstruction!) { Indented = false };
+        }
+
+        foreach (var (field, initializer) in messageInfos.Fields) {
+            // One shared instance per distinct (template, arguments) pair: the arguments are
+            // compile-time constants, so their boxes are built once at type initialization and a
+            // failing pass stores a reference. This is the static-data half of
+            // docs/structured-errors.md; the runtime singletons cover the parameterless kinds.
+            var info = validator.AddField(TypeRef(MessageInfoType), field);
+
+            info.Modifiers = ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
+            info.InitializeValue = new CodeOutputComponent(initializer) { Indented = false };
         }
 
         for (var i = 0; i < dispatchers.Count; i++) {
@@ -674,11 +729,20 @@ public sealed class ValidatorEmitter {
         ConditionScope fastConditions,
         List<string> dispatchers,
         bool failFast,
-        string? fieldNamer) {
+        string? fieldNamer,
+        MessageInfoPool messageInfos,
+        bool captureValues) {
 
         var access = $"value.{Escape(property.PropertyName)}";
         var field = QuoteString(property.FieldName);
         var required = property.Constraints.FirstOrDefault(c => c.Kind == ConstraintKind.Required);
+
+        // What a failing report captures as ValidationError.Value: the member itself, or nothing
+        // at all under ValidationModules_CaptureValues=false - which makes "the value is not in
+        // the binary" a compile-time guarantee rather than a runtime promise. The argument sits
+        // inside the failure branch, so a value type boxes only when its constraint has already
+        // failed.
+        var capture = captureValues ? access : null;
 
         // Every non-Required test is computed before anything is written, because whether the
         // Required check is worth hoisting into a local depends on whether anything ends up
@@ -735,7 +799,7 @@ public sealed class ValidatorEmitter {
                 guard = missing;
             }
 
-            AddRule(builder, guard, Report(field, required, "ReportRequired", ""), failFast);
+            AddRule(builder, guard, ReportFor(field, required, property, capture, messageInfos), failFast);
             fast.If(Guarded(fastConditions, required.Condition, RequiredTest(access, property, required)))
                 .Return("false");
         }
@@ -803,7 +867,9 @@ public sealed class ValidatorEmitter {
 
             var reportedField = constraint.Field is { } renamed ? QuoteString(renamed) : field;
 
-            AddRule(builder, string.Join(" && ", conjuncts), ReportFor(reportedField, constraint, property), failFast);
+            AddRule(
+                builder, string.Join(" && ", conjuncts),
+                ReportFor(reportedField, constraint, property, capture, messageInfos), failFast);
 
             // No guard on the boolean path: a failed Required has already returned, so anything
             // still running has a value to test.
@@ -1364,55 +1430,253 @@ public sealed class ValidatorEmitter {
         return false;
     }
 
-    internal static string ReportFor(string field, ConstraintModel constraint, ValidatedPropertyModel property) =>
-        constraint.Kind switch {
-            ConstraintKind.StringLength => Report(field, constraint, "ReportStringLength", Bounds(constraint)),
-            ConstraintKind.ItemCount => Report(field, constraint, "ReportItemCount", Bounds(constraint)),
-            ConstraintKind.Range => RangeReport(field, constraint),
-            ConstraintKind.MultipleOf => Report(field, constraint, "ReportMultipleOf", $", {constraint.Divisor}"),
-            ConstraintKind.UniqueItems => Report(field, constraint, "ReportUniqueItems", ""),
-            ConstraintKind.Pattern => Report(field, constraint, "ReportPattern", ""),
-            ConstraintKind.AllowedValues => Report(field, constraint, "ReportAllowedValues",
+    internal static string ReportFor(
+        string field,
+        ConstraintModel constraint,
+        ValidatedPropertyModel property,
+        string? valueAccess = null,
+        MessageInfoPool? infos = null) {
+        // An explicit Message is the author's text and always the literal branch, whatever the
+        // kind - its {field} (and, for a DataAnnotations message, {0}) substituted right here,
+        // because every argument is known at generation time.
+        if (constraint.Message is not null) {
+            return LiteralReport(field, constraint, property);
+        }
+
+        // A resx-backed message wants a per-render template read, which only the structured shape
+        // can carry - so it forces the pool path for every kind, parameterless ones included. The
+        // baked template is the ordinary default for the kind; it is the constructor's required
+        // fallback and unreached while the provider is set.
+        if (constraint.MessageResourceAccessor is { } accessor && infos is not null) {
+            var resourceArgs = string.Concat(
+                constraint.MessageResourceArgs.Select(static argument => $", {argument}"));
+            var suffix =
+                $" {{ Provider = new {MessageProviderType}(static () => {accessor}), DataAnnotationsHoles = true }}";
+
+            return Structured(field, constraint, valueAccess, infos, TemplateFor(constraint), resourceArgs, suffix);
+        }
+
+        return constraint.Kind switch {
+            ConstraintKind.StringLength when infos is not null => Structured(
+                field, constraint, valueAccess, infos,
+                BoundedTemplate(constraint, "StringLength"), BoundedArgs(constraint)),
+            ConstraintKind.StringLength =>
+                Report(field, constraint, "ReportStringLength", Bounds(constraint), property, valueAccess),
+            ConstraintKind.ItemCount when infos is not null => Structured(
+                field, constraint, valueAccess, infos,
+                BoundedTemplate(constraint, "ItemCount"), BoundedArgs(constraint)),
+            ConstraintKind.ItemCount =>
+                Report(field, constraint, "ReportItemCount", Bounds(constraint), property, valueAccess),
+            ConstraintKind.Range => RangeReport(field, constraint, property, valueAccess, infos),
+            ConstraintKind.MultipleOf when infos is not null => Structured(
+                field, constraint, valueAccess, infos,
+                $"{MessageTemplates}.MultipleOf", $", {constraint.Divisor}"),
+            ConstraintKind.MultipleOf =>
+                Report(field, constraint, "ReportMultipleOf", $", {constraint.Divisor}", property, valueAccess),
+            ConstraintKind.UniqueItems =>
+                Report(field, constraint, "ReportUniqueItems", "", property, valueAccess),
+            ConstraintKind.Pattern => Report(field, constraint, "ReportPattern", "", property, valueAccess),
+            ConstraintKind.AllowedValues when infos is not null => Structured(
+                field, constraint, valueAccess, infos,
+                constraint.Negated ? $"{MessageTemplates}.DeniedValues" : $"{MessageTemplates}.AllowedValues",
                 $", {QuoteString(string.Join(", ", Displays(constraint)))}"),
-            ConstraintKind.Email => Report(field, constraint, "ReportEmail", ""),
-            ConstraintKind.Phone => Report(field, constraint, "ReportPhone", ""),
-            ConstraintKind.Url => Report(field, constraint, "ReportUrl", ""),
-            ConstraintKind.CreditCard => Report(field, constraint, "ReportCreditCard", ""),
-            ConstraintKind.Base64 => Report(field, constraint, "ReportBase64", ""),
+            ConstraintKind.AllowedValues => Report(
+                field, constraint, constraint.Negated ? "ReportDeniedValues" : "ReportAllowedValues",
+                $", {QuoteString(string.Join(", ", Displays(constraint)))}", property, valueAccess),
+            ConstraintKind.Email => Report(field, constraint, "ReportEmail", "", property, valueAccess),
+            ConstraintKind.Phone => Report(field, constraint, "ReportPhone", "", property, valueAccess),
+            ConstraintKind.Url => Report(field, constraint, "ReportUrl", "", property, valueAccess),
+            ConstraintKind.CreditCard => Report(field, constraint, "ReportCreditCard", "", property, valueAccess),
+            ConstraintKind.Base64 => Report(field, constraint, "ReportBase64", "", property, valueAccess),
+            ConstraintKind.FileExtension when infos is not null => Structured(
+                field, constraint, valueAccess, infos,
+                $"{MessageTemplates}.FileExtension",
+                $", {QuoteString(string.Join(", ", Displays(constraint)))}"),
             ConstraintKind.FileExtension => Report(field, constraint, "ReportFileExtension",
-                $", {QuoteString(string.Join(", ", Displays(constraint)))}"),
-            ConstraintKind.CustomCheck => Report(field, constraint, "ReportCustom", ""),
+                $", {QuoteString(string.Join(", ", Displays(constraint)))}", property, valueAccess),
+            ConstraintKind.CustomCheck => Report(field, constraint, "ReportCustom", "", property, valueAccess),
             // A flags value is a combination, so "must be one of" would be wrong about what the
             // type accepts. Says which flags exist instead.
+            ConstraintKind.EnumDefined when constraint.FlagsMask is not null && infos is not null => Structured(
+                field, constraint, valueAccess, infos,
+                $"{MessageTemplates}.EnumFlags",
+                $", {QuoteString(string.Join(", ", Displays(constraint)))}"),
             ConstraintKind.EnumDefined when constraint.FlagsMask is not null =>
                 $"ctx.Report({field}, " +
                 $"{(constraint.Code is { } flagsCode ? QuoteString(flagsCode) : $"{Codes}.Enum")}, " +
-                $"{QuoteString(constraint.Message ?? $"{Unquote(field)} must be a combination of: {string.Join(", ", Displays(constraint))}.")})",
-            ConstraintKind.EnumDefined => Report(field, constraint, "ReportAllowedValues",
+                $"{QuoteString($"{Unquote(field)} must be a combination of: {string.Join(", ", Displays(constraint))}.")})",
+            ConstraintKind.EnumDefined when infos is not null => Structured(
+                field, constraint, valueAccess, infos,
+                $"{MessageTemplates}.AllowedValues",
                 $", {QuoteString(string.Join(", ", Displays(constraint)))}"),
+            ConstraintKind.EnumDefined => Report(field, constraint, "ReportAllowedValues",
+                $", {QuoteString(string.Join(", ", Displays(constraint)))}", property, valueAccess),
 
             // Always the literal branch: a predicate's message was rendered from its own source when
             // the front-end read it, so there is nothing here to compose and nothing the runtime
             // could compose it from.
-            ConstraintKind.Predicate => Report(field, constraint, "Report", ""),
-            _ => Report(field, constraint, "ReportRequired", ""),
+            ConstraintKind.Predicate => Report(field, constraint, "Report", "", property, valueAccess),
+            _ => Report(field, constraint, "ReportRequired", "", property, valueAccess),
         };
+    }
 
     /// <summary>
     /// The report call for a range, which has a different message per shape rather than one message
-    /// with a bound the author never wrote standing in for the missing side.
+    /// with a bound the author never wrote standing in for the missing side - and, since the
+    /// message became data, a different template per exclusivity, so a bound the check treats as
+    /// outside the range is finally described that way.
     /// </summary>
-    private static string RangeReport(string field, ConstraintModel constraint) => constraint switch {
-        { Min: { } min, Max: { } max } => Report(field, constraint, "ReportRange", $", {min}, {max}"),
-        { Min: { } min } => Report(field, constraint, "ReportRangeAtLeast", $", {min}"),
-        { Max: { } max } => Report(field, constraint, "ReportRangeAtMost", $", {max}"),
+    private static string RangeReport(
+        string field,
+        ConstraintModel constraint,
+        ValidatedPropertyModel property,
+        string? valueAccess,
+        MessageInfoPool? infos) {
+        if (infos is not null) {
+            var arguments = constraint switch {
+                { Min: { } min, Max: { } max } => $", {min}, {max}",
+                { Min: { } min } => $", {min}",
+                { Max: { } max } => $", {max}",
+                _ => string.Empty,
+            };
 
-        // Unreachable: a range with neither bound is VM0026 and never reaches the emitter.
-        _ => Report(field, constraint, "ReportRequired", ""),
-    };
+            return Structured(field, constraint, valueAccess, infos, RangeTemplate(constraint), arguments);
+        }
+
+        return constraint switch {
+            { Min: { } min, Max: { } max } => Report(
+                field, constraint, "ReportRange",
+                $", {min}, {max}{Exclusivity(constraint.ExclusiveMin, "exclusiveMin")}{Exclusivity(constraint.ExclusiveMax, "exclusiveMax")}",
+                property, valueAccess),
+            { Min: { } min } => Report(
+                field, constraint, "ReportRangeAtLeast",
+                $", {min}{Exclusivity(constraint.ExclusiveMin, "exclusive")}", property, valueAccess),
+            { Max: { } max } => Report(
+                field, constraint, "ReportRangeAtMost",
+                $", {max}{Exclusivity(constraint.ExclusiveMax, "exclusive")}", property, valueAccess),
+
+            // Unreachable: a range with neither bound is VM0026 and never reaches the emitter.
+            _ => Report(field, constraint, "ReportRequired", "", property, valueAccess),
+        };
+    }
+
+    private static string Exclusivity(bool exclusive, string parameter) =>
+        exclusive ? $", {parameter}: true" : string.Empty;
 
     private static string Bounds(ConstraintModel constraint) =>
         $", {constraint.Min ?? "0"}, {constraint.Max ?? int.MaxValue.ToString()}";
+
+    /// <summary>
+    /// The between / at-most / at-least template - singular when the deciding bound is one -
+    /// mirroring the runtime's own <c>BoundedInfo</c> selection, so a hoisted info and a
+    /// helper-built one render the same text for the same bounds.
+    /// </summary>
+    private static string BoundedTemplate(ConstraintModel constraint, string prefix) {
+        int.TryParse(constraint.Min, out var min);
+        var hasMax = int.TryParse(constraint.Max, out var max) && max != int.MaxValue;
+
+        if (min > 0 && hasMax) {
+            return $"{MessageTemplates}.{prefix}{(max == 1 ? "BetweenSingular" : "Between")}";
+        }
+
+        return hasMax
+            ? $"{MessageTemplates}.{prefix}{(max == 1 ? "AtMostSingular" : "AtMost")}"
+            : $"{MessageTemplates}.{prefix}{(min == 1 ? "AtLeastSingular" : "AtLeast")}";
+    }
+
+    /// <summary>The info arguments matching <see cref="BoundedTemplate"/>'s holes, in hole order.</summary>
+    private static string BoundedArgs(ConstraintModel constraint) {
+        int.TryParse(constraint.Min, out var min);
+        var hasMax = int.TryParse(constraint.Max, out var max) && max != int.MaxValue;
+
+        if (min > 0 && hasMax) {
+            return $", {constraint.Min}, {constraint.Max}";
+        }
+
+        return hasMax ? $", {constraint.Max}" : $", {constraint.Min ?? "0"}";
+    }
+
+    private static string RangeTemplate(ConstraintModel constraint) =>
+        (constraint.Min is not null, constraint.Max is not null) switch {
+            (true, true) => (constraint.ExclusiveMin, constraint.ExclusiveMax) switch {
+                (false, false) => $"{MessageTemplates}.RangeBetween",
+                (true, false) => $"{MessageTemplates}.RangeGreaterAndAtMost",
+                (false, true) => $"{MessageTemplates}.RangeAtLeastAndLess",
+                (true, true) => $"{MessageTemplates}.RangeGreaterAndLess",
+            },
+            (true, false) => constraint.ExclusiveMin
+                ? $"{MessageTemplates}.RangeGreaterThan"
+                : $"{MessageTemplates}.RangeAtLeast",
+            (false, true) => constraint.ExclusiveMax
+                ? $"{MessageTemplates}.RangeLessThan"
+                : $"{MessageTemplates}.RangeAtMost",
+            _ => $"{MessageTemplates}.RangeBetween",
+        };
+
+    /// <summary>
+    /// The default template for a kind, used as the constructor fallback under a resx provider.
+    /// Kinds whose default arguments differ from the resx ones share the nearest shape; the
+    /// provider is set on every info built with this, so the fallback text is never rendered.
+    /// </summary>
+    private static string TemplateFor(ConstraintModel constraint) => constraint.Kind switch {
+        ConstraintKind.StringLength => BoundedTemplate(constraint, "StringLength"),
+        ConstraintKind.ItemCount => BoundedTemplate(constraint, "ItemCount"),
+        ConstraintKind.Range => RangeTemplate(constraint),
+        ConstraintKind.MultipleOf => $"{MessageTemplates}.MultipleOf",
+        ConstraintKind.UniqueItems => $"{MessageTemplates}.UniqueItems",
+        ConstraintKind.Pattern => $"{MessageTemplates}.Pattern",
+        ConstraintKind.AllowedValues => constraint.Negated
+            ? $"{MessageTemplates}.DeniedValues"
+            : $"{MessageTemplates}.AllowedValues",
+        ConstraintKind.EnumDefined => $"{MessageTemplates}.AllowedValues",
+        ConstraintKind.Email => $"{MessageTemplates}.Email",
+        ConstraintKind.Phone => $"{MessageTemplates}.Phone",
+        ConstraintKind.Url => $"{MessageTemplates}.Url",
+        ConstraintKind.CreditCard => $"{MessageTemplates}.CreditCard",
+        ConstraintKind.Base64 => $"{MessageTemplates}.Base64",
+        ConstraintKind.FileExtension => $"{MessageTemplates}.FileExtension",
+        ConstraintKind.CustomCheck => $"{MessageTemplates}.Custom",
+        _ => $"{MessageTemplates}.Required",
+    };
+
+    /// <summary>
+    /// The structured report: value and hoisted info, no text. The initializer is the pool's
+    /// deduplication key, so identical (template, arguments) pairs across a validator share one
+    /// static field.
+    /// </summary>
+    private static string Structured(
+        string field,
+        ConstraintModel constraint,
+        string? valueAccess,
+        MessageInfoPool infos,
+        string template,
+        string argumentsExpression,
+        string? initializerSuffix = null) {
+        var initializer = $"new {MessageInfoType}({template}{argumentsExpression}){initializerSuffix ?? string.Empty}";
+        var info = infos.Get(initializer);
+        var code = constraint.Code is { } custom ? QuoteString(custom) : CodeConstant(constraint.Kind);
+        var severity = constraint.Severity is { } member ? $", {SeverityEnum}.{member}" : string.Empty;
+
+        return $"ctx.Report({field}, {code}, {valueAccess ?? "null"}, {info}{severity})";
+    }
+
+    /// <summary>
+    /// The literal branch: text the author chose rather than text this library owns. Its
+    /// substitutions happen here, at generation time, because everything they need is compile-time
+    /// data - <c>{field}</c> is the wire name at this very site, and a DataAnnotations message's
+    /// <c>{0}</c> is the display name the front end already resolved.
+    /// </summary>
+    private static string LiteralReport(string field, ConstraintModel constraint, ValidatedPropertyModel property) {
+        var severity = constraint.Severity is { } member ? $", {SeverityEnum}.{member}" : string.Empty;
+        var code = constraint.Code is { } custom ? QuoteString(custom) : CodeConstant(constraint.Kind);
+        var text = constraint.Message!.Replace("{field}", Unquote(field));
+
+        if (constraint.DataAnnotationsMessage) {
+            text = text.Replace("{0}", property.DisplayName ?? property.PropertyName);
+        }
+
+        return $"ctx.Report({field}, {code}, {QuoteString(text)}{severity})";
+    }
 
     /// <summary>
     /// A constraint carrying an explicit message falls back to the literal overload: at that point
@@ -1426,21 +1690,25 @@ public sealed class ValidatorEmitter {
     /// composed default message, which is built from the constraint's own bounds and belongs to the
     /// runtime.
     /// </remarks>
-    private static string Report(string field, ConstraintModel constraint, string helper, string arguments) {
-        // Omitted entirely at the default rather than passed as ValidationSeverity.Error, so the
-        // emitted line stays the one a reader would have written by hand.
-        var severity = constraint.Severity is { } member ? $", {SeverityEnum}.{member}" : string.Empty;
-
-        if (constraint.Message is { } message) {
-            var code = constraint.Code is { } custom ? QuoteString(custom) : CodeConstant(constraint.Kind);
-            return $"ctx.Report({field}, {code}, {QuoteString(message)}{severity})";
+    private static string Report(
+        string field,
+        ConstraintModel constraint,
+        string helper,
+        string arguments,
+        ValidatedPropertyModel property,
+        string? valueAccess) {
+        if (constraint.Message is not null) {
+            return LiteralReport(field, constraint, property);
         }
 
-        // Named, because severity sits between the bounds and this one and is itself omitted at the
-        // default - so there is no positional spelling that works for both.
+        // Omitted entirely at the default rather than passed as ValidationSeverity.Error, so the
+        // emitted line stays the one a reader would have written by hand. Named, because severity
+        // sits between the bounds and the named arguments that may follow it.
+        var severity = constraint.Severity is { } member ? $", severity: {SeverityEnum}.{member}" : string.Empty;
         var explicitCode = constraint.Code is { } declared ? $", code: {QuoteString(declared)}" : string.Empty;
+        var value = valueAccess is null ? string.Empty : $", value: {valueAccess}";
 
-        return $"{ContextExtensions}.{helper}(ctx, {field}{arguments}{severity}{explicitCode})";
+        return $"{ContextExtensions}.{helper}(ctx, {field}{arguments}{severity}{explicitCode}{value})";
     }
 
     private static string CodeConstant(ConstraintKind kind) => kind switch {

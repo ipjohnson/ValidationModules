@@ -44,6 +44,15 @@ namespace Sample;
 public sealed partial class PetValidator : global::ValidationModules.IValidatorFor<global::Sample.Pet>
 {
     private static readonly global::System.Text.RegularExpressions.Regex SkuPattern0 = new global::System.Text.RegularExpressions.Regex("^[A-Z]{3}$");
+    private static readonly global::ValidationModules.ValidationMessageInfo _message0 = new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.StringLengthBetween, 1, 100);
+    private static readonly global::ValidationModules.ValidationMessageInfo _message1 = new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.RangeBetween, 0, 30);
+    private static readonly global::ValidationModules.ValidationMessageInfo _message2 = new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.AllowedValues, "available, pending, sold");
+    private static readonly global::ValidationModules.ValidationMessageInfo _message3 = new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.ItemCountBetween, 1, 10);
+    private static readonly global::ValidationModules.ValidationMessageInfo _message4 = new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.MultipleOf, 5);
+    private static readonly global::ValidationModules.ValidationMessageInfo _message5 = new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.MultipleOf, 0.05m);
+    private static readonly global::ValidationModules.ValidationMessageInfo _message6 = new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.MultipleOf, 0.01m);
+    private static readonly global::ValidationModules.ValidationMessageInfo _message7 = new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.RangeAtLeast, 1);
+    private static readonly global::ValidationModules.ValidationMessageInfo _message8 = new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.RangeAtMost, 99);
 
     public PetValidator()
     {
@@ -52,51 +61,51 @@ public sealed partial class PetValidator : global::ValidationModules.IValidatorF
     public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Pet value)
     {
         var missingName = string.IsNullOrWhiteSpace(value.Name);
-        if (missingName && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "name").ShouldStop)
+        if (missingName && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "name", value: value.Name).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (!missingName && (value.Name is not null && (value.Name.Length < 1 || value.Name.Length > 100)) && global::ValidationModules.ValidationContextExtensions.ReportStringLength(ctx, "name", 1, 100).ShouldStop)
+        if (!missingName && (value.Name is not null && (value.Name.Length < 1 || value.Name.Length > 100)) && ctx.Report("name", global::ValidationModules.ValidationCodes.StringLength, value.Name, _message0).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if ((value.Age < 0 || value.Age > 30) && global::ValidationModules.ValidationContextExtensions.ReportRange(ctx, "age", 0, 30).ShouldStop)
+        if ((value.Age < 0 || value.Age > 30) && ctx.Report("age", global::ValidationModules.ValidationCodes.Range, value.Age, _message1).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (value.Sku is not null && !SkuPattern0.IsMatch(value.Sku) && global::ValidationModules.ValidationContextExtensions.ReportPattern(ctx, "sku").ShouldStop)
+        if (value.Sku is not null && !SkuPattern0.IsMatch(value.Sku) && global::ValidationModules.ValidationContextExtensions.ReportPattern(ctx, "sku", value: value.Sku).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (value.Status is not null && (value.Status != "available" && value.Status != "pending" && value.Status != "sold") && global::ValidationModules.ValidationContextExtensions.ReportAllowedValues(ctx, "status", "available, pending, sold").ShouldStop)
+        if (value.Status is not null && (value.Status != "available" && value.Status != "pending" && value.Status != "sold") && ctx.Report("status", global::ValidationModules.ValidationCodes.Enum, value.Status, _message2).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (value.Tags is not null && (value.Tags.Count < 1 || value.Tags.Count > 10) && global::ValidationModules.ValidationContextExtensions.ReportItemCount(ctx, "tags", 1, 10).ShouldStop)
+        if (value.Tags is not null && (value.Tags.Count < 1 || value.Tags.Count > 10) && ctx.Report("tags", global::ValidationModules.ValidationCodes.ArrayBounds, value.Tags, _message3).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if ((value.Quantity % 5 != 0) && global::ValidationModules.ValidationContextExtensions.ReportMultipleOf(ctx, "quantity", 5).ShouldStop)
+        if ((value.Quantity % 5 != 0) && ctx.Report("quantity", global::ValidationModules.ValidationCodes.MultipleOf, value.Quantity, _message4).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if ((value.Price % 0.05m != 0) && global::ValidationModules.ValidationContextExtensions.ReportMultipleOf(ctx, "price", 0.05m).ShouldStop)
+        if ((value.Price % 0.05m != 0) && ctx.Report("price", global::ValidationModules.ValidationCodes.MultipleOf, value.Price, _message5).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (!global::ValidationModules.ConstraintChecks.IsMultipleOf(value.Ratio, 0.01m) && global::ValidationModules.ValidationContextExtensions.ReportMultipleOf(ctx, "ratio", 0.01m).ShouldStop)
+        if (!global::ValidationModules.ConstraintChecks.IsMultipleOf(value.Ratio, 0.01m) && ctx.Report("ratio", global::ValidationModules.ValidationCodes.MultipleOf, value.Ratio, _message6).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (value.Codes is not null && !global::ValidationModules.ConstraintChecks.AllUnique(value.Codes) && global::ValidationModules.ValidationContextExtensions.ReportUniqueItems(ctx, "codes").ShouldStop)
+        if (value.Codes is not null && !global::ValidationModules.ConstraintChecks.AllUnique(value.Codes) && global::ValidationModules.ValidationContextExtensions.ReportUniqueItems(ctx, "codes", value: value.Codes).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if ((value.AtLeastOne < 1) && global::ValidationModules.ValidationContextExtensions.ReportRangeAtLeast(ctx, "atLeastOne", 1).ShouldStop)
+        if ((value.AtLeastOne < 1) && ctx.Report("atLeastOne", global::ValidationModules.ValidationCodes.Range, value.AtLeastOne, _message7).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if ((value.AtMostNinetyNine > 99) && global::ValidationModules.ValidationContextExtensions.ReportRangeAtMost(ctx, "atMostNinetyNine", 99).ShouldStop)
+        if ((value.AtMostNinetyNine > 99) && ctx.Report("atMostNinetyNine", global::ValidationModules.ValidationCodes.Range, value.AtMostNinetyNine, _message8).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
