@@ -40,20 +40,20 @@ public static class ReservationChecks {
 /// </summary>
 public sealed class ReservationRules : IValidationRulesFor<Reservation> {
 
-    public void Describe(ValidationRules<Reservation> rules) {
-        rules.Required(x => x.Guest).Length(2, 40);
-        rules.Pattern(x => x.Reference, ReservationPatterns.Reference);
-        rules.Range(x => x.Nights, 1, 30);
-        rules.Count(x => x.Notes, 0, 3);
+    public static void Describe(ValidationRules<Reservation> rules, Reservation x) {
+        rules.Require(x.Guest).Length(2, 40);
+        rules.Pattern(x.Reference, ReservationPatterns.Reference);
+        rules.Range(x.Nights, 1, 30);
+        rules.Count(x.Notes, 0, 3);
 
         // The same four constraints the attribute front end reads, declared here instead. Both
         // flatten into one validator, so a rule declared either way has to mean the same thing.
-        rules.RangeAtLeast(x => x.Guests, 1);
-        rules.MultipleOf(x => x.Deposit, 0.05m);
-        rules.Unique(x => x.Rooms);
+        rules.RangeAtLeast(x.Guests, 1);
+        rules.MultipleOf(x.Deposit, 0.05m);
+        rules.Unique(x.Rooms);
 
-        rules.Ensure(x => x.Start < x.End);
-        rules.Ensure(x => x.Nights <= 7 || x.Notes != null, code: "long_stay_needs_notes");
+        rules.Ensure(x.Start < x.End);
+        rules.Ensure(x.Nights <= 7 || x.Notes != null, code: "long_stay_needs_notes");
 
         rules.Apply(ReservationChecks.GuestInitialMatchesReference);
     }
@@ -72,20 +72,20 @@ public sealed record Filing {
 }
 
 public sealed class FilingRules : IValidationRulesFor<Filing> {
-    public void Describe(ValidationRules<Filing> rules) {
-        rules.Required(x => x.Reference);
+    public static void Describe(ValidationRules<Filing> rules, Filing x) {
+        rules.Require(x.Reference);
 
         // Anchored to Reference, reported under attachment. The property already carries a rule, so
         // a per-property field name would have kept the first one and lost this.
         rules.Ensure(
-            x => x.Reference == null || x.Attachment != null,
+            x.Reference == null || x.Attachment != null,
             field: "attachment",
             code: "attachment_required",
             message: "an attachment is required once a reference is set.");
 
         // Advisory: surfaced, but the filing is still valid.
         rules.Ensure(
-            x => x.DaysLate <= 30,
+            x.DaysLate <= 30,
             field: "daysLate",
             code: "late_notice",
             message: "filed more than 30 days after the period end.",
@@ -119,17 +119,17 @@ public static partial class TicketPatterns {
 
 public sealed class TicketRules : IValidationRulesFor<Ticket> {
 
-    public void Describe(ValidationRules<Ticket> rules) {
-        // Required passes on "AB"; the two constraints behind it both fail.
-        rules.Required(x => x.Code).Length(3, 10);
-        rules.Pattern(x => x.Code, TicketPatterns.Digits);
+    public static void Describe(ValidationRules<Ticket> rules, Ticket x) {
+        // Require passes on "AB"; the two constraints behind it both fail.
+        rules.Require(x.Code).Length(3, 10);
+        rules.Pattern(x.Code, TicketPatterns.Digits);
 
         // The same pair with nothing in front of them.
-        rules.Length(x => x.Note, 3, 10);
-        rules.Pattern(x => x.Note, TicketPatterns.Digits);
+        rules.Length(x.Note, 3, 10);
+        rules.Pattern(x.Note, TicketPatterns.Digits);
 
-        rules.Range(x => x.Amount, 10m, 20m);
-        rules.MultipleOf(x => x.Amount, 4m);
+        rules.Range(x.Amount, 10m, 20m);
+        rules.MultipleOf(x.Amount, 4m);
     }
 }
 
@@ -143,18 +143,13 @@ public sealed record Badge {
 }
 
 public sealed class BadgeRules : IValidationRulesFor<Badge> {
-    public void Describe(ValidationRules<Badge> rules) => rules.Required(x => x.Holder).Length(2, 20);
+    public static void Describe(ValidationRules<Badge> rules, Badge x) => rules.Require(x.Holder).Length(2, 20);
 }
 
 /// <summary>
-/// Every conditional shape the DSL offers, in one declaration, so both engines can be run against
-/// the same rules and compared error for error.
+/// Every conditional shape the surface offers - which is to say, C#. Conditions are <c>if</c>/
+/// <c>else</c>, evaluated where written, at validation time inside the region.
 /// </summary>
-/// <remarks>
-/// The substitutability promise of API-SURFACE.md §19.9 is what conditions put most at risk: a
-/// condition may read live static state, so an engine evaluating it per rule and one evaluating it
-/// per pass produce different answers rather than the same answer twice.
-/// </remarks>
 public sealed record Claim {
     public bool IsAuto { get; init; }
 
@@ -173,33 +168,34 @@ public sealed record Claim {
 
 public sealed class ClaimRules : IValidationRulesFor<Claim> {
 
-    public void Describe(ValidationRules<Claim> rules) {
-        // Chained: guards both constraints of its own statement, and nothing past the semicolon.
-        rules.Required(x => x.Reason).Length(2, 20).When(x => x.IsExpedited);
+    public static void Describe(ValidationRules<Claim> rules, Claim x) {
+        // Guards both constraints of the chain, and nothing past the brace.
+        if (x.IsExpedited) {
+            rules.Require(x.Reason).Length(2, 20);
+        }
 
-        // Chained negated.
-        rules.Required(x => x.Reference).Unless(x => x.IsDraft);
+        // What used to be Unless is a negation.
+        if (!x.IsDraft) {
+            rules.Require(x.Reference);
+        }
 
-        // Block, with the other half declared through Otherwise rather than a second predicate.
-        rules.When(x => x.IsAuto, () => {
-            rules.Required(x => x.Plate);
-        }).Otherwise(() => {
-            rules.Required(x => x.Notes);
-        });
+        // What used to be a block with an Otherwise is an else.
+        if (x.IsAuto) {
+            rules.Require(x.Plate);
+        } else {
+            rules.Require(x.Notes);
+        }
     }
 }
 
 /// <summary>
-/// A condition reading a mutable static counter, so "once per pass" is observed rather than
-/// asserted. Three rules name it; the counter must move by one per validation, on either engine.
+/// A condition reading a mutable static counter, so "evaluated where written" is observed rather
+/// than asserted: one <c>if</c> in the body is one evaluation per pass, however many rules the
+/// branch declares.
 /// </summary>
 public sealed record Metered {
     public static int Evaluations;
 
-    /// <summary>
-    /// Public and on the model, not private on the rules class: a condition is lifted into its own
-    /// static class carrying the declaring file's usings, so it can only reach what that class can.
-    /// </summary>
     public static bool Counted(Metered value) {
         Evaluations++;
 
@@ -217,21 +213,19 @@ public sealed record Metered {
 
 public sealed class MeteredRules : IValidationRulesFor<Metered> {
 
-    public void Describe(ValidationRules<Metered> rules) {
-        // A lambda rather than the method group: a condition has to be liftable into a static
-        // method, and a method group has no body for the generator to copy.
-        rules.When(x => Metered.Counted(x), () => {
-            rules.Required(x => x.First);
-            rules.Required(x => x.Second);
-            rules.Required(x => x.Third);
-        });
+    public static void Describe(ValidationRules<Metered> rules, Metered x) {
+        if (Metered.Counted(x)) {
+            rules.Require(x.First);
+            rules.Require(x.Second);
+            rules.Require(x.Third);
+        }
     }
 }
 
 /// <summary>
-/// Private constants of the types whose literals need care, referenced from a lifted predicate and
-/// from a condition. Compiled and run rather than snapshotted, because the failure mode is a literal
-/// that reads back as a different value or a different type.
+/// Private constants of the types whose literals need care, referenced from an <c>Ensure</c> and
+/// from an <c>if</c>. Compiled and run rather than snapshotted, because the failure mode is a
+/// literal that reads back as a different value or a different type.
 /// </summary>
 public sealed record Quote {
     public decimal Amount { get; init; }
@@ -255,9 +249,12 @@ public sealed class QuoteRules : IValidationRulesFor<Quote> {
     // An enum constant is carried as its underlying number, so the cast is what preserves it.
     private const QuoteTier Restricted = QuoteTier.Premium;
 
-    public void Describe(ValidationRules<Quote> rules) {
-        rules.Ensure(x => x.Amount <= Ceiling, code: "ceiling");
-        rules.Ensure(x => x.Ratio <= MaxRatio, code: "ratio");
-        rules.Ensure(x => x.Amount > 0m, code: "positive").When(x => x.Tier == Restricted);
+    public static void Describe(ValidationRules<Quote> rules, Quote x) {
+        rules.Ensure(x.Amount <= Ceiling, code: "ceiling");
+        rules.Ensure(x.Ratio <= MaxRatio, code: "ratio");
+
+        if (x.Tier == Restricted) {
+            rules.Ensure(x.Amount > 0m, code: "positive");
+        }
     }
 }

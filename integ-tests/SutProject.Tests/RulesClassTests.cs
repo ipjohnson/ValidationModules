@@ -5,31 +5,17 @@ using Xunit;
 namespace SutProject.Tests;
 
 /// <summary>
-/// The two engines of API-SURFACE.md §19, run against the same declaration.
+/// A rules class transcribed into real generated code, compiled against the real runtime and run.
 /// </summary>
 /// <remarks>
-/// <para>
-/// <c>ReservationRules</c> is compiled by the generator into <c>ReservationValidator</c> and is also
-/// handed to <c>DescribedValidator&lt;Reservation&gt;</c>, which runs it. §19.9 claims the two are
-/// substitutable on codes, messages, ordering, suppression and paths; <see cref="BothEngines"/> is
-/// what makes that a fact rather than a claim, and it is the reason the parity assertions here
-/// compare full sequences rather than sets.
-/// </para>
-/// <para>
-/// This is the integration project, so the generated arm is the real emitted code compiled against
-/// the real runtime, not a golden file.
-/// </para>
+/// <c>ReservationRules</c> targets a type with no attributes and no way to take one - the case the
+/// feature exists for. Its body is read by the generator, expanded into
+/// <c>ReservationRules_Rules.Describe</c>, and called by <c>ReservationValidator</c>; nothing here
+/// is a golden file, so what these assert is the emitted code's behaviour, ordering included.
 /// </remarks>
 public class RulesClassTests {
 
-    private static readonly IValidatorFor<Reservation> Generated = new ReservationValidator();
-    private static readonly IValidatorFor<Reservation> Described = new DescribedValidator<Reservation>(new ReservationRules());
-
-    /// <summary>
-    /// Both arms of §19, as theory data. xUnit names each case by the validator's own type, so a
-    /// failure says which engine produced it without a label parameter.
-    /// </summary>
-    public static TheoryData<IValidatorFor<Reservation>> BothEngines => new() { Generated, Described };
+    private static readonly IValidatorFor<Reservation> Validator = new ReservationValidator();
 
     private static Reservation Valid() => new() {
         Guest = "Ada",
@@ -43,35 +29,30 @@ public class RulesClassTests {
         Rooms = ["101", "102"],
     };
 
-    [Theory]
-    [MemberData(nameof(BothEngines))]
-    public void Validate_OnAValidValue_ReportsNothing(IValidatorFor<Reservation> validator) {
-        Assert.True(validator.Validate(Valid()).IsValid, validator.GetType().Name);
+    [Fact]
+    public void Validate_OnAValidValue_ReportsNothing() {
+        Assert.True(Validator.Validate(Valid()).IsValid);
     }
 
     /// <summary>
-    /// The three constraints declared through the fluent API rather than through attributes, on both
-    /// engines. A kind only one front end can produce is a kind whose two paths cannot be compared.
+    /// The constraints only the rules surface declares here - one-sided range, multiple-of,
+    /// uniqueness - expand through the same check writer the attributes use.
     /// </summary>
-    [Theory]
-    [MemberData(nameof(BothEngines))]
-    public void Validate_EnforcesTheOneSidedRangeTheMultipleAndTheUniqueness(
-        IValidatorFor<Reservation> validator) {
+    [Fact]
+    public void Validate_EnforcesTheOneSidedRangeTheMultipleAndTheUniqueness() {
+        Assert.True(Validator.Validate(Valid() with { Guests = 1 }).IsValid);
+        Assert.False(Validator.Validate(Valid() with { Guests = 0 }).IsValid);
 
-        Assert.True(validator.Validate(Valid() with { Guests = 1 }).IsValid);
-        Assert.False(validator.Validate(Valid() with { Guests = 0 }).IsValid);
+        Assert.True(Validator.Validate(Valid() with { Deposit = 0.05m }).IsValid);
+        Assert.False(Validator.Validate(Valid() with { Deposit = 0.03m }).IsValid);
 
-        Assert.True(validator.Validate(Valid() with { Deposit = 0.05m }).IsValid);
-        Assert.False(validator.Validate(Valid() with { Deposit = 0.03m }).IsValid);
-
-        Assert.True(validator.Validate(Valid() with { Rooms = ["a", "b"] }).IsValid);
-        Assert.False(validator.Validate(Valid() with { Rooms = ["a", "a"] }).IsValid);
+        Assert.True(Validator.Validate(Valid() with { Rooms = ["a", "b"] }).IsValid);
+        Assert.False(Validator.Validate(Valid() with { Rooms = ["a", "a"] }).IsValid);
     }
 
-    [Theory]
-    [MemberData(nameof(BothEngines))]
-    public void Validate_RendersAPredicateAsItsOwnMessage(IValidatorFor<Reservation> validator) {
-        var result = validator.Validate(Valid() with { End = new DateOnly(2025, 1, 1) });
+    [Fact]
+    public void Validate_RendersAnEnsureAsItsOwnMessage() {
+        var result = Validator.Validate(Valid() with { End = new DateOnly(2025, 1, 1) });
 
         var error = Assert.Single(result.Errors);
         Assert.Equal("start", error.Field);
@@ -79,119 +60,109 @@ public class RulesClassTests {
         Assert.Equal("start < end.", error.Message);
     }
 
-    [Theory]
-    [MemberData(nameof(BothEngines))]
-    public void Validate_OnAPredicateWithANamedCode_UsesIt(IValidatorFor<Reservation> validator) {
-        var result = validator.Validate(Valid() with { Nights = 20, Notes = null });
+    [Fact]
+    public void Validate_OnAnEnsureWithANamedCode_UsesIt() {
+        var result = Validator.Validate(Valid() with { Nights = 20, Notes = null });
 
         var error = Assert.Single(result.Errors);
         Assert.Equal("long_stay_needs_notes", error.Code);
     }
 
-    [Theory]
-    [MemberData(nameof(BothEngines))]
-    public void Validate_RunsAPredicateEvenWhenAnotherRuleOnTheSameFieldFailed(IValidatorFor<Reservation> validator) {
-        // A predicate is anchored to a field but may read others, so it stays out of the else-if
-        // chain. Emitting it as `else if` would have this engine report one error where the other
-        // reports two - the divergence this test exists to stop.
-        var result = validator.Validate(Valid() with { Nights = 99, Notes = null });
+    [Fact]
+    public void Validate_RunsAnEnsureEvenWhenAnotherRuleOnTheSameFieldFailed() {
+        // Separate statements report independently: the Range on nights and the Ensure anchored to
+        // nights are two statements, and an Ensure may read fields other than its anchor - so a
+        // failure on the anchor says nothing about it.
+        var result = Validator.Validate(Valid() with { Nights = 99, Notes = null });
 
         Assert.Equal(
             [ValidationCodes.Range, "long_stay_needs_notes"],
             result.Errors.Select(error => error.Code));
     }
 
-    [Theory]
-    [MemberData(nameof(BothEngines))]
-    public void Validate_AppliesAHandWrittenRuleLast(IValidatorFor<Reservation> validator) {
-        var result = validator.Validate(Valid() with { Guest = "Zed" });
+    [Fact]
+    public void Validate_AppliesAHandWrittenRuleLast() {
+        var result = Validator.Validate(Valid() with { Guest = "Zed" });
 
         var error = Assert.Single(result.Errors);
         Assert.Equal("guest_initial", error.Code);
     }
 
-    [Theory]
-    [MemberData(nameof(BothEngines))]
-    public void Validate_WhenRequiredFails_SuppressesTheRestOfTheField(IValidatorFor<Reservation> validator) {
-        // §4.3: enforced by the collector, so both engines get it without either implementing it.
-        // Asserted on the field under test rather than on the whole result, because suppression is
-        // an exact path match and not a prefix one - the applied rule reports against `reference`
-        // and is meant to survive.
-        var result = validator.Validate(Valid() with { Guest = "  " });
+    [Fact]
+    public void Validate_WhenRequireFails_SuppressesTheRestOfItsChain() {
+        // Chain-scoped suppression: the Length chained after Require never reports on a missing
+        // guest. The applied rule reports against `reference` and is meant to survive.
+        var result = Validator.Validate(Valid() with { Guest = "  " });
 
         var error = Assert.Single(result.Errors, error => error.Field == "guest");
         Assert.Equal(ValidationCodes.Required, error.Code);
     }
 
+    /// <summary>
+    /// Full sequences over failing shapes: the body is the validator, so errors come out in body
+    /// order, chains suppressed, null-guarded checks skipped, the applied rule last.
+    /// </summary>
     [Fact]
-    public void BothEngines_ProduceIdenticalErrorsForEveryFailingShape() {
-        // The substitutability claim itself, over full sequences: same fields, same codes, same
-        // messages, same order. Ordering is the one that was actually wrong first - the generator
-        // walks properties and the runtime walks the body, and they only agree because both group by
-        // field and take fields in first-mention order.
-        Reservation[] cases = [
-            new(),
-            Valid() with { Guest = null, Nights = 0 },
-            Valid() with { Guest = "A", Reference = "nope", Nights = 99 },
-            Valid() with { Notes = ["a", "b", "c", "d"], End = new DateOnly(2020, 1, 1) },
-            Valid() with { Guest = "Zed", Nights = 40, Notes = null, End = new DateOnly(2020, 1, 1) },
-            Valid() with { Guests = 0 },
-            Valid() with { Deposit = 1.51m },
-            Valid() with { Rooms = ["101", "101"] },
-            Valid() with { Guests = 0, Deposit = 0.03m, Rooms = ["a", "a"] },
-        ];
+    public void Validate_ReportsInBodyOrder() {
+        Assert.Equal(
+            [
+                ("guest", ValidationCodes.Required),
+                ("nights", ValidationCodes.Range),
+                ("guests", ValidationCodes.Range),
+                ("start", ValidationCodes.Predicate),
+            ],
+            Validator.Validate(new Reservation()).Errors.Select(error => (error.Field, error.Code)));
 
-        foreach (var value in cases) {
-            Assert.Equal(
-                Generated.Validate(value).Errors.Select(error => (error.Field, error.Code, error.Message)),
-                Described.Validate(value).Errors.Select(error => (error.Field, error.Code, error.Message)));
-        }
+        Assert.Equal(
+            [
+                ("guest", ValidationCodes.StringLength),
+                ("reference", ValidationCodes.Pattern),
+                ("nights", ValidationCodes.Range),
+                ("nights", "long_stay_needs_notes"),
+                ("reference", "guest_initial"),
+            ],
+            Validator.Validate(Valid() with { Guest = "A", Reference = "nope", Nights = 99 })
+                .Errors.Select(error => (error.Field, error.Code)));
     }
 
     /// <summary>
-    /// <c>field:</c> renames the error. The rule is still anchored to the property it reads, so the
-    /// two engines agree on ordering, but the name it reports under is its own - and a property
-    /// carrying several rules must not collapse them onto the first one's name.
+    /// <c>field:</c> renames the error. The rule is still anchored to the property it reads, but
+    /// the name it reports under is its own - and a property carrying several rules must not
+    /// collapse them onto the first one's name.
     /// </summary>
     [Fact]
     public void Ensure_WithAnExplicitField_ReportsUnderThatField() {
         var filing = new Filing { Reference = "R-1", Attachment = null, DaysLate = 0 };
 
-        var generated = new FilingValidator().Validate(filing);
-        var described = new DescribedValidator<Filing>(new FilingRules()).Validate(filing);
+        var result = new FilingValidator().Validate(filing);
 
-        var error = Assert.Single(generated.Errors);
+        var error = Assert.Single(result.Errors);
         Assert.Equal("attachment", error.Field);
         Assert.Equal("attachment_required", error.Code);
-
-        Assert.Equal(
-            described.Errors.Select(e => (e.Field, e.Code)).OrderBy(x => x.Field),
-            generated.Errors.Select(e => (e.Field, e.Code)).OrderBy(x => x.Field));
     }
 
     /// <summary>
-    /// A warning is surfaced and the value stays valid. The generator dropped <c>severity:</c>, so
-    /// the same rules class reported Error through generated code and Warning through the runtime -
-    /// the two engines disagreeing on whether a value was acceptable.
+    /// A warning is surfaced and the value stays valid - <c>severity:</c> flows through the
+    /// transcribed Ensure.
     /// </summary>
     [Fact]
     public void Ensure_WithAWarning_SurfacesWithoutFailingTheValue() {
         var filing = new Filing { Reference = "R-1", Attachment = "a.pdf", DaysLate = 45 };
 
-        var generated = new FilingValidator().Validate(filing);
-        var described = new DescribedValidator<Filing>(new FilingRules()).Validate(filing);
+        var result = new FilingValidator().Validate(filing);
 
-        var error = Assert.Single(generated.Errors);
+        var error = Assert.Single(result.Errors);
         Assert.Equal(ValidationSeverity.Warning, error.Severity);
         Assert.Equal("daysLate", error.Field);
 
-        Assert.True(generated.IsValid);
-        Assert.True(generated.HasErrors);
-        Assert.Equal(described.IsValid, generated.IsValid);
-        Assert.Equal(described.Errors.Single().Severity, error.Severity);
+        Assert.True(result.IsValid);
+        Assert.True(result.HasErrors);
     }
 
-    /// <summary>The boolean fast path agrees: a warning is not a failure.</summary>
+    /// <summary>
+    /// A type with a region loses the straight-line <c>IsValid</c> and falls back to the interface
+    /// default, which walks Validate - so it still agrees: a warning is not a failure.
+    /// </summary>
     [Fact]
     public void IsValid_IgnoresAWarning() =>
         Assert.True(new FilingValidator().IsValid(
