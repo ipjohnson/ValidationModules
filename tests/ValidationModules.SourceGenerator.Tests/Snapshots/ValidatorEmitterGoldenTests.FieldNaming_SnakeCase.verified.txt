@@ -50,11 +50,11 @@ public sealed partial class PetValidator : global::ValidationModules.IValidatorF
 
     public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Pet value)
     {
-        if (string.IsNullOrWhiteSpace(value.PostalCode) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "postal_code").ShouldStop)
+        if (string.IsNullOrWhiteSpace(value.PostalCode) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "postal_code", value: value.PostalCode).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (string.IsNullOrWhiteSpace(value.HTTPStatusLine) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "http_status_line").ShouldStop)
+        if (string.IsNullOrWhiteSpace(value.HTTPStatusLine) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "http_status_line", value: value.HTTPStatusLine).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }

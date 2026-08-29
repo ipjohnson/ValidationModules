@@ -53,11 +53,11 @@ public class InheritedConstraintTests {
         var body = Body(GeneratorHarness.Run(BaseChain), "CreateOrderValidator");
 
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"correlationId\")", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"correlationId\", value: value.CorrelationId)", body);
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"tenantId\")", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"tenantId\", value: value.TenantId)", body);
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"sku\")", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"sku\", value: value.Sku)", body);
     }
 
     /// <summary>
@@ -95,7 +95,7 @@ public class InheritedConstraintTests {
             """);
 
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"correlationId\")",
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"correlationId\", value: value.CorrelationId)",
             Body(result, "PingValidator"));
     }
 
@@ -114,11 +114,11 @@ public class InheritedConstraintTests {
         var body = Body(result, "LeafValidator");
 
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"a\")", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"a\", value: value.A)", body);
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"b\")", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"b\", value: value.B)", body);
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"c\")", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"c\", value: value.C)", body);
     }
 
     // -- interfaces --------------------------------------------------------------------------
@@ -151,9 +151,9 @@ public class InheritedConstraintTests {
         var body = Body(result, "DocumentValidator");
 
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"title\")", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"title\", value: value.Title)", body);
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"modifiedBy\")", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"modifiedBy\", value: value.ModifiedBy)", body);
     }
 
     /// <summary>
@@ -182,9 +182,9 @@ public class InheritedConstraintTests {
         var body = Body(result, "DocumentValidator");
 
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"modifiedBy\")", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"modifiedBy\", value: value.ModifiedBy)", body);
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportStringLength(ctx, \"modifiedBy\", 1, 64)", body);
+            "ctx.Report(\"modifiedBy\", global::ValidationModules.ValidationCodes.StringLength, value.ModifiedBy, _message", body);
     }
 
     // -- shadowing ---------------------------------------------------------------------------
@@ -216,10 +216,10 @@ public class InheritedConstraintTests {
         var body = Body(result, "DerivedValidator");
 
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportStringLength(ctx, \"name\", 1, 200)", body);
+            "ctx.Report(\"name\", global::ValidationModules.ValidationCodes.StringLength, value.Name, _message", body);
         Assert.DoesNotContain("1, 10", body);
         Assert.DoesNotContain(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\")", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\", value: value.Name)", body);
 
         Assert.Contains(result.Diagnostics, d => d.Id == "VM0030");
     }
@@ -246,7 +246,7 @@ public class InheritedConstraintTests {
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0030");
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\")",
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\", value: value.Name)",
             Body(result, "DerivedValidator"));
     }
 
@@ -288,11 +288,11 @@ public class InheritedConstraintTests {
         var body = Body(result, "CreateOrderValidator");
 
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"correlationId\")", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"correlationId\", value: value.CorrelationId)", body);
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportStringLength(ctx, \"tenantId\", 1, 64)", body);
+            "ctx.Report(\"tenantId\", global::ValidationModules.ValidationCodes.StringLength, value.TenantId, _message", body);
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"sku\")", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"sku\", value: value.Sku)", body);
     }
 
     /// <summary>
@@ -331,7 +331,7 @@ public class InheritedConstraintTests {
         var body = Body(result, "CreateOrderValidator");
 
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"visible\")", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"visible\", value: value.Visible)", body);
         Assert.DoesNotContain("Hidden", body);
     }
 

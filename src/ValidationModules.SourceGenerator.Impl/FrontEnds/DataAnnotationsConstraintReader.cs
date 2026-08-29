@@ -52,7 +52,10 @@ public static class DataAnnotationsConstraintReader {
         Array.IndexOf(Constraints, attributeName) >= 0 ||
         Array.IndexOf(FormatValidators, attributeName) >= 0;
 
-    public static Outcome Read(AttributeData attribute, string attributeName, ITypeSymbol memberType) {
+    public static Outcome Read(AttributeData attribute, string attributeName, ITypeSymbol memberType) =>
+        FinishMessage(ReadCore(attribute, attributeName, memberType), attribute, attributeName);
+
+    private static Outcome ReadCore(AttributeData attribute, string attributeName, ITypeSymbol memberType) {
         switch (attributeName) {
             case "RequiredAttribute":
                 return new Outcome(
@@ -357,4 +360,122 @@ public static class DataAnnotationsConstraintReader {
         attribute.ConstructorArguments.Length > 0
             ? NativeConstraintReader.Literal(attribute.ConstructorArguments[0])
             : null;
+
+    /// <summary>
+    /// Finishes a mapped constraint's message the way DataAnnotations' own formatting would have:
+    /// an <c>ErrorMessage</c> template gets every placeholder but <c>{0}</c> baked in - they are
+    /// all compile-time constants - and a resx-backed message becomes an accessor the emitter
+    /// wraps in a per-render provider. Both paths mark the message as DataAnnotations-dialect so
+    /// the emitter substitutes <c>{0}</c> with the display name, which is DataAnnotations'
+    /// meaning for it, not this library's <c>{field}</c>.
+    /// </summary>
+    /// <remarks>
+    /// The placeholder order is each attribute's own <c>FormatErrorMessage</c> order, which is not
+    /// this model's Min/Max order everywhere: <c>[StringLength]</c> formats <c>{1}</c> as the
+    /// maximum and <c>{2}</c> as the minimum, while <c>[Range]</c> and <c>[Length]</c> put the
+    /// minimum first. Encoded here, beside the reader that knows which attribute it read, because
+    /// after normalization into the model the original order is gone.
+    /// </remarks>
+    private static Outcome FinishMessage(Outcome outcome, AttributeData attribute, string attributeName) {
+        if (outcome.Constraint is not { } constraint ||
+            constraint.Kind == ConstraintKind.CustomValidationMethod) {
+            return outcome;
+        }
+
+        if (constraint.Message is { } message) {
+            return outcome with {
+                Constraint = constraint with {
+                    Message = BakeComposite(message, attribute, attributeName),
+                    DataAnnotationsMessage = true,
+                },
+            };
+        }
+
+        // An explicit ErrorMessage wins over the resource pair, which is DataAnnotations' own
+        // precedence; reaching here means there was none.
+        if (NativeConstraintReader.Named(attribute, "ErrorMessageResourceName") is string resourceName &&
+            NativeConstraintReader.Named(attribute, "ErrorMessageResourceType") is INamedTypeSymbol resourceType) {
+            return outcome with {
+                Constraint = constraint with {
+                    MessageResourceAccessor =
+                        $"{resourceType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{resourceName}",
+                    MessageResourceArgs = new EquatableArray<string>(FormatArgumentLiterals(attribute, attributeName)),
+                    DataAnnotationsMessage = true,
+                },
+            };
+        }
+
+        return outcome;
+    }
+
+    /// <summary>
+    /// Replaces <c>{1}</c>…<c>{9}</c> with the attribute's own format arguments, rendered as text.
+    /// <c>{0}</c> - the display name - survives for the emitter, which knows it.
+    /// </summary>
+    private static string BakeComposite(string message, AttributeData attribute, string attributeName) {
+        var arguments = FormatArgumentValues(attribute, attributeName);
+
+        for (var i = 0; i < arguments.Length; i++) {
+            var value = arguments[i];
+            message = message.Replace(
+                $"{{{i + 1}}}",
+                value is IFormattable formattable
+                    ? formattable.ToString(null, System.Globalization.CultureInfo.InvariantCulture)
+                    : value?.ToString() ?? string.Empty);
+        }
+
+        return message;
+    }
+
+    /// <summary>
+    /// The values behind <c>{1}</c>…, in the declaring attribute's <c>FormatErrorMessage</c> order.
+    /// </summary>
+    private static ImmutableArray<object?> FormatArgumentValues(AttributeData attribute, string attributeName) {
+        var args = attribute.ConstructorArguments;
+
+        return attributeName switch {
+            // (name, MaximumLength, MinimumLength) - max first, unlike this model.
+            "StringLengthAttribute" => ImmutableArray.Create(
+                args.Length > 0 ? args[0].Value : null,
+                NativeConstraintReader.Named(attribute, "MinimumLength") is int m ? m : (object?)0),
+            "MinLengthAttribute" or "MaxLengthAttribute" =>
+                ImmutableArray.Create(args.Length > 0 ? args[0].Value : null),
+            "LengthAttribute" => ImmutableArray.Create(
+                args.Length > 0 ? args[0].Value : null,
+                args.Length > 1 ? args[1].Value : null),
+            "RangeAttribute" when args.Length == 3 => ImmutableArray.Create(args[1].Value, args[2].Value),
+            "RangeAttribute" when args.Length == 2 => ImmutableArray.Create(args[0].Value, args[1].Value),
+            "RegularExpressionAttribute" =>
+                ImmutableArray.Create(args.Length > 0 ? args[0].Value : null),
+            _ => ImmutableArray<object?>.Empty,
+        };
+    }
+
+    /// <summary>
+    /// The same arguments as C# constant expressions, for the emitted provider-backed info whose
+    /// resx template fills <c>{1}</c>… at render time.
+    /// </summary>
+    private static ImmutableArray<string> FormatArgumentLiterals(AttributeData attribute, string attributeName) {
+        var args = attribute.ConstructorArguments;
+
+        return attributeName switch {
+            "StringLengthAttribute" => ImmutableArray.Create(
+                args.Length > 0 ? NativeConstraintReader.Literal(args[0]) : "0",
+                NativeConstraintReader.Named(attribute, "MinimumLength") is int m ? m.ToString() : "0"),
+            "MinLengthAttribute" or "MaxLengthAttribute" =>
+                ImmutableArray.Create(args.Length > 0 ? NativeConstraintReader.Literal(args[0]) : "0"),
+            "LengthAttribute" => ImmutableArray.Create(
+                args.Length > 0 ? NativeConstraintReader.Literal(args[0]) : "0",
+                args.Length > 1 ? NativeConstraintReader.Literal(args[1]) : "0"),
+            "RangeAttribute" when args.Length == 3 => ImmutableArray.Create(
+                NativeConstraintReader.Literal(args[1]),
+                NativeConstraintReader.Literal(args[2])),
+            "RangeAttribute" when args.Length == 2 => ImmutableArray.Create(
+                NativeConstraintReader.Literal(args[0]),
+                NativeConstraintReader.Literal(args[1])),
+            "RegularExpressionAttribute" =>
+                ImmutableArray.Create(args.Length > 0 ? NativeConstraintReader.Literal(args[0]) : "\"\""),
+            _ => ImmutableArray<string>.Empty,
+        };
+    }
 }

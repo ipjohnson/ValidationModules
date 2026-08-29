@@ -94,7 +94,7 @@ public class PatternPolicyTests {
         var emitted = result.Sources["Sample.PetValidator.g.cs"];
         Assert.DoesNotContain("new global::System.Text.RegularExpressions.Regex(", emitted);
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\")", emitted);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\", value: value.Name)", emitted);
     }
 
     [Fact]

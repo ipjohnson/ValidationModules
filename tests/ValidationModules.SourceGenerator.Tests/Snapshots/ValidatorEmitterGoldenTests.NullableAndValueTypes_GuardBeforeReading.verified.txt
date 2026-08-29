@@ -43,6 +43,8 @@ namespace Sample;
 
 public sealed partial class PetValidator : global::ValidationModules.IValidatorFor<global::Sample.Pet>
 {
+    private static readonly global::ValidationModules.ValidationMessageInfo _message0 = new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.RangeBetween, 0, 30);
+    private static readonly global::ValidationModules.ValidationMessageInfo _message1 = new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.RangeAtLeastAndLess, 0d, 1d);
 
     public PetValidator()
     {
@@ -50,15 +52,15 @@ public sealed partial class PetValidator : global::ValidationModules.IValidatorF
 
     public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Pet value)
     {
-        if (value.Age is null && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "age").ShouldStop)
+        if (value.Age is null && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "age", value: value.Age).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (value.Weight is not null && (value.Weight.Value < 0 || value.Weight.Value > 30) && global::ValidationModules.ValidationContextExtensions.ReportRange(ctx, "weight", 0, 30).ShouldStop)
+        if (value.Weight is not null && (value.Weight.Value < 0 || value.Weight.Value > 30) && ctx.Report("weight", global::ValidationModules.ValidationCodes.Range, value.Weight, _message0).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if ((value.Ratio < 0d || value.Ratio >= 1d) && global::ValidationModules.ValidationContextExtensions.ReportRange(ctx, "ratio", 0d, 1d).ShouldStop)
+        if ((value.Ratio < 0d || value.Ratio >= 1d) && ctx.Report("ratio", global::ValidationModules.ValidationCodes.Range, value.Ratio, _message1).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }

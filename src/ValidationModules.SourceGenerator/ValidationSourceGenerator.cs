@@ -44,12 +44,13 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             provider.GlobalOptions.TryGetValue("build_property.ValidationModules_DataAnnotations", out var dataAnnotations);
             provider.GlobalOptions.TryGetValue("build_property.ValidationModules_PatternPolicy", out var patternPolicy);
             provider.GlobalOptions.TryGetValue("build_property.ValidationModules_FailFast", out var failFast);
+            provider.GlobalOptions.TryGetValue("build_property.ValidationModules_CaptureValues", out var captureValues);
             provider.GlobalOptions.TryGetValue(Impl.Emitters.GeneratedCodeStyle.BuildProperty, out var codeStyle);
             provider.GlobalOptions.TryGetValue("build_property.PublishAot", out var publishAot);
             provider.GlobalOptions.TryGetValue("build_property.IsAotCompatible", out var aotCompatible);
 
             return new GeneratorOptions(registration, naming, dataAnnotations, patternPolicy, failFast,
-                IsTrue(publishAot) || IsTrue(aotCompatible), codeStyle);
+                IsTrue(publishAot) || IsTrue(aotCompatible), codeStyle, captureValues);
         });
 
         // Probed once. An IncrementalValueProvider<bool> so downstream stages invalidate only when
@@ -98,10 +99,10 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         // DataAnnotations bridge: custom rules can report member names at run time, and the
         // emitted namer has to be the policy the literals were baked with.
         var emitterSettings = options.Select(static (option, _) =>
-            (option.EmitFailFast, option.CodeStyle, option.Naming));
+            (option.EmitFailFast, option.CodeStyle, option.Naming, option.CaptureValues));
 
         context.RegisterSourceOutput(models.Combine(emitterSettings), static (production, input) => {
-            var (results, (emitFailFast, codeStyle, naming)) = (input.Left, input.Right);
+            var (results, (emitFailFast, codeStyle, naming, captureValues)) = (input.Left, input.Right);
 
             // An IDynamicValidator adapter is only worth emitting for an assembly that actually
             // dispatches dynamically. Registering one per validated type roots every adapter, so
@@ -129,7 +130,8 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
                     production.AddSource(
                         HintNameFor(model),
                         new ValidatorEmitter().Emit(
-                            model, dispatchesDynamically, emitFailFast, nesting, codeStyle, naming));
+                            model, dispatchesDynamically, emitFailFast, nesting, codeStyle, naming,
+                            captureValues));
                 }
 
                 if (result.Predicates is { } predicates) {
@@ -462,7 +464,20 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
 
     private sealed record GeneratorOptions(
         string? Registration, string? Naming, string? DataAnnotations, string? PatternPolicySetting,
-        string? FailFastSetting, bool IsAotFacing, string? CodeStyleSetting = null) {
+        string? FailFastSetting, bool IsAotFacing, string? CodeStyleSetting = null,
+        string? CaptureValuesSetting = null) {
+
+        /// <summary>
+        /// Whether report sites pass the failing member as <c>ValidationError.Value</c>. On by
+        /// default - the value is a reference to data the application already holds, and no
+        /// library surface renders it. <c>ValidationModules_CaptureValues=false</c> (or
+        /// <c>Disabled</c>) makes the emitter pass nothing, so the capture is provably absent from
+        /// the compiled binary - the guarantee regulated builds actually want, and one a runtime
+        /// switch cannot give. Both spellings accepted for the same reason FailFast takes both.
+        /// </summary>
+        public bool CaptureValues =>
+            !string.Equals(CaptureValuesSetting, "Disabled", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(CaptureValuesSetting, "false", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
         /// The brace style generated files are written in, from the shared

@@ -89,10 +89,26 @@ public static class RuntimeContract {
     // zero consumers outside this repo (verified against ~/Hardened), which is what priced the
     // break at a snapshot re-verify and this bump.
 
+    // 8 -> 9: the message became data (docs/structured-errors.md). ValidationError carries Value
+    // and MessageInfo and renders Message on read; IValidationContextReporter gains the structured
+    // Report(field, code, value, info) overload; ValidationMessageInfo, its singletons,
+    // ValidationMessageTemplates and ReportDeniedValues arrive, and the Report* helpers grow
+    // value/exclusivity parameters. The emitter now writes structured Report calls, hoists
+    // per-site static infos, and references the template fields - none of which a contract-8
+    // runtime declares.
+    //
+    // Not additive overall, twice. ValidationError stops being a positional record - the
+    // three-argument constructor and Deconstruct survive as declared members, so call sites
+    // compile unchanged, but the positional-with expression over Message does not. And the
+    // reporter interface gains a member outright rather than as a default implementation, because
+    // a DIM invoked through the constrained generic boxes the context struct. Both taken in the
+    // rc window, which is the only time they are cheap; the number cannot express either, so they
+    // are written down here, per the rule above.
+
     /// <summary>
     /// The contract this runtime implements. Compared against
     /// <c>EmitterContract.RequiredRuntimeContract</c> by the generator, and against
     /// <c>$(ValidationModulesRuntimeContract)</c> by build tasks driving the emitter.
     /// </summary>
-    public const int Version = 8;
+    public const int Version = 9;
 }

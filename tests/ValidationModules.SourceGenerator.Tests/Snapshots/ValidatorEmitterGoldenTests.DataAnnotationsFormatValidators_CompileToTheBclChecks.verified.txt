@@ -44,6 +44,7 @@ namespace Sample;
 public sealed partial class ContactValidator : global::ValidationModules.IValidatorFor<global::Sample.Contact>
 {
     private static readonly string[] AttachmentExtensions0 = new string[] { ".png", ".jpg" };
+    private static readonly global::ValidationModules.ValidationMessageInfo _message0 = new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.FileExtension, ".png, .jpg");
 
     public ContactValidator()
     {
@@ -51,31 +52,31 @@ public sealed partial class ContactValidator : global::ValidationModules.IValida
 
     public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Contact value)
     {
-        if (value.Email is not null && !global::ValidationModules.ConstraintChecks.IsEmail(value.Email) && global::ValidationModules.ValidationContextExtensions.ReportEmail(ctx, "email").ShouldStop)
+        if (value.Email is not null && !global::ValidationModules.ConstraintChecks.IsEmail(value.Email) && global::ValidationModules.ValidationContextExtensions.ReportEmail(ctx, "email", value: value.Email).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (value.Mobile is not null && !global::ValidationModules.ConstraintChecks.IsPhone(value.Mobile) && global::ValidationModules.ValidationContextExtensions.ReportPhone(ctx, "mobile").ShouldStop)
+        if (value.Mobile is not null && !global::ValidationModules.ConstraintChecks.IsPhone(value.Mobile) && global::ValidationModules.ValidationContextExtensions.ReportPhone(ctx, "mobile", value: value.Mobile).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (value.Homepage is not null && !global::ValidationModules.ConstraintChecks.IsUrl(value.Homepage) && global::ValidationModules.ValidationContextExtensions.ReportUrl(ctx, "homepage").ShouldStop)
+        if (value.Homepage is not null && !global::ValidationModules.ConstraintChecks.IsUrl(value.Homepage) && global::ValidationModules.ValidationContextExtensions.ReportUrl(ctx, "homepage", value: value.Homepage).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (value.Avatar is not null && !global::ValidationModules.ConstraintChecks.IsUrl(value.Avatar) && global::ValidationModules.ValidationContextExtensions.ReportUrl(ctx, "avatar").ShouldStop)
+        if (value.Avatar is not null && !global::ValidationModules.ConstraintChecks.IsUrl(value.Avatar) && global::ValidationModules.ValidationContextExtensions.ReportUrl(ctx, "avatar", value: value.Avatar).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (value.Card is not null && !global::ValidationModules.ConstraintChecks.IsCreditCard(value.Card) && global::ValidationModules.ValidationContextExtensions.ReportCreditCard(ctx, "card").ShouldStop)
+        if (value.Card is not null && !global::ValidationModules.ConstraintChecks.IsCreditCard(value.Card) && global::ValidationModules.ValidationContextExtensions.ReportCreditCard(ctx, "card", value: value.Card).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (value.Payload is not null && !global::ValidationModules.ConstraintChecks.IsBase64(value.Payload) && global::ValidationModules.ValidationContextExtensions.ReportBase64(ctx, "payload").ShouldStop)
+        if (value.Payload is not null && !global::ValidationModules.ConstraintChecks.IsBase64(value.Payload) && global::ValidationModules.ValidationContextExtensions.ReportBase64(ctx, "payload", value: value.Payload).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (value.Attachment is not null && !global::ValidationModules.ConstraintChecks.HasFileExtension(value.Attachment, AttachmentExtensions0) && global::ValidationModules.ValidationContextExtensions.ReportFileExtension(ctx, "attachment", ".png, .jpg").ShouldStop)
+        if (value.Attachment is not null && !global::ValidationModules.ConstraintChecks.HasFileExtension(value.Attachment, AttachmentExtensions0) && ctx.Report("attachment", global::ValidationModules.ValidationCodes.FileExtension, value.Attachment, _message0).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }

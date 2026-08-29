@@ -54,7 +54,7 @@ public sealed partial class BroadcastValidator : global::ValidationModules.IVali
     {
         var c0 = value.IsScheduled;
         var missingChannel = string.IsNullOrWhiteSpace(value.Channel);
-        if (missingChannel && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "channel").ShouldStop)
+        if (missingChannel && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "channel", value: value.Channel).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
