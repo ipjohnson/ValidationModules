@@ -7,13 +7,15 @@ static check, and the generator writes the branch:
 using ValidationModules.Constraints;
 
 public sealed class SkuAttribute : CustomConstraintAttribute {
+    public const string DefaultMessage = "sku must look like SKU-XXXXXXXX";
+
     public static bool IsValid(string value) =>
         value.StartsWith("SKU-", StringComparison.Ordinal);
 }
 
 public record Product {
     [Required]
-    [Sku(Message = "sku must look like SKU-XXXXXXXX")]
+    [Sku]
     public string? Sku { get; init; }
 }
 ```
@@ -26,6 +28,14 @@ if (value.Sku is not null && !global::SkuAttribute.IsValid(value.Sku) &&
 {
     return ValidationFlow.Stop;
 }
+```
+
+The attribute carries its own default message, so every use site gets it for free — and any one of
+them can still override:
+
+```csharp
+[Sku(Message = "warehouse skus start with SKU-")]
+public string? Sku { get; init; }
 ```
 
 No instance, no context, no boxing, nothing allocated on a passing value — the check you would
@@ -67,8 +77,13 @@ the generator to read, not for an instance to hold.
   except `[Required]` — declare `[Required]` beside it when absence should fail. A nullable value
   type arrives unwrapped: `int?` member, `int` parameter.
 - **`Code`, `Message`, `When` and `Unless`** work exactly as they do on the built-ins — they live
-  on the shared base. The default message is a terse `"{field} is invalid."` and the default code
-  is [`custom`](/reference/codes); setting `Message` is the recommendation, not an edge case.
+  on the shared base. Bake the defaults on the attribute itself as constants — `public const
+  string DefaultMessage` and `DefaultCode`, on the class or a shared base — and every use site
+  gets them; a use-site `Message`/`Code` still wins. Constants rather than constructor
+  assignments, because nothing ever constructs the attribute: the generator reads it, and a
+  constant is exactly as readable as the constructor arguments already are. With no default and no
+  override, the message is a terse `"{field} is invalid."` and the code is
+  [`custom`](/reference/codes).
 - **Anything else arrives through the constructor.** A custom init-only property has no path into
   a static method, and setting one is [VM0082](/reference/diagnostics#vm0082) — an error naming
   the fix — rather than an argument that silently never arrives. The same error covers every other
