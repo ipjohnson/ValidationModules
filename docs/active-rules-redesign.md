@@ -132,12 +132,18 @@ place; ordinary statements are copied through.
 
 Everything else in the old whitelist relaxes; these two are load-bearing and non-negotiable.
 
-1. **`rules` appears only in recognized positions:** receiver of a vocabulary call, first
-   argument of a fragment call, or the `rules.Context` / chain expressions. Never aliased,
-   captured, stored, or passed anywhere else — and chain values (`PropertyRules`) may not be
-   assigned to locals. This is the anti-silent-drop rule: an unrecognized rule call would
-   transcribe into a call on the inert builder and validate nothing. (EF Core learned this
-   lesson with implicit client-eval and made it an error; so do we.)
+1. **`rules` flows only where the generator can follow.** Phrased as a blacklist, mirroring §5:
+   passing `rules` to a static, `void` method declared in this compilation is a fragment call and
+   is followed, whatever the rest of its signature (§7). Disallowed is every flow the generator
+   cannot read through: storing `rules` (or a chain value) in a local, field, or collection;
+   capturing it in a lambda or local function; converting a fragment to a delegate; returning it;
+   passing it to an instance, virtual, or non-void target — or to a cross-assembly one (VM0076,
+   §7). This is the anti-silent-drop rule: a rule call the generator cannot see would transcribe
+   into a call on the inert builder and validate nothing. (EF Core learned this lesson with
+   implicit client-eval and made it an error; so do we.) A guarantee for free:
+   `ValidationRules<T>` has no public constructor, so a method receiving it can only ever be
+   called from inside a `Describe` body — the type system keeps fragments unreachable from
+   unreadable contexts.
 2. **Transcribed code must compile at the emission site.** `this` is impossible (static).
    What remains is an accessibility walk: `private`/`protected` members of the rules class and
    `file`-local types are unreachable from the companion file → diagnostic ("make it internal"),
@@ -188,11 +194,16 @@ moving, redrawn deliberately.
 
 Decomposition and reuse are method extraction, read by the generator.
 
-- **Recognition:** a call whose target is a `static` method with parameters exactly
-  `(ValidationRules<T> rules, T x)` and arguments exactly `(rules, x)`, declared **in the same
-  compilation**. The generator recurses into the body and inlines it at the call site — same
-  ordering, same suppression, same `RuleText`. Fragments may call fragments; cycles are an
-  error, not a hang.
+- **Recognition — any call `rules` can reach:** a call passing `rules` to a `static`, `void`
+  method declared **in the same compilation** is a fragment call, whatever the rest of its
+  signature. Parameter order is free; parameters beyond `rules` become locals bound to the
+  call-site argument expressions (`CustomsRules.Declare(rules, x, strict: x.Value > 10_000m)`)
+  and the body is inlined at the call site under the same transcription rules as `Describe`
+  itself — same ordering, same suppression, same `RuleText`. The parameter typed `T` is the
+  fragment's subject: its argument must be `x` (v1 — projected subjects like `x.Billing` need
+  path-prefix composition and are future work); field inference and the `nameof` rewrite (§8)
+  work through it, and a fragment with no `T` parameter may still compute and report with
+  explicit `field:`. Fragments may call fragments; cycles are an error, not a hang.
 - **Same-compilation is load-bearing:** the generator reads syntax, and a referenced assembly
   has none. Its own diagnostic, because the failure mode is otherwise a silently-unflattened
   call.
@@ -200,10 +211,53 @@ Decomposition and reuse are method extraction, read by the generator.
   IAudited` in §2): "every audited type gets these rules," said once, stamped out per concrete
   type — members resolved against the *concrete* type at each instantiation, so
   `[JsonPropertyName]` on the implementing property wins for field naming.
-- **The line to helpers:** a static method that takes `ValidationRules<T>` is a fragment — read
-  and expanded, whitelist enforced inside (violations reported in the fragment's body). A static
-  method that doesn't is a plain computation helper — transcribed as a call, never read, subject
-  only to invariant 2. Methods that take `rules` are read; methods that don't are run.
+- **The line to helpers:** a method that *receives* `rules` is a fragment — read and expanded,
+  the §5 blacklist enforced inside (violations reported in the fragment's body). A method that
+  doesn't is a plain computation helper — transcribed as a call, never read, subject only to
+  invariant 2. Methods that receive `rules` are read; methods that don't are run.
+
+### Cross-assembly: fragments travel as source
+
+A fragment is inlined from *syntax*, and a referenced assembly ships IL — the symbol has no body
+to read. (An IDE host sometimes holds the referenced project's compilation and could see syntax;
+the CLI build never can, and a generator must not emit different code per host, so that door is
+closed deliberately.) The same-compilation rule is therefore physics, not policy — and a plain
+`ProjectReference` is on the wrong side of it, which is exactly the shape a shared in-house
+library takes.
+
+The gap is narrow: attribute-declared rules on a shared library's *own types* already cross
+assemblies — that assembly runs the generator, ships its validators, and consumers compose via
+`Nested` and its registration module (§7.2's model). The hole is only rules aimed at types the
+shared assembly has never seen — the mixin.
+
+**v1, normative: shared fragments travel as source**, so they land in each consumer's
+compilation and inline at full fidelity, concrete-type name resolution included:
+
+- in-solution: a Shared Project (`.shproj`) or linked `Compile` items — a plain
+  `ProjectReference` does **not** work, and VM0076 must say so;
+- distributed: a source-only package — the §7.4 / Impl pattern this repo already ships
+  (`IncludeBuildOutput=false`, compile items added via `build/*.targets`).
+
+VM0076's message teaches the fix: *"fragment 'AuditRules.Standard' is compiled IL from a
+referenced assembly; fragments must be part of this compilation — use a shared project or a
+source package."*
+
+**Reserved, additive — delegation for rules classes** (build when IL-shipping demand is real):
+a shared assembly declares `AuditRules : IValidationRulesFor<IAudited>` (interface targets are
+already legal — `[GenerateValidator]` allows `AttributeTargets.Interface`), runs the generator
+itself, and ships the generated `IValidatorFor<IAudited>`. A consumer writes
+`AuditRules.Describe(rules, x)` — the same call shape, typechecking through the static abstract —
+and the consumer's generator, finding the target cross-assembly, emits a direct call to the
+shipped validator, located by its deterministic name via `GetTypeByMetadataName`. No scanning;
+§7.2-aligned (each assembly emits its own validators, consumers compose by direct reference);
+`IValidatorFor<in T>`'s contravariance also lets DI registration compose it. Fidelity is lower
+and documented: field names resolve at the *interface* (a consumer renaming the implementing
+property's wire name diverges), struct implementers box through the interface call, and
+`RuleText` stays in the declaring assembly. A cross-assembly target whose validator cannot be
+found (the shared assembly never ran the generator) is its own §7.5-grade diagnostic. The
+furthest rung — a compiled-companion protocol (`ValidationFlow Standard<T>(ref
+ValidationContext, T) where T : IAudited` plus a marker attribute read from metadata) that keeps
+constraint-genericity without boxing — is noted, not designed.
 
 ## 8. Field names: `nameof` through the parameter
 
@@ -335,9 +389,9 @@ IDs above VM0075 are proposals — the implementer assigns final numbers and upd
 | VM0073 | Info | free-form check matches a vocabulary constraint | still reserved, unimplemented |
 | VM0074 | — | — | **retired** (§11) |
 | VM0075 | Error | `Ensure` has no inferable anchor and no `field:` | kept |
-| VM0076 | Error | fragment target is not declared in this compilation | **new** |
+| VM0076 | Error | fragment target is compiled IL from a referenced assembly — fragments must be in this compilation (shared project / source package, §7) | **new** |
 | VM0077 | Error | fragment call cycle | **new** |
-| VM0078 | Error | `rules` (or a chain value) used outside a recognized position | **new** — invariant 1 |
+| VM0078 | Error | `rules` (or a chain value) in a flow the generator cannot follow — stored, captured, delegate-converted, returned, or passed to an instance/virtual/non-void target | **new** — invariant 1 |
 | VM0079 | Error | transcribed code references a member inaccessible from the emission site (`private`, `file`-local) — "make it internal" | **new** — invariant 2 |
 | VM0080 | Error | island call inside a loop, lambda, or local function | **new** |
 
@@ -371,6 +425,8 @@ Settled during design — do not relitigate without new information:
 | `rules.Context` typed as the full `ValidationContext` (raw alias) | Rejected: raw field strings bypass the namer, manual flow protocol, invites `Push`/`Services` rope — superseded by the reporter interface |
 | `rules.Field(x.Name)` island for wire names | Superseded by `nameof(x.…)` rewrite (§8) |
 | Instance `Describe` | `static abstract`: no phantom instance, `this` impossible |
+| Cross-assembly fragment inlining from IL | Impossible: metadata has no syntax, and IDE-held compilations would fork IDE vs. CLI output. v1: fragments travel as source (shared project / source package). Delegation to shipped interface validators reserved as the additive follow-up (§7) |
+| Exact fragment shape `(ValidationRules<T>, T)` required | Relaxed 2026-08-29: any static `void` same-compilation method receiving `rules` is followed; extra parameters bind as locals at the call site. The blacklist is unfollowable flows, not signatures |
 | Expression-tree selectors | Banned from the start (plan §2: no `Expression.Compile`) |
 
 ## 16. Implementation checklist
