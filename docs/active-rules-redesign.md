@@ -242,34 +242,78 @@ VM0076's message teaches the fix: *"fragment 'AuditRules.Standard' is compiled I
 referenced assembly; fragments must be part of this compilation — use a shared project or a
 source package."*
 
-**Designed, additive — facet composition through DI** (the cross-assembly route when shipping
-IL): a shared assembly declares rules for an *interface* — any declaration form works:
+### Facet composition — `rules.As<TFacet>`
+
+**Status: designed, additive — may trail the v1 implementation without blocking it.**
+
+The cross-assembly route when shipping IL, and the general spelling for "validate `x` as one of
+its facets." A shared assembly declares rules for an *interface* — any declaration form works:
 constraint attributes on the interface (`[GenerateValidator]` already allows
 `AttributeTargets.Interface`) or a rules class `AuditRules : IValidationRulesFor<IAudited>` —
-runs the generator itself, and its module registers the generated `IValidatorFor<IAudited>`
-(§7.3's composition model, which already crosses assemblies). The consumer opts in, in the body:
+runs the generator itself, and its module registers the generated validator (§7.3's composition
+model, which already crosses assemblies):
+
+```csharp
+// Shared assembly — compiles once, ships IL, registers its own module.
+[GenerateValidator]
+public interface IAudited {
+    [Required]        string CreatedBy { get; }
+    [Range(Min = 1)]  int    Version   { get; }
+}
+// The shared assembly's generator emits IAuditedValidator : IValidatorFor<IAudited>
+// and its AddSharedValidators() registers it.
+```
+
+Consumers opt in, in the body:
 
 ```csharp
 rules.As<IAudited>(x);          // validate x as its IAudited facet
 ```
 
-The generator emits a statically-closed resolution and a direct call —
-`(IValidatorFor<IAudited>)context.Services.GetService(typeof(IValidatorFor<IAudited>))` then
-`.Validate(ref ctx, value)`. No scanning, no naming protocol, no `MakeGenericType`: the facet
-type is written in source, so the service type is closed at build time. This is the
-`Polymorphism.Runtime` / `IDynamicValidator` composition philosophy with the type known
-statically, so the lookup is the closed generic service instead of a `Type`-keyed registry.
-Semantics:
+**Resolution rule — one spelling, two bindings:**
 
-- **Missing registration, or a collector without services, throws** with a message naming the
-  module to add — loud, never a silent drop. Implementing the facet is the compiler's check
-  (`As<IAudited>(x)` will not compile unless `x` converts).
+- **Facet validator generated in this compilation** → the generator binds statically:
+  `IAuditedValidator.Instance.Validate(ref ctx, value)`. No DI involved. A facet declared in
+  this compilation with *no* rules at all is a compile-time diagnostic, not a silent no-op.
+- **Facet from a referenced assembly** → the generator emits a statically-closed service
+  resolution:
+
+```csharp
+// author:
+rules.As<IAudited>(x);
+
+// emitted (cross-assembly binding):
+var facet = (global::ValidationModules.IValidatorFor<global::Shared.IAudited>?)ctx.Services
+        ?.GetService(typeof(global::ValidationModules.IValidatorFor<global::Shared.IAudited>))
+    ?? throw new global::System.InvalidOperationException(
+        "No IValidatorFor<IAudited> is registered. Compose the validators from assembly " +
+        "'Shared' (AddSharedValidators()).");
+if (facet.Validate(ref ctx, value).ShouldStop) {
+    return global::ValidationModules.ValidationFlow.Stop;
+}
+```
+
+No scanning, no naming protocol, no `MakeGenericType`: the facet type is written in source, so
+the service type is closed at build time. This is the `Polymorphism.Runtime` /
+`IDynamicValidator` composition philosophy with the type known statically — which is why the
+lookup is the closed generic service rather than a `Type`-keyed registry. The exception message
+can name the module to compose because the generator knows the facet's assembly and its own
+`Add<Assembly>Validators` naming convention.
+
+**Semantics:**
+
+- **The argument must be `x`** (v1) — a facet of a *child* is `Nested`'s territory, where the
+  path pushes. `TFacet` may be an interface or a base type; that `x` converts is the compiler's
+  check.
 - **The path does not push** — facet fields report at the current level (`createdBy`, not
   `audited.createdBy`); suppression shares the collector as everywhere.
+- **Failure is loud.** Missing registration, or a collector without services, throws with the
+  message above — never a silent skip.
 - **Honest trades, documented:** field names resolve where the facet's validator was compiled
   (the interface's assembly — a consumer renaming an implementing property's wire name
   diverges); struct implementers box through the interface-typed call; `RuleText` lives in the
-  declaring assembly; DI (or a services-carrying collector) is required at the `As` site.
+  declaring assembly; DI (or a services-carrying collector) is required at cross-assembly `As`
+  sites — never at same-compilation ones.
 - **If a per-pass `GetService` ever shows in a profile**, the alternative is constructor
   injection of the facet validator via a closed factory registration (a deliberate exception to
   §7.1's parameterless-`Instance` pattern, still reflection-free) — resolved once at singleton
@@ -483,9 +527,10 @@ Settled during design — do not relitigate without new information:
       re-point suppression/fail-fast coverage at generated validators
 
 **Additive, may trail v1** — facet composition (§7): the inert `As<TFacet>(TFacet value)`
-vocabulary member on `ValidationRules<T>`; generator recognition emitting the closed
-`Services` resolution, the throw-on-missing path, and no path push; a golden test against a
-facet interface validated from a second module.
+vocabulary member on `ValidationRules<T>`; generator recognition with both bindings
+(same-compilation → static `Instance` call; cross-assembly → closed `Services` resolution with
+the module-naming throw), the facet-has-no-rules diagnostic, no path push; golden tests for
+both bindings, the cross-assembly one validated from a second module.
 
 **Docs:** §14 above, in the same change.
 
