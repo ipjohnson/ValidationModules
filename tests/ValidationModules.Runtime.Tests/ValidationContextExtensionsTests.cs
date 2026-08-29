@@ -156,6 +156,64 @@ public class ValidationContextExtensionsTests {
             result.Errors.Select(error => error.Message));
     }
 
+    // The format family: message and code per helper, the same two pins the rest of the file makes.
+
+    [Fact]
+    public void ReportEmail_ComposesTheStandardMessageAndCode() {
+        var error = Single(context => context.ReportEmail("email"));
+
+        Assert.Equal("email is not a valid email address.", error.Message);
+        Assert.Equal(ValidationCodes.Email, error.Code);
+    }
+
+    [Fact]
+    public void ReportPhone_ComposesTheStandardMessageAndCode() {
+        var error = Single(context => context.ReportPhone("mobile"));
+
+        Assert.Equal("mobile is not a valid phone number.", error.Message);
+        Assert.Equal(ValidationCodes.Phone, error.Code);
+    }
+
+    [Fact]
+    public void ReportUrl_NamesTheAcceptedSchemes() {
+        var error = Single(context => context.ReportUrl("homepage"));
+
+        Assert.Equal("homepage is not a valid http, https or ftp URL.", error.Message);
+        Assert.Equal(ValidationCodes.Url, error.Code);
+    }
+
+    [Fact]
+    public void ReportCreditCard_ComposesTheStandardMessageAndCode() {
+        var error = Single(context => context.ReportCreditCard("card"));
+
+        Assert.Equal("card is not a valid credit card number.", error.Message);
+        Assert.Equal(ValidationCodes.CreditCard, error.Code);
+    }
+
+    [Fact]
+    public void ReportBase64_ComposesTheStandardMessageAndCode() {
+        var error = Single(context => context.ReportBase64("payload"));
+
+        Assert.Equal("payload is not a valid Base64 string.", error.Message);
+        Assert.Equal(ValidationCodes.Base64, error.Code);
+    }
+
+    [Fact]
+    public void ReportFileExtension_EmbedsTheJoinedSet() {
+        var error = Single(context => context.ReportFileExtension("avatar", ".png, .jpg"));
+
+        Assert.Equal("avatar must have one of these file extensions: .png, .jpg.", error.Message);
+        Assert.Equal(ValidationCodes.FileExtension, error.Code);
+    }
+
+    [Fact]
+    public void ReportEmail_TakesACodeOverrideWithoutLosingTheComposedMessage() {
+        var error = Single(context => context.ReportEmail("email", code: "contact_email"));
+
+        Assert.Equal("contact_email", error.Code);
+        Assert.Equal("email is not a valid email address.", error.Message);
+    }
+
     private static ValidationError Single(Action<ValidationContext> act) {
         var collector = new ValidationErrorCollector();
 

@@ -1,15 +1,24 @@
+using System.ComponentModel.DataAnnotations;
 using Xunit;
 
 namespace ValidationModules.Runtime.Tests;
 
 /// <summary>
-/// The two checks generated validators call instead of writing a comparison.
+/// The checks generated validators call instead of writing a comparison.
 /// </summary>
 /// <remarks>
-/// Both are reached from emitted code rather than from a consumer's own source, so nothing else
+/// <para>
+/// All are reached from emitted code rather than from a consumer's own source, so nothing else
 /// would catch a change to them. The floating-point cases in particular are the whole argument for
 /// <c>[MultipleOf]</c> accepting <c>double</c> at all, and are pinned here as evidence rather than
 /// as a description.
+/// </para>
+/// <para>
+/// The format checks claim bug-for-bug parity with <c>System.ComponentModel.DataAnnotations</c>,
+/// so each is run against the real attribute over a canon chosen to reach every branch - the claim
+/// is tested, not asserted. Null is outside the canon deliberately: the attributes pass null, and
+/// the emitter expresses that as the null guard around the call, so the methods never see one.
+/// </para>
 /// </remarks>
 public class ConstraintChecksTests {
 
@@ -184,4 +193,185 @@ public class ConstraintChecksTests {
     [InlineData(float.MinValue)]
     public void IsMultipleOf_Float_RejectsWhatDecimalCannotHold(float value) =>
         Assert.False(ConstraintChecks.IsMultipleOf(value, 0.1m));
+
+    // The format checks. Each parity theory runs the same input through the real attribute and
+    // through the reproduction; the pinned theories state the semantics a reader should be able
+    // to learn from this file without opening the BCL.
+
+    [Theory]
+    [InlineData("a@b")]
+    [InlineData("user@example.com")]
+    [InlineData("root@localhost")]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("@")]
+    [InlineData("a@")]
+    [InlineData("@b")]
+    [InlineData("a@@b")]
+    [InlineData("a@b@c")]
+    [InlineData("a b@c d")]
+    [InlineData("\"a@b\"@example.com")]
+    [InlineData("a@b\r")]
+    [InlineData("a@b\n")]
+    [InlineData("a@\rb")]
+    [InlineData("no-at-sign")]
+    [InlineData("ünïcode@dömain")]
+    [InlineData("a@b ")]
+    public void IsEmail_MatchesEmailAddressAttribute(string value) =>
+        Assert.Equal(new EmailAddressAttribute().IsValid(value), ConstraintChecks.IsEmail(value));
+
+    /// <summary>
+    /// The semantics in one row each: one interior '@', no line breaks, nothing else. 'a@b' passing
+    /// is not leniency to apologise for - RFC 5322's addr-spec permits a dotless domain.
+    /// </summary>
+    [Theory]
+    [InlineData("a@b", true)]
+    [InlineData("root@localhost", true)]
+    [InlineData("a b@c d", true)]
+    [InlineData("@b", false)]
+    [InlineData("a@", false)]
+    [InlineData("a@b@c", false)]
+    [InlineData("a@b\n", false)]
+    public void IsEmail_PinsTheSemantics(string value, bool expected) =>
+        Assert.Equal(expected, ConstraintChecks.IsEmail(value));
+
+    [Theory]
+    [InlineData("+1 (555) 123-4567")]
+    [InlineData("555-1234 ext. 89")]
+    [InlineData("555-1234 ext 89")]
+    [InlineData("555-1234 x89")]
+    [InlineData("555-1234 X89")]
+    [InlineData("555-1234 ext.")]
+    [InlineData("555-1234 ext. abc")]
+    [InlineData("555 ex+t. 12")]
+    [InlineData("x")]
+    [InlineData("ext. 123")]
+    [InlineData("+")]
+    [InlineData("")]
+    [InlineData("abc")]
+    [InlineData("123 456.789(0)")]
+    [InlineData("123#456")]
+    [InlineData("  123  ")]
+    public void IsPhone_MatchesPhoneAttribute(string value) =>
+        Assert.Equal(new PhoneAttribute().IsValid(value), ConstraintChecks.IsPhone(value));
+
+    /// <summary>
+    /// Above <c>PhoneStackLimit</c> the scratch copy moves to the heap; the answer must not.
+    /// </summary>
+    [Fact]
+    public void IsPhone_LongValues_TakeTheHeapPathToTheSameAnswer() {
+        var longValid = string.Concat(new string(' ', 200), "555-1234");
+        var longInvalid = string.Concat(new string(' ', 200), "abc");
+
+        Assert.Equal(new PhoneAttribute().IsValid(longValid), ConstraintChecks.IsPhone(longValid));
+        Assert.True(ConstraintChecks.IsPhone(longValid));
+        Assert.False(ConstraintChecks.IsPhone(longInvalid));
+    }
+
+    [Theory]
+    [InlineData("http://example.com")]
+    [InlineData("HTTPS://EXAMPLE.COM")]
+    [InlineData("ftp://files.example.com")]
+    [InlineData("http://")]
+    [InlineData("gopher://example.com")]
+    [InlineData("example.com")]
+    [InlineData("www.example.com")]
+    [InlineData(" http://example.com")]
+    [InlineData("")]
+    public void IsUrl_String_MatchesUrlAttribute(string value) =>
+        Assert.Equal(new UrlAttribute().IsValid(value), ConstraintChecks.IsUrl(value));
+
+    /// <summary>
+    /// The Uri overload carries the current BCL semantics: absolute, scheme http/https/ftp. On
+    /// net8 the attribute itself rejects every <see cref="Uri"/> - the branch arrived later - and
+    /// one semantics is emitted for both TFMs, so the parity assertion is version-fenced and the
+    /// net8 fence pins the divergence as deliberate rather than hiding it.
+    /// </summary>
+    [Theory]
+    [InlineData("http://example.com", true)]
+    [InlineData("https://example.com/path", true)]
+    [InlineData("ftp://files.example.com", true)]
+    [InlineData("gopher://example.com", false)]
+    [InlineData("mailto:a@b.com", false)]
+    public void IsUrl_Uri_PinsTheSemantics(string uri, bool expected) {
+        var value = new Uri(uri);
+
+        Assert.Equal(expected, ConstraintChecks.IsUrl(value));
+
+#if NET10_0_OR_GREATER
+        Assert.Equal(new UrlAttribute().IsValid(value), ConstraintChecks.IsUrl(value));
+#else
+        Assert.False(new UrlAttribute().IsValid(value));
+#endif
+    }
+
+    [Fact]
+    public void IsUrl_Uri_RejectsARelativeUri() =>
+        Assert.False(ConstraintChecks.IsUrl(new Uri("/path", UriKind.Relative)));
+
+    [Theory]
+    [InlineData("4111111111111111")]
+    [InlineData("4111 1111 1111 1111")]
+    [InlineData("4111-1111-1111-1111")]
+    [InlineData(" 4111111111111111 ")]
+    [InlineData("4111111111111112")]
+    [InlineData("")]
+    [InlineData("-")]
+    [InlineData("abc")]
+    [InlineData("41x11")]
+    [InlineData("0")]
+    [InlineData("59")]
+    public void IsCreditCard_MatchesCreditCardAttribute(string value) =>
+        Assert.Equal(new CreditCardAttribute().IsValid(value), ConstraintChecks.IsCreditCard(value));
+
+    /// <summary>
+    /// An empty string - and a string of only dashes and spaces - has checksum zero and passes,
+    /// exactly as the attribute reads it. Pinned so the parity is visibly a choice: [Required] is
+    /// the presence check, and [CreditCard] alone accepts absence-shaped values.
+    /// </summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData("- -")]
+    [InlineData("0")]
+    public void IsCreditCard_PassesTheChecksumOnNothing(string value) {
+        Assert.True(ConstraintChecks.IsCreditCard(value));
+        Assert.True(new CreditCardAttribute().IsValid(value));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("YWJj")]
+    [InlineData("YWJjZA==")]
+    [InlineData("YW Jj")]
+    [InlineData("YWJj===")]
+    [InlineData("!!!")]
+    [InlineData("YWJ")]
+    public void IsBase64_MatchesBase64StringAttribute(string value) =>
+        Assert.Equal(new Base64StringAttribute().IsValid(value), ConstraintChecks.IsBase64(value));
+
+    [Theory]
+    [InlineData("photo.png")]
+    [InlineData("photo.PNG")]
+    [InlineData("photo.jpeg")]
+    [InlineData("photo.txt")]
+    [InlineData("photo")]
+    [InlineData("")]
+    [InlineData("photo.png ")]
+    [InlineData("archive.tar.gz")]
+    [InlineData("dir.png/file")]
+    public void HasFileExtension_MatchesFileExtensionsAttribute(string value) {
+        // The runtime receives the set the generator normalizes out of the attribute; this states
+        // the default set post-normalization, which the reader's own tests pin against the source.
+        string[] normalizedDefault = [".png", ".jpg", ".jpeg", ".gif"];
+
+        Assert.Equal(
+            new FileExtensionsAttribute().IsValid(value),
+            ConstraintChecks.HasFileExtension(value, normalizedDefault));
+    }
+
+    [Fact]
+    public void HasFileExtension_ComparesCaseInsensitively_AgainstTheLoweredSet() {
+        Assert.True(ConstraintChecks.HasFileExtension("a.GIF", [".gif"]));
+        Assert.False(ConstraintChecks.HasFileExtension("a.gif", [".png"]));
+    }
 }

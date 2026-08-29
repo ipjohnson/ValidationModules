@@ -27,7 +27,7 @@ VM0040 | ValidationModules.Usage | Error | The referenced ValidationModules.Runt
 VM0051 | ValidationModules.Usage | Warning | A constraint on a record parameter is missing the property: target.
 VM0060 | ValidationModules.Usage | Warning | A custom ValidationAttribute subclass cannot be compiled. Reported as Info when ValidationModules_DataAnnotations is Ignore.
 VM0061 | ValidationModules.Usage | Warning | A cross-field DataAnnotations attribute cannot be compiled.
-VM0063 | ValidationModules.Usage | Warning | A format DataAnnotations attribute is not compiled.
+VM0063 | ValidationModules.Usage | Info | A format DataAnnotations attribute is compiled with the BCL's exact semantics, stated in the message.
 VM0064 | ValidationModules.Usage | Error | A length constraint was applied to a member that is neither string nor collection.
 VM0065 | ValidationModules.Usage | Error | Range bounds do not parse as the member's type.
 VM0067 | ValidationModules.Usage | Warning | IValidatableObject is not called by the generated validator. Reported as Info when ValidationModules_DataAnnotations is Ignore.

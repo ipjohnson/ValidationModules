@@ -146,6 +146,11 @@ public sealed class ValidatorEmitter {
         var graph = nesting ?? NestingGraph.Empty;
         var patterns = new List<(string Field, ConstraintModel Constraint)>();
 
+        // [FileExtensions] sets, hoisted into static fields the way patterns are: the set is a
+        // compile-time constant and the check walks it, so building the array per call would
+        // allocate on every pass over the property.
+        var extensionSets = new List<(string Field, ConstraintModel Constraint)>();
+
         // One field per distinct subtype validator this type dispatches to, shared across every
         // property that dispatches to it. Indexed rather than named after the type: two subtypes in
         // different namespaces can share a simple name, and the case arm beside each use already
@@ -172,7 +177,8 @@ public sealed class ValidatorEmitter {
 
         foreach (var property in model.Properties) {
             EmitProperty(
-                body, fast, property, model, patterns, bodyConditions, fastConditions, dispatchers, failFast);
+                body, fast, property, model, patterns, extensionSets, bodyConditions, fastConditions,
+                dispatchers, failFast);
         }
 
         // Applied rules own no property, so they run once every property has been walked. Ordering
@@ -224,6 +230,14 @@ public sealed class ValidatorEmitter {
 
             pattern.Modifiers = ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
             pattern.InitializeValue = New(TypeDefinition.Get(typeof(Regex)), arguments.ToArray());
+        }
+
+        foreach (var (field, constraint) in extensionSets) {
+            var set = validator.AddField(TypeDefinition.Get(typeof(string)).MakeArray(), field);
+
+            set.Modifiers = ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
+            set.InitializeValue = NewArray(
+                TypeDefinition.Get(typeof(string)), constraint.Values.Cast<object>().ToArray());
         }
 
         for (var i = 0; i < dispatchers.Count; i++) {
@@ -576,6 +590,7 @@ public sealed class ValidatorEmitter {
         ValidatedPropertyModel property,
         ValidatedTypeModel model,
         List<(string, ConstraintModel)> patterns,
+        List<(string, ConstraintModel)> extensionSets,
         ConditionScope conditions,
         ConditionScope fastConditions,
         List<string> dispatchers,
@@ -592,7 +607,7 @@ public sealed class ValidatorEmitter {
 
         foreach (var constraint in property.Constraints) {
             if (constraint.Kind != ConstraintKind.Required
-                && TestFor(access, property, constraint, model, patterns) is { } test) {
+                && TestFor(access, property, constraint, model, patterns, extensionSets) is { } test) {
                 others.Add((constraint, test));
             }
         }
@@ -920,7 +935,8 @@ public sealed class ValidatorEmitter {
         ValidatedPropertyModel property,
         ConstraintModel constraint,
         ValidatedTypeModel model,
-        List<(string, ConstraintModel)> patterns) {
+        List<(string, ConstraintModel)> patterns,
+        List<(string, ConstraintModel)> extensionSets) {
 
         var value = property.IsNullableValueType ? $"{access}.Value" : access;
         var guard = property.IsReferenceType || property.IsNullableValueType ? $"{access} is not null && " : string.Empty;
@@ -1005,6 +1021,35 @@ public sealed class ValidatorEmitter {
                 var field = $"{property.PropertyName}Pattern{patterns.Count}";
                 patterns.Add((field, constraint));
                 return $"{guard}!{field}.IsMatch({access})";
+            }
+
+            // The DataAnnotations format checks, each a straight call into the runtime's
+            // reproduction of the BCL's own semantics. Null passes, exactly as the attributes
+            // read it, which is what the guard already says. [Url] on a System.Uri member picks
+            // the Uri overload by ordinary resolution - the test's text is identical.
+            case ConstraintKind.Email:
+                return $"{guard}!global::ValidationModules.ConstraintChecks.IsEmail({access})";
+
+            case ConstraintKind.Phone:
+                return $"{guard}!global::ValidationModules.ConstraintChecks.IsPhone({access})";
+
+            case ConstraintKind.Url:
+                return $"{guard}!global::ValidationModules.ConstraintChecks.IsUrl({access})";
+
+            case ConstraintKind.CreditCard:
+                return $"{guard}!global::ValidationModules.ConstraintChecks.IsCreditCard({access})";
+
+            case ConstraintKind.Base64:
+                return $"{guard}!global::ValidationModules.ConstraintChecks.IsBase64({access})";
+
+            case ConstraintKind.FileExtension: {
+                if (constraint.Values.Count == 0) {
+                    return null;
+                }
+
+                var field = $"{property.PropertyName}Extensions{extensionSets.Count}";
+                extensionSets.Add((field, constraint));
+                return $"{guard}!global::ValidationModules.ConstraintChecks.HasFileExtension({access}, {field})";
             }
 
             // Membership against the declared members, or - on a [Flags] enum - whether any bit
@@ -1092,6 +1137,13 @@ public sealed class ValidatorEmitter {
             ConstraintKind.Pattern => Report(field, constraint, "ReportPattern", ""),
             ConstraintKind.AllowedValues => Report(field, constraint, "ReportAllowedValues",
                 $", {QuoteString(string.Join(", ", Displays(constraint)))}"),
+            ConstraintKind.Email => Report(field, constraint, "ReportEmail", ""),
+            ConstraintKind.Phone => Report(field, constraint, "ReportPhone", ""),
+            ConstraintKind.Url => Report(field, constraint, "ReportUrl", ""),
+            ConstraintKind.CreditCard => Report(field, constraint, "ReportCreditCard", ""),
+            ConstraintKind.Base64 => Report(field, constraint, "ReportBase64", ""),
+            ConstraintKind.FileExtension => Report(field, constraint, "ReportFileExtension",
+                $", {QuoteString(string.Join(", ", Displays(constraint)))}"),
             // A flags value is a combination, so "must be one of" would be wrong about what the
             // type accepts. Says which flags exist instead.
             ConstraintKind.EnumDefined when constraint.FlagsMask is not null =>
@@ -1163,6 +1215,12 @@ public sealed class ValidatorEmitter {
         ConstraintKind.MultipleOf => $"{Codes}.MultipleOf",
         ConstraintKind.UniqueItems => $"{Codes}.UniqueItems",
         ConstraintKind.Predicate => $"{Codes}.Predicate",
+        ConstraintKind.Email => $"{Codes}.Email",
+        ConstraintKind.Phone => $"{Codes}.Phone",
+        ConstraintKind.Url => $"{Codes}.Url",
+        ConstraintKind.CreditCard => $"{Codes}.CreditCard",
+        ConstraintKind.Base64 => $"{Codes}.Base64",
+        ConstraintKind.FileExtension => $"{Codes}.FileExtension",
         _ => $"{Codes}.ArrayBounds",
     };
 

@@ -20,7 +20,7 @@ public static class EmitterContract {
     /// <summary>
     /// The lowest <c>ValidationModules.RuntimeContract.Version</c> the emitted code works against.
     /// </summary>
-    public const int RequiredRuntimeContract = 5;
+    public const int RequiredRuntimeContract = 6;
 
     /// <summary>The metadata name of the runtime's contract marker.</summary>
     public const string RuntimeContractType = "ValidationModules.RuntimeContract";

@@ -63,10 +63,15 @@ public static class RuntimeContract {
     // an error inside generated code into VM0040 at the call site, which is the best available
     // outcome. Taken before 1.0.0 pins the surface, which is the only time it is cheap.
 
+    // 5 -> 6: the DataAnnotations format validators compile instead of being diagnosed away.
+    // The emitter now writes calls to ConstraintChecks.IsEmail/IsPhone/IsUrl/IsCreditCard/
+    // IsBase64/HasFileExtension and reports through ReportEmail and friends, none of which a
+    // contract-5 runtime has. Additive, as the rule below requires.
+
     /// <summary>
     /// The contract this runtime implements. Compared against
     /// <c>EmitterContract.RequiredRuntimeContract</c> by the generator, and against
     /// <c>$(ValidationModulesRuntimeContract)</c> by build tasks driving the emitter.
     /// </summary>
-    public const int Version = 5;
+    public const int Version = 6;
 }

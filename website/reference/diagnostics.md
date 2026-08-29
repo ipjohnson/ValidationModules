@@ -54,7 +54,7 @@ silently does not is worse than one you know is missing.
 | [VM0051](#vm0051) | Warning | constraint on a record parameter without `property:` |
 | [VM0060](#vm0060) | Warning¹ | a custom `ValidationAttribute` is not compiled |
 | [VM0061](#vm0061) | Warning | a cross-field DataAnnotations attribute is not compiled |
-| [VM0063](#vm0063) | Warning | a format DataAnnotations attribute is not compiled |
+| [VM0063](#vm0063) | Info | a format DataAnnotations attribute is compiled with its BCL semantics |
 | [VM0064](#vm0064) | Error | a length constraint on neither a string nor a collection |
 | [VM0065](#vm0065) | Error | `[Range]` bounds do not parse as the member's type |
 | [VM0067](#vm0067) | Warning¹ | `IValidatableObject` is not called |
@@ -533,15 +533,18 @@ rules.Ensure(x => x.Password == x.Confirm, code: "password_mismatch");
 
 ### VM0063 {#vm0063}
 
-**Warning** — *`'EmailAddressAttribute' on 'Email' is not enforced. Its DataAnnotations implementation is more lenient than most callers expect; declare a [Pattern] whose behaviour is visible in your own source`*
+**Info** — *`'EmailAddressAttribute' on 'Email' compiles to the DataAnnotations check: the value must contain exactly one '@', neither first nor last, and no line breaks - 'a@b' passes, as RFC 5322 permits. Declare a [Pattern] instead if you want a stricter rule`*
 
 Covers `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]` and
-`[FileExtensions]`.
+`[FileExtensions]`, each compiled to
+[the BCL's exact check](/guide/data-annotations#the-format-validators).
 
-These are skipped rather than approximated on purpose. `EmailAddressAttribute` accepts anything with
-exactly one `@` not at either end — `a@b` passes — which is far more lenient than almost anyone
-declaring it believes they asked for. Reproducing that faithfully ships a surprise; reproducing it
-strictly changes what an existing model means.
+Info rather than Warning, because there is nothing to fix: the attribute is enforced, with the
+same semantics every other DataAnnotations consumer gives it — semantics Microsoft documents as
+frozen by design. The message exists because those semantics are looser than the attribute names
+suggest — `a@b` really does pass `[EmailAddress]`, and RFC 5322 agrees it should — so the exact
+compiled check is stated once, at the site that declared it, where an author who wanted something
+stricter will actually read it.
 
 ### VM0064 {#vm0064}
 

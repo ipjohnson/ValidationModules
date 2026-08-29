@@ -240,6 +240,43 @@ public class ValidatorEmitterGoldenTests {
     }
 
     [Fact]
+    public void DataAnnotationsFormatValidators_CompileToTheBclChecks() {
+        // Each format attribute becomes a straight call into ConstraintChecks with the BCL's own
+        // semantics - null passing exactly as the attributes read it, [Url] on a Uri member
+        // resolving to the Uri overload by nothing more than overload resolution, and the
+        // [FileExtensions] set hoisted into a static field the way patterns are.
+        Snapshot.Match(Emit("""
+            using System;
+            using System.ComponentModel.DataAnnotations;
+
+            namespace Sample;
+
+            public class Contact {
+                [EmailAddress]
+                public string? Email { get; set; }
+
+                [Phone]
+                public string? Mobile { get; set; }
+
+                [Url]
+                public string? Homepage { get; set; }
+
+                [Url]
+                public Uri? Avatar { get; set; }
+
+                [CreditCard]
+                public string? Card { get; set; }
+
+                [Base64String]
+                public string? Payload { get; set; }
+
+                [FileExtensions(Extensions = "png,jpg")]
+                public string? Attachment { get; set; }
+            }
+            """));
+    }
+
+    [Fact]
     public void FieldNaming_SnakeCase() {
         Snapshot.Match(Emit("""
             using ValidationModules.Constraints;

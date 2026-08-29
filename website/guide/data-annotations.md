@@ -40,6 +40,12 @@ This is on by default. Set `ValidationModules_DataAnnotations` to `Ignore` to tu
 | `[RegularExpression]` | `[Pattern]`, **anchored** | `pattern` |
 | `[AllowedValues]` | `[AllowedValues]` | `enum` |
 | `[DeniedValues]` | `[AllowedValues]`, negated | `enum` |
+| `[EmailAddress]` | its compiled check — [see below](#the-format-validators) | `email` |
+| `[Phone]` | its compiled check | `phone` |
+| `[Url]` | its compiled check | `url` |
+| `[CreditCard]` | its compiled check | `credit_card` |
+| `[Base64String]` | its compiled check | `base64` |
+| `[FileExtensions]` | its compiled check | `file_extension` |
 
 `[MinLength]`, `[MaxLength]` and `[Length]` apply to strings *and* collections in DataAnnotations, so
 the member's own type decides which constraint each becomes. A member that is neither is
@@ -58,29 +64,51 @@ the whole value. The native `[Pattern]` follows JSON Schema and does *not*. Both
 faithfully rather than unified, because quietly changing what a model means when you move it is worse
 than the inconsistency.
 
+## The format validators
+
+`[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]` and `[FileExtensions]`
+compile to the BCL's own checks, reproduced exactly — no attribute is constructed, nothing
+allocates on the pass, and the answer is the one `Validator.TryValidateObject` gives:
+
+| Attribute | The compiled check |
+|---|---|
+| `[EmailAddress]` | exactly one `@`, neither first nor last, and no line breaks — **`a@b` passes** |
+| `[Phone]` | `+` signs stripped and a trailing extension (`ext.`, `ext`, `x` plus digits) removed; at least one digit; only digits, whitespace and `-.()` |
+| `[Url]` | starts with `http://`, `https://` or `ftp://`, case-insensitively — nothing past the prefix |
+| `[CreditCard]` | digits, with spaces and dashes skipped, passing the Luhn mod-10 checksum |
+| `[Base64String]` | well-formed Base64, as `Convert.FromBase64String` reads it |
+| `[FileExtensions]` | the file name's extension is in the set — default `png,jpg,jpeg,gif`, case-insensitive |
+
+These semantics are looser than the attribute names suggest, and that is Microsoft's position, held
+deliberately: every request to tighten `[EmailAddress]` has been closed as by-design, the regex
+implementations were removed for denial-of-service reasons years ago, and RFC 5322 genuinely does
+permit `a@b` — a dotless domain is a valid address, which is why `root@localhost` delivers. A model
+migrating from `TryValidateObject`, MVC model validation, or .NET 10's `AddValidation()` keeps
+exactly the checks it had.
+
+Because the semantics are worth knowing, each use reports
+[VM0063](/reference/diagnostics#vm0063) — an **Info**, not a warning — stating the compiled check
+verbatim at the property that declared it. Want something stricter? Declare a
+[`[Pattern]`](/guide/patterns) whose behaviour is written in your own source; the diagnostic says
+so too.
+
+Two footnotes. `[Url]` also accepts a `System.Uri` member — absolute, scheme http/https/ftp — which
+is the current BCL behaviour; net8's own `UrlAttribute` predates that branch and rejects every
+`Uri`, and one semantics is emitted for both target frameworks. And `[CreditCard]` passes the empty
+string, exactly as the attribute does — the checksum of nothing is zero — so `[Required]` remains
+the presence check.
+
 ## What is not compiled, and says so
 
-Silence would be dangerous here in a way it is not for native attributes: a `[EmailAddress]` that
-this generator skips still *looks* enforced, because you have every reason to think
+Silence would be dangerous here in a way it is not for native attributes: an attribute this
+generator skipped would still *look* enforced, because you have every reason to think
 `TryValidateObject` would have honoured it. So everything recognised and not compiled is reported.
 
 | Attribute | Diagnostic | Why |
 |---|---|---|
-| `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]`, `[FileExtensions]` | [VM0063](/reference/diagnostics#vm0063) | see below |
 | `[Compare]` | [VM0061](/reference/diagnostics#vm0061) | compares two members |
 | `[CustomValidation]`, any `ValidationAttribute` subclass | [VM0060](/reference/diagnostics#vm0060) | carries arbitrary code |
 | `IValidatableObject` | [VM0067](/reference/diagnostics#vm0067) | `Validate` is not called |
-
-### The format validators
-
-`[EmailAddress]` and friends are skipped rather than approximated, and the reason is worth stating:
-DataAnnotations' `EmailAddressAttribute` accepts anything with exactly one `@` that is not at either
-end. `a@b` passes. That is far more lenient than almost anyone declaring `[EmailAddress]` believes
-they asked for.
-
-Reproducing it faithfully would ship a surprise; reproducing it *strictly* would change the meaning
-of an existing model. So it reports VM0063 and asks you to declare a `[Pattern]` whose behaviour is
-visible in your own source.
 
 ### Cross-field and custom rules
 

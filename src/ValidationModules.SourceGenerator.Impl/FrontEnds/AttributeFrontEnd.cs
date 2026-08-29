@@ -871,6 +871,18 @@ public sealed class AttributeFrontEnd {
                     unemittable = true;
                     break;
 
+                // The format checks read strings - except [Url], which also reads a System.Uri.
+                // DataAnnotations would run the attribute against the mistyped member and fail
+                // every non-null value; a rule that can never pass is a build error here, the
+                // same trade VM0004 makes for one that can never fail.
+                case ConstraintKind.Email or ConstraintKind.Phone or ConstraintKind.CreditCard
+                    or ConstraintKind.Base64 or ConstraintKind.FileExtension when !isString:
+                case ConstraintKind.Url when !isString && !DataAnnotationsConstraintReader.IsUri(memberType):
+                    Report(ValidationDiagnostics.StringConstraintOnNonString, member,
+                        FormatConstraintDisplay(constraint.Kind), member.Name, typeName);
+                    unemittable = true;
+                    break;
+
                 case ConstraintKind.ItemCount when !isCollection:
                     Report(ValidationDiagnostics.ItemCountOnNonCollection, member, member.Name, typeName);
                     unemittable = true;
@@ -934,6 +946,16 @@ public sealed class AttributeFrontEnd {
         }
     }
 
+    /// <summary>The attribute name a format kind's diagnostics print, as it would be typed.</summary>
+    private static string FormatConstraintDisplay(ConstraintKind kind) => kind switch {
+        ConstraintKind.Email => "[EmailAddress]",
+        ConstraintKind.Phone => "[Phone]",
+        ConstraintKind.Url => "[Url]",
+        ConstraintKind.CreditCard => "[CreditCard]",
+        ConstraintKind.Base64 => "[Base64String]",
+        _ => "[FileExtensions]",
+    };
+
     public List<ConstraintModel> ReadConstraintsFor(ISymbol member, ITypeSymbol memberType) {
         var constraints = new List<ConstraintModel>();
 
@@ -993,12 +1015,18 @@ public sealed class AttributeFrontEnd {
                 constraints.Add(outcome.Constraint);
             }
 
+            // Through Report's _quiet gate like every other diagnostic: a constraint read off a
+            // base or interface declaration is reported where it is declared, not once per type
+            // that inherits it - which matters doubly now that VM0063 fires on every compiled
+            // format attribute rather than only on mistakes.
             if (outcome.Diagnostic is not null) {
-                // Only reached with the front end on, so the tail is always the enforce one.
-                // VM0061 and VM0063 have no third placeholder and ignore the extra argument.
-                _diagnostics.Add(Diagnostic.Create(
-                    outcome.Diagnostic, Location(member), attributeClass.Name, member.Name,
-                    ValidationDiagnostics.CustomValidationEnforceTail));
+                // Only reached with the front end on, so the VM0060 fallback tail is always the
+                // enforce one. The reader supplies Detail where its diagnostic's message has a
+                // third placeholder - VM0064's member type, VM0063's compiled semantics; VM0061
+                // has none and ignores the argument.
+                Report(
+                    outcome.Diagnostic, member, attributeClass.Name, member.Name,
+                    outcome.Detail ?? ValidationDiagnostics.CustomValidationEnforceTail);
             }
         }
 

@@ -273,10 +273,23 @@ public static class ValidationDiagnostics {
         "'{0}' on '{1}' compares against another member, which a per-property constraint cannot express. It is not enforced",
         DiagnosticSeverity.Warning);
 
-    public static readonly DiagnosticDescriptor FormatValidatorAttribute = Descriptor(
-        "VM0063", "Format DataAnnotations attribute is not compiled",
-        "'{0}' on '{1}' is not enforced. Its DataAnnotations implementation is more lenient than most callers expect; declare a [Pattern] whose behaviour is visible in your own source",
-        DiagnosticSeverity.Warning);
+    /// <summary>
+    /// The format validators compile with the BCL's exact semantics, and those semantics are
+    /// looser than the attribute names suggest - <c>[EmailAddress]</c> accepts <c>a@b</c>, by
+    /// design (RFC 5322 permits a dotless domain, and dotnet/runtime#45670 closed every request
+    /// to tighten it). This says precisely what check was emitted, at the site that asked for it.
+    /// </summary>
+    /// <remarks>
+    /// Info, not Warning: the attribute is enforced, identically to every other DataAnnotations
+    /// consumer, so there is nothing to fix - only something worth knowing. The id previously
+    /// carried the Warning that these attributes were <i>not</i> compiled; the subject is the
+    /// same six attributes and no stable release shipped the old meaning, so the id stays rather
+    /// than joining the retired list.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor FormatValidatorCompiled = Descriptor(
+        "VM0063", "Format DataAnnotations attribute is compiled with its BCL semantics",
+        "'{0}' on '{1}' compiles to the DataAnnotations check: {2}. Declare a [Pattern] instead if you want a stricter rule",
+        DiagnosticSeverity.Info);
 
     public static readonly DiagnosticDescriptor LengthOnUnsupportedMember = Descriptor(
         "VM0064", "Length constraint requires a string or a collection",

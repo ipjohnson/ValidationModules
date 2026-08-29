@@ -17,10 +17,33 @@ public enum ConstraintKind {
     MultipleOf,
 
     /// <summary>
-    /// The only kind that does not compile to a comparison - it calls
-    /// <c>ConstraintChecks.AllUnique</c>. See <c>UniqueItemsAttribute</c>.
+    /// Does not compile to a comparison - it calls <c>ConstraintChecks.AllUnique</c>. See
+    /// <c>UniqueItemsAttribute</c>.
     /// </summary>
     UniqueItems,
+
+    /// <summary>
+    /// The DataAnnotations format validators, each compiling to its <c>ConstraintChecks</c>
+    /// check with the BCL's own semantics. Produced only by the DataAnnotations front end -
+    /// the native vocabulary deliberately has no format validators.
+    /// </summary>
+    Email,
+    Phone,
+
+    /// <summary>
+    /// The one format kind whose member may be <c>System.Uri</c> as well as <c>string</c>; the
+    /// emitted call resolves to the matching <c>ConstraintChecks.IsUrl</c> overload.
+    /// </summary>
+    Url,
+    CreditCard,
+    Base64,
+
+    /// <summary>
+    /// Carries its permitted set in <c>Values</c>/<c>ValueDisplays</c>, normalized at build time
+    /// exactly as <c>FileExtensionsAttribute</c> normalizes its <c>Extensions</c> property, and
+    /// hoisted into a static field by the emitter the way patterns are.
+    /// </summary>
+    FileExtension,
 
     /// <summary>
     /// A predicate declared with <c>rules.Ensure(…)</c>. Carries no bounds and composes no message -

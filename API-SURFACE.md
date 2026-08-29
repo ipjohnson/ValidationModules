@@ -1170,7 +1170,7 @@ feature that prompted it shipped. Anything naming `PetValidator_V2`, `FromProfil
 | 14.19 | `[Required]` against `0` and an empty `List<int>` | both **pass** |
 | 14.20 | `[Range(0, 10)]` against the string `"5"` | **passes** — DA converts at runtime |
 | 14.21 | `[MinLength(2)]` against `int[1]`; `[StringLength(3)]` against `null` | fails; **passes** |
-| 14.22 | `[EmailAddress]` against `"a@b"` | **passes** — DA is lenient |
+| 14.22 | `[EmailAddress]` against `"a@b"` | **passes** — per RFC 5322's grammar; the compiled check reproduces it (§18.5) |
 | 14.23 | emission shape, success path, 12 constraints (BenchmarkDotNet) | AOT 19.9 / 19.9 / 20.2 ns |
 | 14.24 | emission shape, success path, JIT | 10.3 / 10.0 / **16.2** ns |
 | 14.25 | message composition, per error | **56 bytes**; 0 for an emitted literal |
@@ -1427,7 +1427,7 @@ constraint into `VM0010` so the situation is visible rather than silent.
 | `[DeniedValues(...)]` | `AllowedValues { Negated = true }` | .NET 8+ |
 | `[Display(Name = "x")]` | field name override | ranks with `[JsonPropertyName]` in §8's precedence |
 | `ErrorMessage = "..."` | `Message` override | the emitter falls back to a literal `ctx.Add`, as it does for a native `Message` |
-| `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]` | — | `VM0063`, see §18.5 |
+| `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]`, `[FileExtensions]` | `Email`/`Phone`/`Url`/`CreditCard`/`Base64`/`FileExtension` kinds | compiled to `ConstraintChecks.Is*` with the BCL's exact semantics; `VM0063` (Info) states them — see §18.5 |
 | `[Compare]`, `[CustomValidation]` | — | `VM0061`, `VM0062` |
 | `IValidatableObject` | — | `VM0067` |
 | any other `ValidationAttribute` subclass | — | `VM0060` |
@@ -1518,12 +1518,24 @@ names the specific attribute and the specific property, so it is visible at the 
 introduced it. The migration path is a native constraint, or `IAsyncValidatorFor<T>` for anything
 genuinely custom.
 
-The format validators — `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]` — are a closed set and
-*could* be compiled, by baking in the expression each one uses. They are diagnosed instead
-(`VM0063`, pointing at `[Pattern]`). Reproducing them means committing to bug-compatibility with
-implementations that are lenient in ways nobody wants: DA's `EmailAddressAttribute` accepts `"a@b"`
-(§14.22). A user who wants email validation is better served by a pattern whose behaviour is written
-down in their own source than by inheriting ours.
+The format validators — `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]`,
+`[FileExtensions]` — **compile** (2026-08-28), to straight-line reproductions in
+`ConstraintChecks`, with a per-use `VM0063` Info stating the exact check emitted. This reverses
+the paragraph that stood here, which refused them as "lenient in ways nobody wants: DA's
+`EmailAddressAttribute` accepts `"a@b"` (§14.22)". Three things unwound that reasoning. The
+semantics are not a defect to avoid inheriting: RFC 5322's addr-spec permits a dotless domain, so
+`a@b` is the *grammar's* answer, and Microsoft holds the implementation frozen by design
+(dotnet/runtime#45670 - "not something we plan to change"), which also makes bug-compatibility a
+stationary target, pinned by parity tests running the same canon through the real attributes. The
+modern implementations contain no regex at all - a handful of character walks, exactly the shape
+this emitter already writes, so reproducing them costs no allocation and no AOT size. And refusing
+them made this the one migration target where the checks *vanished*: `Validator.TryValidateObject`,
+MVC, and .NET 10's `AddValidation()` all enforce these attributes, while VM0063-as-a-Warning
+dropped them - more lenient than the leniency it objected to. A user who wants stricter validation
+is still pointed at `[Pattern]`, now by the Info rather than by a refusal. One emitted divergence,
+recorded in ConstraintChecksTests: `[Url]` on a `System.Uri` member applies the current scheme
+check on both TFMs, where net8's own `UrlAttribute` predates the `Uri` branch and rejects every
+non-string.
 
 ### 18.6 Mixing with native constraints, and profiles
 
@@ -1615,15 +1627,17 @@ Added to the table in §11:
 | VM0060 | Warning | custom `ValidationAttribute` subclass — cannot be compiled, not applied |
 | VM0061 | Warning | `[Compare]` — cross-field, not expressible as a per-property constraint |
 | VM0062 | Warning | `[CustomValidation]` — dispatches reflectively, not applied |
-| VM0063 | Warning | `[EmailAddress]`/`[Phone]`/`[Url]`/`[CreditCard]` — not applied; use `[Pattern]` |
+| VM0063 | Info | the format validators — compiled with the BCL's exact semantics, stated in the message (2026-08-28; formerly a Warning that they were not applied) |
 | VM0064 | Error | `[MinLength]`/`[MaxLength]` on a member that is neither a string nor a collection |
 | VM0065 | Error | `[Range]` bounds do not parse as the member's type |
 | VM0066 | Warning | a DataAnnotations and a native constraint conflict on one property |
 | VM0067 | Warning | type implements `IValidatableObject` — not compiled |
 
 Warnings rather than errors throughout, except where the attribute is simply wrong for the member.
-A build should not break because a model picked up `[EmailAddress]` for some other consumer's
-benefit; it should tell you the constraint is not being enforced.
+A build should not break because a model picked up `[Compare]` for some other consumer's benefit;
+it should tell you the constraint is not being enforced. The format validators, which now *are*
+enforced, drop further still to Info for the same reason inverted: there is nothing to fix, only
+semantics worth stating.
 
 ---
 
