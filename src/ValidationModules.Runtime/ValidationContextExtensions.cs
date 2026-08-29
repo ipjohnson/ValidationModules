@@ -374,8 +374,9 @@ public static class ValidationContextExtensions {
     /// </summary>
     /// <remarks>
     /// The composed message is deliberately terse - the check is yours, so only you can say what
-    /// "valid" meant. A <c>Message</c> on the attribute replaces it, and setting one is the
-    /// recommendation, not an edge case.
+    /// "valid" meant. A <c>DefaultMessage</c> constant baked on the attribute class, or a
+    /// <c>Message</c> at the use site, replaces it - declaring one of them is the recommendation,
+    /// not an edge case.
     /// </remarks>
     public static ValidationFlow ReportCustom<TReporter>(
         this TReporter context,

@@ -1,6 +1,8 @@
 <!-- Absolute URLs so the image survives being packed into the NuGet README; GitHub swaps the
-     variant with its theme. The logo rides inside the heading so mark and name share a line. -->
-# <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ipjohnson/ValidationModules/main/assets/logo-dark.svg"><img src="https://raw.githubusercontent.com/ipjohnson/ValidationModules/main/assets/logo.svg" alt="" width="42" height="42" align="absmiddle"></picture> ValidationModules
+     variant with its theme. The logo is sized to the H1 text (~32px), so default baseline
+     alignment sits it level with the name on every renderer - no align attribute, which NuGet's
+     sanitizer strips anyway. -->
+# <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ipjohnson/ValidationModules/main/assets/logo-dark.svg"><img src="https://raw.githubusercontent.com/ipjohnson/ValidationModules/main/assets/logo.svg" alt="" width="32" height="32"></picture> ValidationModules
 
 [![NuGet](https://img.shields.io/nuget/v/ValidationModules.Runtime.svg)](https://www.nuget.org/packages/ValidationModules.Runtime/)
 [![build](https://github.com/ipjohnson/ValidationModules/actions/workflows/build-package.yaml/badge.svg)](https://github.com/ipjohnson/ValidationModules/actions/workflows/build-package.yaml)

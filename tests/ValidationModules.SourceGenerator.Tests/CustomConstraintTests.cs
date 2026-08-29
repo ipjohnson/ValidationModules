@@ -224,4 +224,88 @@ public class CustomConstraintTests {
 
         Assert.Single(result.Diagnostics, d => d.Id == "VM0051");
     }
+
+    // -- author defaults ------------------------------------------------------------------------
+
+    private const string SkuWithDefaults = """
+        using ValidationModules.Constraints;
+
+        namespace Sample;
+
+        public sealed class SkuAttribute : CustomConstraintAttribute {
+            public const string DefaultMessage = "sku must look like SKU-XXXXXXXX";
+            public const string DefaultCode = "sku_format";
+
+            public static bool IsValid(string value) =>
+                value.StartsWith("SKU-", System.StringComparison.Ordinal);
+        }
+        """;
+
+    /// <summary>
+    /// The author bakes the default; a bare application gets it. A const rather than a
+    /// constructor assignment, because the generator never constructs the attribute for a static
+    /// check - code is invisible here, a constant is not.
+    /// </summary>
+    [Fact]
+    public void AuthorDefaults_ApplyWhenTheApplicationSetsNothing() {
+        var result = GeneratorHarness.Run(SkuWithDefaults + """
+
+            public record Product {
+                [Sku] public string? Sku { get; init; }
+            }
+            """);
+
+        Assert.Empty(result.CompilationErrors);
+
+        var emitted = result.Sources["Sample.ProductValidator.g.cs"];
+
+        Assert.Contains("\"sku must look like SKU-XXXXXXXX\"", emitted);
+        Assert.Contains("\"sku_format\"", emitted);
+    }
+
+    /// <summary>The use site still wins, same as overriding a built-in's composed text.</summary>
+    [Fact]
+    public void AuthorDefaults_LoseToTheUseSite() {
+        var result = GeneratorHarness.Run(SkuWithDefaults + """
+
+            public record Product {
+                [Sku(Message = "warehouse skus start with SKU-", Code = "warehouse_sku")]
+                public string? Sku { get; init; }
+            }
+            """);
+
+        var emitted = result.Sources["Sample.ProductValidator.g.cs"];
+
+        Assert.Contains("\"warehouse skus start with SKU-\"", emitted);
+        Assert.Contains("\"warehouse_sku\"", emitted);
+        Assert.DoesNotContain("SKU-XXXXXXXX", emitted);
+    }
+
+    /// <summary>A default declared on a shared base attribute serves every derived check.</summary>
+    [Fact]
+    public void AuthorDefaults_AreInheritedFromABaseAttribute() {
+        var result = GeneratorHarness.Run("""
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public abstract class FormatAttribute : CustomConstraintAttribute {
+                public const string DefaultMessage = "value is not in the required format";
+            }
+
+            public sealed class SkuAttribute : FormatAttribute {
+                public static bool IsValid(string value) =>
+                    value.StartsWith("SKU-", System.StringComparison.Ordinal);
+            }
+
+            public record Product {
+                [Sku] public string? Sku { get; init; }
+            }
+            """);
+
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains(
+            "\"value is not in the required format\"",
+            result.Sources["Sample.ProductValidator.g.cs"]);
+    }
 }

@@ -1549,14 +1549,36 @@ public sealed class AttributeFrontEnd {
 
         var constraint = new ConstraintModel(
             ConstraintKind.CustomCheck,
-            Code: NativeConstraintReader.Named(attribute, "Code") as string,
-            Message: NativeConstraintReader.Named(attribute, "Message") as string,
+            Code: NativeConstraintReader.Named(attribute, "Code") as string
+                ?? ConstDefault(attributeClass, "DefaultCode"),
+            Message: NativeConstraintReader.Named(attribute, "Message") as string
+                ?? ConstDefault(attributeClass, "DefaultMessage"),
             WhenMember: NativeConstraintReader.Named(attribute, "When") as string,
             UnlessMember: NativeConstraintReader.Named(attribute, "Unless") as string,
             CustomAccessor: accessor,
             Values: new EquatableArray<string>(arguments.ToImmutableArray()));
 
         constraints.Add(ResolveCondition(constraint, member));
+    }
+
+    /// <summary>
+    /// The author's baked default for one of the base knobs: a <c>const string</c> named
+    /// <c>DefaultMessage</c> or <c>DefaultCode</c> on the attribute class or a base of it. A const
+    /// because the generator never constructs the attribute for a static check - an assignment in
+    /// the author's constructor is code, and code is invisible here - while a constant is exactly
+    /// as readable as the constructor arguments already are. A use-site <c>Message</c> or
+    /// <c>Code</c> still wins, same as overriding a built-in's composed text.
+    /// </summary>
+    private static string? ConstDefault(INamedTypeSymbol attributeClass, string name) {
+        for (INamedTypeSymbol? current = attributeClass; current is not null; current = current.BaseType) {
+            foreach (var field in current.GetMembers(name).OfType<IFieldSymbol>()) {
+                if (field is { HasConstantValue: true, ConstantValue: string text }) {
+                    return text;
+                }
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

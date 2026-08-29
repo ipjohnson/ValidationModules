@@ -27,14 +27,19 @@ namespace ValidationModules.Constraints;
 /// <c>[Required]</c> beside it when absence should fail. <see cref="ValidationConstraintAttribute.Code"/>,
 /// <see cref="ValidationConstraintAttribute.Message"/>, <see cref="ValidationConstraintAttribute.When"/>
 /// and <see cref="ValidationConstraintAttribute.Unless"/> work here exactly as they do on the
-/// built-in constraints. Anything else the check needs must arrive through the constructor: a
-/// custom init-only property has no path into a static method, and setting one is a build error
-/// rather than an argument that silently never arrives.
+/// built-in constraints - and the class may bake its own defaults as constants named
+/// <c>DefaultMessage</c> and <c>DefaultCode</c> (on itself or a base), which every use site gets
+/// unless it overrides. Constants rather than constructor assignments, because nothing ever
+/// constructs the attribute: the generator reads it. Anything else the check needs must arrive
+/// through the constructor: a custom init-only property has no path into a static method, and
+/// setting one is a build error rather than an argument that silently never arrives.
 /// </para>
 /// </remarks>
 /// <example>
 /// <code>
 /// public sealed class SkuAttribute : CustomConstraintAttribute {
+///     public const string DefaultMessage = "sku must look like SKU-XXXXXXXX";
+///
 ///     public SkuAttribute(int length) { }
 ///
 ///     public static bool IsValid(string value, int length) =>
@@ -43,7 +48,7 @@ namespace ValidationModules.Constraints;
 ///
 /// public record Product {
 ///     [Required]
-///     [Sku(12, Message = "sku must look like SKU-XXXXXXXX")]
+///     [Sku(12)]
 ///     public string? Sku { get; init; }
 /// }
 /// </code>
