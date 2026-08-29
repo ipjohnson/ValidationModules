@@ -85,6 +85,30 @@ a consumer will not set it, and the branches stay in the binary whether or not a
 Both spellings are accepted, case-insensitively. Taking only one would let the other pass silently,
 which is the failure this property exists to avoid.
 
+## `ValidationModules_CaptureValues` {#validationmodules-capturevalues}
+
+Whether generated report sites pass the failing member as
+[`ValidationError.Value`](/guide/messages#the-attempted-value-and-who-may-show-it).
+
+| Value | Effect |
+|---|---|
+| *(unset)* / anything else | on — the failing value rides on the error, for readers that opt in |
+| `Disabled` / `false` | off — the emitter passes nothing; the capture is absent from the binary |
+
+On by default, and safe by default: the value is a reference to data the application already
+holds, and no library surface renders it — not the default message, not `ToString`, not
+`ValidationException`, not a problem-details body. Only an installed
+[formatter](/guide/messages) can choose to show it, which makes that an explicit decision at a
+named place.
+
+Turning it off is for builds that must not carry values at all. Because the switch governs
+*emission*, off means the capture argument was never compiled — a property of the binary that can
+be audited, which is a stronger guarantee than any runtime flag. The cost of leaving it on is one
+boxing allocation per failing value-type member, inside the failure branch; a clean pass executes
+what it always did.
+
+Both spellings are accepted, case-insensitively, for the same reason `FailFast` takes both.
+
 ## `ValidationModules_DataAnnotations`
 
 Whether `System.ComponentModel.DataAnnotations` attributes are compiled.
