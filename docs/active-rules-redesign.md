@@ -26,6 +26,14 @@ outside this repo referenced the rules surface (verified against `~/Hardened` �
   unwrap `Nullable`); the explicit-type-argument spelling is VM0090.
 - **Nested/Each inside a fragment is rejected for v1** — descents belong in the rules class
   body, which keeps the injected-array plumbing region-local.
+- **Extended post-merge (2026-08-29): one rules class may target several types** — implementing
+  `IValidationRulesFor<T>` once per target with one `Describe` overload each, paired through
+  `FindImplementationForInterfaceMember` (which also made explicitly implemented `Describe`s
+  visible; the name lookup never saw them). Regions merge into one companion file of overloads
+  per class; island arguments (chain bounds, divisors, allowed values) now transcribe through
+  the same qualification-and-baking rewrites as everything else, which the shared-const case
+  surfaced. The single-target restriction was a `DescribedValidator<T>` artifact - one engine
+  instance, one `T` - with no reason to survive it.
 - **`rules.As<TFacet>` pairs with rules-class-declared facet rules**, and the docs say so: an
   interface's *attribute* constraints already reach every implementer through constraint
   inheritance, so `As` over an attribute-constrained facet reports every facet error twice —

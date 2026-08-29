@@ -66,58 +66,74 @@ public sealed class RulesFrontEnd {
     public IReadOnlyList<FragmentContainer> FragmentContainers => _containers;
 
     /// <summary>
-    /// Reads <paramref name="rulesClass"/> into a region declaration, or null if it is not a rules
-    /// class. A body that fails transcription reports diagnostics and returns null - nothing is
+    /// Reads every target <paramref name="rulesClass"/> declares rules for - one region per
+    /// implemented <c>IValidationRulesFor&lt;T&gt;</c>, so one class can describe several types,
+    /// each still getting its own validator. Empty when the candidate is not a rules class.
+    /// </summary>
+    /// <remarks>
+    /// Each interface is paired with its <c>Describe</c> through
+    /// <see cref="ITypeSymbol.FindImplementationForInterfaceMember"/> rather than a name lookup.
+    /// That is what lands overloaded <c>Describe</c>s on their own targets - and what makes an
+    /// explicitly implemented one visible at all, its metadata name not being "Describe". A body
+    /// that fails transcription reports diagnostics and drops only its own region - nothing is
     /// emitted after an error, so a broken declaration cannot become a validator that checks less
     /// than it says.
-    /// </summary>
-    public RulesDeclaration? Build(INamedTypeSymbol rulesClass, Compilation compilation) {
-        var contract = rulesClass.AllInterfaces.FirstOrDefault(i =>
-            i.ConstructedFrom.ToDisplayString() == KnownTypes.ValidationRulesForInterface);
+    /// </remarks>
+    public IReadOnlyList<RulesDeclaration> Build(INamedTypeSymbol rulesClass, Compilation compilation) {
+        List<RulesDeclaration>? declarations = null;
 
-        if (contract is null || contract.TypeArguments.Length != 1) {
-            return null;
+        // Regions merge into one companion class per rules class, so the cached-facet fields of
+        // every region must stay distinct; the seed carries the count across writers.
+        var fieldSeed = 0;
+
+        foreach (var contract in rulesClass.AllInterfaces) {
+            if (contract.ConstructedFrom.ToDisplayString() != KnownTypes.ValidationRulesForInterface ||
+                contract.TypeArguments.Length != 1 ||
+                contract.TypeArguments[0] is not INamedTypeSymbol target) {
+                continue;
+            }
+
+            if (contract.GetMembers("Describe").FirstOrDefault() is not IMethodSymbol declared ||
+                rulesClass.FindImplementationForInterfaceMember(declared) is not IMethodSymbol describe ||
+                describe.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax()
+                    is not MethodDeclarationSyntax syntax) {
+                continue;
+            }
+
+            var model = compilation.GetSemanticModel(syntax.SyntaxTree);
+            var before = _diagnostics.Count;
+            var writer = new RegionWriter(
+                this, compilation, model, target, rulesClass,
+                describe.Parameters[0], describe.Parameters[1],
+                fieldSeed: fieldSeed);
+
+            if (syntax.Body is { } block) {
+                writer.ReadBlock(block.Statements, depth: 0);
+            } else if (syntax.ExpressionBody is { } arrow) {
+                // An expression-bodied Describe is one statement's worth of rules. The expression
+                // is read where it stands - a synthesized statement node belongs to no syntax tree
+                // and the first GetSymbolInfo against one throws, taking the whole generator's
+                // output with it.
+                writer.ReadExpressionStatement(arrow.Expression, depth: 0, report: arrow.Expression);
+            }
+
+            if (_diagnostics.Count > before) {
+                continue;
+            }
+
+            fieldSeed += writer.Fields.Count;
+
+            (declarations ??= new List<RulesDeclaration>()).Add(new RulesDeclaration(
+                target,
+                rulesClass,
+                describe.Parameters[1].Name,
+                writer.Lines,
+                writer.Dependencies,
+                writer.AppliedRules,
+                writer.Fields));
         }
 
-        if (contract.TypeArguments[0] is not INamedTypeSymbol target) {
-            return null;
-        }
-
-        var describe = rulesClass.GetMembers("Describe")
-            .OfType<IMethodSymbol>()
-            .FirstOrDefault(method => method.Parameters.Length == 2 && method.IsStatic);
-
-        if (describe?.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() is not MethodDeclarationSyntax syntax) {
-            return null;
-        }
-
-        var model = compilation.GetSemanticModel(syntax.SyntaxTree);
-        var before = _diagnostics.Count;
-        var writer = new RegionWriter(
-            this, compilation, model, target, rulesClass,
-            describe.Parameters[0], describe.Parameters[1]);
-
-        if (syntax.Body is { } block) {
-            writer.ReadBlock(block.Statements, depth: 0);
-        } else if (syntax.ExpressionBody is { } arrow) {
-            // An expression-bodied Describe is one statement's worth of rules. The expression is
-            // read where it stands - a synthesized statement node belongs to no syntax tree and the
-            // first GetSymbolInfo against one throws, taking the whole generator's output with it.
-            writer.ReadExpressionStatement(arrow.Expression, depth: 0, report: arrow.Expression);
-        }
-
-        if (_diagnostics.Count > before) {
-            return null;
-        }
-
-        return new RulesDeclaration(
-            target,
-            rulesClass,
-            describe.Parameters[1].Name,
-            writer.Lines,
-            writer.Dependencies,
-            writer.AppliedRules,
-            writer.Fields);
+        return declarations ?? (IReadOnlyList<RulesDeclaration>)Array.Empty<RulesDeclaration>();
     }
 
     private void Report(DiagnosticDescriptor descriptor, SyntaxNode node, params object?[] args) =>
@@ -303,6 +319,7 @@ public sealed class RulesFrontEnd {
         private readonly List<string> _applied = new();
         private readonly List<CompanionField> _fields = new();
         private readonly string _fieldPrefix;
+        private readonly int _fieldSeed;
 
         /// <summary>One counter for every generated local, so expansions cannot collide with each
         /// other whatever the author named things.</summary>
@@ -334,9 +351,11 @@ public sealed class RulesFrontEnd {
             IParameterSymbol? subject,
             List<IMethodSymbol>? expanding = null,
             bool insideFragment = false,
-            string fieldPrefix = "_facet") {
+            string fieldPrefix = "_facet",
+            int fieldSeed = 0) {
 
             _fieldPrefix = fieldPrefix;
+            _fieldSeed = fieldSeed;
             _owner = owner;
             _compilation = compilation;
             _model = model;
@@ -359,7 +378,7 @@ public sealed class RulesFrontEnd {
         public IReadOnlyList<CompanionField> Fields => _fields;
 
         private string CompanionField(string typeQualified) {
-            var field = new CompanionField(typeQualified, $"{_fieldPrefix}{_fields.Count}");
+            var field = new CompanionField(typeQualified, $"{_fieldPrefix}{_fieldSeed + _fields.Count}");
 
             _fields.Add(field);
 
@@ -1630,7 +1649,7 @@ public sealed class RulesFrontEnd {
 
                     foreach (var element in elements) {
                         if (_writer._model.GetConstantValue(element) is { HasValue: true }) {
-                            values.Add(element.ToString());
+                            values.Add(_writer.Rewrite(element));
                             displays.Add(DisplayOf(element));
                         }
                     }
@@ -1674,14 +1693,21 @@ public sealed class RulesFrontEnd {
                     : null;
             }
 
-            private static string Bound(
+            /// <summary>
+            /// A bound as it lands in the check text - rewritten, not raw, so a bare reference to
+            /// the rules class's own const qualifies or bakes exactly as it does anywhere else in
+            /// the body.
+            /// </summary>
+            private string Bound(
                 IReadOnlyDictionary<string, ExpressionSyntax> arguments, string parameter, string fallback) =>
-                arguments.TryGetValue(parameter, out var expression) ? expression.ToString() : fallback;
+                arguments.TryGetValue(parameter, out var expression)
+                    ? _writer.Rewrite(expression)
+                    : fallback;
 
-            private static string? OptionalBound(
+            private string? OptionalBound(
                 IReadOnlyDictionary<string, ExpressionSyntax> arguments, string parameter) =>
                 arguments.TryGetValue(parameter, out var expression) && expression.ToString() != "null"
-                    ? expression.ToString()
+                    ? _writer.Rewrite(expression)
                     : null;
 
             private static string Quote(string text) => SymbolDisplay.FormatLiteral(text, quote: true);

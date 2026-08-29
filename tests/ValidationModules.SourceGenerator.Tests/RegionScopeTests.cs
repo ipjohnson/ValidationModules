@@ -85,6 +85,19 @@ public class RegionScopeTests {
     }
 
     [Fact]
+    public void AConstantUsedAsAChainBound_IsRewrittenTheSameWay() {
+        // Island arguments are check text, not raw text: a private const bound bakes by value
+        // exactly as it does in an Ensure condition. Carried raw, this emitted CS0103 in the
+        // companion - the multi-target work is what surfaced it.
+        var region = Region(
+            "    private const int Max = 40;",
+            "rules.Require(x.Name).Length(2, Max);");
+
+        Assert.Contains("x.Name.Length > 40", region);
+        Assert.DoesNotContain("ModelRules.Max", region);
+    }
+
+    [Fact]
     public void AnIfCondition_IsRewrittenTheSameWay() {
         // Control flow is C# now, and its conditions transcribe under the same rewrites the
         // island arguments do.

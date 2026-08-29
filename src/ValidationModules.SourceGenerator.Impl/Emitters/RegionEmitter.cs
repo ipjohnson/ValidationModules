@@ -36,37 +36,52 @@ public sealed class RegionEmitter {
     /// <summary>The companion class a rules class's region is emitted into.</summary>
     public static string CompanionFor(INamedTypeSymbol rulesClass) => $"{rulesClass.Name}_Rules";
 
-    /// <summary>Emits the region companion for one rules class.</summary>
-    public string EmitRegion(RulesDeclaration declaration, BraceStyle style = BraceStyle.Allman) {
-        var ns = declaration.RulesClass.ContainingNamespace;
+    /// <summary>
+    /// Emits the region companion for one rules class - every region it declares, one
+    /// <c>Describe</c> overload per target, in one file. One file because two would collide on the
+    /// hint name, and <c>AddSource</c> throwing on a collision fails the whole generator rather
+    /// than one type.
+    /// </summary>
+    public string EmitRegion(
+        IReadOnlyList<RulesDeclaration> declarations, BraceStyle style = BraceStyle.Allman) {
+
+        var rulesClass = declarations[0].RulesClass;
+        var ns = rulesClass.ContainingNamespace;
         var file = GeneratedFile(ns.IsGlobalNamespace ? string.Empty : ns.ToDisplayString());
 
-        CopyUsings(file, declaration.RulesClass);
+        CopyUsings(file, rulesClass);
 
-        var container = file.AddClass(CompanionFor(declaration.RulesClass));
+        var container = file.AddClass(CompanionFor(rulesClass));
 
         container.Modifiers = ComponentModifier.Internal | ComponentModifier.Static;
-        container.Comment =
-            $"The transcribed Describe body of {declaration.RulesClass.Name}: read from the rules class, run from here.";
+        container.Comment = declarations.Count == 1
+            ? $"The transcribed Describe body of {rulesClass.Name}: read from the rules class, run from here."
+            : $"The transcribed Describe bodies of {rulesClass.Name}, one region per target: read from the rules class, run from here.";
 
-        Fields(container, declaration.Fields);
-
-        var method = container.AddMethod("Describe");
-
-        method.Modifiers = ComponentModifier.Public | ComponentModifier.Static;
-        method.SetReturnType(TypeDefinition.Get("ValidationModules", "ValidationFlow"));
-        method.AddParameter(TypeDefinition.Get("ValidationModules", "ValidationContext"), "ctx")
-            .Modifier = ParameterModifier.Ref;
-        method.AddParameter(SymbolType(declaration.Target), declaration.SubjectParameterName);
-
-        foreach (var dependency in declaration.Dependencies) {
-            method.AddParameter(
-                ValidatorFor(TypeRef(dependency.ElementQualifiedType)).MakeArray(),
-                dependency.ParameterName);
+        foreach (var declaration in declarations) {
+            Fields(container, declaration.Fields);
         }
 
-        Body(method, declaration.BodyLines);
-        method.Return("global::ValidationModules.ValidationFlow.Continue");
+        foreach (var declaration in declarations) {
+            // Overloads on the subject type: the validator's call site passes its own value, so
+            // resolution lands each target on its own region.
+            var method = container.AddMethod("Describe");
+
+            method.Modifiers = ComponentModifier.Public | ComponentModifier.Static;
+            method.SetReturnType(TypeDefinition.Get("ValidationModules", "ValidationFlow"));
+            method.AddParameter(TypeDefinition.Get("ValidationModules", "ValidationContext"), "ctx")
+                .Modifier = ParameterModifier.Ref;
+            method.AddParameter(SymbolType(declaration.Target), declaration.SubjectParameterName);
+
+            foreach (var dependency in declaration.Dependencies) {
+                method.AddParameter(
+                    ValidatorFor(TypeRef(dependency.ElementQualifiedType)).MakeArray(),
+                    dependency.ParameterName);
+            }
+
+            Body(method, declaration.BodyLines);
+            method.Return("global::ValidationModules.ValidationFlow.Continue");
+        }
 
         return Render(file, style);
     }

@@ -59,6 +59,33 @@ Three consequences worth knowing up front:
   rules, step through the generated validator and its `{RulesClass}_Rules` companion under
   `obj/…/generated` — readable, straight-line code.
 
+## One class, several targets
+
+A rules class may implement `IValidationRulesFor<T>` once per type it describes — one `Describe`
+overload each. Every target still gets its own validator; what the class shares is its members:
+
+```csharp
+public sealed class LedgerRules :
+    IValidationRulesFor<Invoice>,
+    IValidationRulesFor<CreditNote> {
+
+    private const int NumberLength = 10;                  // one declaration, both regions
+
+    public static void Describe(ValidationRules<Invoice> rules, Invoice x) {
+        rules.Require(x.Number).Length(NumberLength, NumberLength);
+    }
+
+    public static void Describe(ValidationRules<CreditNote> rules, CreditNote x) {
+        rules.Require(x.Number).Length(NumberLength, NumberLength);
+        rules.Ensure(x.Amount > 0m, code: "positive");
+    }
+}
+```
+
+Each `Describe` is paired with its interface through the implementation, not by position — so
+declaration order never matters, and an explicitly implemented
+`static void IValidationRulesFor<Invoice>.Describe(…)` works too.
+
 ## Control flow is just C#
 
 There is no `When`/`Unless`. Conditions are `if`/`else`, evaluated where written, at validation
