@@ -412,28 +412,19 @@ public static class ValidationDiagnostics {
         DiagnosticSeverity.Error);
 
     /// <summary>
-    /// A Describe body is a whitelisted DSL, not general C#. The body being runnable makes it look
-    /// like ordinary code, which is exactly why the half that cannot be compiled has to break the
-    /// build rather than behave differently on the two engines.
+    /// A Describe body is transcribed, and almost everything transcribes; what remains rejected is
+    /// the short blacklist - exotica, mutation of the subject, misplaced islands. Never silently
+    /// dropped: a statement the reader cannot carry has to break the build, because the generated
+    /// validator otherwise checks less than the body says.
     /// </summary>
-    public static readonly DiagnosticDescriptor NotARuleDeclaration = Descriptor(
-        "VM0070", "Not a rule declaration",
-        "Only rule declarations on the builder are allowed in '{0}.Describe'; this statement is not one and is not compiled",
+    public static readonly DiagnosticDescriptor NotTranscribable = Descriptor(
+        "VM0070", "Statement is not transcribable",
+        "'{0}.Describe' contains {1}, which the generator does not transcribe",
         DiagnosticSeverity.Error);
 
     public static readonly DiagnosticDescriptor SelectorNotAPath = Descriptor(
-        "VM0071", "Selector is not a property path",
-        "A rule selector in '{0}.Describe' must read a property of its parameter, so the error has a field to be pathed against",
-        DiagnosticSeverity.Error);
-
-    /// <summary>
-    /// A predicate is lifted into a static method by the generator and held as a delegate by the
-    /// runtime. A delegate can close over the rules class instance and a static method cannot, so
-    /// anything captured would compile on one path and not the other.
-    /// </summary>
-    public static readonly DiagnosticDescriptor PredicateCapturesState = Descriptor(
-        "VM0072", "Predicate captures state",
-        "A predicate in '{0}.Describe' may read only its own parameter and static or constant state; this one captures something else and cannot be compiled",
+        "VM0071", "Value argument is not a member path",
+        "A rule's value argument in '{0}' must be a member path on the subject parameter, so the error has a field to be pathed against; anything else needs field:",
         DiagnosticSeverity.Error);
 
     /// <summary>
@@ -457,59 +448,69 @@ public static class ValidationDiagnostics {
         "'{0}' is generic, and a validator for it could not be registered - the service type has its parameter nested inside a construction, which no container can resolve without MakeGenericType. Declare the constraints on a closed type instead ('{0}<Order>' written out as its own type), or validate the payload's own type and leave the envelope unconstrained",
         DiagnosticSeverity.Error);
 
-    /// <summary>
-    /// The message used to end "pass field: explicitly", which is the one fix that does not work.
-    /// A rule is emitted inside its anchored property's chain so both engines agree on ordering
-    /// (§4.2), so <c>field:</c> renames the error and does not detach the rule - passing it leaves
-    /// this firing, and the old wording sent the reader round the loop a second time.
-    /// </summary>
-    /// <summary>
-    /// A condition that folds to a constant is either noise or a rule that can never fire.
-    /// </summary>
-    /// <remarks>
-    /// The one analysis here that no runtime library can offer: a described engine sees a delegate
-    /// and cannot know what it returns without calling it, where the generator has the expression.
-    /// </remarks>
-    public static readonly DiagnosticDescriptor ConstantCondition = Descriptor(
-        "VM0034", "Condition is constant",
-        "This condition always evaluates to {0}, so {1}",
-        DiagnosticSeverity.Warning);
-
-    /// <summary>
-    /// A lifted predicate cannot reach a <c>private</c> member of the rules class.
-    /// </summary>
-    /// <remarks>
-    /// Lifting is what lets a predicate keep its declaring file's using directives, and the cost is
-    /// that the method ends up in a different class. A non-private member is reached by qualifying
-    /// it; a private one cannot be reached at all, and a compile-time constant is the only thing
-    /// that can be carried across by value. Reported here rather than left to surface as CS0122
-    /// inside generated code.
-    /// </remarks>
-    public static readonly DiagnosticDescriptor PredicateReferencesPrivateMember = Descriptor(
-        "VM0078", "Predicate references a private member of the rules class",
-        "'{0}' is private, and this predicate is compiled into a separate class that cannot reach " +
-        "it. Make it internal, or declare it as a const",
+    public static readonly DiagnosticDescriptor EnsureHasNoField = Descriptor(
+        "VM0075", "Ensure has no field",
+        "The condition in '{0}.Describe' reads no property of the subject, so the rule has no " +
+        "field to report against. Anchor it by reading the property it is about, or pass field:",
         DiagnosticSeverity.Error);
 
     /// <summary>
-    /// Continues the rules-DSL block that ends at VM0075.
+    /// A fragment is expanded from syntax, and a referenced assembly ships IL - the symbol has no
+    /// body to read. The same-compilation rule is physics, not policy, and a plain
+    /// ProjectReference is on the wrong side of it.
     /// </summary>
-    public static readonly DiagnosticDescriptor EmptyConditionalBlock = Descriptor(
-        "VM0076", "Conditional block declares no rules",
-        "The {0} block in '{1}' declares no rules, so the condition guards nothing. Almost always " +
-        "a rule that was moved out and left the block behind",
-        DiagnosticSeverity.Warning);
+    public static readonly DiagnosticDescriptor FragmentIsCompiledIl = Descriptor(
+        "VM0085", "Fragment is compiled IL from a referenced assembly",
+        "Fragment '{0}' is compiled IL from a referenced assembly; fragments must be part of this " +
+        "compilation - use a shared project or a source-only package",
+        DiagnosticSeverity.Error);
 
-    public static readonly DiagnosticDescriptor ConditionAppliesToNoRules = Descriptor(
-        "VM0077", "Condition applies to no rules",
-        "This {0} terminates a statement that declared no constraints, so it conditions nothing",
-        DiagnosticSeverity.Warning);
+    public static readonly DiagnosticDescriptor FragmentCallCycle = Descriptor(
+        "VM0086", "Fragment call cycle",
+        "Fragments may call fragments, but this chain returns to where it started: {0}",
+        DiagnosticSeverity.Error);
 
-    public static readonly DiagnosticDescriptor EnsureHasNoField = Descriptor(
-        "VM0075", "Ensure has no field",
-        "The predicate in '{0}.Describe' reads no property of its parameter, so the rule has no " +
-        "property to be anchored to. Rewrite it to read the property it is about; field: renames " +
-        "the error but does not anchor the rule, so passing it does not resolve this",
+    /// <summary>
+    /// The anti-silent-drop rule. A rule call the generator cannot see would transcribe into a
+    /// call on the inert builder and validate nothing - EF Core learned this lesson with implicit
+    /// client-eval and made it an error; so does this.
+    /// </summary>
+    public static readonly DiagnosticDescriptor RulesFlowNotFollowable = Descriptor(
+        "VM0087", "The rules builder flows where the generator cannot follow",
+        "The builder declares rules only where the generator can read them; here it would {0}, " +
+        "which would validate nothing at runtime",
+        DiagnosticSeverity.Error);
+
+    /// <summary>
+    /// Transcribed code must compile at the emission site: the companion file is internal to the
+    /// same assembly, so what breaks is private and protected members of the rules class. Caught
+    /// here rather than surfacing as CS0122 inside generated code, which is the worst place for it.
+    /// </summary>
+    public static readonly DiagnosticDescriptor MemberNotReachableFromRegion = Descriptor(
+        "VM0088", "Member is not reachable from the generated region",
+        "'{0}' is not accessible from the companion file '{1}.Describe' is transcribed into. " +
+        "Make it internal",
+        DiagnosticSeverity.Error);
+
+    /// <summary>
+    /// Islands need generator-computed identity - a field, a rendered message - and a loop or
+    /// lambda gives them none. Collections are Each's job; the reporter tier covers the exotic
+    /// per-element case with a computed field string.
+    /// </summary>
+    public static readonly DiagnosticDescriptor IslandInUnreadableScope = Descriptor(
+        "VM0089", "Rule declaration inside a loop, lambda, or local function",
+        "'{0}.Describe' declares a rule inside a scope the generator cannot expand it in. Use Each " +
+        "for collections, or report per element through rules.Context",
+        DiagnosticSeverity.Error);
+
+    /// <summary>
+    /// The selector overload matrix used to make this unwritable; values cannot, because a
+    /// non-nullable value type converts to its nullable form implicitly.
+    /// </summary>
+    public static readonly DiagnosticDescriptor RequireCannotFail = Descriptor(
+        "VM0090", "Require on a non-nullable value type has no effect",
+        "'{0}' is a non-nullable value type and can never be missing, so this rule can never " +
+        "fail. Constrain the value instead, or make the property nullable",
         DiagnosticSeverity.Error);
 
 }

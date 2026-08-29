@@ -1,50 +1,68 @@
-using System.Globalization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using ValidationModules.Rules;
+using ValidationModules.SourceGenerator.Impl.Emitters;
 using ValidationModules.SourceGenerator.Impl.Models;
 
 namespace ValidationModules.SourceGenerator.Impl.FrontEnds;
 
 /// <summary>
-/// Reads an <c>IValidationRulesFor&lt;T&gt;.Describe</c> body into the IR.
+/// Transcribes an <c>IValidationRulesFor&lt;T&gt;.Describe</c> body into the region method the
+/// generated validator calls.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The third front-end, and the only one that reads statements rather than attributes. It never
-/// executes anything: the body is parsed as syntax and flattened, the same as a constraint attribute
-/// is read out of metadata and flattened. What the runtime does with the same body is run it once -
-/// see <c>DescribedValidator&lt;T&gt;</c> - and the two are pinned to the same output by sharing
-/// <see cref="RuleText"/> and by reaching the same <c>ctx.Add*</c> helpers.
+/// The body is C# that is read, never run. Vocabulary calls are recognized islands expanded into
+/// check-and-report code; every other statement - locals, LINQ, arithmetic, <c>if</c>/<c>else</c> -
+/// is transcribed and runs at validation time inside the region method. Positional transcription:
+/// the region mirrors the body statement for statement, and semantics are C# semantics.
+/// See docs/active-rules-redesign.md.
 /// </para>
 /// <para>
-/// <b>Field names are resolved from the selector's syntax, not its text.</b> The runtime has only
-/// the text <c>CallerArgumentExpression</c> hands it; here the semantic model is available, so the
-/// property symbol is resolved properly and <c>[JsonPropertyName]</c> is honoured. That is the one
-/// place the two engines can disagree, and API-SURFACE.md §19.9 documents it rather than pretending
-/// otherwise.
+/// <b>Two invariants, everything else relaxes.</b> The builder flows only where this reader can
+/// follow (VM0087), and transcribed code must compile at the emission site (VM0088). The region is
+/// emitted into a companion file carrying the rules class's own using directives - the
+/// <c>PredicateEmitter</c> move, extended - so what has to be rewritten is small: <c>nameof</c>
+/// through the subject parameter becomes the wire path, bare references to the rules class's own
+/// statics are qualified, <c>rules.Context</c> becomes the live context, and a bare <c>return</c>
+/// becomes <c>return Continue</c>.
 /// </para>
 /// <para>
-/// <b>The body is a whitelist.</b> Anything that is not a rule declaration is VM0070 - a build error,
-/// never something quietly skipped. A runnable body looks like ordinary code, so the half that cannot
-/// be compiled has to break the build rather than behave differently on the two engines.
+/// <b>Fragments are expanded into companion methods, not textually inlined.</b> A fragment's body
+/// resolves against its own file's using directives, which the caller's companion does not have -
+/// the exact hazard the predicate lifting existed to avoid. Each fragment (per concrete target for
+/// a generic one) becomes a method in a container carrying the fragment file's usings, called in
+/// place; ordering, the shared collector and per-concrete-type field names are unchanged by the
+/// difference.
 /// </para>
 /// </remarks>
 public sealed class RulesFrontEnd {
     private readonly List<Diagnostic> _diagnostics = new();
     private readonly Func<string, string> _fieldNamer;
 
+    /// <summary>Fragment methods accumulated across every rules class in the pass, keyed by
+    /// (fragment, concrete target) so two callers share one method.</summary>
+    private readonly Dictionary<string, FragmentMethod> _fragments = new(StringComparer.Ordinal);
+
+    private readonly List<FragmentContainer> _containers = new();
+
     public RulesFrontEnd(Func<string, string> fieldNamer) => _fieldNamer = fieldNamer;
 
     public IReadOnlyList<Diagnostic> Diagnostics => _diagnostics;
 
     /// <summary>
-    /// Reads every rule declared by <paramref name="rulesClass"/>, or null if it is not a rules
-    /// class.
+    /// The fragment containers every processed rules class asked for, one per declaring type,
+    /// carrying that type's file usings. Emitted once per pass, after every candidate is read.
     /// </summary>
-    /// <param name="rulesClass">The candidate type.</param>
-    /// <param name="compilation">Supplies the semantic model for the declaring syntax tree.</param>
+    public IReadOnlyList<FragmentContainer> FragmentContainers => _containers;
+
+    /// <summary>
+    /// Reads <paramref name="rulesClass"/> into a region declaration, or null if it is not a rules
+    /// class. A body that fails transcription reports diagnostics and returns null - nothing is
+    /// emitted after an error, so a broken declaration cannot become a validator that checks less
+    /// than it says.
+    /// </summary>
     public RulesDeclaration? Build(INamedTypeSymbol rulesClass, Compilation compilation) {
         var contract = rulesClass.AllInterfaces.FirstOrDefault(i =>
             i.ConstructedFrom.ToDisplayString() == KnownTypes.ValidationRulesForInterface);
@@ -59,613 +77,780 @@ public sealed class RulesFrontEnd {
 
         var describe = rulesClass.GetMembers("Describe")
             .OfType<IMethodSymbol>()
-            .FirstOrDefault(method => method.Parameters.Length == 1);
+            .FirstOrDefault(method => method.Parameters.Length == 2 && method.IsStatic);
 
         if (describe?.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() is not MethodDeclarationSyntax syntax) {
             return null;
         }
 
         var model = compilation.GetSemanticModel(syntax.SyntaxTree);
-        var parameter = describe.Parameters[0].Name;
-        var reader = new BodyReader(this, model, target, rulesClass, parameter);
+        var before = _diagnostics.Count;
+        var writer = new RegionWriter(
+            this, compilation, model, target, rulesClass,
+            describe.Parameters[0], describe.Parameters[1]);
 
         if (syntax.Body is { } block) {
-            foreach (var statement in block.Statements) {
-                reader.Read(statement);
-            }
+            writer.ReadBlock(block.Statements, depth: 0);
         } else if (syntax.ExpressionBody is { } arrow) {
-            // An expression-bodied Describe is one rule, which is a shape worth accepting: a rules
-            // class that says one thing should not have to open a block to say it.
-            //
-            // The expression is read where it stands. Wrapping it in a synthesized
-            // ExpressionStatementSyntax to reuse the statement path looks harmless and is not: a
-            // synthesized node belongs to no syntax tree, so the first GetSymbolInfo against it
-            // throws ArgumentException ("Syntax node is not within syntax tree"). That surfaces as
-            // CS8785 and takes down the whole compilation's output - every validator in the project
-            // disappears and the only visible error is a missing MValidator type.
-            reader.ReadExpression(arrow.Expression);
+            // An expression-bodied Describe is one statement's worth of rules. The expression is
+            // read where it stands - a synthesized statement node belongs to no syntax tree and the
+            // first GetSymbolInfo against one throws, taking the whole generator's output with it.
+            writer.ReadExpressionStatement(arrow.Expression, depth: 0, report: arrow.Expression);
         }
 
-        return reader.Finish();
+        if (_diagnostics.Count > before) {
+            return null;
+        }
+
+        return new RulesDeclaration(
+            target,
+            rulesClass,
+            describe.Parameters[1].Name,
+            writer.Lines,
+            writer.Dependencies,
+            writer.AppliedRules);
     }
 
     private void Report(DiagnosticDescriptor descriptor, SyntaxNode node, params object?[] args) =>
         _diagnostics.Add(Diagnostic.Create(descriptor, node.GetLocation(), args));
 
     /// <summary>
-    /// Walks one <c>Describe</c> body, accumulating rules per property plus the type-level ones.
+    /// Resolves the wire name of one property: <c>[JsonPropertyName]</c> first, then
+    /// <c>[Display(Name)]</c>, then the naming policy - the same ladder the attribute front end
+    /// applies, so a rule written in a body and one written as an attribute name the field alike.
     /// </summary>
-    private sealed class BodyReader {
+    internal string WireNameOf(IPropertySymbol property) {
+        foreach (var attribute in property.GetAttributes()) {
+            var name = attribute.AttributeClass?.ToDisplayString();
+
+            if (name == KnownTypes.JsonPropertyName &&
+                attribute.ConstructorArguments.Length == 1 &&
+                attribute.ConstructorArguments[0].Value is string jsonName) {
+                return jsonName;
+            }
+
+            if (name == KnownTypes.DisplayAttribute) {
+                foreach (var named in attribute.NamedArguments) {
+                    if (named.Key == "Name" && named.Value.Value is string displayName) {
+                        return displayName;
+                    }
+                }
+            }
+        }
+
+        return _fieldNamer(property.Name);
+    }
+
+    /// <summary>
+    /// Registers one fragment instantiation, transcribing its body on first use, and returns the
+    /// call target. Two rules classes calling the same fragment for the same target share one
+    /// method.
+    /// </summary>
+    private FragmentMethod? FragmentFor(
+        IMethodSymbol constructed,
+        INamedTypeSymbol target,
+        Compilation compilation,
+        SyntaxNode site,
+        List<IMethodSymbol> expanding) {
+
+        var definition = constructed.OriginalDefinition;
+        var key = $"{definition.ToDisplayString()}|{(constructed.IsGenericMethod ? target.ToDisplayString() : string.Empty)}";
+
+        if (_fragments.TryGetValue(key, out var existing)) {
+            return existing;
+        }
+
+        if (expanding.Any(open => SymbolEqualityComparer.Default.Equals(open, definition))) {
+            Report(ValidationDiagnostics.FragmentCallCycle, site,
+                string.Join(" -> ", expanding.Select(m => m.Name).Concat(new[] { definition.Name })));
+            return null;
+        }
+
+        if (definition.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax()
+            is not MethodDeclarationSyntax syntax || syntax.Body is null && syntax.ExpressionBody is null) {
+            Report(ValidationDiagnostics.FragmentIsCompiledIl, site,
+                $"{definition.ContainingType.Name}.{definition.Name}");
+            return null;
+        }
+
+        // The fragment's own parameter roles, resolved on the constructed symbol so a generic
+        // fragment's subject parameter is already typed as the concrete target.
+        IParameterSymbol? builder = null;
+        IParameterSymbol? subject = null;
+        var extras = new List<IParameterSymbol>();
+
+        foreach (var parameter in constructed.Parameters) {
+            if (parameter.Type is INamedTypeSymbol named &&
+                named.ConstructedFrom.ToDisplayString() == KnownTypes.ValidationRulesBuilder) {
+                builder = parameter;
+            } else if (SymbolEqualityComparer.Default.Equals(parameter.Type, target)) {
+                subject ??= parameter;
+            } else {
+                extras.Add(parameter);
+            }
+        }
+
+        if (builder is null) {
+            return null;
+        }
+
+        var model = compilation.GetSemanticModel(syntax.SyntaxTree);
+        var name = constructed.IsGenericMethod ? $"{definition.Name}_{target.Name}" : definition.Name;
+        var container = ContainerFor(definition.ContainingType);
+
+        // Distinct fragments can collide on the composed name - overloads, or two targets sharing
+        // a simple name. A numeric suffix keeps the method callable; the container's readability
+        // survives because the collision is rare.
+        while (container.Methods.Any(m => m.Name == name)) {
+            name += "_";
+        }
+
+        var method = new FragmentMethod(
+            name,
+            definition,
+            target,
+            subject,
+            builder.Name,
+            extras);
+
+        _fragments[key] = method;
+        container.Methods.Add(method);
+
+        var before = _diagnostics.Count;
+        var writer = new RegionWriter(
+            this, compilation, model, target, definition.ContainingType,
+            // The fragment method reuses the fragment's own parameter names, so its body transcribes
+            // with no identifier rewriting - the same property the region method has.
+            builder: definition.Parameters[IndexOf(definition, builder)],
+            subject: subject is null ? null : definition.Parameters[IndexOf(definition, subject)],
+            expanding: expanding.Concat(new[] { definition }).ToList(),
+            insideFragment: true);
+
+        if (syntax.Body is { } block) {
+            writer.ReadBlock(block.Statements, depth: 0);
+        } else if (syntax.ExpressionBody is { } arrow) {
+            writer.ReadExpressionStatement(arrow.Expression, depth: 0, report: arrow.Expression);
+        }
+
+        method.BodyLines.AddRange(writer.Lines);
+
+        return _diagnostics.Count > before ? null : method;
+    }
+
+    private static int IndexOf(IMethodSymbol definition, IParameterSymbol constructedParameter) {
+        for (var i = 0; i < definition.Parameters.Length; i++) {
+            if (definition.Parameters[i].Ordinal == constructedParameter.Ordinal) {
+                return i;
+            }
+        }
+
+        return constructedParameter.Ordinal;
+    }
+
+    private FragmentContainer ContainerFor(INamedTypeSymbol declaringType) {
+        foreach (var container in _containers) {
+            if (SymbolEqualityComparer.Default.Equals(container.DeclaringType, declaringType)) {
+                return container;
+            }
+        }
+
+        var ns = declaringType.ContainingNamespace.IsGlobalNamespace
+            ? string.Empty
+            : declaringType.ContainingNamespace.ToDisplayString();
+
+        var created = new FragmentContainer(ns, $"{declaringType.Name}_Fragments", declaringType);
+
+        _containers.Add(created);
+
+        return created;
+    }
+
+    /// <summary>
+    /// Walks one body - a Describe or a fragment - producing the region's statement lines.
+    /// </summary>
+    private sealed class RegionWriter {
+        private const string Flow = "global::ValidationModules.ValidationFlow";
+        private const string Codes = "global::ValidationModules.ValidationCodes";
+        private const string SeverityEnum = "global::ValidationModules.ValidationSeverity";
+        private const string ContextExtensions = "global::ValidationModules.ValidationContextExtensions";
+
         private readonly RulesFrontEnd _owner;
+        private readonly Compilation _compilation;
         private readonly SemanticModel _model;
         private readonly INamedTypeSymbol _target;
-        private readonly INamedTypeSymbol _rulesClass;
-        private readonly string _parameter;
+        private readonly INamedTypeSymbol _declaringClass;
+        private readonly IParameterSymbol _builder;
+        private readonly IParameterSymbol? _subject;
+        private readonly List<IMethodSymbol> _expanding;
+        private readonly bool _insideFragment;
 
-        private readonly List<DeclaredRule> _rules = new();
+        private readonly List<string> _lines = new();
+        private readonly List<RegionDependency> _dependencies = new();
         private readonly List<string> _applied = new();
-        private readonly List<LiftedPredicate> _predicates = new();
 
-        /// <summary>The conditions of the blocks currently open around whatever is being read.</summary>
-        private readonly List<string> _open = new();
+        /// <summary>One counter for every generated local, so expansions cannot collide with each
+        /// other whatever the author named things.</summary>
+        private int _locals;
 
-        /// <summary>
-        /// Separate counters, so that adding a condition to a rules class does not renumber its
-        /// Ensure predicates - the lifted names appear in generated code people read.
-        /// </summary>
-        private int _liftedRules;
-
-        private int _liftedConditions;
+        private readonly HashSet<string> _missingLocals = new(StringComparer.Ordinal);
 
         /// <summary>
-        /// The block a trailing <c>Otherwise</c> would negate, as the lifted call and its polarity.
-        /// Otherwise reuses this rather than lifting a second method for the same lambda.
+        /// The local holding one chain's failed-Require result, named after the property the way
+        /// the attribute region names it, with a counter only when a name repeats.
         /// </summary>
-        private string? _lastBlockCall;
+        private string MissingLocal(string propertyName) {
+            var name = $"missing{propertyName}";
 
-        private bool _lastBlockNegated;
+            while (!_missingLocals.Add(name)) {
+                name = $"missing{propertyName}{_locals++}";
+            }
 
-        public BodyReader(
+            return name;
+        }
+
+        public RegionWriter(
             RulesFrontEnd owner,
+            Compilation compilation,
             SemanticModel model,
             INamedTypeSymbol target,
-            INamedTypeSymbol rulesClass,
-            string parameter) {
+            INamedTypeSymbol declaringClass,
+            IParameterSymbol builder,
+            IParameterSymbol? subject,
+            List<IMethodSymbol>? expanding = null,
+            bool insideFragment = false) {
 
             _owner = owner;
+            _compilation = compilation;
             _model = model;
             _target = target;
-            _rulesClass = rulesClass;
-            _parameter = parameter;
+            _declaringClass = declaringClass;
+            _builder = builder;
+            _subject = subject;
+            _expanding = expanding ?? new List<IMethodSymbol>();
+            _insideFragment = insideFragment;
         }
 
-        public void Read(StatementSyntax statement) {
-            if (statement is not ExpressionStatementSyntax { Expression: { } expression }) {
-                _owner.Report(ValidationDiagnostics.NotARuleDeclaration, statement, _rulesClass.Name);
-                return;
-            }
+        public IReadOnlyList<string> Lines => _lines;
 
-            ReadExpression(expression, statement);
-        }
+        public IReadOnlyList<RegionDependency> Dependencies => _dependencies;
 
-        /// <summary>
-        /// Reads one rule from its expression, which an expression-bodied <c>Describe</c> has
-        /// without any enclosing statement to wrap it in.
-        /// </summary>
-        /// <param name="expression">The rule expression.</param>
-        /// <param name="report">
-        /// The node a diagnostic is anchored to. Defaults to the expression itself, which is what
-        /// the arrow form wants; the statement form passes the whole statement so that the squiggle
-        /// covers the trailing semicolon as it always has.
-        /// </param>
-        public void ReadExpression(ExpressionSyntax expression, SyntaxNode? report = null) {
-            if (expression is not InvocationExpressionSyntax invocation) {
-                _owner.Report(ValidationDiagnostics.NotARuleDeclaration, report ?? expression, _rulesClass.Name);
-                return;
-            }
+        public IReadOnlyList<string> AppliedRules => _applied;
 
-            var chain = new List<InvocationExpressionSyntax>();
-
-            if (!Unwind(invocation, chain)) {
-                return;
-            }
-
-            // Innermost first, so an anchor established by the entry call is in hand before the
-            // chained calls that inherit it.
-            chain.Reverse();
-
-            IPropertySymbol? anchor = null;
-            var start = _rules.Count;
-
-            foreach (var call in chain) {
-                anchor = ReadCall(call, anchor, start);
+        public void ReadBlock(IEnumerable<StatementSyntax> statements, int depth, bool inLoop = false) {
+            foreach (var statement in statements) {
+                ReadStatement(statement, depth, inLoop);
             }
         }
 
-        /// <summary>
-        /// Collects the invocations of a chained statement, outermost first, and verifies the whole
-        /// thing hangs off the builder parameter rather than off something else.
-        /// </summary>
-        private bool Unwind(ExpressionSyntax expression, List<InvocationExpressionSyntax> chain) {
+        private void ReadStatement(StatementSyntax statement, int depth, bool inLoop) {
+            switch (statement) {
+                case ExpressionStatementSyntax { Expression: { } expression }:
+                    ReadExpressionStatement(expression, depth, statement, inLoop);
+                    return;
+
+                case LocalDeclarationStatementSyntax declaration:
+                    if (declaration.UsingKeyword.IsKind(SyntaxKind.UsingKeyword)) {
+                        _owner.Report(ValidationDiagnostics.NotTranscribable, statement,
+                            _declaringClass.Name, "a using declaration");
+                        return;
+                    }
+
+                    Transcribe(declaration, depth);
+                    return;
+
+                case IfStatementSyntax conditional:
+                    ReadIf(conditional, depth, inLoop);
+                    return;
+
+                case SwitchStatementSyntax dispatch:
+                    ReadSwitch(dispatch, depth, inLoop);
+                    return;
+
+                case ForStatementSyntax loop:
+                    ReadLoop(loop, loop.Statement, $"for ({Rewrite(loop.Declaration?.ToString() ?? loop.Initializers.ToString())}; {RewriteOptional(loop.Condition)}; {Rewrite(loop.Incrementors.ToString())})", depth);
+                    return;
+
+                case ForEachStatementSyntax each:
+                    ReadLoop(each, each.Statement,
+                        $"foreach ({each.Type} {each.Identifier.Text} in {Rewrite(each.Expression)})", depth);
+                    return;
+
+                case WhileStatementSyntax spin:
+                    ReadLoop(spin, spin.Statement, $"while ({Rewrite(spin.Condition)})", depth);
+                    return;
+
+                case DoStatementSyntax done:
+                    Line(depth, "do {");
+                    ReadEmbedded(done.Statement, depth + 1, inLoop: true);
+                    Line(depth, $"}} while ({Rewrite(done.Condition)});");
+                    return;
+
+                case ReturnStatementSyntax { Expression: null }:
+                    // The region is a method, so an early return ends this rules class's checks and
+                    // nothing else. Continue rather than Stop: the author is done, not failing.
+                    Line(depth, $"return {Flow}.Continue;");
+                    return;
+
+                case ReturnStatementSyntax:
+                    _owner.Report(ValidationDiagnostics.NotTranscribable, statement,
+                        _declaringClass.Name, "a return with a value - Describe returns nothing");
+                    return;
+
+                case BlockSyntax nested:
+                    Line(depth, "{");
+                    ReadBlock(nested.Statements, depth + 1, inLoop);
+                    Line(depth, "}");
+                    return;
+
+                case LocalFunctionStatementSyntax function:
+                    GuardIslandsInside(function, "a local function");
+                    Transcribe(function, depth);
+                    return;
+
+                case BreakStatementSyntax or ContinueStatementSyntax when inLoop:
+                    Transcribe(statement, depth);
+                    return;
+
+                case ThrowStatementSyntax:
+                    Transcribe(statement, depth);
+                    return;
+
+                case EmptyStatementSyntax:
+                    return;
+
+                default:
+                    // goto, unsafe, lock, try, fixed, yield, checked blocks - the v1-rejected
+                    // exotica, admitted later if a real case appears.
+                    _owner.Report(ValidationDiagnostics.NotTranscribable, statement,
+                        _declaringClass.Name, $"a {statement.Kind()}");
+                    return;
+            }
+        }
+
+        public void ReadExpressionStatement(
+            ExpressionSyntax expression, int depth, SyntaxNode report, bool inLoop = false) {
+
+            if (RootsAtBuilder(expression)) {
+                // rules.Context.… roots at the builder but is transcription, not an island: the
+                // reporter tier is legal anywhere, loops included. Its flow-typed result lands in
+                // the auto-wrap below.
+                if (ReachesThroughContext(expression)) {
+                    var reported = _model.GetTypeInfo(expression).Type;
+
+                    if (reported?.ToDisplayString() == "ValidationModules.ValidationFlow") {
+                        Line(depth, $"if (({Rewrite(expression)}).ShouldStop) {{");
+                        Line(depth + 1, $"return {Flow}.Stop;");
+                        Line(depth, "}");
+                    } else {
+                        Line(depth, $"{Rewrite(expression)};");
+                    }
+
+                    return;
+                }
+
+                if (inLoop) {
+                    _owner.Report(ValidationDiagnostics.IslandInUnreadableScope, report, _declaringClass.Name);
+                    return;
+                }
+
+                ReadIsland(expression, depth, report);
+                return;
+            }
+
+            if (IsFragmentCall(expression, out var fragmentCall, out var method)) {
+                if (inLoop) {
+                    _owner.Report(ValidationDiagnostics.IslandInUnreadableScope, report, _declaringClass.Name);
+                    return;
+                }
+
+                ReadFragmentCall(fragmentCall!, method!, depth);
+                return;
+            }
+
+            // Mutating the subject from a validation body is the detectable half of the purity
+            // line; the rest is convention.
+            if (expression is AssignmentExpressionSyntax { Left: { } lhs } && Roots(lhs, _subject)) {
+                _owner.Report(ValidationDiagnostics.NotTranscribable, report,
+                    _declaringClass.Name, "an assignment to the subject - validation does not mutate its value");
+                return;
+            }
+
+            // Type-driven auto-flow-wrap: any expression-statement whose type is ValidationFlow is
+            // checked and propagated. No method list to maintain - it covers every Report helper,
+            // future ones, and user helpers returning a flow. Assigning the flow opts out.
+            var type = _model.GetTypeInfo(expression).Type;
+
+            if (type?.ToDisplayString() == "ValidationModules.ValidationFlow") {
+                Line(depth, $"if (({Rewrite(expression)}).ShouldStop) {{");
+                Line(depth + 1, $"return {Flow}.Stop;");
+                Line(depth, "}");
+                return;
+            }
+
+            Line(depth, $"{Rewrite(expression)};");
+        }
+
+        private void ReadIf(IfStatementSyntax conditional, int depth, bool inLoop) {
+            Line(depth, $"if ({Rewrite(conditional.Condition)}) {{");
+            ReadEmbedded(conditional.Statement, depth + 1, inLoop);
+
+            var alternative = conditional.Else;
+
+            while (alternative is not null) {
+                if (alternative.Statement is IfStatementSyntax chained) {
+                    Line(depth, $"}} else if ({Rewrite(chained.Condition)}) {{");
+                    ReadEmbedded(chained.Statement, depth + 1, inLoop);
+                    alternative = chained.Else;
+                } else {
+                    Line(depth, "} else {");
+                    ReadEmbedded(alternative.Statement, depth + 1, inLoop);
+                    alternative = null;
+                }
+            }
+
+            Line(depth, "}");
+        }
+
+        private void ReadSwitch(SwitchStatementSyntax dispatch, int depth, bool inLoop) {
+            Line(depth, $"switch ({Rewrite(dispatch.Expression)}) {{");
+
+            foreach (var section in dispatch.Sections) {
+                foreach (var label in section.Labels) {
+                    Line(depth + 1, Rewrite(label).TrimEnd());
+                }
+
+                ReadBlock(section.Statements, depth + 2, inLoop);
+            }
+
+            Line(depth, "}");
+        }
+
+        private void ReadLoop(StatementSyntax loop, StatementSyntax body, string header, int depth) {
+            _ = loop;
+            Line(depth, $"{header} {{");
+            ReadEmbedded(body, depth + 1, inLoop: true);
+            Line(depth, "}");
+        }
+
+        private void ReadEmbedded(StatementSyntax statement, int depth, bool inLoop) {
+            if (statement is BlockSyntax block) {
+                ReadBlock(block.Statements, depth, inLoop);
+            } else {
+                ReadStatement(statement, depth, inLoop);
+            }
+        }
+
+        // ---- islands ---------------------------------------------------------------------------
+
+        /// <summary>Whether the expression is an invocation chain hanging off the builder parameter.</summary>
+        private bool RootsAtBuilder(ExpressionSyntax expression) {
+            var current = expression;
+
             while (true) {
-                switch (expression) {
+                switch (current) {
                     case InvocationExpressionSyntax invocation:
-                        chain.Add(invocation);
-                        expression = invocation.Expression;
+                        current = invocation.Expression;
                         continue;
 
                     case MemberAccessExpressionSyntax member:
-                        expression = member.Expression;
+                        current = member.Expression;
                         continue;
 
-                    case IdentifierNameSyntax identifier when identifier.Identifier.Text == _parameter:
-                        return true;
+                    case IdentifierNameSyntax identifier:
+                        return SymbolEqualityComparer.Default.Equals(
+                            _model.GetSymbolInfo(identifier).Symbol, _builder);
 
                     default:
-                        _owner.Report(ValidationDiagnostics.NotARuleDeclaration, expression, _rulesClass.Name);
                         return false;
                 }
             }
         }
 
-        /// <summary>
-        /// Reads one call in a chain and returns the property it leaves anchored.
-        /// </summary>
-        private IPropertySymbol? ReadCall(
-            InvocationExpressionSyntax call, IPropertySymbol? inherited, int statementStart) {
-            if (_model.GetSymbolInfo(call).Symbol is not IMethodSymbol method) {
-                _owner.Report(ValidationDiagnostics.NotARuleDeclaration, call, _rulesClass.Name);
-                return inherited;
+        private bool Roots(ExpressionSyntax expression, ISymbol? root) {
+            if (root is null) {
+                return false;
             }
 
-            var arguments = Arguments(call, method);
-            var name = method.Name;
+            var current = expression;
 
-            if (name == "Apply") {
-                ReadApply(call, arguments);
-                return inherited;
+            while (current is MemberAccessExpressionSyntax member) {
+                current = member.Expression;
             }
 
-            if (name == "Ensure") {
-                ReadEnsure(call, arguments);
-                return inherited;
-            }
+            return current is IdentifierNameSyntax identifier &&
+                SymbolEqualityComparer.Default.Equals(_model.GetSymbolInfo(identifier).Symbol, root);
+        }
 
-            if (name is "When" or "Unless") {
-                // Arity separates the two shapes cleanly: one argument terminates a statement, two
-                // open a block. Nothing else has to tell them apart.
-                if (method.Parameters.Length == 1) {
-                    StampStatement(call, arguments, statementStart, negated: name == "Unless");
+        private void ReadIsland(ExpressionSyntax expression, int depth, SyntaxNode report) {
+            var chain = new List<InvocationExpressionSyntax>();
+            var current = expression;
+
+            while (true) {
+                if (current is InvocationExpressionSyntax invocation) {
+                    chain.Add(invocation);
+                    current = invocation.Expression;
+                } else if (current is MemberAccessExpressionSyntax member) {
+                    current = member.Expression;
                 } else {
-                    ReadBlock(call, arguments, negated: name == "Unless");
-                }
-
-                return inherited;
-            }
-
-            if (name == "Otherwise") {
-                ReadOtherwise(call, arguments);
-                return inherited;
-            }
-
-            var anchor = arguments.TryGetValue("value", out var selector)
-                ? PropertyOf(selector)
-                : inherited;
-
-            if (anchor is null) {
-                _owner.Report(ValidationDiagnostics.SelectorNotAPath, call, _rulesClass.Name);
-                return null;
-            }
-
-            var explicitField = ExplicitField(arguments);
-            var field = _owner._fieldNamer(anchor.Name);
-            var constraint = ConstraintFor(name, arguments, call);
-
-            if (constraint is not null) {
-                // On the constraint, never on the property. A property carries several rules and
-                // each may name a different field, so a per-property name lets the first one win
-                // and repaths everything else anchored there - including a nested descent, which
-                // pushes the property's name as a path segment.
-                AddRule(new DeclaredRule(anchor, field, constraint with { Field = explicitField }, Nesting.None));
-            } else if (name is "Nested" or "Each") {
-                // A descent is the one rule with no constraint to carry a rename, and the segment
-                // it pushes is the property's name - so here the property is the right home for it.
-                AddRule(new DeclaredRule(anchor, explicitField ?? field, null,
-                    name == "Nested" ? Nesting.Object : Nesting.Elements));
-            } else if (name != "For") {
-                _owner.Report(ValidationDiagnostics.NotARuleDeclaration, call, _rulesClass.Name);
-            }
-
-            return anchor;
-        }
-
-        private ConstraintModel? ConstraintFor(
-            string name, IReadOnlyDictionary<string, ExpressionSyntax> arguments, InvocationExpressionSyntax call) =>
-            name switch {
-                "Required" => new ConstraintModel(ConstraintKind.Required),
-                "RequiredAllowingEmpty" => new ConstraintModel(ConstraintKind.Required, AllowEmptyStrings: true),
-                "Length" => new ConstraintModel(
-                    ConstraintKind.StringLength,
-                    Min: Bound(arguments, "min", "0"),
-                    Max: Bound(arguments, "max", int.MaxValue.ToString())),
-                "Count" => new ConstraintModel(
-                    ConstraintKind.ItemCount,
-                    Min: Bound(arguments, "min", "0"),
-                    Max: Bound(arguments, "max", int.MaxValue.ToString())),
-                // Null rather than a "0" fallback for the bound a one-sided form does not take: an
-                // omitted bound has to stay omitted all the way to the emitter, or it becomes a
-                // comparison the author never wrote and a bound the message quotes back at a caller.
-                "Range" => new ConstraintModel(
-                    ConstraintKind.Range,
-                    Min: OptionalBound(arguments, "min"),
-                    Max: OptionalBound(arguments, "max")),
-                "RangeAtLeast" => new ConstraintModel(
-                    ConstraintKind.Range,
-                    Min: OptionalBound(arguments, "min")),
-                "RangeAtMost" => new ConstraintModel(
-                    ConstraintKind.Range,
-                    Max: OptionalBound(arguments, "max")),
-                "Unique" => new ConstraintModel(ConstraintKind.UniqueItems),
-
-                // The divisor is carried as written and resolved against the member's type by the
-                // shared front-end pass, the same as a [MultipleOf] argument is.
-                "MultipleOf" => new ConstraintModel(
-                    ConstraintKind.MultipleOf,
-                    Divisor: Bound(arguments, "divisor", "1")),
-                "Pattern" => PatternConstraint(arguments, call),
-                "AllowedValues" => AllowedValuesConstraint(arguments, call),
-                _ => null,
-            };
-
-        private ConstraintModel? PatternConstraint(
-            IReadOnlyDictionary<string, ExpressionSyntax> arguments, InvocationExpressionSyntax call) {
-
-            if (!arguments.TryGetValue("pattern", out var accessor)) {
-                _owner.Report(ValidationDiagnostics.NotARuleDeclaration, call, _rulesClass.Name);
-                return null;
-            }
-
-            // The accessor is a method group, so the emitted form is that method invoked. No inline
-            // pattern can reach here at all, which is why VM0017's policy has nothing to say about a
-            // rules class - the AOT-clean spelling is the only one this surface offers.
-            return _model.GetSymbolInfo(accessor).Symbol is IMethodSymbol regex
-                ? new ConstraintModel(ConstraintKind.Pattern,
-                    RegexAccessor: $"{regex.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{regex.Name}()")
-                : null;
-        }
-
-        private ConstraintModel AllowedValuesConstraint(
-            IReadOnlyDictionary<string, ExpressionSyntax> arguments, InvocationExpressionSyntax call) {
-
-            var values = new List<string>();
-
-            foreach (var argument in call.ArgumentList.Arguments) {
-                if (argument.Expression == (arguments.TryGetValue("value", out var selector) ? selector : null)) {
-                    continue;
-                }
-
-                if (_model.GetConstantValue(argument.Expression) is { HasValue: true }) {
-                    values.Add(argument.Expression.ToString());
+                    break;
                 }
             }
 
-            return new ConstraintModel(
-                ConstraintKind.AllowedValues,
-                Values: new EquatableArray<string>(System.Collections.Immutable.ImmutableArray.CreateRange(values)));
+            chain.Reverse();
+
+            var expansion = new IslandExpansion(this, depth);
+
+            foreach (var call in chain) {
+                if (!expansion.ReadCall(call, report)) {
+                    return;
+                }
+            }
+
+            expansion.Emit();
         }
 
-        private void ReadEnsure(InvocationExpressionSyntax call, IReadOnlyDictionary<string, ExpressionSyntax> arguments) {
-            if (!arguments.TryGetValue("predicate", out var predicate)) {
-                _owner.Report(ValidationDiagnostics.NotARuleDeclaration, call, _rulesClass.Name);
-                return;
-            }
+        private bool ReachesThroughContext(ExpressionSyntax expression) {
+            for (var current = expression; ;) {
+                switch (current) {
+                    case InvocationExpressionSyntax invocation:
+                        current = invocation.Expression;
+                        continue;
 
-            if (!IsSelfContained(predicate)) {
-                return;
-            }
-
-            var text = predicate.ToString();
-            var anchor = RuleText.AnchorOfPredicate(text) is { } name ? PropertyNamed(name) : null;
-
-            // The anchor has to resolve to a property, even when field: renames the error. A rule is
-            // emitted in its anchored property's chain so that both engines agree on ordering (§4.2),
-            // and there is nowhere to put one that belongs to no property. field: renames; it does
-            // not detach.
-            if (anchor is null) {
-                _owner.Report(ValidationDiagnostics.EnsureHasNoField, call, _rulesClass.Name);
-                return;
-            }
-
-            // Not ExplicitField(...) - that goes on the constraint below. The rule's own field is
-            // the anchor's, because it is what positions the rule in that property's chain.
-            var field = _owner._fieldNamer(anchor.Name);
-            var lifted = $"Rule{_liftedRules++}";
-            _predicates.Add(new LiftedPredicate(lifted, predicate, LiftBody(predicate)));
-
-            var accessor = $"global::{Namespace()}{_rulesClass.Name}_Rules.{lifted}";
-
-            AddRule(new DeclaredRule(
-                anchor,
-                field,
-                new ConstraintModel(
-                    ConstraintKind.Predicate,
-                    Code: Literal(arguments, "code"),
-                    Message: Literal(arguments, "message")
-                        ?? RuleText.RenderPredicate(text, _owner._fieldNamer),
-                    PredicateAccessor: accessor,
-                    // Carried on the constraint, not the property: several rules can anchor to one
-                    // property and each name a different field, so a per-property name would let
-                    // the first one silently win.
-                    Field: ExplicitField(arguments),
-                    Severity: SeverityOf(arguments)),
-                Nesting.None));
-        }
-
-        /// <summary>
-        /// Adds a rule carrying whatever conditional blocks are open around it.
-        /// </summary>
-        private void AddRule(DeclaredRule rule) {
-            if (_open.Count > 0) {
-                // Nested blocks conjoin rather than replace, with no depth limit worth imposing.
-                rule = Conditioned(rule, string.Join(" && ", _open));
-            }
-
-            _rules.Add(rule);
-        }
-
-        /// <summary>
-        /// Conditions every rule the current statement declared - the one-argument
-        /// <c>.When()</c> / <c>.Unless()</c> form.
-        /// </summary>
-        /// <remarks>
-        /// Scope is the statement, which is already the unit this reader walks. That is what removes
-        /// the need for FluentValidation's <c>ApplyConditionTo</c>: there is no retroactive default
-        /// to opt out of, because nothing reaches past the semicolon.
-        /// </remarks>
-        private void StampStatement(
-            InvocationExpressionSyntax call,
-            IReadOnlyDictionary<string, ExpressionSyntax> arguments,
-            int statementStart,
-            bool negated) {
-
-            if (!arguments.TryGetValue("condition", out var predicate)) {
-                _owner.Report(ValidationDiagnostics.NotARuleDeclaration, call, _rulesClass.Name);
-                return;
-            }
-
-            if (!IsLambda(predicate, call) || !IsSelfContained(predicate)) {
-                return;
-            }
-
-            ReportIfConstant(predicate, call, negated);
-
-            if (statementStart >= _rules.Count) {
-                _owner.Report(
-                    ValidationDiagnostics.ConditionAppliesToNoRules, call, negated ? "Unless" : "When");
-                return;
-            }
-
-            var condition = Lift(predicate, negated);
-
-            for (var i = statementStart; i < _rules.Count; i++) {
-                _rules[i] = Conditioned(_rules[i], condition);
-            }
-        }
-
-        /// <summary>
-        /// Reads a <c>When(condition, () =&gt; …)</c> block, with the condition open over its body.
-        /// </summary>
-        private void ReadBlock(
-            InvocationExpressionSyntax call,
-            IReadOnlyDictionary<string, ExpressionSyntax> arguments,
-            bool negated) {
-
-            if (!arguments.TryGetValue("condition", out var predicate) ||
-                !arguments.TryGetValue("rules", out var body)) {
-                _owner.Report(ValidationDiagnostics.NotARuleDeclaration, call, _rulesClass.Name);
-                return;
-            }
-
-            if (!IsLambda(predicate, call) || !IsSelfContained(predicate)) {
-                return;
-            }
-
-            ReportIfConstant(predicate, call, negated);
-
-            var lifted = LiftCall(predicate);
-
-            _lastBlockCall = lifted;
-            _lastBlockNegated = negated;
-
-            ReadBlockBody(call, body, negated ? $"!({lifted})" : lifted, negated ? "Unless" : "When");
-        }
-
-        /// <summary>
-        /// Reads the <c>Otherwise</c> half, reusing the block's own lifted method negated rather
-        /// than lifting a second one for the same lambda.
-        /// </summary>
-        private void ReadOtherwise(
-            InvocationExpressionSyntax call, IReadOnlyDictionary<string, ExpressionSyntax> arguments) {
-
-            if (_lastBlockCall is not { } lifted || !arguments.TryGetValue("rules", out var body)) {
-                _owner.Report(ValidationDiagnostics.NotARuleDeclaration, call, _rulesClass.Name);
-                return;
-            }
-
-            ReadBlockBody(call, body, _lastBlockNegated ? lifted : $"!({lifted})", "Otherwise");
-        }
-
-        private void ReadBlockBody(
-            InvocationExpressionSyntax call, ExpressionSyntax body, string condition, string what) {
-
-            var start = _rules.Count;
-
-            _open.Add(condition);
-
-            try {
-                switch (body) {
-                    case ParenthesizedLambdaExpressionSyntax { Block: { } block }:
-                        foreach (var statement in block.Statements) {
-                            Read(statement);
+                    case MemberAccessExpressionSyntax member:
+                        if (member.Name.Identifier.Text == "Context" &&
+                            member.Expression is IdentifierNameSyntax root &&
+                            SymbolEqualityComparer.Default.Equals(_model.GetSymbolInfo(root).Symbol, _builder)) {
+                            return true;
                         }
 
-                        break;
-
-                    // A block that says one thing does not have to open braces to say it, for the
-                    // same reason an expression-bodied Describe does not.
-                    case ParenthesizedLambdaExpressionSyntax { ExpressionBody: { } expression }:
-                        ReadExpression(expression);
-                        break;
+                        current = member.Expression;
+                        continue;
 
                     default:
-                        _owner.Report(ValidationDiagnostics.NotARuleDeclaration, call, _rulesClass.Name);
-                        break;
+                        return false;
                 }
-            } finally {
-                _open.RemoveAt(_open.Count - 1);
-            }
-
-            if (_rules.Count == start) {
-                _owner.Report(ValidationDiagnostics.EmptyConditionalBlock, call, what, _rulesClass.Name);
             }
         }
 
-        /// <summary>
-        /// Reports a condition whose body the compiler can fold to a constant.
-        /// </summary>
-        /// <remarks>
-        /// The one check here no runtime library could offer: a described engine holds a delegate
-        /// and cannot know what it returns without calling it, where the generator has the
-        /// expression in hand. Roslyn does the folding, so <c>x =&gt; 1 &gt; 2</c> is caught along
-        /// with the literal.
-        /// </remarks>
-        private void ReportIfConstant(ExpressionSyntax predicate, InvocationExpressionSyntax call, bool negated) {
-            var body = predicate switch {
-                SimpleLambdaExpressionSyntax { ExpressionBody: { } expression } => expression,
-                ParenthesizedLambdaExpressionSyntax { ExpressionBody: { } expression } => expression,
-                _ => null,
-            };
+        // ---- fragments -------------------------------------------------------------------------
 
-            if (body is null || _model.GetConstantValue(body) is not { HasValue: true, Value: bool folded }) {
+        private bool IsFragmentCall(
+            ExpressionSyntax expression, out InvocationExpressionSyntax? call, out IMethodSymbol? method) {
+
+            call = null;
+            method = null;
+
+            if (expression is not InvocationExpressionSyntax invocation ||
+                _model.GetSymbolInfo(invocation).Symbol is not IMethodSymbol candidate) {
+                return false;
+            }
+
+            var resolved = candidate.ReducedFrom is { } reduced
+                ? reduced.Construct(candidate.TypeArguments.ToArray())
+                : candidate;
+
+            if (!resolved.IsStatic || !resolved.ReturnsVoid) {
+                return false;
+            }
+
+            // Receives the builder, in any position - the reduced extension receiver included.
+            var receivesBuilder =
+                (candidate.ReducedFrom is not null && invocation.Expression is MemberAccessExpressionSyntax { Expression: { } receiver } &&
+                    Roots(receiver, _builder)) ||
+                invocation.ArgumentList.Arguments.Any(argument =>
+                    argument.Expression is IdentifierNameSyntax name &&
+                    SymbolEqualityComparer.Default.Equals(_model.GetSymbolInfo(name).Symbol, _builder));
+
+            if (!receivesBuilder) {
+                return false;
+            }
+
+            if (!resolved.Parameters.Any(parameter =>
+                    parameter.Type is INamedTypeSymbol named &&
+                    named.ConstructedFrom.ToDisplayString() == KnownTypes.ValidationRulesBuilder)) {
+                return false;
+            }
+
+            call = invocation;
+            method = resolved;
+
+            return true;
+        }
+
+        private void ReadFragmentCall(InvocationExpressionSyntax call, IMethodSymbol method, int depth) {
+            var fragment = _owner.FragmentFor(method, _target, _compilation, call, _expanding);
+
+            if (fragment is null) {
                 return;
             }
 
-            var holds = negated ? !folded : folded;
+            // The subject argument must be the subject parameter - a facet of a child is Nested's
+            // territory, where the path pushes.
+            var arguments = MapArguments(
+                call, method,
+                reducedForm: _model.GetSymbolInfo(call).Symbol is IMethodSymbol { ReducedFrom: not null });
 
-            _owner.Report(
-                ValidationDiagnostics.ConstantCondition, call,
-                holds ? "true" : "false",
-                holds
-                    ? "the guard is noise - the rules it covers always apply"
-                    : "the rules it covers can never fire");
+            if (fragment.Subject is { } subjectParameter) {
+                if (!arguments.TryGetValue(subjectParameter.Name, out var subjectArgument) ||
+                    !(subjectArgument is IdentifierNameSyntax name &&
+                        SymbolEqualityComparer.Default.Equals(_model.GetSymbolInfo(name).Symbol, _subject))) {
+                    _owner.Report(ValidationDiagnostics.RulesFlowNotFollowable, call,
+                        $"the fragment's {_target.Name} parameter must be passed the Describe subject");
+                    return;
+                }
+            }
+
+            var rendered = new List<string> { "ref ctx" };
+
+            if (fragment.Subject is not null) {
+                rendered.Add(_subject!.Name);
+            }
+
+            foreach (var extra in fragment.ExtraParameters) {
+                if (arguments.TryGetValue(extra.Name, out var argument)) {
+                    rendered.Add(Rewrite(argument));
+                } else if (extra.HasExplicitDefaultValue) {
+                    rendered.Add(FormatDefault(extra));
+                } else {
+                    rendered.Add("default");
+                }
+            }
+
+            var ns = fragment.Definition.ContainingType.ContainingNamespace.IsGlobalNamespace
+                ? string.Empty
+                : fragment.Definition.ContainingType.ContainingNamespace.ToDisplayString() + ".";
+
+            Line(depth,
+                $"if (global::{ns}{fragment.Definition.ContainingType.Name}_Fragments.{fragment.Name}({string.Join(", ", rendered)}).ShouldStop) {{");
+            Line(depth + 1, $"return {Flow}.Stop;");
+            Line(depth, "}");
+        }
+
+        private static string FormatDefault(IParameterSymbol parameter) =>
+            parameter.ExplicitDefaultValue is null
+                ? parameter.Type.IsReferenceType ? "null" : "default"
+                : SymbolDisplay.FormatPrimitive(parameter.ExplicitDefaultValue, quoteStrings: true, useHexadecimalNumbers: false)
+                    ?? "default";
+
+        /// <summary>
+        /// Maps a call's arguments onto parameter names, so nothing downstream depends on position
+        /// and a caller may pass <c>field:</c> or <c>max:</c> wherever they like.
+        /// </summary>
+        /// <param name="parameters">
+        /// The unreduced parameter owner. A reduced extension call carries its receiver outside
+        /// the argument list, so the first parameter is skipped to keep positions lined up.
+        /// </param>
+        private Dictionary<string, ExpressionSyntax> MapArguments(
+            InvocationExpressionSyntax call, IMethodSymbol parameters, bool reducedForm) {
+
+            var mapped = new Dictionary<string, ExpressionSyntax>(StringComparer.Ordinal);
+            var position = reducedForm ? 1 : 0;
+
+            foreach (var argument in call.ArgumentList.Arguments) {
+                if (argument.NameColon is { } named) {
+                    mapped[named.Name.Identifier.Text] = argument.Expression;
+                    continue;
+                }
+
+                if (position < parameters.Parameters.Length) {
+                    mapped[parameters.Parameters[position].Name] = argument.Expression;
+                }
+
+                position++;
+            }
+
+            return mapped;
+        }
+
+        // ---- transcription ---------------------------------------------------------------------
+
+        private void GuardIslandsInside(SyntaxNode scope, string what) {
+            foreach (var node in scope.DescendantNodes()) {
+                if (node is IdentifierNameSyntax identifier &&
+                    SymbolEqualityComparer.Default.Equals(_model.GetSymbolInfo(identifier).Symbol, _builder)) {
+                    _owner.Report(ValidationDiagnostics.IslandInUnreadableScope, identifier, _declaringClass.Name);
+                    return;
+                }
+            }
+
+            _ = what;
+        }
+
+        private void Transcribe(StatementSyntax statement, int depth) {
+            foreach (var line in Rewrite(statement).Split('\n')) {
+                Line(depth, line.TrimEnd('\r'));
+            }
+        }
+
+        private string RewriteOptional(ExpressionSyntax? expression) =>
+            expression is null ? string.Empty : Rewrite(expression);
+
+        private string Rewrite(SyntaxNode node) {
+            GuardBuilderInside(node);
+            CheckAccessibility(node);
+
+            var rewriter = new TranscriptionRewriter(this);
+            var rewritten = rewriter.Visit(node);
+
+            return rewritten.NormalizeWhitespace("    ", "\n").ToFullString();
+        }
+
+        private string Rewrite(string text) => text;
+
+        /// <summary>
+        /// Invariant 1: inside transcribed code the builder may appear only under
+        /// <c>rules.Context</c>. Everywhere else it is a flow the reader cannot follow - stored,
+        /// captured, returned, or passed somewhere unreadable - and would transcribe into a call on
+        /// the inert surface that validates nothing.
+        /// </summary>
+        private void GuardBuilderInside(SyntaxNode node) {
+            foreach (var identifier in node.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>()) {
+                if (!SymbolEqualityComparer.Default.Equals(_model.GetSymbolInfo(identifier).Symbol, _builder)) {
+                    continue;
+                }
+
+                if (identifier.Parent is MemberAccessExpressionSyntax { Name.Identifier.Text: "Context" } access &&
+                    access.Expression == identifier) {
+                    continue;
+                }
+
+                _owner.Report(ValidationDiagnostics.RulesFlowNotFollowable, identifier,
+                    "store it, capture it, return it, or pass it to anything the generator cannot read");
+            }
         }
 
         /// <summary>
-        /// Whether the condition was written as a lambda, which is the only form that can be lifted.
+        /// Invariant 2: everything transcribed must compile in the companion file. The companion is
+        /// internal to the same assembly, so what breaks is <c>private</c>/<c>protected</c> members
+        /// of the rules class - caught here, with "make it internal", instead of surfacing inside
+        /// generated code.
         /// </summary>
-        /// <remarks>
-        /// A method group reaches the emitter with no body to copy, and the lifted method would come
-        /// out as <c>=&gt; true</c> - a condition that silently holds always, in generated code
-        /// nobody reads. Reported rather than emitted: this is exactly the class of quiet wrong
-        /// answer the no-emit-after-diagnostic rule exists to prevent.
-        /// </remarks>
-        private bool IsLambda(ExpressionSyntax predicate, InvocationExpressionSyntax call) {
-            if (predicate is SimpleLambdaExpressionSyntax { ExpressionBody: not null } or
-                ParenthesizedLambdaExpressionSyntax { ExpressionBody: not null }) {
-                return true;
-            }
+        private void CheckAccessibility(SyntaxNode node) {
+            foreach (var identifier in node.DescendantNodesAndSelf().OfType<SimpleNameSyntax>()) {
+                var symbol = _model.GetSymbolInfo(identifier).Symbol;
 
-            _owner.Report(ValidationDiagnostics.NotARuleDeclaration, call, _rulesClass.Name);
-
-            return false;
-        }
-
-        /// <summary>
-        /// Lifts a condition lambda into a static method and returns the call to it.
-        /// </summary>
-        /// <summary>
-        /// The predicate's body, rewritten so that it compiles where it is going to be written.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// A predicate is lifted into <c>{RulesClass}_Rules</c> so it keeps its declaring file's
-        /// using directives. The cost is that a name which resolved inside the rules class does not
-        /// resolve there: <c>x =&gt; x.Count &lt;= Max</c> becomes CS0103, whatever <c>Max</c>'s
-        /// accessibility, because the lifted method is simply not in that scope.
-        /// </para>
-        /// <para>
-        /// So a bare reference to one of the rules class's own members is qualified. That reads the
-        /// real member rather than a copy of it, which is what keeps the two engines agreeing: the
-        /// described engine runs the original lambda, and it must see the same value.
-        /// </para>
-        /// <para>
-        /// A <c>private</c> member cannot be reached even qualified. A constant is carried across by
-        /// value - C# already bakes a const at every use site, so both engines see the same number
-        /// either way - and anything else is VM0078.
-        /// </para>
-        /// </remarks>
-        private string LiftBody(ExpressionSyntax lambda) {
-            var body = lambda switch {
-                SimpleLambdaExpressionSyntax { ExpressionBody: { } expression } => expression,
-                ParenthesizedLambdaExpressionSyntax { ExpressionBody: { } expression } => expression,
-                _ => null,
-            };
-
-            if (body is null) {
-                return "true";
-            }
-
-            var qualified = _rulesClass.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-            var edits = new List<(int Start, int Length, string Text)>();
-
-            foreach (var identifier in body.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>()) {
-                // The right-hand side of a member access is already anchored by whatever precedes
-                // it; only a bare name has lost its scope.
-                if (identifier.Parent is MemberAccessExpressionSyntax access && access.Name == identifier) {
+                if (symbol is null or ILocalSymbol or IParameterSymbol or IRangeVariableSymbol
+                    or IDiscardSymbol or ILabelSymbol) {
                     continue;
                 }
 
-                if (_model.GetSymbolInfo(identifier).Symbol is not { IsStatic: true } symbol ||
-                    symbol.ContainingType is not { } declaring ||
-                    !DeclaredByTheRulesClass(declaring)) {
+                if (symbol is IMethodSymbol { MethodKind: MethodKind.LambdaMethod or MethodKind.LocalFunction }) {
                     continue;
                 }
 
-                var start = identifier.Span.Start - body.Span.Start;
-
-                if (_model.Compilation.IsSymbolAccessibleWithin(symbol, _rulesClass.ContainingAssembly)) {
-                    edits.Add((start, identifier.Span.Length, $"{qualified}.{identifier.Identifier.Text}"));
+                // A private constant is carried across by value instead - C# bakes a const at
+                // every use site already, so the copy and the original are the same value by the
+                // language's own rules. Everything else private is the diagnostic.
+                if (symbol is IFieldSymbol { HasConstantValue: true } bakeable &&
+                    ConstantText(identifier, bakeable) is not null) {
                     continue;
                 }
 
-                if (ConstantText(identifier) is { } literal) {
-                    edits.Add((start, identifier.Span.Length, literal));
-                    continue;
-                }
-
-                _owner.Report(
-                    ValidationDiagnostics.PredicateReferencesPrivateMember, identifier,
-                    $"{_rulesClass.Name}.{identifier.Identifier.Text}");
-            }
-
-            var text = body.ToString();
-
-            // Right to left, so an earlier edit does not move a later one's offsets.
-            foreach (var (start, length, replacement) in edits.OrderByDescending(edit => edit.Start)) {
-                text = text.Remove(start, length).Insert(start, replacement);
-            }
-
-            return text;
-        }
-
-        private bool DeclaredByTheRulesClass(INamedTypeSymbol declaring) {
-            for (INamedTypeSymbol? current = _rulesClass; current is not null; current = current.BaseType) {
-                if (SymbolEqualityComparer.Default.Equals(current, declaring)) {
-                    return true;
+                if (!_compilation.IsSymbolAccessibleWithin(symbol, _declaringClass.ContainingAssembly)) {
+                    _owner.Report(ValidationDiagnostics.MemberNotReachableFromRegion, identifier,
+                        symbol.Name, _declaringClass.Name);
                 }
             }
-
-            return false;
         }
 
         /// <summary>
@@ -684,20 +869,9 @@ public sealed class RulesFrontEnd {
         /// formatting only became the default in .NET Core 3.0, and this assembly is netstandard2.0
         /// and may be loaded into a .NET Framework host. Both formats round-trip everywhere.
         /// </para>
-        /// <para>
-        /// There is no fidelity question about doing this at all: C# bakes a constant into every use
-        /// site already, so the lifted copy and the original are the same value by the language's
-        /// own rules rather than by our arithmetic.
-        /// </para>
         /// </remarks>
-        private string? ConstantText(ExpressionSyntax identifier) {
-            var constant = _model.GetConstantValue(identifier);
-
-            if (!constant.HasValue) {
-                return null;
-            }
-
-            if (constant.Value is not { } value) {
+        private string? ConstantText(SyntaxNode identifier, IFieldSymbol field) {
+            if (field.ConstantValue is not { } value) {
                 return "null";
             }
 
@@ -705,7 +879,7 @@ public sealed class RulesFrontEnd {
             // it read back as itself. A cast rather than a member name, because a value need not
             // correspond to any declared member - a [Flags] combination is an ordinary constant.
             if (_model.GetTypeInfo(identifier).Type is { TypeKind: TypeKind.Enum } enumType) {
-                return _model.Compilation.IsSymbolAccessibleWithin(enumType, _rulesClass.ContainingAssembly)
+                return _compilation.IsSymbolAccessibleWithin(enumType, _declaringClass.ContainingAssembly)
                     && Primitive(value) is { } underlying
                         ? $"({enumType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}){underlying}"
                         : null;
@@ -718,30 +892,29 @@ public sealed class RulesFrontEnd {
             bool or string or char => SymbolDisplay.FormatPrimitive(value, quoteStrings: true, useHexadecimalNumbers: false),
             sbyte or byte or short or ushort or int =>
                 SymbolDisplay.FormatPrimitive(value, quoteStrings: false, useHexadecimalNumbers: false),
-            uint number => $"{number.ToString(CultureInfo.InvariantCulture)}U",
-            long number => $"{number.ToString(CultureInfo.InvariantCulture)}L",
-            ulong number => $"{number.ToString(CultureInfo.InvariantCulture)}UL",
+            uint number => $"{number.ToString(System.Globalization.CultureInfo.InvariantCulture)}U",
+            long number => $"{number.ToString(System.Globalization.CultureInfo.InvariantCulture)}L",
+            ulong number => $"{number.ToString(System.Globalization.CultureInfo.InvariantCulture)}UL",
             float number => Floating(
-                number, float.IsNaN(number), float.IsPositiveInfinity(number), float.IsNegativeInfinity(number),
-                "float", number.ToString("G9", CultureInfo.InvariantCulture), "F"),
+                float.IsNaN(number), float.IsPositiveInfinity(number), float.IsNegativeInfinity(number),
+                "float", number.ToString("G9", System.Globalization.CultureInfo.InvariantCulture), "F"),
             double number => Floating(
-                number, double.IsNaN(number), double.IsPositiveInfinity(number), double.IsNegativeInfinity(number),
-                "double", number.ToString("G17", CultureInfo.InvariantCulture), "D"),
+                double.IsNaN(number), double.IsPositiveInfinity(number), double.IsNegativeInfinity(number),
+                "double", number.ToString("G17", System.Globalization.CultureInfo.InvariantCulture), "D"),
 
             // ToString round-trips a decimal exactly, scale included - 1.50m stays 1.50m rather
             // than collapsing to 1.5m, which is the same value but a different representation.
-            decimal number => $"{number.ToString(CultureInfo.InvariantCulture)}m",
+            decimal number => $"{number.ToString(System.Globalization.CultureInfo.InvariantCulture)}m",
             _ => null,
         };
 
         /// <summary>
         /// A floating-point literal, or the named member for the three values that have no literal.
+        /// The suffix is not decoration: G17 renders 10.0 as "10", which without it is an int.
         /// </summary>
         private static string Floating(
-            object value, bool nan, bool positiveInfinity, bool negativeInfinity,
+            bool nan, bool positiveInfinity, bool negativeInfinity,
             string type, string formatted, string suffix) {
-
-            _ = value;
 
             if (nan) {
                 return $"{type}.NaN";
@@ -755,286 +928,754 @@ public sealed class RulesFrontEnd {
                 return $"{type}.NegativeInfinity";
             }
 
-            // The suffix is not decoration: G17 renders 10.0 as "10", which without it is an int.
             return formatted + suffix;
         }
 
-        private string LiftCall(ExpressionSyntax predicate) {
-            var lifted = $"Cond{_liftedConditions++}";
-            _predicates.Add(new LiftedPredicate(lifted, predicate, LiftBody(predicate)));
-
-            return $"global::{Namespace()}{_rulesClass.Name}_Rules.{lifted}(value)";
-        }
-
-        private string Lift(ExpressionSyntax predicate, bool negated) {
-            var call = LiftCall(predicate);
-
-            return negated ? $"!({call})" : call;
-        }
-
-        /// <summary>
-        /// Adds <paramref name="condition"/> to whatever the rule already carries.
-        /// </summary>
-        /// <remarks>
-        /// Conjoined rather than replaced, so a chained <c>.When()</c> written inside a <c>When</c>
-        /// block means both. The emitter hoists each distinct call once, so repeating one across
-        /// several rules costs one evaluation, not several.
-        /// </remarks>
-        private static DeclaredRule Conditioned(DeclaredRule rule, string condition) => rule with {
-            Constraint = rule.Constraint is { } constraint
-                ? constraint with { Condition = Conjoin(constraint.Condition, condition) }
-                : null,
-            Condition = Conjoin(rule.Condition, condition),
-        };
-
-        private static string Conjoin(string? existing, string added) =>
-            existing is null ? added : $"{existing} && {added}";
-
-        private void ReadApply(InvocationExpressionSyntax call, IReadOnlyDictionary<string, ExpressionSyntax> arguments) {
-            if (!arguments.TryGetValue("rule", out var rule) ||
-                _model.GetSymbolInfo(rule).Symbol is not IMethodSymbol method) {
-                _owner.Report(ValidationDiagnostics.NotARuleDeclaration, call, _rulesClass.Name);
+        private void Line(int depth, string text) {
+            if (text.Length == 0) {
+                _lines.Add(string.Empty);
                 return;
             }
 
-            _applied.Add(
-                $"{method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{method.Name}");
+            _lines.Add(new string(' ', depth * 4) + text);
         }
 
         /// <summary>
-        /// Checks that a predicate reads only its own parameter and static or constant state.
+        /// The member path a value argument reads off the subject, or null when it is not one.
+        /// Conditional access is the nested-path spelling and reads through.
         /// </summary>
-        /// <remarks>
-        /// <para>
-        /// The rule that makes the two engines the same thing: the generator lifts the predicate into
-        /// a static method, and the runtime holds it as a delegate. A delegate can close over the
-        /// rules class instance and a static method cannot, so anything captured compiles on one path
-        /// and not on the other.
-        /// </para>
-        /// <para>
-        /// Caught here rather than left to the compiler because the compiler would catch it in the
-        /// <i>lifted</i> file - an error about a name that does not exist, in generated code, pointing
-        /// at a line nobody wrote. Plan §7.5 is explicit that this is the worst place for an error to
-        /// surface.
-        /// </para>
-        /// </remarks>
-        private bool IsSelfContained(ExpressionSyntax predicate) {
-            var declared = SymbolsDeclaredWithin(predicate);
+        private List<IPropertySymbol>? PathOf(ExpressionSyntax expression) {
+            var segments = new List<IPropertySymbol>();
+            var current = expression;
 
-            foreach (var node in predicate.DescendantNodesAndSelf()) {
-                if (node is ThisExpressionSyntax or BaseExpressionSyntax) {
-                    _owner.Report(ValidationDiagnostics.PredicateCapturesState, node, _rulesClass.Name);
+            while (true) {
+                switch (current) {
+                    case MemberAccessExpressionSyntax member:
+                        if (_model.GetSymbolInfo(member).Symbol is not IPropertySymbol property) {
+                            return null;
+                        }
+
+                        segments.Insert(0, property);
+                        current = member.Expression;
+                        continue;
+
+                    case ConditionalAccessExpressionSyntax conditional: {
+                        // x.Home?.PostalCode arrives as ConditionalAccess(x.Home, .PostalCode...).
+                        var tail = CollectBindings(conditional.WhenNotNull);
+
+                        if (tail is null) {
+                            return null;
+                        }
+
+                        segments.InsertRange(0, tail);
+                        current = conditional.Expression;
+                        continue;
+                    }
+
+                    case IdentifierNameSyntax identifier:
+                        return _subject is not null &&
+                            SymbolEqualityComparer.Default.Equals(_model.GetSymbolInfo(identifier).Symbol, _subject)
+                            ? segments
+                            : null;
+
+                    default:
+                        return null;
+                }
+            }
+        }
+
+        private List<IPropertySymbol>? CollectBindings(ExpressionSyntax whenNotNull) {
+            var segments = new List<IPropertySymbol>();
+            var current = whenNotNull;
+
+            while (true) {
+                switch (current) {
+                    case MemberBindingExpressionSyntax binding:
+                        if (_model.GetSymbolInfo(binding).Symbol is not IPropertySymbol bound) {
+                            return null;
+                        }
+
+                        segments.Insert(0, bound);
+                        return segments;
+
+                    case MemberAccessExpressionSyntax member:
+                        if (_model.GetSymbolInfo(member).Symbol is not IPropertySymbol property) {
+                            return null;
+                        }
+
+                        segments.Insert(0, property);
+                        current = member.Expression;
+                        continue;
+
+                    case ConditionalAccessExpressionSyntax nested: {
+                        var tail = CollectBindings(nested.WhenNotNull);
+
+                        if (tail is null) {
+                            return null;
+                        }
+
+                        segments.InsertRange(0, tail);
+                        current = nested.Expression;
+                        continue;
+                    }
+
+                    default:
+                        return null;
+                }
+            }
+        }
+
+        private string WirePathOf(List<IPropertySymbol> segments) =>
+            string.Join(".", segments.Select(_owner.WireNameOf));
+
+        // ---- the island expansion --------------------------------------------------------------
+
+        /// <summary>
+        /// One chained statement's constraints, gathered then emitted: a failed Require suppresses
+        /// the rest of its own chain through the shared <c>missing</c> local, exactly as the
+        /// attribute region's else-if does.
+        /// </summary>
+        private sealed class IslandExpansion {
+            private readonly RegionWriter _writer;
+            private readonly int _depth;
+
+            private ExpressionSyntax? _value;
+            private string? _access;
+            private ValidatedPropertyModel? _facts;
+            private string? _field;
+            private ConstraintModel? _required;
+            private readonly List<ConstraintModel> _constraints = new();
+            private readonly List<(bool Elements, ExpressionSyntax Value, string? Field)> _descents = new();
+
+            public IslandExpansion(RegionWriter writer, int depth) {
+                _writer = writer;
+                _depth = depth;
+            }
+
+            public bool ReadCall(InvocationExpressionSyntax call, SyntaxNode report) {
+                if (_writer._model.GetSymbolInfo(call).Symbol is not IMethodSymbol method) {
+                    _writer._owner.Report(ValidationDiagnostics.NotTranscribable, call,
+                        _writer._declaringClass.Name, "an unresolvable call on the builder");
                     return false;
                 }
 
-                if (node is not IdentifierNameSyntax identifier) {
-                    continue;
+                var name = method.Name;
+                var arguments = _writer.MapArguments(
+                    call, method.ReducedFrom ?? method, reducedForm: method.ReducedFrom is not null);
+
+                if (name == "Apply") {
+                    return ReadApply(call, arguments);
                 }
 
-                var symbol = _model.GetSymbolInfo(identifier).Symbol;
+                // The entry call carries the value; chained calls inherit its anchor.
+                if (arguments.TryGetValue("value", out var value)) {
+                    _value = value;
 
-                var captured = symbol switch {
-                    // A local or a parameter is a capture only when whatever declared it lies
-                    // outside the predicate. Inside covers the lambda's own parameter, an inner
-                    // lambda's parameter, a local the body declares for itself and a pattern
-                    // variable - none of which the lifted static method has to reach out for.
-                    ILocalSymbol or IParameterSymbol => !declared.Contains(symbol),
-                    IFieldSymbol { IsStatic: false } field =>
-                        SymbolEqualityComparer.Default.Equals(field.ContainingType, _rulesClass),
-                    IPropertySymbol { IsStatic: false } property =>
-                        SymbolEqualityComparer.Default.Equals(property.ContainingType, _rulesClass),
-                    IMethodSymbol { IsStatic: false } method =>
-                        SymbolEqualityComparer.Default.Equals(method.ContainingType, _rulesClass),
-                    _ => false,
+                    var path = _writer.PathOf(value);
+                    var explicitField = Literal(arguments, "field");
+
+                    if (path is null && explicitField is null && name is not "Ensure") {
+                        _writer._owner.Report(ValidationDiagnostics.SelectorNotAPath, call,
+                            _writer._declaringClass.Name);
+                        return false;
+                    }
+
+                    _access = value.ToString();
+                    _field = explicitField ?? _writer.WirePathOf(path!);
+                    _facts = FactsFor(value, path);
+                }
+
+                switch (name) {
+                    case "For":
+                        return true;
+
+                    case "Require":
+                    case "RequireAllowingEmpty":
+                        if (_facts is { IsString: false, IsReferenceType: false, IsNullableValueType: false }) {
+                            _writer._owner.Report(ValidationDiagnostics.RequireCannotFail, call,
+                                _access ?? "the value");
+                            return false;
+                        }
+
+                        _required = new ConstraintModel(
+                            ConstraintKind.Required,
+                            AllowEmptyStrings: name == "RequireAllowingEmpty",
+                            Field: Literal(arguments, "field"));
+                        return true;
+
+                    case "Ensure":
+                        return ReadEnsure(call, arguments);
+
+                    case "Nested":
+                        return ReadDescent(call, arguments, elements: false);
+
+                    case "Each":
+                        return ReadDescent(call, arguments, elements: true);
+
+                    default: {
+                        var constraint = ConstraintFor(name, arguments, call);
+
+                        if (constraint is null) {
+                            _writer._owner.Report(ValidationDiagnostics.NotTranscribable, report,
+                                _writer._declaringClass.Name, $"a call to '{name}' the reader does not know");
+                            return false;
+                        }
+
+                        _constraints.Add(constraint with { Field = Literal(arguments, "field") });
+                        return true;
+                    }
+                }
+            }
+
+            private bool ReadDescent(
+                InvocationExpressionSyntax call,
+                IReadOnlyDictionary<string, ExpressionSyntax> arguments,
+                bool elements) {
+
+                if (_writer._insideFragment) {
+                    _writer._owner.Report(ValidationDiagnostics.NotTranscribable, call,
+                        _writer._declaringClass.Name,
+                        "a descent inside a fragment - declare Nested and Each in the rules class body");
+                    return false;
+                }
+
+                var value = arguments.TryGetValue("value", out var argument) ? argument : _value;
+
+                if (value is null) {
+                    return false;
+                }
+
+                _descents.Add((elements, value, Literal(arguments, "field")));
+
+                return true;
+            }
+
+            private bool ReadApply(
+                InvocationExpressionSyntax call, IReadOnlyDictionary<string, ExpressionSyntax> arguments) {
+
+                if (_depth > 0 || _writer._insideFragment) {
+                    _writer._owner.Report(ValidationDiagnostics.NotTranscribable, call,
+                        _writer._declaringClass.Name,
+                        "Apply anywhere but the top of a Describe body - applied rules run last, unconditionally");
+                    return false;
+                }
+
+                if (!arguments.TryGetValue("rule", out var rule) ||
+                    _writer._model.GetSymbolInfo(rule).Symbol is not IMethodSymbol method) {
+                    _writer._owner.Report(ValidationDiagnostics.NotTranscribable, call,
+                        _writer._declaringClass.Name, "an Apply whose argument is not a method group");
+                    return false;
+                }
+
+                _writer._applied.Add(
+                    $"{method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{method.Name}");
+
+                return true;
+            }
+
+            private bool ReadEnsure(
+                InvocationExpressionSyntax call, IReadOnlyDictionary<string, ExpressionSyntax> arguments) {
+
+                if (!arguments.TryGetValue("condition", out var condition)) {
+                    return false;
+                }
+
+                var subject = _writer._subject?.Name ?? "x";
+                var text = condition.ToString();
+                var anchorName = RuleText.AnchorOfPredicate($"{subject} => {text}");
+                var explicitField = Literal(arguments, "field");
+
+                var anchor = anchorName is null
+                    ? null
+                    : _writer._target.GetMembers(anchorName).OfType<IPropertySymbol>().FirstOrDefault();
+
+                if (anchor is null && explicitField is null) {
+                    _writer._owner.Report(ValidationDiagnostics.EnsureHasNoField, call,
+                        _writer._declaringClass.Name);
+                    return false;
+                }
+
+                var field = explicitField ?? _writer._owner.WireNameOf(anchor!);
+                var message = Literal(arguments, "message")
+                    ?? RuleText.RenderPredicate($"{subject} => {text}", _writer._owner._fieldNamer);
+                var code = Literal(arguments, "code") is { } custom
+                    ? Quote(custom)
+                    : $"{Codes}.Predicate";
+                var severity = SeverityOf(arguments) is { } member ? $", {SeverityEnum}.{member}" : string.Empty;
+
+                // Never null-guarded: the condition may read fields other than its anchor, so null
+                // there is the author's, same as the attribute-region predicate.
+                _writer.Line(_depth,
+                    $"if (!({_writer.Rewrite(condition)}) && ctx.Report({Quote(field)}, {code}, {Quote(message)}{severity}).ShouldStop) {{");
+                _writer.Line(_depth + 1, $"return {Flow}.Stop;");
+                _writer.Line(_depth, "}");
+
+                return true;
+            }
+
+            public void Emit() {
+                string? missing = null;
+
+                if (_required is { } required && _access is { } access && _facts is { } facts) {
+                    var test = ValidatorEmitter.RequiredTest(access, facts, required);
+                    var field = Quote(required.Field ?? _field!);
+
+                    if (_constraints.Count > 0 || _descents.Count > 0) {
+                        missing = _writer.MissingLocal(facts.PropertyName);
+                        _writer.Line(_depth, $"var {missing} = {test};");
+                        test = missing;
+                    }
+
+                    _writer.Line(_depth,
+                        $"if ({test} && {ContextExtensions}.ReportRequired(ctx, {field}).ShouldStop) {{");
+                    _writer.Line(_depth + 1, $"return {Flow}.Stop;");
+                    _writer.Line(_depth, "}");
+                }
+
+                foreach (var constraint in _constraints) {
+                    if (_access is not { } anchored || _facts is not { } anchorFacts) {
+                        continue;
+                    }
+
+                    var test = ValidatorEmitter.TestFor(
+                        anchored, anchorFacts, constraint, new List<(string, ConstraintModel)>(),
+                        new List<(string, ConstraintModel)>());
+
+                    if (test is null) {
+                        continue;
+                    }
+
+                    var reported = Quote(constraint.Field ?? _field!);
+                    var report = ValidatorEmitter.ReportFor(reported, constraint, anchorFacts);
+
+                    // The same conjunct shape the attribute region emits: the test is bracketed
+                    // once anything precedes it, so a top-level || cannot silently widen the rule.
+                    var condition = missing is null || constraint.Kind == ConstraintKind.Predicate
+                        ? test
+                        : $"!{missing} && ({test})";
+
+                    _writer.Line(_depth, $"if ({ValidatorEmitter.Conjoin(condition, report)}) {{");
+                    _writer.Line(_depth + 1, $"return {Flow}.Stop;");
+                    _writer.Line(_depth, "}");
+                }
+
+                foreach (var (elements, value, field) in _descents) {
+                    EmitDescent(elements, value, field, missing);
+                }
+            }
+
+            private void EmitDescent(bool elements, ExpressionSyntax value, string? explicitField, string? missing) {
+                var path = _writer.PathOf(value);
+
+                if (path is null || path.Count != 1) {
+                    // A descent pushes the property's own name as a path segment, so it needs a
+                    // single-segment path; a facet of a child is its own Nested's territory.
+                    _writer._owner.Report(ValidationDiagnostics.SelectorNotAPath, value,
+                        _writer._declaringClass.Name);
+                    return;
+                }
+
+                var property = path[0];
+                var field = explicitField ?? _writer._owner.WireNameOf(property);
+                var dependency = _writer.DependencyFor(property, elements, value);
+
+                if (dependency is null) {
+                    return;
+                }
+
+                var n = _writer._locals++;
+                var access = value.ToString();
+                var guard = missing is null ? string.Empty : $"!{missing} && ";
+
+                if (elements) {
+                    var items = $"items{n}";
+                    var index = $"i{n}";
+
+                    _writer.Line(_depth, $"if ({guard}{access} is {{ }} {items}) {{");
+                    _writer.Line(_depth + 1, $"for (var {index} = 0; {index} < {items}.{dependency.CountAccessor}; {index}++) {{");
+                    _writer.Line(_depth + 2, $"var element{n} = {items}[{index}];");
+                    _writer.Line(_depth + 2, $"if (element{n} is not null) {{");
+                    _writer.Line(_depth + 3, $"var elementCtx{n} = ctx.PushIndex({Quote(field)}, {index});");
+                    _writer.Line(_depth + 3, $"for (var vi{n} = 0; vi{n} < {dependency.ParameterName}.Length; vi{n}++) {{");
+                    _writer.Line(_depth + 4, $"if ({dependency.ParameterName}[vi{n}].Validate(ref elementCtx{n}, element{n}).ShouldStop) {{");
+                    _writer.Line(_depth + 5, $"return {Flow}.Stop;");
+                    _writer.Line(_depth + 4, "}");
+                    _writer.Line(_depth + 3, "}");
+                    _writer.Line(_depth + 2, "}");
+                    _writer.Line(_depth + 1, "}");
+                    _writer.Line(_depth, "}");
+                } else {
+                    _writer.Line(_depth, $"if ({guard}{access} is {{ }} nested{n}) {{");
+                    _writer.Line(_depth + 1, $"var ctx{n} = ctx.Push({Quote(field)});");
+                    _writer.Line(_depth + 1, $"for (var vi{n} = 0; vi{n} < {dependency.ParameterName}.Length; vi{n}++) {{");
+                    _writer.Line(_depth + 2, $"if ({dependency.ParameterName}[vi{n}].Validate(ref ctx{n}, nested{n}).ShouldStop) {{");
+                    _writer.Line(_depth + 3, $"return {Flow}.Stop;");
+                    _writer.Line(_depth + 2, "}");
+                    _writer.Line(_depth + 1, "}");
+                    _writer.Line(_depth, "}");
+                }
+            }
+
+            private ValidatedPropertyModel FactsFor(ExpressionSyntax value, List<IPropertySymbol>? path) {
+                var type = _writer._model.GetTypeInfo(value).Type;
+                var name = path is { Count: > 0 } ? path[path.Count - 1].Name : "Value";
+
+                return new ValidatedPropertyModel(
+                    name,
+                    _field ?? name,
+                    type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ?? "global::System.Object",
+                    PropertyShape.Scalar,
+                    null,
+                    null,
+                    type?.IsReferenceType ?? true,
+                    type?.SpecialType == SpecialType.System_String,
+                    type is not null && TypeFacts.IsNullableValueType(type),
+                    type is not null && TypeFacts.IsIndexable(type),
+                    type is null ? "Count" : TypeFacts.CountAccessor(type),
+                    false,
+                    default);
+            }
+
+            private ConstraintModel? ConstraintFor(
+                string name, IReadOnlyDictionary<string, ExpressionSyntax> arguments,
+                InvocationExpressionSyntax call) =>
+                name switch {
+                    "Length" => new ConstraintModel(
+                        ConstraintKind.StringLength,
+                        Min: Bound(arguments, "min", "0"),
+                        Max: Bound(arguments, "max", int.MaxValue.ToString())),
+                    "Count" => new ConstraintModel(
+                        ConstraintKind.ItemCount,
+                        Min: Bound(arguments, "min", "0"),
+                        Max: Bound(arguments, "max", int.MaxValue.ToString())),
+                    "Range" => new ConstraintModel(
+                        ConstraintKind.Range,
+                        Min: OptionalBound(arguments, "min"),
+                        Max: OptionalBound(arguments, "max")),
+                    "RangeAtLeast" => new ConstraintModel(
+                        ConstraintKind.Range,
+                        Min: OptionalBound(arguments, "min")),
+                    "RangeAtMost" => new ConstraintModel(
+                        ConstraintKind.Range,
+                        Max: OptionalBound(arguments, "max")),
+                    "Unique" => new ConstraintModel(ConstraintKind.UniqueItems),
+                    "MultipleOf" => new ConstraintModel(
+                        ConstraintKind.MultipleOf,
+                        Divisor: Bound(arguments, "divisor", "1"),
+                        DecimalDomain: DivisorIsFloating(arguments)),
+                    "Pattern" => PatternConstraint(arguments, call),
+                    "AllowedValues" => AllowedValuesConstraint(arguments, call),
+                    _ => null,
                 };
 
-                if (captured) {
-                    _owner.Report(ValidationDiagnostics.PredicateCapturesState, identifier, _rulesClass.Name);
-                    return false;
+            private bool DivisorIsFloating(IReadOnlyDictionary<string, ExpressionSyntax> arguments) =>
+                arguments.TryGetValue("divisor", out var divisor) &&
+                _writer._model.GetTypeInfo(divisor).Type?.SpecialType
+                    is SpecialType.System_Double or SpecialType.System_Single;
+
+            private ConstraintModel? PatternConstraint(
+                IReadOnlyDictionary<string, ExpressionSyntax> arguments, InvocationExpressionSyntax call) {
+
+                if (!arguments.TryGetValue("pattern", out var accessor)) {
+                    return null;
+                }
+
+                // The accessor is a method group for a [GeneratedRegex] partial method, so the
+                // emitted form is that method invoked. No inline pattern can reach here at all.
+                return _writer._model.GetSymbolInfo(accessor).Symbol is IMethodSymbol regex
+                    ? new ConstraintModel(ConstraintKind.Pattern,
+                        RegexAccessor: $"{regex.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{regex.Name}()")
+                    : null;
+            }
+
+            private ConstraintModel AllowedValuesConstraint(
+                IReadOnlyDictionary<string, ExpressionSyntax> arguments, InvocationExpressionSyntax call) {
+
+                var values = new List<string>();
+                var displays = new List<string>();
+
+                if (arguments.TryGetValue("allowed", out var allowed)) {
+                    var elements = allowed switch {
+                        CollectionExpressionSyntax collection => collection.Elements
+                            .OfType<ExpressionElementSyntax>()
+                            .Select(element => element.Expression),
+                        ArrayCreationExpressionSyntax { Initializer: { } initializer } =>
+                            initializer.Expressions.AsEnumerable(),
+                        ImplicitArrayCreationExpressionSyntax { Initializer: { } implicitly } =>
+                            implicitly.Expressions.AsEnumerable(),
+                        _ => Enumerable.Empty<ExpressionSyntax>(),
+                    };
+
+                    foreach (var element in elements) {
+                        if (_writer._model.GetConstantValue(element) is { HasValue: true }) {
+                            values.Add(element.ToString());
+                            displays.Add(DisplayOf(element));
+                        }
+                    }
+                }
+
+                _ = call;
+
+                return new ConstraintModel(
+                    ConstraintKind.AllowedValues,
+                    Values: new EquatableArray<string>(
+                        System.Collections.Immutable.ImmutableArray.CreateRange(values)),
+                    ValueDisplays: new EquatableArray<string>(
+                        System.Collections.Immutable.ImmutableArray.CreateRange(displays)));
+            }
+
+            private string DisplayOf(ExpressionSyntax element) {
+                var text = element.ToString();
+
+                if (text.Length >= 2 && text[0] == '"') {
+                    return text.Substring(1, text.Length - 2);
+                }
+
+                var dot = text.LastIndexOf('.');
+
+                return dot >= 0 ? text.Substring(dot + 1) : text;
+            }
+
+            private string? Literal(IReadOnlyDictionary<string, ExpressionSyntax> arguments, string parameter) =>
+                arguments.TryGetValue(parameter, out var expression) &&
+                _writer._model.GetConstantValue(expression) is { HasValue: true, Value: string text }
+                    ? text
+                    : null;
+
+            private string? SeverityOf(IReadOnlyDictionary<string, ExpressionSyntax> arguments) {
+                if (!arguments.TryGetValue("severity", out var expression)) {
+                    return null;
+                }
+
+                return _writer._model.GetConstantValue(expression) is { HasValue: true, Value: int value }
+                    ? value switch { 1 => "Warning", 2 => "Info", _ => null }
+                    : null;
+            }
+
+            private static string Bound(
+                IReadOnlyDictionary<string, ExpressionSyntax> arguments, string parameter, string fallback) =>
+                arguments.TryGetValue(parameter, out var expression) ? expression.ToString() : fallback;
+
+            private static string? OptionalBound(
+                IReadOnlyDictionary<string, ExpressionSyntax> arguments, string parameter) =>
+                arguments.TryGetValue(parameter, out var expression) && expression.ToString() != "null"
+                    ? expression.ToString()
+                    : null;
+
+            private static string Quote(string text) => SymbolDisplay.FormatLiteral(text, quote: true);
+        }
+
+        private RegionDependency? DependencyFor(
+            IPropertySymbol property, bool elements, ExpressionSyntax site) {
+
+            foreach (var existing in _dependencies) {
+                if (SymbolEqualityComparer.Default.Equals(existing.Property, property) &&
+                    existing.Elements == elements) {
+                    return existing;
                 }
             }
 
-            return true;
-        }
+            var elementType = elements
+                ? TypeFacts.ElementTypeOf(property.Type)
+                : Unwrap(property.Type);
 
-        /// <summary>
-        /// Every local and parameter the predicate declares anywhere inside itself.
-        /// </summary>
-        /// <remarks>
-        /// Collected up front rather than tracked as the walk descends, because the walk is flat -
-        /// <c>DescendantNodesAndSelf</c> yields an inner lambda's body without ever saying that a
-        /// scope was entered. Binding one parameter list and testing every identifier against it
-        /// scored <c>l</c> in <c>x =&gt; x.Total &lt;= x.Lines.Sum(l =&gt; l.Amount)</c> as a
-        /// capture, which blocks the ordinary shape of an aggregate rule.
-        /// </remarks>
-        private HashSet<ISymbol> SymbolsDeclaredWithin(ExpressionSyntax predicate) {
-            var declared = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
-
-            foreach (var node in predicate.DescendantNodesAndSelf()) {
-                switch (node) {
-                    case AnonymousFunctionExpressionSyntax function:
-                        if (_model.GetSymbolInfo(function).Symbol is IMethodSymbol lambda) {
-                            foreach (var parameter in lambda.Parameters) {
-                                declared.Add(parameter);
-                            }
-                        }
-
-                        break;
-
-                    // `var span = ...` in a block-bodied predicate, and the loop variable of a
-                    // foreach in one.
-                    case VariableDeclaratorSyntax or ForEachStatementSyntax
-                        or SingleVariableDesignationSyntax or CatchDeclarationSyntax:
-                        if (_model.GetDeclaredSymbol(node) is { } local) {
-                            declared.Add(local);
-                        }
-
-                        break;
-                }
-            }
-
-            return declared;
-        }
-
-        /// <summary>
-        /// Resolves the property a selector reads, rejecting anything that is not a plain path.
-        /// </summary>
-        private IPropertySymbol? PropertyOf(ExpressionSyntax selector) {
-            if (selector is not LambdaExpressionSyntax lambda || lambda.Body is not ExpressionSyntax body) {
+            if (elementType is not INamedTypeSymbol named) {
+                _owner.Report(ValidationDiagnostics.SelectorNotAPath, site, _declaringClass.Name);
                 return null;
             }
 
-            while (body is MemberAccessExpressionSyntax { Expression: MemberAccessExpressionSyntax inner }) {
-                body = inner;
-            }
+            var camel = property.Name.Length == 0 || char.IsLower(property.Name[0])
+                ? property.Name
+                : char.ToLowerInvariant(property.Name[0]) + property.Name.Substring(1);
 
-            return body is MemberAccessExpressionSyntax member &&
-                   _model.GetSymbolInfo(member).Symbol is IPropertySymbol property
-                ? property
-                : null;
+            var dependency = new RegionDependency(
+                property,
+                elements,
+                $"{camel}Validators",
+                $"{property.Name}Validators",
+                named.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                TypeFacts.CountAccessor(property.Type));
+
+            _dependencies.Add(dependency);
+
+            return dependency;
         }
 
-        private IPropertySymbol? PropertyNamed(string name) =>
-            _target.GetMembers(name).OfType<IPropertySymbol>().FirstOrDefault();
-
-        private string? ExplicitField(IReadOnlyDictionary<string, ExpressionSyntax> arguments) =>
-            Literal(arguments, "field");
+        private static ITypeSymbol Unwrap(ITypeSymbol type) =>
+            type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullable
+                ? nullable.TypeArguments[0]
+                : type;
 
         /// <summary>
-        /// The severity member named by a <c>severity:</c> argument, or null for the default.
+        /// The rewrites transcription needs, applied to original nodes so the semantic model still
+        /// answers for them: <c>nameof</c> through the subject becomes the wire path,
+        /// <c>rules.Context</c> becomes the live context, and a bare reference to the rules class's
+        /// own statics is qualified - the companion is a different class, so the name has lost its
+        /// scope (the lifted-predicate precedent).
         /// </summary>
-        /// <remarks>
-        /// Read as the enum's underlying constant rather than as source text, so
-        /// <c>ValidationSeverity.Warning</c>, an alias and a cast of the literal all resolve the
-        /// same. Anything that is not a member of the enum is left as null rather than guessed at.
-        /// </remarks>
-        private string? SeverityOf(IReadOnlyDictionary<string, ExpressionSyntax> arguments) {
-            if (!arguments.TryGetValue("severity", out var expression)) {
-                return null;
-            }
+        private sealed class TranscriptionRewriter : CSharpSyntaxRewriter {
+            private readonly RegionWriter _writer;
 
-            return _model.GetConstantValue(expression) is { HasValue: true, Value: int value }
-                ? value switch { 1 => "Warning", 2 => "Info", _ => null }
-                : null;
-        }
+            public TranscriptionRewriter(RegionWriter writer) => _writer = writer;
 
-        private string? Literal(IReadOnlyDictionary<string, ExpressionSyntax> arguments, string parameter) =>
-            arguments.TryGetValue(parameter, out var expression) &&
-            _model.GetConstantValue(expression) is { HasValue: true, Value: string text }
-                ? text
-                : null;
-
-        private string Bound(
-            IReadOnlyDictionary<string, ExpressionSyntax> arguments, string parameter, string fallback) =>
-            arguments.TryGetValue(parameter, out var expression) ? expression.ToString() : fallback;
-
-        /// <summary>A bound that was not passed, as null rather than as a stand-in value.</summary>
-        private string? OptionalBound(
-            IReadOnlyDictionary<string, ExpressionSyntax> arguments, string parameter) =>
-            arguments.TryGetValue(parameter, out var expression) && expression.ToString() != "null"
-                ? expression.ToString()
-                : null;
-
-        /// <summary>
-        /// Maps a call's arguments onto parameter names, so the reader never depends on position and
-        /// a caller may pass <c>field:</c> or <c>code:</c> wherever they like.
-        /// </summary>
-        private static Dictionary<string, ExpressionSyntax> Arguments(
-            InvocationExpressionSyntax call, IMethodSymbol method) {
-
-            var mapped = new Dictionary<string, ExpressionSyntax>(StringComparer.Ordinal);
-            var position = 0;
-
-            // An extension method invoked in reduced form has its receiver as parameter 0 of the
-            // unreduced symbol but not in the argument list, so the reduced form is what lines up.
-            var parameters = (method.ReducedFrom is null ? method : method).Parameters;
-
-            foreach (var argument in call.ArgumentList.Arguments) {
-                if (argument.NameColon is { } named) {
-                    mapped[named.Name.Identifier.Text] = argument.Expression;
-                    continue;
+            public override SyntaxNode? VisitInvocationExpression(InvocationExpressionSyntax node) {
+                if (node.Expression is IdentifierNameSyntax { Identifier.Text: "nameof" } &&
+                    node.ArgumentList.Arguments.Count == 1 &&
+                    _writer.PathOf(node.ArgumentList.Arguments[0].Expression) is { Count: > 0 } path) {
+                    return SyntaxFactory.ParseExpression(
+                        SymbolDisplay.FormatLiteral(_writer.WirePathOf(path), quote: true));
                 }
 
-                if (position < parameters.Length) {
-                    mapped[parameters[position].Name] = argument.Expression;
-                }
-
-                position++;
+                return base.VisitInvocationExpression(node);
             }
 
-            return mapped;
+            public override SyntaxNode? VisitMemberAccessExpression(MemberAccessExpressionSyntax node) {
+                if (node.Name.Identifier.Text == "Context" &&
+                    node.Expression is IdentifierNameSyntax root &&
+                    SymbolEqualityComparer.Default.Equals(
+                        _writer._model.GetSymbolInfo(root).Symbol, _writer._builder)) {
+                    return SyntaxFactory.IdentifierName("ctx");
+                }
+
+                return base.VisitMemberAccessExpression(node);
+            }
+
+            public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node) {
+                // The right-hand side of a member access is anchored by whatever precedes it; only
+                // a bare name has lost its scope.
+                if (node.Parent is MemberAccessExpressionSyntax access && access.Name == node) {
+                    return base.VisitIdentifierName(node);
+                }
+
+                if (_writer._model.GetSymbolInfo(node).Symbol is not { IsStatic: true } symbol ||
+                    symbol is not (IFieldSymbol or IPropertySymbol or IMethodSymbol) ||
+                    symbol.ContainingType is not { } declaring ||
+                    !DeclaredByTheClass(declaring)) {
+                    return base.VisitIdentifierName(node);
+                }
+
+                // A private constant cannot be qualified, and does not need to be: C# bakes a
+                // const at every use site, so the value is written back as a literal of its own
+                // exact type. The accessibility walk already let it through on the same test.
+                if (symbol is IFieldSymbol { HasConstantValue: true } constant &&
+                    !_writer._compilation.IsSymbolAccessibleWithin(
+                        constant, _writer._declaringClass.ContainingAssembly) &&
+                    _writer.ConstantText(node, constant) is { } literal) {
+                    return SyntaxFactory.ParseExpression(literal);
+                }
+
+                return SyntaxFactory.ParseExpression(
+                    $"{_writer._declaringClass.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{node.Identifier.Text}");
+            }
+
+            private bool DeclaredByTheClass(INamedTypeSymbol declaring) {
+                for (INamedTypeSymbol? current = _writer._declaringClass; current is not null; current = current.BaseType) {
+                    if (SymbolEqualityComparer.Default.Equals(current, declaring)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
         }
-
-        private string Namespace() =>
-            _rulesClass.ContainingNamespace.IsGlobalNamespace
-                ? string.Empty
-                : _rulesClass.ContainingNamespace.ToDisplayString() + ".";
-
-        public RulesDeclaration Finish() => new(
-            _target,
-            _rulesClass,
-            _rules,
-            _applied,
-            _predicates,
-            _parameter);
     }
 }
 
-/// <summary>Whether a rule descends, and into what.</summary>
+/// <summary>Whether a rule descends, and into what. Retained for the model merge.</summary>
 public enum Nesting {
     None,
     Object,
     Elements,
 }
 
-/// <summary>One rule read out of a Describe body, still carrying its Roslyn symbols.</summary>
-/// <param name="Condition">
-/// Guards this rule, when a <c>When</c>/<c>Unless</c> covers it. Carried on the rule as well as on
-/// its constraint because a nesting rule has no constraint to carry it - <c>rules.Nested(x =&gt;
-/// x.Auto).When(…)</c> guards the descent itself.
-/// </param>
-public sealed record DeclaredRule(
-    IPropertySymbol? Property,
-    string Field,
-    ConstraintModel? Constraint,
-    Nesting Nesting,
-    string? Condition = null);
+/// <summary>
+/// A nested or element descent a region declares, which the validator must supply a validator
+/// array for: the region method takes it as a parameter, the validator passes its own injected
+/// set - so a separately registered validator for the nested type composes in a region exactly as
+/// it does on an attribute descent.
+/// </summary>
+public sealed record RegionDependency(
+    IPropertySymbol Property,
+    bool Elements,
+    string ParameterName,
+    string AccessorName,
+    string ElementQualifiedType,
+    string CountAccessor);
 
-/// <summary>A predicate to be lifted into a static method the validator can call.</summary>
-/// <param name="MethodName">The lifted method's name.</param>
-/// <param name="Lambda">The declaration, which still supplies the parameter name.</param>
-/// <param name="Body">
-/// The body as it should be written into the lifted class: bare references to the rules class's own
-/// members qualified, and private constants replaced by their value. Resolved in the front end
-/// because that is where the semantic model is.
-/// </param>
-public sealed record LiftedPredicate(string MethodName, ExpressionSyntax Lambda, string Body);
-
-/// <summary>Everything one rules class declared, before it is merged with the target's attributes.</summary>
+/// <summary>Everything one rules class transcribed to, before the model merge.</summary>
 public sealed record RulesDeclaration(
     INamedTypeSymbol Target,
     INamedTypeSymbol RulesClass,
-    IReadOnlyList<DeclaredRule> Rules,
-    IReadOnlyList<string> AppliedRules,
-    IReadOnlyList<LiftedPredicate> Predicates,
-    string ParameterName);
+    string SubjectParameterName,
+    IReadOnlyList<string> BodyLines,
+    IReadOnlyList<RegionDependency> Dependencies,
+    IReadOnlyList<string> AppliedRules);
+
+/// <summary>
+/// One fragment method: a static, void, same-compilation method that received the builder,
+/// transcribed once per concrete target and emitted into its declaring type's container.
+/// </summary>
+public sealed class FragmentMethod {
+    public FragmentMethod(
+        string name,
+        IMethodSymbol definition,
+        INamedTypeSymbol target,
+        IParameterSymbol? subject,
+        string builderParameterName,
+        IReadOnlyList<IParameterSymbol> extraParameters) {
+
+        Name = name;
+        Definition = definition;
+        Target = target;
+        Subject = subject;
+        BuilderParameterName = builderParameterName;
+        ExtraParameters = extraParameters;
+    }
+
+    public string Name { get; }
+
+    public IMethodSymbol Definition { get; }
+
+    /// <summary>The concrete type this instantiation validates - members resolve against it, so
+    /// <c>[JsonPropertyName]</c> on an implementing property wins for field naming.</summary>
+    public INamedTypeSymbol Target { get; }
+
+    /// <summary>The parameter typed as the target, or null for a fragment that only computes and
+    /// reports with explicit field names.</summary>
+    public IParameterSymbol? Subject { get; }
+
+    public string BuilderParameterName { get; }
+
+    public IReadOnlyList<IParameterSymbol> ExtraParameters { get; }
+
+    public List<string> BodyLines { get; } = new();
+}
+
+/// <summary>
+/// One region-declared descent as the attribute front end merges it: enough to make the validator
+/// grow the injected-validator machinery for the property, with the walk itself owned by the
+/// region. Constraints never travel this way any more - they expand in the region's own text.
+/// </summary>
+public sealed record DeclaredRule(
+    IPropertySymbol? Property,
+    string Field,
+    Models.ConstraintModel? Constraint,
+    Nesting Nesting,
+    string? Condition = null);
+
+/// <summary>The fragment methods of one declaring type, emitted with that type's file usings.</summary>
+public sealed class FragmentContainer {
+    public FragmentContainer(string ns, string name, INamedTypeSymbol declaringType) {
+        Namespace = ns;
+        Name = name;
+        DeclaringType = declaringType;
+    }
+
+    public string Namespace { get; }
+
+    public string Name { get; }
+
+    public INamedTypeSymbol DeclaringType { get; }
+
+    public List<FragmentMethod> Methods { get; } = new();
+}

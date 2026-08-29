@@ -49,6 +49,12 @@ public enum PropertyShape {
 /// <c>{0}</c> placeholder wants the DataAnnotations answer, resolved at build time so the runtime
 /// never resolves it reflectively. Null when no constraint needs it.
 /// </param>
+/// <param name="NestedWalkInRegion">
+/// The descent was declared only by a rules class, so the region's transcribed text owns the walk
+/// and the attribute region must not emit a second one. The injected-validator machinery - the
+/// field, the constructor parameter, the accessor the region call passes - is still this
+/// property's, which is the reason the entry exists at all.
+/// </param>
 public sealed record ValidatedPropertyModel(
     string PropertyName,
     string FieldName,
@@ -66,4 +72,5 @@ public sealed record ValidatedPropertyModel(
     string? Condition = null,
     PolymorphismMode Polymorphism = PolymorphismMode.DeclaredOnly,
     EquatableArray<SubtypeModel> Subtypes = default,
-    string? DisplayName = null) : IEquatable<ValidatedPropertyModel>;
+    string? DisplayName = null,
+    bool NestedWalkInRegion = false) : IEquatable<ValidatedPropertyModel>;

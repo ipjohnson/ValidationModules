@@ -240,12 +240,22 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
 
             list.Add(declaration);
 
-            if (new PredicateEmitter().Emit(declaration, options.CodeStyle) is { } predicates) {
-                results.Add(new ModelResult(
-                    null,
-                    ImmutableArray<Diagnostic>.Empty,
-                    predicates,
-                    $"{QualifiedName(declaration.RulesClass)}_Rules.g.cs"));
+            results.Add(new ModelResult(
+                null,
+                ImmutableArray<Diagnostic>.Empty,
+                new RegionEmitter().EmitRegion(declaration, options.CodeStyle),
+                $"{QualifiedName(declaration.RulesClass)}_Rules.g.cs"));
+        }
+
+        // Fragment containers are shared across every rules class that called into them, so they
+        // are emitted once per pass, after every candidate has been read.
+        foreach (var container in rulesFrontEnd.FragmentContainers) {
+            if (new RegionEmitter().EmitFragments(container, options.CodeStyle) is { } fragments) {
+                var hint = container.Namespace.Length == 0
+                    ? $"{container.Name}.g.cs"
+                    : $"{container.Namespace}.{container.Name}.g.cs";
+
+                results.Add(new ModelResult(null, ImmutableArray<Diagnostic>.Empty, fragments, hint));
             }
         }
 
@@ -292,10 +302,23 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         var model = frontEnd.Build(
             target,
             static type => $"{type.Name}Validator",
-            declared?.SelectMany(static declaration => declaration.Rules).ToArray(),
+            // A region's descents merge as nesting-only rules, so the validator grows the injected
+            // machinery the region call passes; the walk itself lives in the region's text.
+            declared?.SelectMany(static declaration => declaration.Dependencies
+                .Select(static dependency => new DeclaredRule(
+                    dependency.Property, null,
+                    null,
+                    dependency.Elements ? Nesting.Elements : Nesting.Object)))
+                .ToArray(),
             declared?.SelectMany(static declaration => declaration.AppliedRules).ToArray(),
             hasRulesClass,
-            subtypesOf);
+            subtypesOf,
+            declared?.Select(static declaration => new RegionModel(
+                CompanionQualifiedName(declaration.RulesClass),
+                "Describe",
+                new EquatableArray<string>(ImmutableArray.CreateRange(
+                    declaration.Dependencies.Select(static dependency => dependency.AccessorName)))))
+                .ToArray());
 
         var diagnostics = frontEnd.Diagnostics.ToImmutableArray();
 
@@ -303,6 +326,11 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             ? null
             : new ModelResult(model, diagnostics, null, null);
     }
+
+    private static string CompanionQualifiedName(INamedTypeSymbol rulesClass) =>
+        rulesClass.ContainingNamespace.IsGlobalNamespace
+            ? $"global::{RegionEmitter.CompanionFor(rulesClass)}"
+            : $"global::{rulesClass.ContainingNamespace.ToDisplayString()}.{RegionEmitter.CompanionFor(rulesClass)}";
 
     /// <summary>
     /// Indexes each candidate against every ancestor it has, so that "the subtypes of X" is

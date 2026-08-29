@@ -454,7 +454,7 @@ public class ValidatorEmitterGoldenTests {
     }
 
     [Fact]
-    public void RulesClass_FlattensIntoTheSameValidatorAsTheAttributes() {
+    public void RulesClass_TranscribesIntoARegionTheValidatorCalls() {
         Snapshot.Match(Emit("""
             using System;
             using System.Collections.Generic;
@@ -470,10 +470,10 @@ public class ValidatorEmitterGoldenTests {
             }
 
             public sealed class ReservationRules : IValidationRulesFor<Reservation> {
-                public void Describe(ValidationRules<Reservation> rules) {
-                    rules.Required(x => x.Guest).Length(2, 40);
-                    rules.Range(x => x.Nights, 1, 30);
-                    rules.Ensure(x => x.Start < x.End);
+                public static void Describe(ValidationRules<Reservation> rules, Reservation x) {
+                    rules.Require(x.Guest).Length(2, 40);
+                    rules.Range(x.Nights, 1, 30);
+                    rules.Ensure(x.Start < x.End);
                 }
             }
             """));
