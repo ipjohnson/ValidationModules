@@ -240,15 +240,18 @@ public sealed class AttributeFrontEnd {
             return null;
         }
 
+        var compilesValidatableObject = false;
+
         if (ImplementsValidatableObject(type)) {
-            // Asked-for-but-uncompilable is a warning; ignored-by-configuration is information,
+            // Compiled-and-sequenced is information; ignored-by-configuration is information too,
             // and the tail says which library is doing the ignoring - another validation system
             // reading the same interface may still call it.
             if (_compileDataAnnotations) {
-                Report(ValidationDiagnostics.ValidatableObjectNotCompiled, type,
+                compilesValidatableObject = true;
+                Report(ValidationDiagnostics.ValidatableObjectCompiled, type,
                     type.Name, ValidationDiagnostics.ValidatableObjectEnforceTail);
             } else {
-                ReportAs(DiagnosticSeverity.Info, ValidationDiagnostics.ValidatableObjectNotCompiled, type,
+                ReportAs(DiagnosticSeverity.Info, ValidationDiagnostics.ValidatableObjectCompiled, type,
                     type.Name, ValidationDiagnostics.ValidatableObjectIgnoreTail);
             }
         }
@@ -267,7 +270,8 @@ public sealed class AttributeFrontEnd {
             validatorNameFor(type),
             new EquatableArray<ValidatedPropertyModel>(Ordered(properties.ToImmutable(), order, sawAttribute)),
             new EquatableArray<string>(ImmutableArray.CreateRange(applied ?? Array.Empty<string>())),
-            IsExternallyVisible(type));
+            IsExternallyVisible(type),
+            compilesValidatableObject);
     }
 
     /// <summary>
@@ -346,10 +350,20 @@ public sealed class AttributeFrontEnd {
         }
 
         foreach (var attribute in property.GetAttributes()) {
-            var ns = attribute.AttributeClass?.ContainingNamespace?.ToDisplayString();
+            if (attribute.AttributeClass is not { } attributeClass) {
+                continue;
+            }
+
+            var ns = attributeClass.ContainingNamespace?.ToDisplayString();
 
             if (ns == KnownTypes.ConstraintsNamespace ||
                 (_compileDataAnnotations && ns == KnownTypes.DataAnnotationsNamespace)) {
+                return true;
+            }
+
+            // A custom ValidationAttribute now compiles to an invocation, so a property carrying
+            // only one is a validated property - without this, the walk would never read it.
+            if (_compileDataAnnotations && DerivesFromValidationAttribute(attributeClass)) {
                 return true;
             }
         }
@@ -523,7 +537,29 @@ public sealed class AttributeFrontEnd {
             new EquatableArray<ConstraintModel>(Order(constraints).ToImmutableArray()),
             condition,
             polymorphism,
-            new EquatableArray<SubtypeModel>(subtypes));
+            new EquatableArray<SubtypeModel>(subtypes),
+            DisplayNameFor(property));
+    }
+
+    /// <summary>
+    /// What DataAnnotations shows as <c>{0}</c> in a formatted message: <c>[Display(Name = …)]</c>
+    /// when present, otherwise the CLR name. Resolved here, at build time, so the runtime bridge
+    /// never enters the reflective resolution the DataAnnotations constructors are annotated for.
+    /// </summary>
+    private static string DisplayNameFor(IPropertySymbol property) {
+        foreach (var attribute in property.GetAttributes()) {
+            if (attribute.AttributeClass?.ToDisplayString() != KnownTypes.DisplayAttribute) {
+                continue;
+            }
+
+            foreach (var named in attribute.NamedArguments) {
+                if (named.Key == "Name" && named.Value.Value is string displayName) {
+                    return displayName;
+                }
+            }
+        }
+
+        return property.Name;
     }
 
     /// <summary>
@@ -612,9 +648,13 @@ public sealed class AttributeFrontEnd {
 
         // Only when the second vocabulary is switched on. With it off the attribute is not enforced
         // wherever it sits, and VM0010 is the diagnostic with that news.
-        return ns == KnownTypes.DataAnnotationsNamespace &&
-               _compileDataAnnotations &&
-               DataAnnotationsConstraintReader.IsConstraint(attributeClass.Name);
+        if (!_compileDataAnnotations) {
+            return false;
+        }
+
+        return ns == KnownTypes.DataAnnotationsNamespace
+            ? DataAnnotationsConstraintReader.IsConstraint(attributeClass.Name)
+            : DerivesFromValidationAttribute(attributeClass);
     }
 
     /// <summary>"RequiredAttribute" to "Required", so the suggested fix reads as it would be typed.</summary>
@@ -983,18 +1023,37 @@ public sealed class AttributeFrontEnd {
 
             if (ns != KnownTypes.DataAnnotationsNamespace) {
                 if (DerivesFromValidationAttribute(attributeClass)) {
-                    // Same split as VM0067 above: the mode that asked for DataAnnotations gets a
-                    // warning it cannot have this one; Ignore mode gets information that this
-                    // library is the one ignoring it.
-                    if (_compileDataAnnotations) {
-                        Report(ValidationDiagnostics.CustomValidationAttribute, member,
-                            attributeClass.Name, member.Name,
-                            ValidationDiagnostics.CustomValidationEnforceTail);
-                    } else {
+                    if (!_compileDataAnnotations) {
                         ReportAs(DiagnosticSeverity.Info,
                             ValidationDiagnostics.CustomValidationAttribute, member,
                             attributeClass.Name, member.Name,
                             ValidationDiagnostics.CustomValidationIgnoreTail);
+                        continue;
+                    }
+
+                    // Constructed once from its compile-time-constant arguments and invoked - the
+                    // faithful reading of an attribute whose check is user code. The unrenderable
+                    // case is a broken compilation's Error constant, and falls back to the old
+                    // not-enforced Warning rather than emitting code that cannot compile.
+                    if (AttributeConstructionRenderer.Render(attribute) is { } construction) {
+                        constraints.Add(new ConstraintModel(
+                            ConstraintKind.CustomAttribute, CustomConstruction: construction));
+
+                        Report(ValidationDiagnostics.CustomValidationAttribute, member,
+                            attributeClass.Name, member.Name,
+                            ValidationDiagnostics.CustomValidationInvokeTail);
+
+                        // The one part of an invoked attribute the trimmer can break, visible in
+                        // metadata and so reported where it is declared.
+                        if (NativeConstraintReader.Named(attribute, "ErrorMessageResourceType") is not null) {
+                            Report(ValidationDiagnostics.ResourceErrorMessageUnderTrimming, member,
+                                attributeClass.Name, member.Name);
+                        }
+                    } else {
+                        ReportAs(DiagnosticSeverity.Warning,
+                            ValidationDiagnostics.CustomValidationAttribute, member,
+                            attributeClass.Name, member.Name,
+                            ValidationDiagnostics.CustomValidationEnforceTail);
                     }
                 }
 

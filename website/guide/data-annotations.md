@@ -98,23 +98,61 @@ is the current BCL behaviour; net8's own `UrlAttribute` predates that branch and
 string, exactly as the attribute does — the checksum of nothing is zero — so `[Required]` remains
 the presence check.
 
+## Custom rules are invoked
+
+The three DataAnnotations surfaces that carry *user code* — custom `ValidationAttribute`
+subclasses, `[CustomValidation]` methods, and `IValidatableObject` — run, with DataAnnotations'
+own semantics, because the only faithful reading of user code is to run it. Nothing reflects to
+make that happen:
+
+- **A custom attribute** is constructed once, at validator construction, from its
+  compile-time-constant arguments — `new EvenNumberAttribute(2) { ErrorMessage = "…" }` lands in
+  the generated file as exactly that — and invoked through `GetValidationResult`, the same call
+  `Validator.TryValidateObject` makes, minus the discovery. Each use reports
+  [VM0060](/reference/diagnostics#vm0060) as an Info carrying the cost model.
+- **`[CustomValidation(typeof(T), "Method")]`** is resolved at build time and emitted as a direct
+  static call — DataAnnotations resolves the method by name reflectively on every validation. A
+  target that cannot be called is [VM0080](/reference/diagnostics#vm0080) at build time, not a
+  rule that silently never runs.
+- **`IValidatableObject.Validate`** runs last, and only when every other rule passed — which is
+  `TryValidateObject`'s sequencing, reproduced. [VM0067](/reference/diagnostics#vm0067) says so at
+  the type.
+
+Failures report under the [`custom`](/reference/codes) code, with the rule's own message. Member
+names a rule reports at run time — `ValidationResult.MemberNames` — are converted with the same
+naming policy the compiled literals were baked with, so everything lands on consistent paths.
+
+**What it costs.** This is the one place validation pays DataAnnotations' own prices: a
+`ValidationContext` per check (passing values included), a box for value-type members, and — for
+an `IValidatableObject` type — the loss of the boolean fast path, since `IsValid` cannot know
+"the whole pass was clean". Everything else on the model keeps the zero-allocation promise. When
+the logic is yours to move, a [rule class](/guide/rule-classes) expresses the same rule at
+straight-line cost:
+
+```csharp
+public sealed class CustomerRules : IValidationRulesFor<Customer> {
+    public void Describe(ValidationRules<Customer> rules) {
+        rules.Ensure(x => x.Age % 2 == 0, code: "even_age");
+    }
+}
+```
+
+One caveat travels with resource-based messages: `ErrorMessageResourceType` resolves reflectively
+at format time, which trimming can break — [VM0081](/reference/diagnostics#vm0081) warns where it
+is set.
+
 ## What is not compiled, and says so
 
 Silence would be dangerous here in a way it is not for native attributes: an attribute this
 generator skipped would still *look* enforced, because you have every reason to think
-`TryValidateObject` would have honoured it. So everything recognised and not compiled is reported.
+`TryValidateObject` would have honoured it. One attribute remains uncompiled, and it says so.
 
 | Attribute | Diagnostic | Why |
 |---|---|---|
 | `[Compare]` | [VM0061](/reference/diagnostics#vm0061) | compares two members |
-| `[CustomValidation]`, any `ValidationAttribute` subclass | [VM0060](/reference/diagnostics#vm0060) | carries arbitrary code |
-| `IValidatableObject` | [VM0067](/reference/diagnostics#vm0067) | `Validate` is not called |
 
-### Cross-field and custom rules
-
-`[Compare]` and custom `ValidationAttribute` subclasses have no per-property form. Move them to a
-[rule class](/guide/rule-classes) — which is the declaration form that *can* express a rule spanning
-two properties:
+`[Compare]` has no per-property form. Move it to a [rule class](/guide/rule-classes) — the
+declaration form that *can* express a rule spanning two properties:
 
 ```csharp
 public sealed class CustomerRules : IValidationRulesFor<Customer> {
@@ -125,14 +163,6 @@ public sealed class CustomerRules : IValidationRulesFor<Customer> {
 ```
 
 Or into an [`IAsyncValidatorFor<T>`](/guide/async) if the rule needs I/O.
-
-### `IValidatableObject`
-
-Its `Validate` method is not called by the generated validator. The type is still validated for
-everything else it declares — dropping it entirely would be a worse answer than validating what can
-be validated and saying what was left out.
-
-Call it yourself from an async validator if you need it, or move the rule.
 
 ## Turning it off
 

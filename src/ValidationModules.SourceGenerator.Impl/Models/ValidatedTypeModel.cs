@@ -26,6 +26,12 @@ namespace ValidationModules.SourceGenerator.Impl.Models;
 /// is the worst place for a consumer to meet it. Internal models are ordinary rather than exotic,
 /// so this is not an edge case.
 /// </param>
+/// <param name="ImplementsValidatableObject">
+/// Whether the emitted validator calls <c>IValidatableObject.Validate</c> - true only when the
+/// type implements it <i>and</i> the DataAnnotations front end is on. Emitted last and gated on
+/// nothing else having failed, which is <c>Validator.TryValidateObject</c>'s sequencing. A type
+/// carrying it also loses the straight-line <c>IsValid</c>, for the reason applied rules do.
+/// </param>
 public sealed record ValidatedTypeModel(
     string Namespace,
     string TypeName,
@@ -33,7 +39,8 @@ public sealed record ValidatedTypeModel(
     string ValidatorName,
     EquatableArray<ValidatedPropertyModel> Properties,
     EquatableArray<string> AppliedRules = default,
-    bool IsPublic = true) : IEquatable<ValidatedTypeModel>;
+    bool IsPublic = true,
+    bool ImplementsValidatableObject = false) : IEquatable<ValidatedTypeModel>;
 
 /// <summary>Which registration shape the assembly gets. See plan §7.3.</summary>
 public enum RegistrationMode {

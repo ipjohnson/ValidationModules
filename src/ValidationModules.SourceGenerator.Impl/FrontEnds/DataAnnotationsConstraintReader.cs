@@ -141,7 +141,7 @@ public static class DataAnnotationsConstraintReader {
                 return new Outcome(null, ValidationDiagnostics.CrossFieldAttribute);
 
             case "CustomValidationAttribute":
-                return new Outcome(null, ValidationDiagnostics.CustomValidationAttribute);
+                return CustomValidation(attribute, memberType);
 
             // The format validators compile to the BCL's own checks - semantics in
             // ConstraintChecks, parity pinned by its tests. Each carries VM0063 (Info) stating
@@ -234,6 +234,106 @@ public static class DataAnnotationsConstraintReader {
             Name: "Uri",
             ContainingNamespace: { Name: "System", ContainingNamespace.IsGlobalNamespace: true },
         };
+
+    /// <summary>
+    /// Resolves <c>[CustomValidation(typeof(T), "Method")]</c> to the static method the emitter
+    /// will call directly, or to VM0080 with the reason it cannot.
+    /// </summary>
+    /// <remarks>
+    /// The accepted signatures are DataAnnotations' own - public static, returning
+    /// <c>ValidationResult</c>, taking the value alone or the value and a
+    /// <c>ValidationContext</c> - with one deliberate narrowing, recorded on the descriptor: the
+    /// value parameter must accept the member's type or be <c>object</c>, because the runtime
+    /// string-conversion fallback <c>CustomValidationAttribute</c> performs is a conversion this
+    /// library will not do silently.
+    /// </remarks>
+    private static Outcome CustomValidation(AttributeData attribute, ITypeSymbol memberType) {
+        var args = attribute.ConstructorArguments;
+
+        if (args.Length != 2 ||
+            args[0].Value is not INamedTypeSymbol provider ||
+            args[1].Value is not string methodName) {
+            return new Outcome(null, ValidationDiagnostics.CustomValidationTargetUnusable,
+                "its arguments are not a validator type and a method name");
+        }
+
+        IMethodSymbol? candidate = null;
+
+        foreach (var member in provider.GetMembers(methodName)) {
+            if (member is IMethodSymbol { IsStatic: true, DeclaredAccessibility: Accessibility.Public } method &&
+                method.Parameters.Length is 1 or 2) {
+                candidate = method;
+                break;
+            }
+        }
+
+        if (candidate is null) {
+            return new Outcome(null, ValidationDiagnostics.CustomValidationTargetUnusable,
+                $"'{provider.ToDisplayString()}.{methodName}' is not a public static method " +
+                "taking one or two parameters");
+        }
+
+        if (candidate.ReturnType.ToDisplayString() is not
+            ("System.ComponentModel.DataAnnotations.ValidationResult"
+            or "System.ComponentModel.DataAnnotations.ValidationResult?")) {
+            return new Outcome(null, ValidationDiagnostics.CustomValidationTargetUnusable,
+                $"'{provider.ToDisplayString()}.{methodName}' does not return ValidationResult");
+        }
+
+        if (candidate.Parameters.Length == 2 &&
+            candidate.Parameters[1].Type.ToDisplayString() !=
+                "System.ComponentModel.DataAnnotations.ValidationContext") {
+            return new Outcome(null, ValidationDiagnostics.CustomValidationTargetUnusable,
+                $"'{provider.ToDisplayString()}.{methodName}' has a second parameter that is not " +
+                "a ValidationContext");
+        }
+
+        if (!Accepts(candidate.Parameters[0].Type, memberType)) {
+            return new Outcome(null, ValidationDiagnostics.CustomValidationTargetUnusable,
+                $"'{provider.ToDisplayString()}.{methodName}' takes " +
+                $"'{candidate.Parameters[0].Type.ToDisplayString()}', which cannot accept this " +
+                "member without DataAnnotations' runtime string conversion; take the member's " +
+                "type, or object");
+        }
+
+        var qualified = provider.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+        return new Outcome(
+            new ConstraintModel(
+                ConstraintKind.CustomValidationMethod,
+                CustomAccessor: $"{qualified}.{methodName}",
+                CustomTakesContext: candidate.Parameters.Length == 2),
+            null);
+    }
+
+    /// <summary>
+    /// Whether the member's value can be passed where <paramref name="parameter"/> is declared:
+    /// identity, a base type, an implemented interface, or <c>object</c>. The member's type is
+    /// compared as declared - a <c>int?</c> member needs a parameter that takes <c>int?</c> or
+    /// <c>object</c>, never bare <c>int</c>, because the emitted call passes the property straight
+    /// through and has no null to hide.
+    /// </summary>
+    private static bool Accepts(ITypeSymbol parameter, ITypeSymbol memberType) {
+        if (parameter.SpecialType == SpecialType.System_Object) {
+            return true;
+        }
+
+        var comparer = SymbolEqualityComparer.Default;
+
+        for (ITypeSymbol? current = memberType; current is not null; current = current.BaseType) {
+            if (comparer.Equals(parameter, current)) {
+                return true;
+            }
+        }
+
+        foreach (var contract in memberType.AllInterfaces) {
+            if (comparer.Equals(parameter, contract)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static Outcome Sized(AttributeData attribute, ITypeSymbol memberType, string min, string max) {
         if (memberType.SpecialType == SpecialType.System_String) {

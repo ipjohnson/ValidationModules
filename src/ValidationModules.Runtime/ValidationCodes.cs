@@ -107,6 +107,19 @@ public static class ValidationCodes {
     public const string FileExtension = "file_extension";
 
     /// <summary>
+    /// A custom DataAnnotations rule failed: a <c>ValidationAttribute</c> subclass, a
+    /// <c>[CustomValidation]</c> method, or <c>IValidatableObject.Validate</c>.
+    /// </summary>
+    /// <remarks>
+    /// One code for the whole family, for the reason <see cref="Predicate"/> covers every
+    /// <c>Ensure</c>: the message is the rule's own and free to change; the code is the wire
+    /// contract. DataAnnotations results carry no code at all, so any per-rule value would be one
+    /// this library invented - and a client switching on an invented code would break the moment
+    /// the rule's author renamed anything.
+    /// </remarks>
+    public const string Custom = "custom";
+
+    /// <summary>
     /// A rule declared with <c>rules.Ensure(…)</c> failed. See API-SURFACE.md §19.5.
     /// </summary>
     /// <remarks>

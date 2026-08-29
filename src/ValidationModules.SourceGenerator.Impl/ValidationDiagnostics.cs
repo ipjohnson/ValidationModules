@@ -249,18 +249,29 @@ public static class ValidationDiagnostics {
         DiagnosticSeverity.Warning);
 
     /// <summary>
-    /// One descriptor with two closing sentences rather than two descriptors: the catalogue keys
-    /// an id to one declaration, and an .editorconfig override addresses the id. The tail carries
-    /// what changes with <c>ValidationModules_DataAnnotations</c>, and the Ignore report site
-    /// drops the severity to Info beside it - a rule the project told this library to leave alone
-    /// is information, and another validation system may still enforce it.
+    /// One descriptor with distinct closing sentences rather than several descriptors: the
+    /// catalogue keys an id to one declaration, and an .editorconfig override addresses the id.
+    /// The tail carries what actually happened - invoked, or ignored under
+    /// <c>ValidationModules_DataAnnotations=Ignore</c> - and the rare attribute whose arguments
+    /// cannot be rendered reports the same id back at Warning with the not-enforced tail.
     /// </summary>
+    /// <remarks>
+    /// Info at the default, matching VM0063's reasoning inverted: the attribute <i>is</i> enforced,
+    /// by constructing it once and invoking it - the only faithful reading of user code - so there
+    /// is nothing to fix, only the cost model worth knowing.
+    /// </remarks>
     public static readonly DiagnosticDescriptor CustomValidationAttribute = Descriptor(
-        "VM0060", "Custom ValidationAttribute is not compiled",
-        "'{0}' on '{1}' derives from ValidationAttribute and carries arbitrary code, which cannot be compiled. {2}",
-        DiagnosticSeverity.Warning);
+        "VM0060", "Custom ValidationAttribute is invoked, not compiled",
+        "'{0}' on '{1}' derives from ValidationAttribute, so its check is user code. {2}",
+        DiagnosticSeverity.Info);
 
-    /// <summary>VM0060's tail when the DataAnnotations front end is on.</summary>
+    /// <summary>VM0060's tail when the attribute compiles to an invocation.</summary>
+    public const string CustomValidationInvokeTail =
+        "It is constructed once and invoked with DataAnnotations semantics, so this property pays " +
+        "DataAnnotations' costs: a ValidationContext per check, and a box if the value is a value " +
+        "type";
+
+    /// <summary>VM0060's tail when the attribute's arguments cannot be rendered.</summary>
     public const string CustomValidationEnforceTail =
         "It is not enforced; move the rule to a constraint or an IAsyncValidatorFor<T>";
 
@@ -300,20 +311,49 @@ public static class ValidationDiagnostics {
         "The bounds on '{0}' do not parse as '{1}'", DiagnosticSeverity.Error);
 
     /// <summary>
-    /// The same two-tail arrangement as VM0060, for the same reason.
+    /// The same multi-tail arrangement as VM0060, for the same reason.
     /// </summary>
-    public static readonly DiagnosticDescriptor ValidatableObjectNotCompiled = Descriptor(
-        "VM0067", "IValidatableObject is not compiled",
+    public static readonly DiagnosticDescriptor ValidatableObjectCompiled = Descriptor(
+        "VM0067", "IValidatableObject is invoked after every other rule passes",
         "'{0}' implements IValidatableObject; {1}",
-        DiagnosticSeverity.Warning);
+        DiagnosticSeverity.Info);
 
     /// <summary>VM0067's tail when the DataAnnotations front end is on.</summary>
     public const string ValidatableObjectEnforceTail =
-        "its Validate method is not called by the generated validator";
+        "the generated validator calls its Validate method after every other rule on the type has " +
+        "passed, exactly as Validator.TryValidateObject sequences it, and the type keeps no " +
+        "boolean fast path";
 
     /// <summary>VM0067's tail under <c>ValidationModules_DataAnnotations=Ignore</c>.</summary>
     public const string ValidatableObjectIgnoreTail =
         "ValidationModules is ignoring its Validate method because ValidationModules_DataAnnotations is set to Ignore; another validation system may still call it";
+
+    /// <summary>
+    /// <c>[CustomValidation]</c> whose target cannot be called: the type or method does not
+    /// resolve, or the signature is not one DataAnnotations would accept from here.
+    /// </summary>
+    /// <remarks>
+    /// An error rather than a silently dropped rule, and reported with the reason in the tail -
+    /// the same arrangement VM0018 gives an unusable regex member. One deliberate narrowing from
+    /// DataAnnotations is caught here at build time instead of at run time: a value parameter
+    /// that matches neither the member's type nor <c>object</c> relies on
+    /// <c>[CustomValidation]</c>'s runtime string conversion, which this library does not do.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor CustomValidationTargetUnusable = Descriptor(
+        "VM0080", "[CustomValidation] target is unusable",
+        "'{0}' on '{1}' cannot be compiled: {2}",
+        DiagnosticSeverity.Error);
+
+    /// <summary>
+    /// A custom attribute configures resource-based error messages, whose lookup reflects at run
+    /// time - the one part of an invoked attribute the trimmer can break.
+    /// </summary>
+    public static readonly DiagnosticDescriptor ResourceErrorMessageUnderTrimming = Descriptor(
+        "VM0081", "Resource-based ErrorMessage resolves reflectively",
+        "'{0}' on '{1}' sets ErrorMessageResourceType, which DataAnnotations resolves with " +
+        "reflection when the message is formatted. Under trimming or Native AOT the resource " +
+        "property may be removed; set ErrorMessage, or keep the resource type rooted",
+        DiagnosticSeverity.Warning);
 
     /// <summary>
     /// Reported before any source is added, so the build fails here rather than on generated code

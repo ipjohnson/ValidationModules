@@ -277,6 +277,46 @@ public class ValidatorEmitterGoldenTests {
     }
 
     [Fact]
+    public void DataAnnotationsCustomSurfaces_InvokeThroughTheBridge() {
+        // The three DataAnnotations surfaces that carry user code: a custom attribute constructed
+        // once into a static field, a [CustomValidation] method resolved to a direct static call
+        // in both arities, and IValidatableObject sequenced last behind a clean-pass gate - which
+        // also costs the type its boolean fast path.
+        Snapshot.Match(Emit("""
+            using System.Collections.Generic;
+            using System.ComponentModel.DataAnnotations;
+
+            namespace Sample;
+
+            public sealed class DivisibleAttribute : ValidationAttribute {
+                public DivisibleAttribute(int divisor) => Divisor = divisor;
+                public int Divisor { get; }
+                public override bool IsValid(object? value) => value is int n && n % Divisor == 0;
+            }
+
+            public class Order : IValidatableObject {
+                [Divisible(3, ErrorMessage = "must divide by three")]
+                public int Count { get; set; }
+
+                [CustomValidation(typeof(Order), "CheckName")]
+                public string? Name { get; set; }
+
+                [CustomValidation(typeof(Order), "CheckSku")]
+                public string? Sku { get; set; }
+
+                public static ValidationResult? CheckName(string? value) => ValidationResult.Success;
+
+                public static ValidationResult? CheckSku(string? value, ValidationContext context) =>
+                    ValidationResult.Success;
+
+                public IEnumerable<ValidationResult> Validate(ValidationContext validationContext) {
+                    yield break;
+                }
+            }
+            """));
+    }
+
+    [Fact]
     public void FieldNaming_SnakeCase() {
         Snapshot.Match(Emit("""
             using ValidationModules.Constraints;

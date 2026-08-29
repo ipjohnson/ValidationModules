@@ -63,10 +63,13 @@ public static class RuntimeContract {
     // an error inside generated code into VM0040 at the call site, which is the best available
     // outcome. Taken before 1.0.0 pins the surface, which is the only time it is cheap.
 
-    // 5 -> 6: the DataAnnotations format validators compile instead of being diagnosed away.
-    // The emitter now writes calls to ConstraintChecks.IsEmail/IsPhone/IsUrl/IsCreditCard/
-    // IsBase64/HasFileExtension and reports through ReportEmail and friends, none of which a
-    // contract-5 runtime has. Additive, as the rule below requires.
+    // 5 -> 6: the DataAnnotations compatibility surface compiles instead of being diagnosed away.
+    // The format validators emit calls to ConstraintChecks.IsEmail/IsPhone/IsUrl/IsCreditCard/
+    // IsBase64/HasFileExtension and report through ReportEmail and friends; custom
+    // ValidationAttribute subclasses, [CustomValidation] methods and IValidatableObject emit calls
+    // into DataAnnotationsSupport and report under ValidationCodes.Custom. None of it exists in a
+    // contract-5 runtime. One bump for both, because no release shipped between them; additive, as
+    // the rule below requires.
 
     /// <summary>
     /// The contract this runtime implements. Compared against

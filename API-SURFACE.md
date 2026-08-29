@@ -1428,9 +1428,10 @@ constraint into `VM0010` so the situation is visible rather than silent.
 | `[Display(Name = "x")]` | field name override | ranks with `[JsonPropertyName]` in §8's precedence |
 | `ErrorMessage = "..."` | `Message` override | the emitter falls back to a literal `ctx.Add`, as it does for a native `Message` |
 | `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]`, `[FileExtensions]` | `Email`/`Phone`/`Url`/`CreditCard`/`Base64`/`FileExtension` kinds | compiled to `ConstraintChecks.Is*` with the BCL's exact semantics; `VM0063` (Info) states them — see §18.5 |
-| `[Compare]`, `[CustomValidation]` | — | `VM0061`, `VM0062` |
-| `IValidatableObject` | — | `VM0067` |
-| any other `ValidationAttribute` subclass | — | `VM0060` |
+| `[CustomValidation]` | `CustomValidationMethod` kind | resolved to a direct static call at build time; `VM0080` when the target is unusable — see §18.5 |
+| any other `ValidationAttribute` subclass | `CustomAttribute` kind | constructed once, invoked through `DataAnnotationsSupport`; `VM0060` (Info) — see §18.5 |
+| `IValidatableObject` | type-level flag | invoked last, gated on a clean pass; `VM0067` (Info) — see §18.5 |
+| `[Compare]` | — | `VM0061` — the one remaining refusal; rule classes are the cross-field form |
 
 ### 18.3 `[RegularExpression]` is anchored and `[Pattern]` is not
 
@@ -1509,14 +1510,36 @@ and none are merged — two `[StringLength]` bounds on one field is ambiguous an
 `VM0030` warns when hiding drops something. An `override` is one property rather than two, so its
 declarations accumulate the way `Inherited = true` says they should.
 
-### 18.5 What is not compiled
+### 18.5 What is compiled, invoked, and (still) not compiled
 
-A custom `ValidationAttribute` subclass carries arbitrary C# in a method body. The only way to honour
-it is to invoke it, which is the thing this front-end exists to avoid — so there is no
-inheritance-based extensibility here, and that is a limitation rather than an oversight. `VM0060`
-names the specific attribute and the specific property, so it is visible at the build that
-introduced it. The migration path is a native constraint, or `IAsyncValidatorFor<T>` for anything
-genuinely custom.
+A custom `ValidationAttribute` subclass carries arbitrary C# in a method body, and since 2026-08-28
+it is **invoked** rather than refused: constructed once from its compile-time-constant arguments
+into a static field on the validator — every argument re-rendered fully qualified, never lifted as
+syntax — and run through `GetValidationResult` via `DataAnnotationsSupport`, with `MemberName` and
+`DisplayName` resolved at build time so the context's reflective display-name path is never
+entered (net8's constructors carry `RequiresUnreferencedCode` for exactly that path; net10 has a
+displayName constructor without it). This reverses the paragraph that stood here ("the only way to
+honour it is to invoke it, which is the thing this front-end exists to avoid"): invoking a
+statically constructed instance through its ordinary virtual surface involves none of §2's
+forbidden five, and refusing it made this the one migration target where custom rules vanished —
+`TryValidateObject`, MVC and .NET 10's `AddValidation()` all run them. What the refusal was
+actually protecting — the zero-allocation pass — is preserved everywhere except the property that
+asked: a custom check pays DataAnnotations' own prices (a context per call, a box for value-type
+members), stated by `VM0060` as an Info at the use site. A fast path that skipped the context when
+`RequiresValidationContext` was false was written and removed: an attribute overriding only the
+protected context-taking `IsValid` without overriding that property works under `Validator` and
+would have received null from the fast path, inside user code.
+
+`[CustomValidation]` resolves at build time to a direct static call (`VM0080` when the target is
+not callable — with one recorded narrowing: no silent runtime string conversion, the value
+parameter accepts the member's declared type or `object`). `IValidatableObject.Validate` is
+emitted last and gated on `!ctx.HasErrors`, which is `TryValidateObject`'s sequencing; the type
+falls back to the interface-default `IsValid` for the applied-rules reason. Both report Info
+(`VM0060`-family tails, `VM0067`). Resource-based `ErrorMessage` lookup is the one part of an
+invoked attribute the trimmer can break, and `VM0081` says so where it is configured. Failures
+across all three report `ValidationCodes.Custom` — one code for the family, the `Predicate`
+argument — with run-time `MemberNames` converted through the same namer the emitted literals were
+baked with.
 
 The format validators — `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]`,
 `[FileExtensions]` — **compile** (2026-08-28), to straight-line reproductions in
@@ -1624,14 +1647,15 @@ Added to the table in §11:
 
 | ID | Severity | |
 |---|---|---|
-| VM0060 | Warning | custom `ValidationAttribute` subclass — cannot be compiled, not applied |
+| VM0060 | Info | custom `ValidationAttribute` subclass — constructed once and invoked; the message carries the cost model (2026-08-28; formerly a Warning that it was not applied) |
 | VM0061 | Warning | `[Compare]` — cross-field, not expressible as a per-property constraint |
-| VM0062 | Warning | `[CustomValidation]` — dispatches reflectively, not applied |
 | VM0063 | Info | the format validators — compiled with the BCL's exact semantics, stated in the message (2026-08-28; formerly a Warning that they were not applied) |
 | VM0064 | Error | `[MinLength]`/`[MaxLength]` on a member that is neither a string nor a collection |
 | VM0065 | Error | `[Range]` bounds do not parse as the member's type |
 | VM0066 | Warning | a DataAnnotations and a native constraint conflict on one property |
-| VM0067 | Warning | type implements `IValidatableObject` — not compiled |
+| VM0067 | Info | type implements `IValidatableObject` — invoked last, gated on a clean pass (2026-08-28; formerly a Warning that it was not compiled) |
+| VM0080 | Error | `[CustomValidation]` target does not resolve to a callable public static `ValidationResult` method |
+| VM0081 | Warning | resource-based `ErrorMessage` resolution reflects at run time; trimming can break it |
 
 Warnings rather than errors throughout, except where the attribute is simply wrong for the member.
 A build should not break because a model picked up `[Compare]` for some other consumer's benefit;

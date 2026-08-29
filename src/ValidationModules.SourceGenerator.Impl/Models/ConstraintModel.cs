@@ -46,6 +46,21 @@ public enum ConstraintKind {
     FileExtension,
 
     /// <summary>
+    /// A custom <c>ValidationAttribute</c> subclass, constructed once from
+    /// <c>CustomConstruction</c> into a static field and invoked through
+    /// <c>DataAnnotationsSupport</c>. Unlike every kind above, its check is user code run at
+    /// validation time rather than a test this emitter writes - the faithful reading of an
+    /// attribute whose semantics only its author knows.
+    /// </summary>
+    CustomAttribute,
+
+    /// <summary>
+    /// A <c>[CustomValidation]</c> target, resolved at build time to the static method in
+    /// <c>CustomAccessor</c> and called directly - no attribute instance, no reflective dispatch.
+    /// </summary>
+    CustomValidationMethod,
+
+    /// <summary>
     /// A predicate declared with <c>rules.Ensure(…)</c>. Carries no bounds and composes no message -
     /// its message was rendered from its own source text when it was read. See API-SURFACE.md §19.5.
     /// </summary>
@@ -176,4 +191,26 @@ public sealed record ConstraintModel(
     /// DSL one as <c>global::My.ClaimRules_Rules.Cond0(value)</c>, and both are hoisted and tested
     /// identically.
     /// </remarks>
-    string? Condition = null) : IEquatable<ConstraintModel>;
+    string? Condition = null,
+
+    /// <summary>
+    /// <see cref="ConstraintKind.CustomAttribute"/> only: the complete construction expression -
+    /// <c>new global::My.EvenNumberAttribute(2) { ErrorMessage = "…" }</c> - every argument
+    /// rendered fully qualified from the attribute's compile-time constants. The emitter hoists it
+    /// into a static field, so the instance is built once per validator rather than per pass.
+    /// </summary>
+    string? CustomConstruction = null,
+
+    /// <summary>
+    /// <see cref="ConstraintKind.CustomValidationMethod"/> only: the fully qualified static method
+    /// - <c>global::My.Checks.EvenNumber</c> - already resolved and signature-checked, so the
+    /// emitter writes a direct call.
+    /// </summary>
+    string? CustomAccessor = null,
+
+    /// <summary>
+    /// <see cref="ConstraintKind.CustomValidationMethod"/> only: whether the method's second
+    /// parameter takes the DataAnnotations <c>ValidationContext</c>, which the emitted call then
+    /// builds through <c>DataAnnotationsSupport.CreateContext</c>.
+    /// </summary>
+    bool CustomTakesContext = false) : IEquatable<ConstraintModel>;

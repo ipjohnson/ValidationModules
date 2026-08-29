@@ -27,6 +27,14 @@ namespace ValidationModules
         public static bool IsUrl(System.Uri value) { }
         public static bool IsUrl(string value) { }
     }
+    public static class DataAnnotationsSupport
+    {
+        public static ValidationModules.ValidationFlow Apply(ref ValidationModules.ValidationContext context, System.ComponentModel.DataAnnotations.ValidationResult? result, string? field, ValidationModules.Naming.IValidationFieldNamer namer) { }
+        public static System.ComponentModel.DataAnnotations.ValidationContext CreateContext(System.IServiceProvider? services, object instance, string? memberName, string displayName) { }
+        public static bool IsValid(System.ComponentModel.DataAnnotations.ValidationAttribute attribute, object instance, object? value, string memberName, string displayName) { }
+        public static ValidationModules.ValidationFlow Validate(ref ValidationModules.ValidationContext context, System.ComponentModel.DataAnnotations.ValidationAttribute attribute, object instance, object? value, string field, string memberName, string displayName) { }
+        public static ValidationModules.ValidationFlow ValidateObject(ref ValidationModules.ValidationContext context, System.ComponentModel.DataAnnotations.IValidatableObject value, ValidationModules.Naming.IValidationFieldNamer namer) { }
+    }
     public sealed class DescribedValidator<T> : ValidationModules.IValidatorFor<T>
     {
         public DescribedValidator(ValidationModules.IValidationRulesFor<T> rules, ValidationModules.IValidatorProvider? nested = null, ValidationModules.Naming.IValidationFieldNamer? namer = null) { }
@@ -108,6 +116,7 @@ namespace ValidationModules
         public const string ArrayBounds = "array_bounds";
         public const string Base64 = "base64";
         public const string CreditCard = "credit_card";
+        public const string Custom = "custom";
         public const string Email = "email";
         public const string Enum = "enum";
         public const string FileExtension = "file_extension";
