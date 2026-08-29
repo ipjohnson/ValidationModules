@@ -1184,6 +1184,22 @@ public sealed class ValidatorEmitter {
                 return $"{guard}!global::ValidationModules.ConstraintChecks.HasFileExtension({access}, {field})";
             }
 
+            // A CustomConstraintAttribute's check: the author's own static method, called like a
+            // built-in, with the constructor's constants following the member's value. Null-guarded
+            // and unwrapped like every structural constraint - a null passes, [Required] is the
+            // presence check.
+            case ConstraintKind.CustomCheck: {
+                if (constraint.CustomAccessor is not { } accessor) {
+                    return null;
+                }
+
+                var arguments = constraint.Values.Count == 0
+                    ? string.Empty
+                    : ", " + string.Join(", ", constraint.Values);
+
+                return $"{guard}!{accessor}({value}{arguments})";
+            }
+
             // Membership against the declared members, or - on a [Flags] enum - whether any bit
             // outside them is set. Never Enum.IsDefined: the members were known at build time, and
             // the reflective form would box and search on a path that is otherwise a comparison.
@@ -1276,6 +1292,7 @@ public sealed class ValidatorEmitter {
             ConstraintKind.Base64 => Report(field, constraint, "ReportBase64", ""),
             ConstraintKind.FileExtension => Report(field, constraint, "ReportFileExtension",
                 $", {QuoteString(string.Join(", ", Displays(constraint)))}"),
+            ConstraintKind.CustomCheck => Report(field, constraint, "ReportCustom", ""),
             // A flags value is a combination, so "must be one of" would be wrong about what the
             // type accepts. Says which flags exist instead.
             ConstraintKind.EnumDefined when constraint.FlagsMask is not null =>
@@ -1353,6 +1370,7 @@ public sealed class ValidatorEmitter {
         ConstraintKind.CreditCard => $"{Codes}.CreditCard",
         ConstraintKind.Base64 => $"{Codes}.Base64",
         ConstraintKind.FileExtension => $"{Codes}.FileExtension",
+        ConstraintKind.CustomCheck => $"{Codes}.Custom",
         _ => $"{Codes}.ArrayBounds",
     };
 

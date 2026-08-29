@@ -1541,6 +1541,17 @@ across all three report `ValidationCodes.Custom` — one code for the family, th
 argument — with run-time `MemberNames` converted through the same namer the emitted literals were
 baked with.
 
+The native counterpart shipped beside the invocation path (2026-08-28):
+`CustomConstraintAttribute`, the inheritance-based extensibility §18.5 used to rule out, made
+compilable by constraining its shape. A subclass declares `public static bool IsValid(TMember,
+…ctorArgs)`; the generator resolves it, lines the extra parameters up with the constructor the
+declaration called, renders the supplied constants, and emits the direct call - the attribute
+class is never constructed, so the check costs a branch, and the base's `Code`/`Message`/
+`When`/`Unless` knobs ride along unchanged. Every wrong shape is `VM0082` with the reason,
+custom property setters included (a static check has no instance to read one from). This is the
+"high performance custom attribute" answer: DataAnnotations subclasses remain the migration
+path, `CustomConstraintAttribute` is what an author writes when they get to choose.
+
 The format validators — `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]`,
 `[FileExtensions]` — **compile** (2026-08-28), to straight-line reproductions in
 `ConstraintChecks`, with a per-use `VM0063` Info stating the exact check emitted. This reverses

@@ -11,6 +11,7 @@ public static class KnownTypes {
     public const string DataAnnotationsNamespace = "System.ComponentModel.DataAnnotations";
 
     public const string GenerateValidatorAttribute = "ValidationModules.Constraints.GenerateValidatorAttribute";
+    public const string CustomConstraintAttribute = "ValidationModules.Constraints.CustomConstraintAttribute";
     public const string ValidationAttribute = "System.ComponentModel.DataAnnotations.ValidationAttribute";
     public const string ValidatableObject = "System.ComponentModel.DataAnnotations.IValidatableObject";
 

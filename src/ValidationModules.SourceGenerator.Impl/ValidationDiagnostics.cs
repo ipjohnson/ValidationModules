@@ -356,6 +356,21 @@ public static class ValidationDiagnostics {
         DiagnosticSeverity.Warning);
 
     /// <summary>
+    /// A <c>CustomConstraintAttribute</c> subclass whose <c>IsValid</c> cannot be compiled: the
+    /// method is missing or the wrong shape, its parameters do not line up with the constructor,
+    /// or the declaration sets a property the static check has no way to receive.
+    /// </summary>
+    /// <remarks>
+    /// An error with the reason in the tail, the VM0080 arrangement: the whole point of the native
+    /// custom shape is that a mistake in it is a build error naming the fix, where the invoked
+    /// DataAnnotations shape can only discover one at run time.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor CustomConstraintUnusable = Descriptor(
+        "VM0082", "Custom constraint attribute is unusable",
+        "'{0}' on '{1}' cannot be compiled: {2}",
+        DiagnosticSeverity.Error);
+
+    /// <summary>
     /// Reported before any source is added, so the build fails here rather than on generated code
     /// calling a runtime member that does not exist. Plan §7.5.
     /// </summary>

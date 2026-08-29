@@ -49,3 +49,4 @@ VM0078 | ValidationModules.Usage | Error | A lifted predicate references a priva
 VM0079 | ValidationModules.Usage | Error | A generic type cannot have a generated validator.
 VM0080 | ValidationModules.Usage | Error | A [CustomValidation] target does not resolve to a callable public static ValidationResult method.
 VM0081 | ValidationModules.Usage | Warning | Resource-based ErrorMessage resolution reflects at run time and may break under trimming.
+VM0082 | ValidationModules.Usage | Error | A CustomConstraintAttribute subclass has no usable public static bool IsValid, or its parameters do not line up with the constructor.

@@ -3,6 +3,53 @@
 The surface of `ValidationRules<T>`, passed to `IValidationRulesFor<T>.Describe`. See
 [Rule classes](/guide/rule-classes) for how it is used and what the body may contain.
 
+## Two classes to copy
+
+The everyday shape — anchored chains, one rule per line, the whole class:
+
+```csharp
+using ValidationModules;
+
+public sealed class PetRules : IValidationRulesFor<Pet> {
+    public void Describe(ValidationRules<Pet> rules) {
+        rules.Required(x => x.Name).Length(1, 100);
+        rules.Range(x => x.Age, 0, 30);
+        rules.AllowedValues(x => x.Status, "available", "pending", "sold");
+        rules.Count(x => x.Toys, 1, 10).Each();
+        rules.Nested(x => x.Home);
+    }
+}
+```
+
+And the shape attributes cannot reach — cross-field facts, conditions, your own codes and
+messages:
+
+```csharp
+using ValidationModules;
+
+public sealed class BookingRules : IValidationRulesFor<Booking> {
+    public void Describe(ValidationRules<Booking> rules) {
+        rules.Required(x => x.Reference).Length(8, 8);
+
+        rules.When(x => x.IsRecurring, () => {
+            rules.RangeAtLeast(x => x.Occurrences, 2);
+        });
+
+        rules.Ensure(x => x.Start < x.End,
+            code: "window_inverted",
+            message: "the booking must start before it ends");
+
+        rules.Ensure(x => x.Deposit <= x.Total * 0.5m, code: "deposit_too_large");
+    }
+}
+```
+
+Both compile to the same straight-line validator the attributes produce — same codes, same
+messages, same ordering. The rest of this page is the full surface, for when you need the exact
+signature.
+
+## The surface
+
 ```csharp
 public sealed class ValidationRules<T> {
     public PropertyRules<T, TValue> For<TValue>(Func<T, TValue> value, string? field = null, …);

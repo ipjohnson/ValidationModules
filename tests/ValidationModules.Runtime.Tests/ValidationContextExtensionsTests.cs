@@ -207,6 +207,14 @@ public class ValidationContextExtensionsTests {
     }
 
     [Fact]
+    public void ReportCustom_ComposesTheTerseDefaultAndCode() {
+        var error = Single(context => context.ReportCustom("sku"));
+
+        Assert.Equal("sku is invalid.", error.Message);
+        Assert.Equal(ValidationCodes.Custom, error.Code);
+    }
+
+    [Fact]
     public void ReportEmail_TakesACodeOverrideWithoutLosingTheComposedMessage() {
         var error = Single(context => context.ReportEmail("email", code: "contact_email"));
 

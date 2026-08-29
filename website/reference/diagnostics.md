@@ -68,6 +68,7 @@ silently does not is worse than one you know is missing.
 | [VM0079](#vm0079) | Error | a generic type cannot have a generated validator |
 | [VM0080](#vm0080) | Error | a `[CustomValidation]` target cannot be called |
 | [VM0081](#vm0081) | Warning | resource-based `ErrorMessage` resolves reflectively |
+| [VM0082](#vm0082) | Error | a custom constraint attribute's `IsValid` is missing or the wrong shape |
 
 ---
 
@@ -621,6 +622,19 @@ silently, and the message says what to change.
 The one part of an invoked attribute the trimmer can break: resource-based messages reflect over
 the resource type at format time, and a trimmed publish may have removed the property. Set
 `ErrorMessage`, or keep the resource type rooted.
+
+### VM0082 {#vm0082}
+
+**Error** — *`'SkuAttribute' on 'Code' cannot be compiled: IsValid's first parameter is 'int', which cannot accept this member's 'string?'`*
+
+A [`CustomConstraintAttribute`](/guide/custom-constraints) subclass whose contract does not hold:
+no public static bool `IsValid`, a first parameter that cannot accept the member, extra
+parameters that do not line up with the constructor positionally and by type, or a custom
+property setter — which a static check has no way to receive, so erroring beats an argument that
+silently never arrives.
+
+Catching the shape at build time is the feature. The invoked DataAnnotations form discovers the
+same mistakes at run time, or never.
 
 ---
 

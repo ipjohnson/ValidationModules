@@ -61,6 +61,15 @@ public enum ConstraintKind {
     CustomValidationMethod,
 
     /// <summary>
+    /// A native <c>CustomConstraintAttribute</c> subclass: the author's own check, compiled like a
+    /// built-in. <c>CustomAccessor</c> holds the attribute class's static <c>IsValid</c>;
+    /// <c>Values</c> carries the constructor arguments, already rendered, that follow the member's
+    /// value in the call. The high-performance counterpart of <see cref="CustomAttribute"/>: no
+    /// instance, no context, nothing allocated on a passing value.
+    /// </summary>
+    CustomCheck,
+
+    /// <summary>
     /// A predicate declared with <c>rules.Ensure(…)</c>. Carries no bounds and composes no message -
     /// its message was rendered from its own source text when it was read. See API-SURFACE.md §19.5.
     /// </summary>

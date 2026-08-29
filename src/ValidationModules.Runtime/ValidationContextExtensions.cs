@@ -351,6 +351,25 @@ public static class ValidationContextExtensions {
             severity);
 
     /// <summary>
+    /// Records that a custom constraint's check failed.
+    /// </summary>
+    /// <remarks>
+    /// The composed message is deliberately terse - the check is yours, so only you can say what
+    /// "valid" meant. A <c>Message</c> on the attribute replaces it, and setting one is the
+    /// recommendation, not an edge case.
+    /// </remarks>
+    public static ValidationFlow ReportCustom(
+        this ValidationContext context,
+        string field,
+        ValidationSeverity severity = ValidationSeverity.Error,
+        string? code = null) =>
+        context.Report(
+            field,
+            code ?? ValidationCodes.Custom,
+            string.Concat(field, " is invalid."),
+            severity);
+
+    /// <summary>
     /// Builds the at-least / at-most / between message shared by the two bounded constraints,
     /// including the singular-plural switch that reads wrong often enough to be worth centralizing.
     /// </summary>

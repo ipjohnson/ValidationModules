@@ -361,6 +361,12 @@ public sealed class AttributeFrontEnd {
                 return true;
             }
 
+            // A CustomConstraintAttribute subclass is native vocabulary wherever it is declared,
+            // independent of the DataAnnotations switch.
+            if (DerivesFromCustomConstraint(attributeClass)) {
+                return true;
+            }
+
             // A custom ValidationAttribute now compiles to an invocation, so a property carrying
             // only one is a validated property - without this, the walk would never read it.
             if (_compileDataAnnotations && DerivesFromValidationAttribute(attributeClass)) {
@@ -643,6 +649,10 @@ public sealed class AttributeFrontEnd {
         var ns = attributeClass.ContainingNamespace?.ToDisplayString();
 
         if (ns == KnownTypes.ConstraintsNamespace) {
+            return true;
+        }
+
+        if (DerivesFromCustomConstraint(attributeClass)) {
             return true;
         }
 
@@ -1022,6 +1032,11 @@ public sealed class AttributeFrontEnd {
             }
 
             if (ns != KnownTypes.DataAnnotationsNamespace) {
+                if (DerivesFromCustomConstraint(attributeClass)) {
+                    ReadCustomConstraint(member, memberType, attributeClass, attribute, constraints);
+                    continue;
+                }
+
                 if (DerivesFromValidationAttribute(attributeClass)) {
                     if (!_compileDataAnnotations) {
                         ReportAs(DiagnosticSeverity.Info,
@@ -1377,6 +1392,159 @@ public sealed class AttributeFrontEnd {
     private static bool DerivesFromValidationAttribute(INamedTypeSymbol attributeClass) {
         for (var current = attributeClass.BaseType; current is not null; current = current.BaseType) {
             if (current.ToDisplayString() == KnownTypes.ValidationAttribute) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool DerivesFromCustomConstraint(INamedTypeSymbol attributeClass) {
+        for (var current = attributeClass.BaseType; current is not null; current = current.BaseType) {
+            if (current.ToDisplayString() == KnownTypes.CustomConstraintAttribute) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Reads a <c>CustomConstraintAttribute</c> subclass: resolves its static <c>IsValid</c>, lines
+    /// its extra parameters up with the constructor the declaration called, renders the supplied
+    /// constants, and produces a constraint the emitter compiles like any built-in.
+    /// </summary>
+    /// <remarks>
+    /// Everything that can be wrong here is VM0082 with the reason, because catching the shape at
+    /// build time is the feature: the invoked-DataAnnotations form discovers the same mistakes at
+    /// run time or never.
+    /// </remarks>
+    private void ReadCustomConstraint(
+        ISymbol member,
+        ITypeSymbol memberType,
+        INamedTypeSymbol attributeClass,
+        AttributeData attribute,
+        List<ConstraintModel> constraints) {
+
+        IMethodSymbol? check = null;
+
+        foreach (var candidate in attributeClass.GetMembers("IsValid")) {
+            if (candidate is IMethodSymbol {
+                    IsStatic: true,
+                    DeclaredAccessibility: Accessibility.Public,
+                    ReturnType.SpecialType: SpecialType.System_Boolean,
+                    Parameters.Length: >= 1,
+                } method) {
+                check = method;
+                break;
+            }
+        }
+
+        if (check is null) {
+            Report(ValidationDiagnostics.CustomConstraintUnusable, member,
+                attributeClass.Name, member.Name,
+                "it declares no public static bool IsValid method taking the member's value");
+            return;
+        }
+
+        // The value the emitted call passes has been null-guarded and - for a nullable value type -
+        // unwrapped, so the first parameter is checked against the member's non-nullable shape.
+        var unwrapped = TypeFacts.IsNullableValueType(memberType)
+            ? ((INamedTypeSymbol)memberType).TypeArguments[0]
+            : memberType;
+
+        if (!AcceptsMember(check.Parameters[0].Type, unwrapped)) {
+            Report(ValidationDiagnostics.CustomConstraintUnusable, member,
+                attributeClass.Name, member.Name,
+                $"IsValid's first parameter is '{check.Parameters[0].Type.ToDisplayString()}', " +
+                $"which cannot accept this member's '{memberType.ToDisplayString()}'");
+            return;
+        }
+
+        var constructor = attribute.AttributeConstructor;
+        var supplied = constructor?.Parameters.Length ?? 0;
+        var expected = check.Parameters.Length - 1;
+
+        if (supplied != expected) {
+            Report(ValidationDiagnostics.CustomConstraintUnusable, member,
+                attributeClass.Name, member.Name,
+                $"IsValid takes {expected} argument(s) after the value but the constructor " +
+                $"supplies {supplied} - the two are matched positionally");
+            return;
+        }
+
+        var arguments = new List<string>();
+
+        for (var i = 0; i < expected; i++) {
+            var parameter = check.Parameters[i + 1].Type;
+            var argument = constructor!.Parameters[i].Type;
+
+            if (!SymbolEqualityComparer.Default.Equals(parameter, argument)) {
+                Report(ValidationDiagnostics.CustomConstraintUnusable, member,
+                    attributeClass.Name, member.Name,
+                    $"IsValid's '{check.Parameters[i + 1].Name}' parameter is " +
+                    $"'{parameter.ToDisplayString()}' but the constructor's matching parameter is " +
+                    $"'{argument.ToDisplayString()}'");
+                return;
+            }
+
+            if (AttributeConstructionRenderer.RenderArgument(attribute.ConstructorArguments[i]) is not { } rendered) {
+                Report(ValidationDiagnostics.CustomConstraintUnusable, member,
+                    attributeClass.Name, member.Name,
+                    $"the constructor argument for '{check.Parameters[i + 1].Name}' is not a " +
+                    "renderable constant");
+                return;
+            }
+
+            arguments.Add(rendered);
+        }
+
+        // A named argument that is not one of the base's knobs is a property the static check has
+        // no way to receive - erroring beats a parameter that silently never arrives.
+        foreach (var named in attribute.NamedArguments) {
+            if (named.Key is not ("Code" or "Message" or "When" or "Unless")) {
+                Report(ValidationDiagnostics.CustomConstraintUnusable, member,
+                    attributeClass.Name, member.Name,
+                    $"'{named.Key}' is set as a property, which the static IsValid cannot " +
+                    "receive; pass it through the constructor");
+                return;
+            }
+        }
+
+        var accessor =
+            $"{attributeClass.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.IsValid";
+
+        var constraint = new ConstraintModel(
+            ConstraintKind.CustomCheck,
+            Code: NativeConstraintReader.Named(attribute, "Code") as string,
+            Message: NativeConstraintReader.Named(attribute, "Message") as string,
+            WhenMember: NativeConstraintReader.Named(attribute, "When") as string,
+            UnlessMember: NativeConstraintReader.Named(attribute, "Unless") as string,
+            CustomAccessor: accessor,
+            Values: new EquatableArray<string>(arguments.ToImmutableArray()));
+
+        constraints.Add(ResolveCondition(constraint, member));
+    }
+
+    /// <summary>
+    /// Whether the member's (unwrapped) type can be passed where <paramref name="parameter"/> is
+    /// declared: identity, a base type, an implemented interface, or <c>object</c>.
+    /// </summary>
+    private static bool AcceptsMember(ITypeSymbol parameter, ITypeSymbol memberType) {
+        if (parameter.SpecialType == SpecialType.System_Object) {
+            return true;
+        }
+
+        var comparer = SymbolEqualityComparer.Default;
+
+        for (ITypeSymbol? current = memberType; current is not null; current = current.BaseType) {
+            if (comparer.Equals(parameter, current)) {
+                return true;
+            }
+        }
+
+        foreach (var contract in memberType.AllInterfaces) {
+            if (comparer.Equals(parameter, contract)) {
                 return true;
             }
         }

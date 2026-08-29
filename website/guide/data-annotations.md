@@ -126,8 +126,9 @@ naming policy the compiled literals were baked with, so everything lands on cons
 `ValidationContext` per check (passing values included), a box for value-type members, and — for
 an `IValidatableObject` type — the loss of the boolean fast path, since `IsValid` cannot know
 "the whole pass was clean". Everything else on the model keeps the zero-allocation promise. When
-the logic is yours to move, a [rule class](/guide/rule-classes) expresses the same rule at
-straight-line cost:
+the logic is yours to move, a [custom constraint attribute](/guide/custom-constraints) keeps the
+attribute ergonomics at straight-line cost, and a [rule class](/guide/rule-classes) expresses the
+same rule beside the model:
 
 ```csharp
 public sealed class CustomerRules : IValidationRulesFor<Customer> {

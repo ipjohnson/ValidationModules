@@ -58,6 +58,12 @@ internal static class AttributeConstructionRenderer {
         return $"{construction} {{ {string.Join(", ", named)} }}";
     }
 
+    /// <summary>
+    /// One argument on its own, for the native custom-constraint path, which passes constructor
+    /// arguments into a static check instead of a construction.
+    /// </summary>
+    internal static string? RenderArgument(TypedConstant constant) => Argument(constant);
+
     private static string? Argument(TypedConstant constant) {
         switch (constant.Kind) {
             case TypedConstantKind.Error:

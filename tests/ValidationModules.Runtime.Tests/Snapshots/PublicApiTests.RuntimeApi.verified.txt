@@ -149,6 +149,7 @@ namespace ValidationModules
         public static ValidationModules.ValidationFlow ReportAllowedValues(this ValidationModules.ValidationContext context, string field, string allowedValues, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
         public static ValidationModules.ValidationFlow ReportBase64(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
         public static ValidationModules.ValidationFlow ReportCreditCard(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
+        public static ValidationModules.ValidationFlow ReportCustom(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
         public static ValidationModules.ValidationFlow ReportEmail(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
         public static ValidationModules.ValidationFlow ReportFileExtension(this ValidationModules.ValidationContext context, string field, string extensions, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
         public static ValidationModules.ValidationFlow ReportItemCount(this ValidationModules.ValidationContext context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
@@ -294,6 +295,10 @@ namespace ValidationModules.Constraints
         public AllowedValuesAttribute(params object[] values) { }
         public System.StringComparison Comparison { get; init; }
         public object[] Values { get; }
+    }
+    public abstract class CustomConstraintAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        protected CustomConstraintAttribute() { }
     }
     [System.AttributeUsage(System.AttributeTargets.Property | System.AttributeTargets.Field | System.AttributeTargets.Parameter)]
     public sealed class EnumDefinedAttribute : ValidationModules.Constraints.ValidationConstraintAttribute

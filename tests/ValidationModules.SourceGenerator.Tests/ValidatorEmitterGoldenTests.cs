@@ -317,6 +317,41 @@ public class ValidatorEmitterGoldenTests {
     }
 
     [Fact]
+    public void CustomConstraintAttributes_CompileLikeBuiltIns() {
+        // The native extensibility shape: the author's attribute, the author's static check,
+        // compiled to the same straight-line form as a built-in - constructor constants in the
+        // call, base knobs riding along, zero cost the model did not write.
+        Snapshot.Match(Emit("""
+            using System;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed class SkuAttribute : CustomConstraintAttribute {
+                public static bool IsValid(string value) => value.StartsWith("SKU-", StringComparison.Ordinal);
+            }
+
+            public sealed class DivisibleAttribute : CustomConstraintAttribute {
+                public DivisibleAttribute(int divisor) { }
+
+                public static bool IsValid(int value, int divisor) => value % divisor == 0;
+            }
+
+            public record Product {
+                [Required]
+                [Sku(Message = "sku must start with SKU-")]
+                public string? Sku { get; init; }
+
+                [Divisible(4)]
+                public int Count { get; init; }
+
+                [Divisible(2, Code = "pair")]
+                public int? Spare { get; init; }
+            }
+            """));
+    }
+
+    [Fact]
     public void FieldNaming_SnakeCase() {
         Snapshot.Match(Emit("""
             using ValidationModules.Constraints;

@@ -28,7 +28,7 @@ drifting silently.
 | `credit_card` | `ValidationCodes.CreditCard` | DataAnnotations `[CreditCard]` |
 | `base64` | `ValidationCodes.Base64` | DataAnnotations `[Base64String]` |
 | `file_extension` | `ValidationCodes.FileExtension` | DataAnnotations `[FileExtensions]` |
-| `custom` | `ValidationCodes.Custom` | custom `ValidationAttribute`s, `[CustomValidation]`, `IValidatableObject` |
+| `custom` | `ValidationCodes.Custom` | [custom constraint attributes](/guide/custom-constraints), custom `ValidationAttribute`s, `[CustomValidation]`, `IValidatableObject` |
 | `invalid` | `ValidationCodes.Invalid` | nothing in this library — see below |
 
 These are a **wire contract**. A client attaching messages to form inputs, or branching on failure
