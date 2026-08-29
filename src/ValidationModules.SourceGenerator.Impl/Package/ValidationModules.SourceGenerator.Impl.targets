@@ -13,6 +13,7 @@
         <CompilerVisibleProperty Include="ValidationModules_DataAnnotations"/>
         <CompilerVisibleProperty Include="ValidationModules_PatternPolicy"/>
         <CompilerVisibleProperty Include="ValidationModules_FailFast"/>
+        <CompilerVisibleProperty Include="ValidationModules_CaptureValues"/>
         <!-- Not ours, but the generator reads them to decide whether an inline pattern is acceptable. -->
         <CompilerVisibleProperty Include="PublishAot"/>
         <CompilerVisibleProperty Include="IsAotCompatible"/>

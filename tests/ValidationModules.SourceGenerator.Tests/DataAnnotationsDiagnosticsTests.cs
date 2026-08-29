@@ -409,7 +409,7 @@ public class DataAnnotationsDiagnosticsTests {
         Assert.Contains("\".png\"", emitted);
         Assert.Contains("\".gif\"", emitted);
         Assert.Contains("AvatarExtensions0", emitted);
-        Assert.Contains("ReportFileExtension", emitted);
+        Assert.Contains("global::ValidationModules.ValidationMessageTemplates.FileExtension", emitted);
         Assert.Contains(".png, .jpg, .jpeg, .gif", emitted);
         Assert.Empty(result.CompilationErrors);
     }
@@ -494,8 +494,8 @@ public class DataAnnotationsDiagnosticsTests {
             """));
 
         var emitted = result.Sources["Sample.CustomerValidator.g.cs"];
-        Assert.Contains("ReportStringLength", emitted);
-        Assert.Contains("ReportItemCount", emitted);
+        Assert.Contains("global::ValidationModules.ValidationMessageTemplates.StringLengthAtMost, 10", emitted);
+        Assert.Contains("global::ValidationModules.ValidationMessageTemplates.ItemCountAtMost, 3", emitted);
     }
 
     // VM0067 — IValidatableObject, compiled with TryValidateObject's sequencing.

@@ -40,6 +40,29 @@ public interface IValidationContextReporter {
         ValidationSeverity severity = ValidationSeverity.Error);
 
     /// <summary>
+    /// Records a structured failure: code, attempted value and message ingredients, no composed
+    /// text. What every generated constraint site and every <c>Report*</c> helper calls; the
+    /// message renders when something reads <see cref="ValidationError.Message"/>.
+    /// </summary>
+    /// <remarks>
+    /// A real member rather than a default implementation, deliberately: the helpers reach this
+    /// through a constrained generic on <see cref="ValidationContext"/>, and a default interface
+    /// member invoked that way boxes the struct receiver - the exact cost the constrained-call
+    /// design exists to avoid.
+    /// </remarks>
+    /// <param name="field">The field name, appended to the current path.</param>
+    /// <param name="code">A stable machine-readable code.</param>
+    /// <param name="value">The attempted value, or null when capture is off or nothing applies.</param>
+    /// <param name="messageInfo">The constraint's template and arguments. Shared, not per-error.</param>
+    /// <param name="severity">Defaults to <see cref="ValidationSeverity.Error"/>.</param>
+    ValidationFlow Report(
+        string field,
+        string code,
+        object? value,
+        ValidationMessageInfo messageInfo,
+        ValidationSeverity severity = ValidationSeverity.Error);
+
+    /// <summary>
     /// Records a failure against the current object itself, for type-level and cross-field rules.
     /// </summary>
     /// <param name="code">A stable machine-readable code.</param>

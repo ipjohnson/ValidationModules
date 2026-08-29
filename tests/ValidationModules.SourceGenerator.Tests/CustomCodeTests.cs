@@ -66,8 +66,10 @@ public class CustomCodeTests {
 
         Assert.Contains("\"too_long\"", emitted);
 
-        // Still routed through the helper that owns the bounds text, rather than a literal the
-        // emitter duplicated.
-        Assert.Contains("ReportStringLength", emitted);
+        // Still carries the runtime-owned bounds template rather than a literal the emitter
+        // duplicated - the hoisted info holds the template and the bounds, and the report carries
+        // the overridden code beside it.
+        Assert.Contains("global::ValidationModules.ValidationMessageTemplates.StringLengthBetween, 2, 40", emitted);
+        Assert.Contains("ctx.Report(\"name\", \"too_long\"", emitted);
     }
 }

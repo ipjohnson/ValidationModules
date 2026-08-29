@@ -54,7 +54,7 @@ public sealed partial class AddressValidator : global::ValidationModules.IValida
 
     public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Address value)
     {
-        if (string.IsNullOrWhiteSpace(value.PostalCode) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "postalCode").ShouldStop)
+        if (string.IsNullOrWhiteSpace(value.PostalCode) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "postalCode", value: value.PostalCode).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
@@ -91,7 +91,7 @@ public sealed partial class LineValidator : global::ValidationModules.IValidator
 
     public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Line value)
     {
-        if (string.IsNullOrWhiteSpace(value.Sku) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "sku").ShouldStop)
+        if (string.IsNullOrWhiteSpace(value.Sku) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "sku", value: value.Sku).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }

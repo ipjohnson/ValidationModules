@@ -128,7 +128,7 @@ public class RangeStringBoundsTests {
 
         Assert.Single(result.Diagnostics, d => d.Id == "VM0065");
         Assert.Empty(result.CompilationErrors);
-        Assert.Contains("global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\")", result.Sources["Sample.PetValidator.g.cs"]);
+        Assert.Contains("global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\", value: value.Name)", result.Sources["Sample.PetValidator.g.cs"]);
     }
 
     [Fact]

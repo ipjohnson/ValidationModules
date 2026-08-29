@@ -51,8 +51,23 @@ This is on by default. Set `ValidationModules_DataAnnotations` to `Ignore` to tu
 the member's own type decides which constraint each becomes. A member that is neither is
 [VM0064](/reference/diagnostics#vm0064).
 
-`MinimumIsExclusive` / `MaximumIsExclusive` on `[Range]` are honoured, as is `ErrorMessage`
-everywhere.
+`MinimumIsExclusive` / `MaximumIsExclusive` on `[Range]` are honoured — and the message finally
+says so: an exclusive bound reads "must be greater than" / "must be less than" rather than
+claiming "between".
+
+### Messages {#messages}
+
+`ErrorMessage` is honoured everywhere, with DataAnnotations' own placeholder dialect resolved at
+build time: every argument but the display name is a compile-time constant, so
+`ErrorMessage = "The field {0} is over {1} chars"` on a `[StringLength(3)]` compiles to the
+finished text, `{0}` filled with the `[Display]` name the front end already resolved. Where
+`Validator.TryValidateObject` called `string.Format` per failure, the wire carries a literal.
+
+Resource-backed messages — `ErrorMessageResourceType` / `ErrorMessageResourceName` — compile to a
+direct read of the resource accessor property, performed per render, so `CurrentUICulture` and
+the satellite fallback chain do their work and nothing resolves reflectively: the property
+reference roots the resource class for the trimmer. An explicit `ErrorMessage` beside the pair
+wins, which is DataAnnotations' own precedence.
 
 ## Two behaviours reproduced on purpose
 
@@ -138,9 +153,10 @@ public sealed class CustomerRules : IValidationRulesFor<Customer> {
 }
 ```
 
-One caveat travels with resource-based messages: `ErrorMessageResourceType` resolves reflectively
-at format time, which trimming can break — [VM0081](/reference/diagnostics#vm0081) warns where it
-is set.
+Resource-based messages on *mapped* attributes are compiled — see [Messages](#messages) above.
+The reflective resolution DataAnnotations performs survives only inside invoked custom
+attributes, where the attribute's own `FormatErrorMessage` runs user code this library will not
+rewrite — [VM0081](/reference/diagnostics#vm0081) warns there, and only there.
 
 ## What is not compiled, and says so
 

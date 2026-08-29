@@ -51,7 +51,7 @@ public sealed partial class ProductValidator : global::ValidationModules.IValida
     public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Product value)
     {
         var missingSku = string.IsNullOrWhiteSpace(value.Sku);
-        if (missingSku && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "sku").ShouldStop)
+        if (missingSku && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "sku", value: value.Sku).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
@@ -59,11 +59,11 @@ public sealed partial class ProductValidator : global::ValidationModules.IValida
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (!global::Sample.DivisibleAttribute.IsValid(value.Count, 4) && global::ValidationModules.ValidationContextExtensions.ReportCustom(ctx, "count").ShouldStop)
+        if (!global::Sample.DivisibleAttribute.IsValid(value.Count, 4) && global::ValidationModules.ValidationContextExtensions.ReportCustom(ctx, "count", value: value.Count).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (value.Spare is not null && !global::Sample.DivisibleAttribute.IsValid(value.Spare.Value, 2) && global::ValidationModules.ValidationContextExtensions.ReportCustom(ctx, "spare", code: "pair").ShouldStop)
+        if (value.Spare is not null && !global::Sample.DivisibleAttribute.IsValid(value.Spare.Value, 2) && global::ValidationModules.ValidationContextExtensions.ReportCustom(ctx, "spare", code: "pair", value: value.Spare).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
