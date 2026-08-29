@@ -199,6 +199,22 @@ public sealed class ValidatorEmitter {
                 instanceConstraints, bodyConditions, fastConditions, dispatchers, failFast, fieldNamer);
         }
 
+        // The rules-class regions, after the attribute-declared checks and in rules-class name
+        // order. Each is a method in a companion file carrying the author's usings; the arguments
+        // beyond the value are the injected validator sets the region's descents use, so a
+        // separately registered validator composes in a region exactly as on an attribute descent.
+        foreach (var region in model.Regions) {
+            var arguments = string.Join(
+                ", ", new[] { "ref ctx", "value" }.Concat(region.ValidatorAccessors));
+            var call = $"{region.CompanionQualifiedName}.{region.MethodName}({arguments})";
+
+            if (failFast) {
+                body.If($"{call}.ShouldStop").Return($"{Flow}.Stop");
+            } else {
+                body.AddIndentedStatement(call);
+            }
+        }
+
         // Applied rules own no property, so they run once every property has been walked. Ordering
         // them last rather than at their declaration point is §19.7: they are the only rules whose
         // position in the body says nothing about which field they concern.
@@ -338,8 +354,12 @@ public sealed class ValidatorEmitter {
         // rule is gated on the whole pass being clean, which a boolean path with no collector
         // cannot know. The interface default walks Validate into a throwaway collector and keeps
         // the sequencing.
+        //
+        // A type with rules-class regions falls back too: a region carries free-form computation
+        // and reporter calls whose severity is a runtime value, which a boolean path with no
+        // collector cannot always project. Correct, just not free - the applied-rules trade.
         if (model.AppliedRules.Count == 0 && !dispatchesDynamically && !nestsItself &&
-            !model.ImplementsValidatableObject) {
+            !model.ImplementsValidatableObject && model.Regions.Count == 0) {
             var isValid = validator.AddMethod("IsValid");
 
             isValid.Comment =
@@ -681,7 +701,7 @@ public sealed class ValidatorEmitter {
                 continue;
             }
 
-            if (TestFor(access, property, constraint, model, patterns, extensionSets) is { } test) {
+            if (TestFor(access, property, constraint, patterns, extensionSets) is { } test) {
                 others.Add((constraint, test, null));
             }
         }
@@ -796,8 +816,12 @@ public sealed class ValidatorEmitter {
             }
         }
 
-        EmitNested(
-            builder, fast, property, access, conditions, fastConditions, dispatchers, model.TypeName, failFast);
+        // A descent declared only by a rules class is walked by the region's transcribed text, in
+        // body order, through the same injected arrays this validator still constructs and passes.
+        if (!property.NestedWalkInRegion) {
+            EmitNested(
+                builder, fast, property, access, conditions, fastConditions, dispatchers, model.TypeName, failFast);
+        }
     }
 
     /// <summary>
@@ -1030,7 +1054,7 @@ public sealed class ValidatorEmitter {
         }
     }
 
-    private static string RequiredTest(string access, ValidatedPropertyModel property, ConstraintModel constraint) {
+    internal static string RequiredTest(string access, ValidatedPropertyModel property, ConstraintModel constraint) {
         if (property.IsString) {
             return constraint.AllowEmptyStrings
                 ? $"{access} is null"
@@ -1123,11 +1147,15 @@ public sealed class ValidatorEmitter {
             $"{accessor}({access}) is not null");
     }
 
-    private static string? TestFor(
+    /// <summary>
+    /// The failing test for one constraint against one access expression. Internal because the
+    /// region transcriber expands the same vocabulary against the author's own value expressions -
+    /// one implementation of every check, whichever surface declared it.
+    /// </summary>
+    internal static string? TestFor(
         string access,
         ValidatedPropertyModel property,
         ConstraintModel constraint,
-        ValidatedTypeModel model,
         List<(string, ConstraintModel)> patterns,
         List<(string, ConstraintModel)> extensionSets) {
 
@@ -1319,7 +1347,7 @@ public sealed class ValidatorEmitter {
     /// silently skip the report for half the failures - the same class of quiet wrong answer the
     /// conjunct bracketing above exists to remove.
     /// </remarks>
-    private static string Conjoin(string test, string report) =>
+    internal static string Conjoin(string test, string report) =>
         (HasTopLevelOr(test) ? $"({test})" : test) + $" && {report}.ShouldStop";
 
     private static bool HasTopLevelOr(string text) {
@@ -1336,7 +1364,7 @@ public sealed class ValidatorEmitter {
         return false;
     }
 
-    private static string ReportFor(string field, ConstraintModel constraint, ValidatedPropertyModel property) =>
+    internal static string ReportFor(string field, ConstraintModel constraint, ValidatedPropertyModel property) =>
         constraint.Kind switch {
             ConstraintKind.StringLength => Report(field, constraint, "ReportStringLength", Bounds(constraint)),
             ConstraintKind.ItemCount => Report(field, constraint, "ReportItemCount", Bounds(constraint)),

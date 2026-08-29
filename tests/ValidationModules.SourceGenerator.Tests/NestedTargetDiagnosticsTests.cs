@@ -120,8 +120,8 @@ public class NestedTargetDiagnosticsTests {
             }
 
             public sealed class AddressRules : IValidationRulesFor<Address> {
-                public void Describe(ValidationRules<Address> rules) {
-                    rules.Required(x => x.PostalCode);
+                public static void Describe(ValidationRules<Address> rules, Address x) {
+                    rules.Require(x.PostalCode);
                 }
             }
 

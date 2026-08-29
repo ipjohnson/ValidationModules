@@ -47,7 +47,6 @@ silently does not is worse than one you know is missing.
 | [VM0031](#vm0031) | Warning | a `[ValidateNested]` target is not sealed and declares no mode |
 | [VM0032](#vm0032) | Error | `Polymorphism.Runtime` on a type that can have no subtypes |
 | [VM0033](#vm0033) | Error | a constraint setting both `When` and `Unless` |
-| [VM0034](#vm0034) | Warning | a condition that folds to a constant |
 | [VM0017](#vm0017) | *policy* | an inline pattern roots the regex engine |
 | [VM0018](#vm0018) | Error | referenced regex member is unusable |
 | [VM0040](#vm0040) | Error | `ValidationModules.Runtime` is too old |
@@ -58,19 +57,22 @@ silently does not is worse than one you know is missing.
 | [VM0064](#vm0064) | Error | a length constraint on neither a string nor a collection |
 | [VM0065](#vm0065) | Error | `[Range]` bounds do not parse as the member's type |
 | [VM0067](#vm0067) | Info¹ | `IValidatableObject` runs after every other rule passes |
-| [VM0070](#vm0070) | Error | a statement in `Describe` is not a rule declaration |
-| [VM0071](#vm0071) | Error | a rule selector is not a property path |
-| [VM0072](#vm0072) | Error | a predicate captures state |
-| [VM0075](#vm0075) | Error | an `Ensure` has no field |
-| [VM0076](#vm0076) | Warning | a conditional block declares no rules |
-| [VM0077](#vm0077) | Warning | a chained `When`/`Unless` applies to no rules |
-| [VM0078](#vm0078) | Error | a lifted predicate references a private member of the rules class |
+| [VM0070](#vm0070) | Error | a statement in `Describe` is not transcribable |
+| [VM0071](#vm0071) | Error | a rule's value argument is not a member path on the subject |
+| [VM0075](#vm0075) | Error | an `Ensure` has no inferable field and no `field:` |
 | [VM0079](#vm0079) | Error | a generic type cannot have a generated validator |
 | [VM0080](#vm0080) | Error | a `[CustomValidation]` target cannot be called |
 | [VM0081](#vm0081) | Warning | resource-based `ErrorMessage` resolves reflectively |
 | [VM0082](#vm0082) | Error | a custom constraint attribute's `IsValid` is missing or the wrong shape |
 | [VM0083](#vm0083) | Error | an `IConstraintFor<T>` attribute does not fit the member, or mixes shapes |
 | [VM0084](#vm0084) | Info | a `[PerValidationInstance]` constraint constructs an instance at every check |
+| [VM0085](#vm0085) | Error | a fragment is compiled IL from a referenced assembly |
+| [VM0086](#vm0086) | Error | a fragment call chain returns to where it started |
+| [VM0087](#vm0087) | Error | the rules builder flows where the generator cannot follow |
+| [VM0088](#vm0088) | Error | transcribed code references a member the companion file cannot reach |
+| [VM0089](#vm0089) | Error | a rule declaration sits inside a loop, lambda, or local function |
+| [VM0090](#vm0090) | Error | `Require` on a non-nullable value type can never fail |
+| [VM0091](#vm0091) | Error | a facet validated with `As` declares no rules in this compilation |
 
 ---
 
@@ -365,9 +367,9 @@ public bool IsAuto() => …;                           // a parameterless bool m
 public static bool IsAuto(Claim value) => …;         // a static bool method taking the model
 ```
 
-That is what makes the self-containment [VM0072](#vm0072) enforces for `Ensure` predicates hold here
-by construction rather than by analysis. There is no `WhenType`, so shared logic is reached through
-a one-line forwarder on the model.
+The three shapes cannot capture anything, so self-containment holds here by construction rather
+than by analysis. There is no `WhenType`, so shared logic is reached through a one-line forwarder
+on the model.
 
 ### VM0030 {#vm0030}
 
@@ -435,19 +437,6 @@ public Address? Home { get; init; }    // where Address is sealed
 **Error** — *`'Required' on 'PolicyNumber' sets both When and Unless, which is ambiguous`*
 
 Write two constraints, or one negated condition.
-
-### VM0034 {#vm0034}
-
-**Warning** — *`This condition always evaluates to true, so the guard is noise`*
-
-```csharp
-rules.Required(x => x.Plate).When(x => true);   // VM0034
-rules.Required(x => x.Plate).When(x => 1 > 2);  // VM0034, folded
-```
-
-The one check here no runtime library could offer: a described engine holds a delegate and cannot
-know what it returns without calling it, where the generator has the expression in hand. Roslyn does
-the folding, so an expression that reduces to a constant is caught along with the literal.
 
 ### VM0040 {#vm0040}
 
@@ -532,10 +521,11 @@ back at **Warning** with the old not-enforced message.
 public string? Confirm { get; set; }
 ```
 
-Use `rules.Ensure`, which is the declaration form that *can* span two properties:
+Use `rules.Ensure` in a [rule class](/guide/rule-classes), the declaration form that *can* span
+two properties:
 
 ```csharp
-rules.Ensure(x => x.Password == x.Confirm, code: "password_mismatch");
+rules.Ensure(x.Password == x.Confirm, code: "password_mismatch");
 ```
 
 ### VM0063 {#vm0063}
@@ -664,135 +654,150 @@ site that pays it, not only on the class that caused it.
 
 ## Rule class diagnostics
 
-These are errors rather than warnings, and for a reason particular to
-[rule classes](/guide/rule-classes): a `Describe` body compiles and *runs*. Under
-`DescribedValidator<T>` a statement the generator cannot read would work perfectly. Quietly skipping
-it would produce two engines that disagree.
+A `Describe` body is [read, never run](/guide/rule-classes) — so a statement the generator cannot
+carry has to break the build, because the generated validator would otherwise check less than the
+body says. Almost everything transcribes; these are the exceptions, and every one is an error.
 
 ### VM0070 {#vm0070}
 
-**Error** — *`Only rule declarations on the builder are allowed in 'PetRules.Describe'; this statement is not one and is not compiled`*
+**Error** — *`'PetRules.Describe' contains a TryStatement, which the generator does not transcribe`*
 
 ```csharp
-public void Describe(ValidationRules<Pet> rules) {
-    var minimum = 2;                          // VM0070
-    if (Environment.IsProduction) { … }       // VM0070
-    foreach (var name in Names) { … }         // VM0070
-    Helper();                                 // VM0070
+public static void Describe(ValidationRules<Pet> rules, Pet x) {
+    try { rules.Require(x.Name); } catch { }   // VM0070
+    x.Name = "fixed";                          // VM0070 — validation does not mutate its subject
+    if (x.Age > 20) {
+        rules.Apply(Checks.Senior);            // VM0070 — Apply runs last, unconditionally
+    }
 }
 ```
 
-The body is a whitelisted DSL, not general C#. Move the computation outside `Describe`, or express
-the rule with `rules.Ensure` / `rules.Apply`.
+The blacklist is short and v1-deliberate: `goto`, `try`/`catch`, `lock`, `using` statements,
+assignment to the subject, and `Apply` anywhere but the top of the body. Locals, `if`/`else`,
+`switch`, loops-as-computation, helpers and the reporter tier all transcribe.
 
 ### VM0071 {#vm0071}
 
-**Error** — *`A rule selector in 'PetRules.Describe' must read a property of its parameter, so the error has a field to be pathed against`*
+**Error** — *`A rule's value argument in 'PetRules' must be a member path on the subject parameter, so the error has a field to be pathed against; anything else needs field:`*
 
 ```csharp
-rules.Required(x => x.Name!.Trim());          // VM0071
-rules.Range(x => x.Nights + 1, 1, 30);        // VM0071
+rules.Require(x.Name!.Trim());          // VM0071
+rules.Range(x.Nights + 1, 1, 30);       // VM0071
+rules.Require(x.Home?.PostalCode);      // fine — ?. is the nested-path spelling
 ```
 
-The selector's source text is what supplies the field name. Naming the error `name` for
-`x => x.Name!.Trim()` would be a guess.
-
-### VM0072 {#vm0072}
-
-**Error** — *`A predicate in 'PetRules.Describe' may read only its own parameter and static or constant state; this one captures something else and cannot be compiled`*
-
-```csharp
-private readonly int _limit = 7;
-
-rules.Ensure(x => x.Nights <= _limit);        // VM0072
-rules.Ensure(x => x.Nights <= Limit);         // fine — const or static
-```
-
-The generator lifts a predicate into a static method; the runtime holds it as a delegate. A delegate
-can close over the rules class instance and a static method cannot, so a capture is the one construct
-that would genuinely compile on one path and not the other.
+The member path is what supplies the field name — `[JsonPropertyName]` first, then the naming
+policy. Naming the error `name` for `x.Name!.Trim()` would be a guess; pass `field:` when the
+value genuinely is not a path.
 
 ### VM0075 {#vm0075}
 
-**Error** — *`The predicate in 'PetRules.Describe' reads no property of its parameter, so the rule has no property to be anchored to. Rewrite it to read the property it is about; field: renames the error but does not anchor the rule, so passing it does not resolve this`*
+**Error** — *`The condition in 'PetRules.Describe' reads no property of the subject, so the rule has no field to report against. Anchor it by reading the property it is about, or pass field:`*
 
 ```csharp
-rules.Ensure(x => true);                      // VM0075
-rules.Ensure(x => true, field: "nights");     // VM0075 as well
+rules.Ensure(1 < 2);                    // VM0075
+rules.Ensure(1 < 2, field: "nights");   // fine — field: anchors it
+rules.Ensure(x.Nights <= 7);            // fine — anchored to nights
 ```
 
-A rule is emitted inside its anchored property's chain so both engines agree on ordering, and a rule
-belonging to no property has nowhere to go. `field:` renames the error; it does not anchor the rule.
+An `Ensure` reports against the first property its condition reads. A condition that reads none
+needs `field:` — the sanctioned case being a fragment computing over its extra parameters.
 
-Write a predicate that reads the property the rule is about:
+### VM0085 {#vm0085}
+
+**Error** — *`Fragment 'SharedRules.Standard' is compiled IL from a referenced assembly; fragments must be part of this compilation — use a shared project or a source-only package`*
+
+A [fragment](/guide/rule-classes#fragments) is expanded from syntax, and a referenced assembly
+ships IL — the symbol has no body to read, so the same-compilation rule is physics rather than
+policy, and a plain `ProjectReference` is on the wrong side of it. Share fragments through a
+shared project (`.shproj` or linked `Compile` items) or a source-only package.
+
+### VM0086 {#vm0086}
+
+**Error** — *`Fragments may call fragments, but this chain returns to where it started: Left -> Right -> Left`*
+
+Fragment expansion follows calls; a cycle would follow them forever. The message names the chain.
+
+### VM0087 {#vm0087}
+
+**Error** — *`The builder declares rules only where the generator can read them; here it would store it, capture it, return it, or pass it to anything the generator cannot read, which would validate nothing at runtime`*
 
 ```csharp
-rules.Ensure(x => x.Nights <= 7);
+var chain = rules.Require(x.Name);                  // VM0087
+Func<PropertyRules<Pet, string?>> f = () => rules.Require(x.Name);  // VM0087
+Helper(rules);                                      // VM0087 unless Helper is a fragment
 ```
 
-::: tip Where the two engines diverge
-This is the one place they legitimately do: `DescribedValidator<T>` accepts `Ensure(x => true,
-field: "nights")` and runs it, because an explicit field means it never consults the anchor. The
-generated path is the stricter of the two, which is the safe direction — the build fails rather than
-two deployments disagreeing.
-:::
+The anti-silent-drop rule. `ValidationRules<T>` is inert — a rule call the generator cannot see
+would transcribe into a call on a builder that validates nothing, so every unfollowable flow is an
+error instead. A `static`, `void`, same-compilation method receiving the builder is a fragment and
+is followed; everything else is this.
 
-### VM0076 {#vm0076}
+### VM0088 {#vm0088}
 
-**Warning** — *`The When block in 'ClaimRules' declares no rules, so the condition guards nothing`*
-
-```csharp
-rules.When(x => x.IsAuto, () => { });  // VM0076
-```
-
-Almost always a rule that was moved out and left the block behind. Fires for an empty `Otherwise`
-too.
-
-### VM0077 {#vm0077}
-
-**Warning** — *`This When terminates a statement that declared no constraints`*
-
-```csharp
-rules.For(x => x.Reason).When(x => x.IsExpedited);  // VM0077
-```
-
-A chained `When` conditions every constraint its own statement declared. `For` anchors without
-declaring anything, so there is nothing for the condition to cover.
-
-### VM0078 {#vm0078}
-
-**Error** — *`'ModelRules.Max' is private, and this predicate is compiled into a separate class that cannot reach it`*
+**Error** — *`'Max' is not accessible from the companion file 'ModelRules.Describe' is transcribed into. Make it internal`*
 
 ```csharp
 public sealed class ModelRules : IValidationRulesFor<Model> {
     private static readonly int Max = 10;
 
-    public void Describe(ValidationRules<Model> rules) {
-        rules.Ensure(x => x.Count <= Max);   // VM0078
+    public static void Describe(ValidationRules<Model> rules, Model x) {
+        rules.Ensure(x.Count <= Max);   // VM0088
     }
 }
 ```
 
-A predicate is compiled into `{RulesClass}_Rules`, a separate static class carrying the declaring
-file's `using` directives — that is what lets `x => x.Status == Status.Active` resolve at all. The
-cost is that the lifted method is not inside the rules class, so a `private` member is out of reach.
-
-Make it `internal`. A non-private member is qualified automatically and read as itself:
-
-```csharp
-internal static readonly int Max = 10;   // becomes ModelRules.Max in the lifted method
-```
+The body is transcribed into `{RulesClass}_Rules`, a companion class carrying the declaring file's
+`using` directives — that is what lets `x.Status == Status.Active` resolve at all. A non-private
+member is qualified automatically (`ModelRules.Max`) and read as itself; a `private` one is out of
+reach, so: make it `internal`.
 
 A `private const` of any type needs no change. C# bakes a constant into every use site already, so
-carrying the value across is what the language does anyway — the literal is written back with the
-suffix and precision that preserve both its value and its type (`1.50m` keeps its scale, a `double`
-keeps all seventeen digits, an enum comes back as a cast, and `NaN` and the infinities are named).
+the value is carried across as a literal with the suffix and precision that preserve both its
+value and its type (`1.50m` keeps its scale, a `double` keeps all seventeen digits, an enum comes
+back as a cast, and `NaN` and the infinities are named).
 
-::: tip This is not an accessibility rule
-A bare `Max` failed here whatever its accessibility, `public` included, because the name resolved in
-the rules class's scope and the lifted method is not in it. Qualification is what fixes that; VM0078
-is the residue — the case qualification cannot reach.
-:::
+Inside a generic fragment this also covers a member the concrete target implements **explicitly**:
+`audited.CreatedBy` binds through the constraint interface, but the emitted method's subject is
+the concrete type, where an explicit implementation is not reachable by name.
+
+### VM0089 {#vm0089}
+
+**Error** — *`'PetRules.Describe' declares a rule inside a scope the generator cannot expand it in. Use Each for collections, or report per element through rules.Context`*
+
+```csharp
+foreach (var toy in x.Toys) {
+    rules.Require(toy.Name);            // VM0089
+}
+```
+
+Islands need generator-computed identity — a field, a rendered message — and a loop gives them
+none. Collections are `Each`'s job; for the exotic per-element case, loop with the
+[reporter tier](/guide/rule-classes#reporter) and a computed field string.
+
+### VM0090 {#vm0090}
+
+**Error** — *`'x.Nights' is a non-nullable value type and can never be missing, so this rule can never fail`*
+
+```csharp
+rules.Require(x.Nights);         // CS0411 — inference cannot unwrap Nullable
+rules.Require<int>(x.Nights);    // VM0090 — compiles, and can never fail
+```
+
+The bare spelling still fails in the compiler; the explicit type argument gets past inference, so
+the generator diagnoses the rule that cannot fail. Constrain the value instead, or make the
+property nullable.
+
+### VM0091 {#vm0091}
+
+**Error** — *`'IAudited' is validated as a facet here, but nothing in this compilation declares rules for it, so this would check nothing. Give the facet constraint attributes or a rules class`*
+
+`rules.As<IAudited>(x)` binds to the facet's own generated validator. A facet declared in this
+compilation with nothing declaring rules for it would make the `As` a silent no-op — the failure
+this library refuses everywhere else. Declare the facet's rules in a rules class targeting it
+(`AuditRules : IValidationRulesFor<IAudited>`) — the sound pairing, since an interface's
+*attribute* constraints already reach every implementer through constraint inheritance, and an
+`As` on top of those would report every facet error twice.
 
 ### VM0079 {#vm0079}
 

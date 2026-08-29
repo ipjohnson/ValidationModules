@@ -454,7 +454,83 @@ public class ValidatorEmitterGoldenTests {
     }
 
     [Fact]
-    public void RulesClass_FlattensIntoTheSameValidatorAsTheAttributes() {
+    public void RulesClassDescents_PassTheInjectedArraysIntoTheRegion() {
+        // Nested and Each declared in a body: the validator still grows the injected-validator
+        // machinery - fields, constructors, accessors - and hands the arrays to the region, so a
+        // separately registered validator composes exactly as on an attribute descent. The walk
+        // itself is the region's, in body order.
+        Snapshot.Match(Emit("""
+            using System.Collections.Generic;
+            using ValidationModules;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed record Line {
+                [Required] public string? Sku { get; init; }
+            }
+
+            public sealed record Address {
+                [Required] public string? PostalCode { get; init; }
+            }
+
+            public sealed record Order {
+                public Address? ShipTo { get; init; }
+                public IReadOnlyList<Line>? Lines { get; init; }
+            }
+
+            public sealed class OrderRules : IValidationRulesFor<Order> {
+                public static void Describe(ValidationRules<Order> rules, Order x) {
+                    rules.Nested(x.ShipTo);
+                    rules.Count(x.Lines, 1, 50).Each();
+                }
+            }
+            """));
+    }
+
+    [Fact]
+    public void RulesClassComputation_TranscribesReporterNameofAndAutoWrap() {
+        // The free half of the surface in one region: a local feeding an Ensure whose message
+        // names it, nameof through the subject rewritten to the wire path (interpolation
+        // included), and a user helper returning ValidationFlow wrapped by its type alone.
+        Snapshot.Match(Emit("""
+            using System.Linq;
+            using System.Collections.Generic;
+            using ValidationModules;
+
+            namespace Sample;
+
+            public sealed record Order {
+                public string? AccountNumber { get; init; }
+                public decimal CreditLimit { get; init; }
+                public IReadOnlyList<decimal>? Amounts { get; init; }
+            }
+
+            public static class Luhn {
+                public static bool Validates(string? value) => value?.Length > 4;
+
+                public static ValidationFlow Audit(IValidationContextReporter reporter, string? value) =>
+                    reporter.ReportHere("audit", "audited");
+            }
+
+            public sealed class OrderRules : IValidationRulesFor<Order> {
+                public static void Describe(ValidationRules<Order> rules, Order x) {
+                    var total = x.Amounts?.Sum() ?? 0m;
+                    rules.Ensure(total <= x.CreditLimit);
+
+                    if (!Luhn.Validates(x.AccountNumber)) {
+                        rules.Context.Report(nameof(x.AccountNumber), "checksum",
+                            $"{nameof(x.AccountNumber)} failed its checksum");
+                    }
+
+                    Luhn.Audit(rules.Context, x.AccountNumber);
+                }
+            }
+            """));
+    }
+
+    [Fact]
+    public void RulesClass_TranscribesIntoARegionTheValidatorCalls() {
         Snapshot.Match(Emit("""
             using System;
             using System.Collections.Generic;
@@ -470,10 +546,10 @@ public class ValidatorEmitterGoldenTests {
             }
 
             public sealed class ReservationRules : IValidationRulesFor<Reservation> {
-                public void Describe(ValidationRules<Reservation> rules) {
-                    rules.Required(x => x.Guest).Length(2, 40);
-                    rules.Range(x => x.Nights, 1, 30);
-                    rules.Ensure(x => x.Start < x.End);
+                public static void Describe(ValidationRules<Reservation> rules, Reservation x) {
+                    rules.Require(x.Guest).Length(2, 40);
+                    rules.Range(x.Nights, 1, 30);
+                    rules.Ensure(x.Start < x.End);
                 }
             }
             """));

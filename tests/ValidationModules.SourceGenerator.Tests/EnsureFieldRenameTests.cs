@@ -6,11 +6,10 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// <c>field:</c> renames one error. It must not rename the property.
 /// </summary>
 /// <remarks>
-/// A rule is emitted inside its anchored property's chain so that both engines agree on ordering
-/// (§4.2), and the anchor is picked implicitly from the first property the predicate reads. So the
-/// property a rename lands on is not one the author chose - reordering the operands of an
-/// <c>a || b</c> moves it. <c>ConstraintModel.Field</c> exists to keep the rename on the constraint
-/// for exactly that reason; the front end was also assigning it to the property.
+/// An Ensure is anchored to the first property its condition reads - a property the author did not
+/// choose, since reordering the operands of an <c>a || b</c> moves it. The rename therefore rides
+/// on the one rule it was written on: the descent a property declares elsewhere keeps pushing the
+/// property's own wire name, and so does every other rule anchored there.
 /// </remarks>
 public class EnsureFieldRenameTests {
 
@@ -34,16 +33,16 @@ public class EnsureFieldRenameTests {
         }
 
         public sealed class OrderRules : IValidationRulesFor<Order> {
-            public void Describe(ValidationRules<Order> rules) {
-                rules.Ensure(x => x.Ship != null, field: "shipping_address");
+            public static void Describe(ValidationRules<Order> rules, Order x) {
+                rules.Ensure(x.Ship != null, field: "shipping_address");
             }
         }
         """;
 
     [Fact]
     public void ExplicitField_DoesNotRenameTheNestedDescent() {
-        // The reported corruption: an unrelated nested error moved from `ship.zone.city` to
-        // `shipping_address.zone.city`, because the descent pushes the property's field name and
+        // The reported corruption this pins: an unrelated nested error moved from `ship.zone.city`
+        // to `shipping_address.zone.city`, because the descent pushes the property's field name and
         // the rename had been promoted onto the property.
         var result = GeneratorHarness.Run(Source);
 
@@ -55,10 +54,11 @@ public class EnsureFieldRenameTests {
 
     [Fact]
     public void ExplicitField_StillRenamesItsOwnError() {
-        // The complement: the rename has to survive on the constraint it was written on.
+        // The complement: the rename has to survive on the rule it was written on, which now lives
+        // in the region companion.
         var result = GeneratorHarness.Run(Source);
 
-        Assert.Contains("\"shipping_address\"", result.Sources["Sample.OrderValidator.g.cs"]);
+        Assert.Contains("\"shipping_address\"", result.Sources["Sample.OrderRules_Rules.g.cs"]);
     }
 
     [Fact]
@@ -74,19 +74,17 @@ public class EnsureFieldRenameTests {
             }
 
             public sealed class OrderRules : IValidationRulesFor<Order> {
-                public void Describe(ValidationRules<Order> rules) {
-                    rules.Ensure(x => x.Reference != "void", field: "reference_state");
+                public static void Describe(ValidationRules<Order> rules, Order x) {
+                    rules.Ensure(x.Reference != "void", field: "reference_state");
                 }
             }
             """;
 
         var result = GeneratorHarness.Run(source);
 
-        var emitted = result.Sources["Sample.OrderValidator.g.cs"];
-
-        // The [Required] on the same property keeps its own name.
-        Assert.Contains("ReportRequired(ctx, \"reference\"", emitted);
-        Assert.Contains("\"reference_state\"", emitted);
+        // The [Required] on the same property keeps its own name in the attribute region.
+        Assert.Contains("ReportRequired(ctx, \"reference\"", result.Sources["Sample.OrderValidator.g.cs"]);
+        Assert.Contains("\"reference_state\"", result.Sources["Sample.OrderRules_Rules.g.cs"]);
     }
 
     [Fact]
@@ -96,6 +94,6 @@ public class EnsureFieldRenameTests {
         // output is what every other site expects.
         var result = GeneratorHarness.Run(Source, ("ValidationModules_FieldNaming", "SnakeCase"));
 
-        Assert.Contains("\"shipping_address\"", result.Sources["Sample.OrderValidator.g.cs"]);
+        Assert.Contains("\"shipping_address\"", result.Sources["Sample.OrderRules_Rules.g.cs"]);
     }
 }

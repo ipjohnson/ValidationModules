@@ -91,7 +91,8 @@ public sealed class AttributeFrontEnd {
         IReadOnlyList<DeclaredRule>? declared = null,
         IReadOnlyList<string>? applied = null,
         Func<INamedTypeSymbol, bool>? hasRulesClass = null,
-        Func<INamedTypeSymbol, IReadOnlyList<(INamedTypeSymbol Type, int Depth)>>? subtypesOf = null) {
+        Func<INamedTypeSymbol, IReadOnlyList<(INamedTypeSymbol Type, int Depth)>>? subtypesOf = null,
+        IReadOnlyList<RegionModel>? regions = null) {
 
         _hasRulesClass = hasRulesClass;
         _validatedType = type;
@@ -103,7 +104,8 @@ public sealed class AttributeFrontEnd {
 
         var properties = ImmutableArray.CreateBuilder<ValidatedPropertyModel>();
         var order = new List<int>();
-        var sawAnything = HasGenerateValidator(type) || declared is { Count: > 0 } || applied is { Count: > 0 };
+        var sawAnything = HasGenerateValidator(type) || declared is { Count: > 0 } ||
+            applied is { Count: > 0 } || regions is { Count: > 0 };
         var sawAttribute = false;
 
         foreach (var member in MemberWalk.PropertiesOf(type, _compilation, CarriesConstraints)) {
@@ -153,6 +155,8 @@ public sealed class AttributeFrontEnd {
             }
 
             string? declaredNestedCondition = null;
+            var attributeNesting = validateNested;
+            var declaredNesting = false;
 
             if (declared is not null) {
                 foreach (var rule in declared) {
@@ -174,6 +178,7 @@ public sealed class AttributeFrontEnd {
 
                     if (rule.Nesting != Nesting.None) {
                         validateNested = true;
+                        declaredNesting = true;
 
                         // A nesting rule has no constraint to carry its guard, so the descent's
                         // condition rides on the rule itself.
@@ -220,7 +225,10 @@ public sealed class AttributeFrontEnd {
             properties.Add(BuildProperty(
                 property, constraints, validateNested, validatorNameFor, overriddenField,
                 validateNested ? NestedDescentCondition(member.Sources, declaredNestedCondition) : null,
-                polymorphism));
+                polymorphism,
+                // The region's transcribed text owns a walk only the rules class declared; the
+                // injected machinery is still built here, which is what the entry is for.
+                nestedWalkInRegion: declaredNesting && !attributeNesting));
             order.Add(FirstMentionOf(property, declared));
 
             _quiet = enclosingQuiet;
@@ -271,7 +279,9 @@ public sealed class AttributeFrontEnd {
             new EquatableArray<ValidatedPropertyModel>(Ordered(properties.ToImmutable(), order, sawAttribute)),
             new EquatableArray<string>(ImmutableArray.CreateRange(applied ?? Array.Empty<string>())),
             IsExternallyVisible(type),
-            compilesValidatableObject);
+            compilesValidatableObject,
+            new EquatableArray<RegionModel>(
+                ImmutableArray.CreateRange(regions ?? Array.Empty<RegionModel>())));
     }
 
     /// <summary>
@@ -447,7 +457,8 @@ public sealed class AttributeFrontEnd {
         Func<INamedTypeSymbol, string> validatorNameFor,
         string? overriddenField = null,
         string? condition = null,
-        PolymorphismMode polymorphism = PolymorphismMode.DeclaredOnly) {
+        PolymorphismMode polymorphism = PolymorphismMode.DeclaredOnly,
+        bool nestedWalkInRegion = false) {
 
         var type = property.Type;
         var isString = type.SpecialType == SpecialType.System_String;
@@ -545,7 +556,8 @@ public sealed class AttributeFrontEnd {
             condition,
             polymorphism,
             new EquatableArray<SubtypeModel>(subtypes),
-            DisplayNameFor(property));
+            DisplayNameFor(property),
+            nestedWalkInRegion);
     }
 
     /// <summary>

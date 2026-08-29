@@ -1,43 +1,39 @@
 namespace ValidationModules;
 
 /// <summary>
-/// Declares validation rules for <typeparamref name="T"/> from outside it, in a method body.
+/// Declares validation rules for <typeparamref name="T"/> from outside it, in a method body that is
+/// read at build time and never run.
 /// </summary>
 /// <remarks>
 /// <para>
 /// The declaration form for a type you do not own, and the only one that can express a rule
-/// spanning two properties. See API-SURFACE.md §19.
+/// spanning two properties. See <c>docs/active-rules-redesign.md</c>.
 /// </para>
 /// <para>
-/// <b><see cref="Describe"/> has two consumers, and that is the whole design.</b> The source
-/// generator <i>reads</i> the body at build time and flattens it into straight-line code;
-/// <see cref="DescribedValidator{T}"/> <i>runs</i> it once and walks the rules it recorded. The
-/// first costs a branch per rule and needs our generator, the second costs a delegate call and needs
-/// nothing at all - which is what lets another source generator emit a rules class, register it, and
-/// have validation work with none of this package's build-time machinery present.
+/// <b><see cref="Describe"/> has one consumer: the source generator.</b> It transcribes the body
+/// into the generated validator - vocabulary calls become check-and-report code, and every other
+/// statement is copied through and runs at validation time inside that validator. Nothing
+/// instantiates a rules class (<c>Describe</c> is static, so <c>this</c> cannot compile) and
+/// nothing invokes it (the builder it takes cannot be constructed). Under trimming and Native AOT
+/// the class disappears entirely.
 /// </para>
 /// <para>
-/// Either way the rule set is built once. A generated validator has no rule set at all, and
-/// <see cref="DescribedValidator{T}"/> is a singleton that calls <see cref="Describe"/> from its
-/// constructor, so plan §2's "rule graphs are built once, never per validation call" holds on both
-/// paths by construction.
-/// </para>
-/// <para>
-/// <b>The body is a whitelisted DSL, not general C#.</b> A local, a loop, a condition, or a call to
-/// anything that is not on the builder is a build error (VM0070) rather than something quietly
-/// dropped. A runnable body looks like ordinary code, which is exactly why the part that cannot be
-/// compiled has to break the build instead of behaving differently on the two paths.
+/// <b>A breakpoint in <c>Describe</c> never hits.</b> The method is read, not run. Step through the
+/// generated validator under <c>obj/…/generated</c> instead, which is straight-line code.
 /// </para>
 /// </remarks>
 /// <typeparam name="T">The type these rules apply to.</typeparam>
 public interface IValidationRulesFor<T> {
 
     /// <summary>
-    /// Declares the rules. Never called by user code, and called at most once per process by the
-    /// runtime engine.
+    /// Declares the rules. Read by the source generator, never called.
     /// </summary>
-    /// <param name="rules">Accumulates the declarations.</param>
-    void Describe(ValidationRules<T> rules);
+    /// <param name="rules">The vocabulary. Inert by construction; it exists to be read.</param>
+    /// <param name="x">
+    /// The subject, symbolically. It never holds a value; it exists so member access typechecks,
+    /// renames propagate and go-to-definition works.
+    /// </param>
+    static abstract void Describe(ValidationRules<T> rules, T x);
 }
 
 /// <summary>

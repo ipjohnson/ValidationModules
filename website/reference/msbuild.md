@@ -48,9 +48,9 @@ How a CLR property name becomes the field name in `ValidationError.Field`.
 ::: warning This is a build-time decision
 Field names are baked into generated validators as string literals — nothing computes them per
 validation. Registering a different `IValidationFieldNamer` in DI does **not** rename a generated
-validator's errors; it only affects `DescribedValidator<T>` and the FluentValidation adapter.
+validator's errors; it only affects the FluentValidation adapter.
 
-If you use both engines, set this property and the registered namer to the same policy.
+If you use both, set this property and the registered namer to the same policy.
 :::
 
 `SnakeCase` handles acronyms: `HTTPStatusLine` becomes `http_status_line`.

@@ -46,12 +46,28 @@ using ValidationModules;
 namespace Sample;
 
 /// <summary>
-/// The Ensure predicates of ReservationRules, as static methods.
+/// The transcribed Describe body of ReservationRules: read from the rules class, run from here.
 /// </summary>
 internal static class ReservationRules_Rules
 {
 
-    public static bool Rule0(global::Sample.Reservation x) => x.Start < x.End;
+    public static global::ValidationModules.ValidationFlow Describe(ref global::ValidationModules.ValidationContext ctx, global::Sample.Reservation x)
+    {
+        var missingGuest = string.IsNullOrWhiteSpace(x.Guest);
+        if (missingGuest && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "guest").ShouldStop) {
+            return global::ValidationModules.ValidationFlow.Stop;
+        }
+        if (!missingGuest && (x.Guest is not null && (x.Guest.Length < 2 || x.Guest.Length > 40)) && global::ValidationModules.ValidationContextExtensions.ReportStringLength(ctx, "guest", 2, 40).ShouldStop) {
+            return global::ValidationModules.ValidationFlow.Stop;
+        }
+        if ((x.Nights < 1 || x.Nights > 30) && global::ValidationModules.ValidationContextExtensions.ReportRange(ctx, "nights", 1, 30).ShouldStop) {
+            return global::ValidationModules.ValidationFlow.Stop;
+        }
+        if (!(x.Start < x.End) && ctx.Report("start", global::ValidationModules.ValidationCodes.Predicate, "start < end.").ShouldStop) {
+            return global::ValidationModules.ValidationFlow.Stop;
+        }
+        return global::ValidationModules.ValidationFlow.Continue;
+    }
 }
 
 
@@ -69,49 +85,11 @@ public sealed partial class ReservationValidator : global::ValidationModules.IVa
 
     public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Reservation value)
     {
-        var missingGuest = string.IsNullOrWhiteSpace(value.Guest);
-        if (missingGuest && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "guest").ShouldStop)
-        {
-            return global::ValidationModules.ValidationFlow.Stop;
-        }
-        if (!missingGuest && (value.Guest is not null && (value.Guest.Length < 2 || value.Guest.Length > 40)) && global::ValidationModules.ValidationContextExtensions.ReportStringLength(ctx, "guest", 2, 40).ShouldStop)
-        {
-            return global::ValidationModules.ValidationFlow.Stop;
-        }
-        if ((value.Nights < 1 || value.Nights > 30) && global::ValidationModules.ValidationContextExtensions.ReportRange(ctx, "nights", 1, 30).ShouldStop)
-        {
-            return global::ValidationModules.ValidationFlow.Stop;
-        }
-        if (!global::Sample.ReservationRules_Rules.Rule0(value) && ctx.Report("start", global::ValidationModules.ValidationCodes.Predicate, "start < end.").ShouldStop)
+        if (global::Sample.ReservationRules_Rules.Describe(ref ctx, value).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
 
         return global::ValidationModules.ValidationFlow.Continue;
-    }
-
-    /// <summary>
-    /// The same tests as Validate, returning at the first failure and building
-    /// no path, message or error record - a caller wanting only a boolean pays for nothing else.
-    /// </summary>
-    public bool IsValid(global::Sample.Reservation value)
-    {
-        if (string.IsNullOrWhiteSpace(value.Guest))
-        {
-            return false;
-        }
-        if (value.Guest is not null && (value.Guest.Length < 2 || value.Guest.Length > 40))
-        {
-            return false;
-        }
-        if ((value.Nights < 1 || value.Nights > 30))
-        {
-            return false;
-        }
-        if (!global::Sample.ReservationRules_Rules.Rule0(value))
-        {
-            return false;
-        }
-        return true;
     }
 }

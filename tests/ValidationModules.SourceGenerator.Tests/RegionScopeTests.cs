@@ -3,23 +3,23 @@ using Xunit;
 namespace ValidationModules.SourceGenerator.Tests;
 
 /// <summary>
-/// A predicate is lifted into <c>{RulesClass}_Rules</c> so it keeps its declaring file's using
-/// directives — and a name that resolved inside the rules class does not resolve there.
+/// A Describe body is transcribed into <c>{RulesClass}_Rules</c> so it keeps its declaring file's
+/// using directives — and a bare name that resolved inside the rules class does not resolve there.
 /// </summary>
 /// <remarks>
 /// <para>
 /// This used to surface as CS0103 inside generated code, for <b>any</b> bare reference to the rules
 /// class's own members regardless of accessibility. It reads as an accessibility problem and is not
 /// one: <c>internal const int Max</c> failed exactly as <c>private const int Max</c> did, because
-/// the lifted method is simply not in that scope.
+/// the companion method is simply not in that scope.
 /// </para>
 /// <para>
-/// So the fix is to qualify, which reads the real member. Copying its value across would be a second
-/// thing that has to stay equal to the first, and <c>DescribedValidator&lt;T&gt;</c> runs the
-/// original lambda — the two engines would have to agree by luck rather than by construction.
+/// So the fix is to qualify, which reads the real member. A private member cannot be reached even
+/// qualified — that is VM0088 ("make it internal") — except a constant, which crosses by value
+/// because C# already bakes a const at every use site.
 /// </para>
 /// </remarks>
-public class LiftedPredicateScopeTests {
+public class RegionScopeTests {
 
     private static GeneratorHarness.Result Run(string members, string statement) => GeneratorHarness.Run($$"""
         using ValidationModules;
@@ -33,13 +33,13 @@ public class LiftedPredicateScopeTests {
 
         public sealed class ModelRules : IValidationRulesFor<Model> {
         {{members}}
-            public void Describe(ValidationRules<Model> rules) {
+            public static void Describe(ValidationRules<Model> rules, Model x) {
                 {{statement}}
             }
         }
         """);
 
-    private static string Lifted(string members, string statement) {
+    private static string Region(string members, string statement) {
         var result = Run(members, statement);
 
         Assert.Empty(result.CompilationErrors);
@@ -56,41 +56,43 @@ public class LiftedPredicateScopeTests {
     [InlineData("    internal static readonly int Max = 10;")]
     [InlineData("    public static int Max => 10;")]
     public void ANonPrivateMember_IsQualifiedRatherThanCopied(string member) {
-        var lifted = Lifted(member, "rules.Ensure(x => x.Count <= Max);");
+        var region = Region(member, "rules.Ensure(x.Count <= Max);");
 
-        Assert.Contains("global::Sample.ModelRules.Max", lifted);
+        Assert.Contains("global::Sample.ModelRules.Max", region);
     }
 
     /// <summary>
-    /// The point of qualifying rather than copying: the generated engine reads the same field the
-    /// described engine does, so a value that changes changes for both.
+    /// The point of qualifying rather than copying: the region reads the same field the author's
+    /// file names, so a value that changes changes for the validator too.
     /// </summary>
     [Fact]
     public void AStaticReadonlyField_IsReadRatherThanBaked() {
-        var lifted = Lifted(
+        var region = Region(
             "    internal static readonly int Max = 10;",
-            "rules.Ensure(x => x.Count <= Max);");
+            "rules.Ensure(x.Count <= Max);");
 
-        Assert.Contains("global::Sample.ModelRules.Max", lifted);
-        Assert.DoesNotContain("<= 10", lifted);
+        Assert.Contains("global::Sample.ModelRules.Max", region);
+        Assert.DoesNotContain("<= 10", region);
     }
 
     [Fact]
     public void AnInternalMethod_IsQualified() {
-        var lifted = Lifted(
+        var region = Region(
             "    internal static bool Ok(Model v) => true;",
-            "rules.Ensure(x => x.Count > 0 && Ok(x));");
+            "rules.Ensure(x.Count > 0 && Ok(x));");
 
-        Assert.Contains("global::Sample.ModelRules.Ok(x)", lifted);
+        Assert.Contains("global::Sample.ModelRules.Ok(x)", region);
     }
 
     [Fact]
-    public void ConditionsAreRewrittenTheSameWay() {
-        var lifted = Lifted(
+    public void AnIfCondition_IsRewrittenTheSameWay() {
+        // Control flow is C# now, and its conditions transcribe under the same rewrites the
+        // island arguments do.
+        var region = Region(
             "    internal const int Max = 10;",
-            "rules.Required(x => x.Name).When(x => x.Count <= Max);");
+            "if (x.Count <= Max) { rules.Require(x.Name); }");
 
-        Assert.Contains("global::Sample.ModelRules.Max", lifted);
+        Assert.Contains("global::Sample.ModelRules.Max", region);
     }
 
     // -- what is left alone ---------------------------------------------------------------------
@@ -107,8 +109,8 @@ public class LiftedPredicateScopeTests {
             public sealed record Model { public int Count { get; init; } }
 
             public sealed class ModelRules : IValidationRulesFor<Model> {
-                public void Describe(ValidationRules<Model> rules) {
-                    rules.Ensure(x => x.Count <= Limits.Max);
+                public static void Describe(ValidationRules<Model> rules, Model x) {
+                    rules.Ensure(x.Count <= Limits.Max);
                 }
             }
             """);
@@ -118,49 +120,49 @@ public class LiftedPredicateScopeTests {
     }
 
     [Fact]
-    public void TheLambdaParameterIsNotRewritten() {
-        var lifted = Lifted(string.Empty, "rules.Ensure(x => x.Count > 0);");
+    public void TheSubjectParameterIsNotRewritten() {
+        var region = Region(string.Empty, "rules.Ensure(x.Count > 0);");
 
-        Assert.Contains("x.Count > 0", lifted);
-        Assert.DoesNotContain("ModelRules.x", lifted);
+        Assert.Contains("x.Count > 0", region);
+        Assert.DoesNotContain("ModelRules.x", region);
     }
 
     // -- private -------------------------------------------------------------------------------
 
     /// <summary>
-    /// A private member cannot be reached even qualified. A constant is the one thing that can cross
-    /// by value without the two engines being able to disagree, because C# already bakes a const at
-    /// every use site.
+    /// A private member cannot be reached even qualified. A constant is the one thing that can
+    /// cross by value without the region and the author's file being able to disagree, because C#
+    /// already bakes a const at every use site.
     /// </summary>
     [Theory]
     [InlineData("    private const int Max = 10;", "x.Count <= Max", "10")]
     [InlineData("    private const string Max = \"ab\";", "x.Name == Max", "\"ab\"")]
     [InlineData("    private const bool Max = true;", "x.Count > 0 == Max", "true")]
-    public void APrivateConstant_IsCarriedAcrossByValue(string member, string predicate, string expected) {
-        var lifted = Lifted(member, $"rules.Ensure(x => {predicate});");
+    public void APrivateConstant_IsCarriedAcrossByValue(string member, string condition, string expected) {
+        var region = Region(member, $"rules.Ensure({condition});");
 
-        Assert.Contains(expected, lifted);
-        Assert.DoesNotContain("ModelRules.Max", lifted);
+        Assert.Contains(expected, region);
+        Assert.DoesNotContain("ModelRules.Max", region);
     }
 
     [Fact]
-    public void APrivateMethod_IsVM0078RatherThanAnErrorInGeneratedCode() {
+    public void APrivateMethod_IsVM0088RatherThanAnErrorInGeneratedCode() {
         var result = Run(
             "    private static bool Ok(Model v) => true;",
-            "rules.Ensure(x => x.Count > 0 && Ok(x));");
+            "rules.Ensure(x.Count > 0 && Ok(x));");
 
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM0078");
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM0088");
     }
 
     [Fact]
-    public void APrivateStaticReadonlyField_IsVM0078() {
+    public void APrivateStaticReadonlyField_IsVM0088() {
         var result = Run(
             "    private static readonly int Max = 10;",
-            "rules.Ensure(x => x.Count <= Max);");
+            "rules.Ensure(x.Count <= Max);");
 
-        var reported = Assert.Single(result.Diagnostics, d => d.Id == "VM0078");
+        var reported = Assert.Single(result.Diagnostics, d => d.Id == "VM0088");
 
-        Assert.Contains("ModelRules.Max", reported.GetMessage());
+        Assert.Contains("Max", reported.GetMessage());
         Assert.Contains("Make it internal", reported.GetMessage());
     }
 
@@ -181,11 +183,11 @@ public class LiftedPredicateScopeTests {
     public void APrivateConstantOfAnyNumericType_IsWrittenBackWithItsType(
         string type, string literal, string expected) {
 
-        var lifted = Lifted(
+        var region = Region(
             $"    private const {type} Max = {literal};",
-            "rules.Ensure(x => x.Count <= (double)Max);");
+            "rules.Ensure(x.Count <= (double)Max);");
 
-        Assert.Contains(expected, lifted);
+        Assert.Contains(expected, region);
     }
 
     /// <summary>
@@ -195,11 +197,11 @@ public class LiftedPredicateScopeTests {
     /// </summary>
     [Fact]
     public void ADoubleConstant_KeepsEveryDigit() {
-        var lifted = Lifted(
+        var region = Region(
             "    private const double Max = 1.2345678901234567;",
-            "rules.Ensure(x => x.Count <= Max);");
+            "rules.Ensure(x.Count <= Max);");
 
-        Assert.Contains("1.2345678901234567D", lifted);
+        Assert.Contains("1.2345678901234567D", region);
     }
 
     /// <summary>
@@ -207,11 +209,11 @@ public class LiftedPredicateScopeTests {
     /// </summary>
     [Fact]
     public void ADecimalConstant_KeepsItsScale() {
-        var lifted = Lifted(
+        var region = Region(
             "    private const decimal Max = 1.50m;",
-            "rules.Ensure(x => x.Count <= (double)Max);");
+            "rules.Ensure(x.Count <= (double)Max);");
 
-        Assert.Contains("1.50m", lifted);
+        Assert.Contains("1.50m", region);
     }
 
     /// <summary>
@@ -233,8 +235,8 @@ public class LiftedPredicateScopeTests {
             public sealed class ModelRules : IValidationRulesFor<Model> {
                 private const Status Wanted = Status.Active;
 
-                public void Describe(ValidationRules<Model> rules) {
-                    rules.Ensure(x => x.Status == Wanted);
+                public static void Describe(ValidationRules<Model> rules, Model x) {
+                    rules.Ensure(x.Status == Wanted);
                 }
             }
             """);
@@ -247,11 +249,11 @@ public class LiftedPredicateScopeTests {
 
     [Fact]
     public void ANullConstant_IsWrittenBackAsNull() {
-        var lifted = Lifted(
+        var region = Region(
             "    private const string? Missing = null;",
-            "rules.Ensure(x => x.Name != Missing);");
+            "rules.Ensure(x.Name != Missing);");
 
-        Assert.Contains("x.Name != null", lifted);
+        Assert.Contains("x.Name != null", region);
     }
 
     /// <summary>
@@ -262,10 +264,10 @@ public class LiftedPredicateScopeTests {
     [InlineData("double.PositiveInfinity", "double.PositiveInfinity")]
     [InlineData("double.NegativeInfinity", "double.NegativeInfinity")]
     public void AFloatingPointConstantWithNoLiteralForm_IsNamed(string literal, string expected) {
-        var lifted = Lifted(
+        var region = Region(
             $"    private const double Max = {literal};",
-            "rules.Ensure(x => x.Count <= Max);");
+            "rules.Ensure(x.Count <= Max);");
 
-        Assert.Contains(expected, lifted);
+        Assert.Contains(expected, region);
     }
 }

@@ -31,9 +31,8 @@ VM0063 | ValidationModules.Usage | Info | A format DataAnnotations attribute is 
 VM0064 | ValidationModules.Usage | Error | A length constraint was applied to a member that is neither string nor collection.
 VM0065 | ValidationModules.Usage | Error | Range bounds do not parse as the member's type.
 VM0067 | ValidationModules.Usage | Info | IValidatableObject.Validate is called after every other rule on the type passes, as Validator.TryValidateObject sequences it. Reported with an ignoring tail when ValidationModules_DataAnnotations is Ignore.
-VM0070 | ValidationModules.Usage | Error | A statement in Describe is not a rule declaration.
-VM0071 | ValidationModules.Usage | Error | A rule selector is not a simple property path.
-VM0072 | ValidationModules.Usage | Error | A predicate references state outside its own parameter.
+VM0070 | ValidationModules.Usage | Error | A statement in a Describe body is not transcribable.
+VM0071 | ValidationModules.Usage | Error | A rule's value argument is not a member path on the subject parameter.
 VM0075 | ValidationModules.Usage | Error | An Ensure has no inferable field and no explicit field name.
 VM0027 | ValidationModules.Usage | Error | [EnumDefined] was applied to a member whose type is not an enum.
 VM0030 | ValidationModules.Usage | Warning | A derived property hides a base declaration whose constraints are dropped.
@@ -41,14 +40,17 @@ VM0028 | ValidationModules.Usage | Error | A When/Unless condition names a membe
 VM0029 | ValidationModules.Usage | Error | A When/Unless condition names a member that is not a predicate.
 VM0033 | ValidationModules.Usage | Error | A constraint sets both When and Unless.
 VM0031 | ValidationModules.Usage | Warning | A [ValidateNested] target is not sealed and declares no polymorphism mode.
-VM0076 | ValidationModules.Usage | Warning | A conditional block declares no rules.
-VM0077 | ValidationModules.Usage | Warning | A chained When/Unless applies to no rules.
 VM0032 | ValidationModules.Usage | Error | Polymorphism.Runtime was applied to a sealed or value type.
-VM0034 | ValidationModules.Usage | Warning | A When/Unless condition folds to a constant.
-VM0078 | ValidationModules.Usage | Error | A lifted predicate references a private member of the rules class.
 VM0079 | ValidationModules.Usage | Error | A generic type cannot have a generated validator.
 VM0080 | ValidationModules.Usage | Error | A [CustomValidation] target does not resolve to a callable public static ValidationResult method.
 VM0081 | ValidationModules.Usage | Warning | Resource-based ErrorMessage resolution reflects at run time and may break under trimming.
 VM0082 | ValidationModules.Usage | Error | A CustomConstraintAttribute subclass has no usable public static bool IsValid, or its parameters do not line up with the constructor.
 VM0083 | ValidationModules.Usage | Error | An IConstraintFor<T> attribute cannot be compiled: no implemented instantiation accepts the member, several do, an argument is not renderable, or the class mixes custom shapes.
 VM0084 | ValidationModules.Usage | Info | A [PerValidationInstance] constraint constructs a new attribute instance on every check.
+VM0085 | ValidationModules.Usage | Error | A fragment target is compiled IL from a referenced assembly; fragments must be part of this compilation.
+VM0086 | ValidationModules.Usage | Error | A fragment call chain returns to where it started.
+VM0087 | ValidationModules.Usage | Error | The rules builder flows somewhere the generator cannot follow.
+VM0088 | ValidationModules.Usage | Error | Transcribed code references a member that is not accessible from the companion file.
+VM0089 | ValidationModules.Usage | Error | A rule declaration sits inside a loop, lambda, or local function.
+VM0090 | ValidationModules.Usage | Error | Require on a non-nullable value type can never fail.
+VM0091 | ValidationModules.Usage | Error | A facet validated with As declares no rules in this compilation.

@@ -4,15 +4,15 @@ using Xunit;
 namespace ValidationModules.SourceGenerator.Tests;
 
 /// <summary>
-/// The diagnostics that keep a <c>Describe</c> body a whitelisted DSL rather than general C#.
+/// The diagnostics that hold a <c>Describe</c> body's two invariants, now that almost everything
+/// else transcribes.
 /// </summary>
 /// <remarks>
-/// These matter more than the constraint diagnostics do, and for a reason particular to this
-/// feature: the body <i>is</i> runnable C#, and one of its two consumers actually runs it. So a
-/// statement the generator cannot compile does not look like a mistake — it compiles, and it works
-/// under <c>DescribedValidator&lt;T&gt;</c>. Left unreported it would produce two engines that
-/// disagree, which is precisely what API-SURFACE.md §19 promises cannot happen. Every one of these
-/// is therefore an error rather than a warning.
+/// A body is C# that is read, never run - so a statement the generator cannot carry must break the
+/// build rather than transcribe into a call on the inert builder that validates nothing. The
+/// blacklist is short (VM0070); the load-bearing rules are the builder flowing only where the
+/// reader can follow (VM0087) and transcribed code compiling at the emission site (VM0088). Every
+/// one of these is an error rather than a warning.
 /// </remarks>
 public class RulesClassDiagnosticsTests {
 
@@ -30,27 +30,60 @@ public class RulesClassDiagnosticsTests {
             public DateOnly Start { get; init; }
             public DateOnly End { get; init; }
             public IReadOnlyList<string>? Notes { get; init; }
+            public string? Mutable { get; set; }
         }
 
         public sealed class ReservationRules : IValidationRulesFor<Reservation> {
         {{extraMembers}}
-            public void Describe(ValidationRules<Reservation> rules) {
+            public static void Describe(ValidationRules<Reservation> rules, Reservation x) {
         {{body}}
             }
         }
         """;
 
-    // VM0070 — a statement that is not a rule declaration.
+    // What used to be rejected wholesale now transcribes: computation is the feature.
 
     [Theory]
-    [InlineData("var minimum = 2;")]
+    [InlineData("var minimum = 2; rules.Length(x.Guest, minimum, 40);")]
     [InlineData("Console.WriteLine(\"hello\");")]
-    [InlineData("if (DateTime.Now.Year > 2000) { rules.Required(x => x.Guest); }")]
-    [InlineData("foreach (var i in new[] { 1, 2 }) { rules.Range(x => x.Nights, 1, i); }")]
-    [InlineData("for (var i = 0; i < 3; i++) { }")]
-    [InlineData("throw new InvalidOperationException();")]
+    [InlineData("if (x.Nights > 7) { rules.Require(x.Notes); }")]
     [InlineData("return;")]
-    public void StatementThatIsNotARuleDeclaration_IsVM0070(string statement) {
+    [InlineData("throw new InvalidOperationException();")]
+    [InlineData("var total = x.Notes?.Sum(n => n.Length) ?? 0; rules.Ensure(total <= x.Nights);")]
+    public void OrdinaryStatements_Transcribe(string statement) {
+        var result = GeneratorHarness.Run(Rules($"        {statement}"));
+
+        Assert.Empty(result.Diagnostics);
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    [Fact]
+    public void ReporterCallsInsideALoop_Transcribe() {
+        // The reporter tier is transcription, not an island - legal anywhere, loops included. The
+        // per-element field is a computed string, on the author's head.
+        var result = GeneratorHarness.Run(Rules("""
+                    if (x.Notes is { } notes) {
+                        for (var i = 0; i < notes.Count; i++) {
+                            if (notes[i].Length > 100) {
+                                rules.Context.Report($"notes[{i}]", "too_long", "a note is too long");
+                            }
+                        }
+                    }
+            """));
+
+        Assert.Empty(result.Diagnostics);
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    // VM0070 - the blacklist: v1-rejected exotica and mutation of the subject.
+
+    [Theory]
+    [InlineData("goto done; done: rules.Require(x.Guest);")]
+    [InlineData("try { rules.Require(x.Guest); } catch { }")]
+    [InlineData("lock (string.Empty) { }")]
+    [InlineData("using var reader = System.IO.File.OpenText(\"x\");")]
+    [InlineData("x.Mutable = \"a\";")]
+    public void BlacklistedStatement_IsVM0070(string statement) {
         var result = GeneratorHarness.Run(Rules($"        {statement}"));
 
         var reported = result.Diagnostics.Where(d => d.Id == "VM0070").ToList();
@@ -60,215 +93,158 @@ public class RulesClassDiagnosticsTests {
     }
 
     [Fact]
-    public void CallToSomethingOtherThanTheBuilder_IsVM0070() {
+    public void ApplyAnywhereButTheTop_IsVM0070() {
+        // Applied rules run last and unconditionally - a guarded Apply would promise a condition
+        // the emitted ordering cannot honour.
         var result = GeneratorHarness.Run(Rules(
-            "        Helper();",
-            "    private static void Helper() { }\n"));
+            "        if (x.Nights > 7) { rules.Apply(Checks.Audit); }",
+            """
+                public static class Checks {
+                    public static ValidationFlow Audit(ref ValidationContext ctx, Reservation value) =>
+                        ValidationFlow.Continue;
+                }
+            """));
 
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0070");
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM0070");
     }
 
     [Fact]
     public void VM0070_NamesTheRulesClassSoTheAuthorKnowsWhichBodyIsAtFault() {
-        var result = GeneratorHarness.Run(Rules("        var minimum = 2;"));
+        var result = GeneratorHarness.Run(Rules("        x.Mutable = \"a\";"));
 
         Assert.Contains("ReservationRules", Assert.Single(result.Diagnostics, d => d.Id == "VM0070").GetMessage());
     }
 
     [Fact]
     public void WholeDslVocabulary_IsAccepted() {
-        // The complement of VM0070, and the assertion that keeps the theory above honest: if the
-        // whitelist were empty every test in this class would pass for the wrong reason.
+        // The complement of the blacklist, and the assertion that keeps the theories above honest.
         var result = GeneratorHarness.Run(Rules("""
-                    rules.Required(x => x.Guest).Length(2, 40);
-                    rules.Range(x => x.Nights, 1, 30);
-                    rules.Count(x => x.Notes, 0, 3);
-                    rules.Ensure(x => x.Start < x.End);
-                    rules.Ensure(x => x.Nights <= 7 || x.Notes != null, code: "long_stay_needs_notes");
+                    rules.Require(x.Guest).Length(2, 40);
+                    rules.Range(x.Nights, 1, 30);
+                    rules.Count(x.Notes, 0, 3);
+                    rules.Ensure(x.Start < x.End);
+                    rules.Ensure(x.Nights <= 7 || x.Notes != null, code: "long_stay_needs_notes");
             """));
 
         Assert.Empty(result.Diagnostics);
         Assert.Empty(result.CompilationErrors);
     }
 
-    // VM0071 — a selector that is not a property path, so the error would have no field.
+    // VM0071 - a value argument that is not a member path, so the error would have no field.
 
     [Theory]
-    [InlineData("rules.Required(x => x.Guest!.Trim());")]
-    [InlineData("rules.Range(x => x.Nights + 1, 1, 30);")]
-    [InlineData("rules.Required(x => \"constant\");")]
-    public void SelectorThatIsNotAPropertyPath_IsVM0071(string statement) {
+    [InlineData("rules.Require(x.Guest!.Trim());")]
+    [InlineData("rules.Range(x.Nights + 1, 1, 30);")]
+    [InlineData("rules.Require(\"constant\");")]
+    public void ValueThatIsNotAMemberPath_IsVM0071(string statement) {
         var result = GeneratorHarness.Run(Rules($"        {statement}"));
 
         Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM0071").Severity);
     }
 
     [Fact]
-    public void PlainPropertySelector_IsSilent() {
-        var result = GeneratorHarness.Run(Rules("        rules.Required(x => x.Guest);"));
+    public void PlainMemberPath_IsSilent() {
+        var result = GeneratorHarness.Run(Rules("        rules.Require(x.Guest);"));
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0071");
     }
 
-    // VM0075 — an Ensure whose predicate touches no property, so no field can be inferred.
+    // VM0075 - an Ensure whose condition touches no property and names no field.
 
     [Fact]
     public void EnsureReadingNoProperty_IsVM0075() {
-        var result = GeneratorHarness.Run(Rules("        rules.Ensure(x => true);"));
+        var result = GeneratorHarness.Run(Rules("        rules.Ensure(1 < 2);"));
 
         Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM0075").Severity);
     }
 
     [Fact]
-    public void EnsureReadingNoProperty_StillFiresEvenWhenFieldIsGivenExplicitly() {
-        // Deliberate, per RulesFrontEnd.cs:288 — a rule is emitted inside its anchored property's
-        // chain so both engines agree on ordering (§4.2), and a rule belonging to no property has
-        // nowhere to go. field: renames the error; it does not detach the rule.
-        var result = GeneratorHarness.Run(Rules("        rules.Ensure(x => true, field: \"nights\");"));
+    public void EnsureWithAnExplicitField_IsSilent() {
+        // field: anchors a condition that reads nothing off the subject - a fragment computing
+        // over its extra parameters is the sanctioned case. The raw wire name is the author's.
+        var result = GeneratorHarness.Run(Rules("        rules.Ensure(1 < 2, field: \"nights\");"));
 
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0075");
-    }
-
-    [Fact]
-    public void VM0075_DoesNotAdviseTheOneFixThatDoesNotWork() {
-        // The message used to end "pass field: explicitly", which leaves this firing and sends the
-        // reader round the loop a second time. It now says what to do and what not to bother with.
-        var message = Assert
-            .Single(GeneratorHarness.Run(Rules("        rules.Ensure(x => true);")).Diagnostics, d => d.Id == "VM0075")
-            .GetMessage();
-
-        Assert.DoesNotContain("pass field: explicitly", message);
-        Assert.Contains("does not anchor the rule", message);
-    }
-
-    [Fact]
-    public void EnsureReadingNoProperty_IsWhereTheTwoEnginesDiverge() {
-        // Worth stating outright, because §19 otherwise promises they agree. DescribedValidator<T>
-        // accepts this input — ValidationRules.Ensure takes `field ?? Named(...)`, so an explicit
-        // field means the anchor is never consulted — while the generator rejects it. The generated
-        // path is the stricter of the two, which is the safe direction for a divergence to run in:
-        // the build fails rather than two deployments disagreeing.
-        var result = GeneratorHarness.Run(Rules("        rules.Ensure(x => true, field: \"nights\");"));
-
-        Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM0075").Severity);
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0075");
+        Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
     public void EnsureReadingAProperty_InfersTheFieldAndIsSilent() {
-        var result = GeneratorHarness.Run(Rules("        rules.Ensure(x => x.Start < x.End);"));
+        var result = GeneratorHarness.Run(Rules("        rules.Ensure(x.Start < x.End);"));
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0075");
     }
 
-    // VM0072 — a predicate that captures anything but its own parameter.
+    // Instance state is impossible by the language now, not by diagnostics.
 
     [Fact]
-    public void PredicateCapturingAnInstanceField_IsVM0072() {
-        // The generator lifts a predicate into a static method and the runtime holds it as a
-        // delegate. A delegate closes over the rules class instance; a static method cannot. So a
-        // capture is the one construct that would genuinely compile on one path and not the other.
+    public void InstanceState_IsACompilerErrorInTheRulesClassItself() {
+        // Describe is static abstract, so `this` does not exist and an instance field is CS0120 in
+        // the author's own file - the language enforces what VM0072 used to police.
         var result = GeneratorHarness.Run(Rules(
-            "        rules.Ensure(x => x.Nights <= _limit);",
+            "        rules.Ensure(x.Nights <= _limit);",
             "    private readonly int _limit = 7;\n"));
 
-        Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM0072").Severity);
+        Assert.NotEmpty(result.CompilationErrors);
+    }
+
+    // VM0087 - the builder flowing where the reader cannot follow.
+
+    [Theory]
+    [InlineData("var chain = rules.Require(x.Guest);")]
+    [InlineData("Helper(rules);", "    private static bool Helper(ValidationRules<Reservation> r) => true;\n")]
+    [InlineData("System.Func<ValidationModules.PropertyRules<Reservation, string?>> f = () => rules.Require(x.Guest);")]
+    public void BuilderInAnUnfollowableFlow_IsVM0087(string statement, string extraMembers = "") {
+        var result = GeneratorHarness.Run(Rules($"        {statement}", extraMembers));
+
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM0087");
+    }
+
+    // VM0088 - transcribed code that cannot compile in the companion file.
+
+    [Theory]
+    [InlineData("    private static bool Allowed(string? s) => true;\n",
+        "if (!Allowed(x.Guest)) { rules.Context.ReportHere(\"c\", \"m\"); }")]
+    [InlineData("    private static readonly int Limit = 7;\n",
+        "rules.Ensure(x.Nights <= Limit);")]
+    public void APrivateNonConstantMember_IsVM0088(string extraMembers, string statement) {
+        var result = GeneratorHarness.Run(Rules($"        {statement}", extraMembers));
+
+        var reported = Assert.Single(result.Diagnostics, d => d.Id == "VM0088");
+
+        Assert.Equal(DiagnosticSeverity.Error, reported.Severity);
+        Assert.Contains("internal", reported.GetMessage());
+    }
+
+    // VM0089 - islands inside scopes the reader cannot expand them in.
+
+    [Theory]
+    [InlineData("foreach (var i in new[] { 1, 2 }) { rules.Range(x.Nights, 1, i); }")]
+    [InlineData("for (var i = 0; i < 3; i++) { rules.Require(x.Guest); }")]
+    [InlineData("void Local() { rules.Require(x.Guest); } Local();")]
+    public void IslandInALoopOrLocalFunction_IsVM0089(string statement) {
+        var result = GeneratorHarness.Run(Rules($"        {statement}"));
+
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM0089");
+    }
+
+    // VM0090 - a Require that can never fail.
+
+    [Fact]
+    public void RequireOnANonNullableValueType_WithoutATypeArgument_IsStillUnwritable() {
+        // The overload matrix survives the move to values for the bare spelling: inference cannot
+        // unwrap Nullable, so `Require(x.Nights)` is CS0411 in the author's own file.
+        var result = GeneratorHarness.Run(Rules("        rules.Require(x.Nights);"));
+
+        Assert.NotEmpty(result.CompilationErrors);
     }
 
     [Fact]
-    public void PredicateCapturingAConstructorParameter_IsVM0072() {
-        var source = """
-            using System;
-            using ValidationModules;
+    public void RequireOnANonNullableValueType_WithAnExplicitTypeArgument_IsVM0090() {
+        // Naming the type argument gets past inference - int converts to int? - so the generator
+        // diagnoses the rule that can never fail.
+        var result = GeneratorHarness.Run(Rules("        rules.Require<int>(x.Nights);"));
 
-            namespace Sample;
-
-            public sealed record Reservation {
-                public int Nights { get; init; }
-            }
-
-            public sealed class ReservationRules : IValidationRulesFor<Reservation> {
-                private readonly int _limit;
-
-                public ReservationRules(int limit) {
-                    _limit = limit;
-                }
-
-                public void Describe(ValidationRules<Reservation> rules) {
-                    rules.Ensure(x => x.Nights <= _limit, field: "nights");
-                }
-            }
-            """;
-
-        var result = GeneratorHarness.Run(source);
-
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0072");
-    }
-
-    [Fact]
-    public void PredicateReadingAConstant_IsSilent() {
-        // Static and constant state is reachable from a lifted static method, so it is allowed.
-        var result = GeneratorHarness.Run(Rules(
-            "        rules.Ensure(x => x.Nights <= Limit);",
-            "    private const int Limit = 7;\n"));
-
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0072");
-    }
-
-    [Fact]
-    public void PredicateReadingAStaticField_IsSilent() {
-        var result = GeneratorHarness.Run(Rules(
-            "        rules.Ensure(x => x.Nights <= Limit);",
-            "    private static readonly int Limit = 7;\n"));
-
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0072");
-    }
-
-    [Fact]
-    public void PredicateReadingOnlyItsOwnParameter_IsSilent() {
-        var result = GeneratorHarness.Run(Rules("        rules.Ensure(x => x.Start < x.End);"));
-
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0072");
-    }
-
-    [Fact]
-    public void PredicateWithANestedLambda_IsSilent() {
-        // The walk binds its parameter list once, to the outermost lambda, and then descends
-        // through the whole subtree - so an inner lambda's own parameter is a name it has never
-        // heard of and scores as a capture. Nothing is captured here: the C# compiler accepts the
-        // inner lambda as static, which is the proof.
-        var result = GeneratorHarness.Run(Rules(
-            "        rules.Ensure(x => x.Nights <= x.Notes.Sum(n => n.Length));"));
-
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0072");
-    }
-
-    [Fact]
-    public void PredicateWithAnExplicitlyStaticNestedLambda_IsSilent() {
-        var result = GeneratorHarness.Run(Rules(
-            "        rules.Ensure(x => x.Nights <= x.Notes.Sum(static n => n.Length));"));
-
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0072");
-    }
-
-    [Fact]
-    public void PredicateDeclaringItsOwnLocal_IsSilent() {
-        // The same root cause reached a second way: every ILocalSymbol scores as captured, including
-        // one declared inside the predicate. A local that the lifted static method declares for
-        // itself is not state from anywhere else.
-        var result = GeneratorHarness.Run(Rules(
-            "        rules.Ensure(x => { var span = x.End.DayNumber - x.Start.DayNumber; return span > 0; });"));
-
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0072");
-    }
-
-    [Fact]
-    public void PredicateCapturingThroughANestedLambda_IsStillVM0072() {
-        // The complement, and the one that keeps the three above honest: teaching the walk about
-        // inner scopes must not blind it to a capture that happens inside one.
-        var result = GeneratorHarness.Run(Rules(
-            "        rules.Ensure(x => x.Notes.Any(n => n.Length > _limit));",
-            "    private readonly int _limit = 7;\n"));
-
-        Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM0072").Severity);
+        Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM0090").Severity);
     }
 }

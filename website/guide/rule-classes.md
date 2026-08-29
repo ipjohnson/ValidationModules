@@ -1,20 +1,20 @@
 # Rule classes
 
 A third way to declare rules, alongside [constraint attributes](/guide/constraints) and
-[DataAnnotations](/guide/data-annotations): a class that describes them in a method body.
+[DataAnnotations](/guide/data-annotations): a class whose body is **read at build time and never
+run**.
 
 ```csharp
 using ValidationModules;
 
 public sealed class PetRules : IValidationRulesFor<Pet> {
-    public void Describe(ValidationRules<Pet> rules) {
-        rules.Required(x => x.Name).Length(1, 100);
-        rules.Range(x => x.Age, 0, 30);
-        rules.Pattern(x => x.Sku, PetPatterns.Sku);
-        rules.Count(x => x.Toys, 1, 10).Each();
+    public static void Describe(ValidationRules<Pet> rules, Pet x) {
+        rules.Require(x.Name).Length(1, 100);
+        rules.Range(x.Age, 0, 30);
+        rules.Pattern(x.Sku, PetPatterns.Sku);
+        rules.Count(x.Toys, 1, 10).Each();
 
-        rules.Ensure(x => x.Start < x.End);
-        rules.Apply(PetChecks.SkuChecksum);
+        rules.Ensure(x.Age is not 13, code: "unlucky");
     }
 }
 ```
@@ -24,10 +24,10 @@ A version of that you can paste, against the guide's `Pet`:
 <!-- verify:models -->
 ```csharp
 public sealed class PetRules : IValidationRulesFor<Pet> {
-    public void Describe(ValidationRules<Pet> rules) {
-        rules.Required(x => x.Name).Length(1, 100);
-        rules.Range(x => x.Age, 0, 30);
-        rules.Count(x => x.Toys, 1, 10).Each();
+    public static void Describe(ValidationRules<Pet> rules, Pet x) {
+        rules.Require(x.Name).Length(1, 100);
+        rules.Range(x.Age, 0, 30);
+        rules.Count(x.Toys, 1, 10);
     }
 }
 ```
@@ -35,255 +35,278 @@ public sealed class PetRules : IValidationRulesFor<Pet> {
 It exists for two cases attributes cannot reach:
 
 - **`Pet` comes from a package nobody here owns.** You cannot edit the model to add an attribute.
-- **A rule spans two properties.** `x.Start < x.End` is not a per-property fact, so no per-property
-  attribute can say it.
+- **A rule is not a per-property fact.** A cross-field comparison, a computed total, a checksum —
+  no per-property attribute can say them.
 
-Nothing needs registering if this generator compiles your project — it finds the class and folds
-its rules into the same validator the attributes produce.
+Nothing needs registering. The generator finds the class and emits its checks into the same
+validator the attributes produce.
 
-## The design: two consumers, one declaration
+## Read, never run
 
-`Describe` is both **read at build time** and **run at run time**, and the two must agree.
+The source generator **transcribes** `Describe` into the generated validator. Vocabulary calls —
+`Require`, `Length`, `Ensure` — are recognized islands it expands into check-and-report code.
+Every other statement — locals, arithmetic, `if`/`else` — is carried through and runs at validation
+time *inside the generated validator*. There is no runtime engine and no interpretation.
 
-| | reads or runs | cost per rule | needs this generator |
-|---|---|---|---|
-| `ValidatorEmitter` via `RulesFrontEnd` | reads the syntax, flattens to straight-line code | a branch | yes |
-| `DescribedValidator<T>` | runs `Describe` once in its constructor | an interface dispatch and a delegate call | no |
+Three consequences worth knowing up front:
 
-So the interface is the portable contract and the generator is an optimizer that erases its cost.
-That is what makes it usable by a *different* source generator: emit a rules class, register it, and
-validation works with none of this package's build-time machinery present.
+- **Nothing instantiates a rules class.** `Describe` is `static`, so `this` does not compile, and
+  the builder it takes cannot be constructed — the method exists to be read. Under trimming and
+  Native AOT the class disappears entirely: what ships is the generated validator.
+- **`x` is symbolic.** It never holds a value at declaration time; it exists so member access
+  typechecks, renames propagate, and go-to-definition works.
+- **A breakpoint in `Describe` never hits.** The method is read, not run. To step through your
+  rules, step through the generated validator and its `{RulesClass}_Rules` companion under
+  `obj/…/generated` — readable, straight-line code.
 
-Either way, `Describe` runs at most once per process, in a singleton's constructor. "Rule graphs are
-built once, never per validation call" holds on both paths by construction.
+## Control flow is just C#
 
-::: tip Selectors are `Func<T, TValue>`, never `Expression<Func<T, TValue>>`
-An expression tree would need compiling to be executable, and `Expression.Compile` is banned. What
-replaces it is `CallerArgumentExpression` — see [field inference](#field-names-are-inferred).
-:::
+There is no `When`/`Unless`. Conditions are `if`/`else`, evaluated where written, at validation
+time:
 
-## The body is a whitelisted DSL
-
-This is the part most likely to surprise, and it is deliberate.
-
-A `Describe` body is **not** general C#. A local, a loop, a condition, or a call to anything that is
-not on the builder is a build error — [VM0070](/reference/diagnostics#vm0070) — rather than
-something quietly dropped:
-
+<!-- verify:models -->
 ```csharp
-public void Describe(ValidationRules<Pet> rules) {
-    var minimum = 2;                                   // VM0070
-    if (DateTime.Now.Year > 2000) { … }                // VM0070
-    foreach (var name in Names) { … }                  // VM0070
-    Helper();                                          // VM0070
+public sealed class SeniorPetRules : IValidationRulesFor<Pet> {
+    public static void Describe(ValidationRules<Pet> rules, Pet x) {
+        if (x.Age > 20) {
+            rules.Require(x.Home);
+        } else {
+            rules.Range(x.Age, 0, 20);
+        }
+    }
 }
 ```
 
-Why it has to be an error rather than a warning: the body compiles and it *runs*. Under
-`DescribedValidator<T>` that loop would work perfectly. If the generator quietly skipped what it
-could not read, the same rules class would validate differently depending on which engine happened
-to be running it — which is the one thing this design exists to prevent.
-
-## Field names are inferred
-
-The selector's source text supplies the field name, via `CallerArgumentExpression`:
+Computation is the feature, not a violation. Declare locals, call helpers, and feed the results
+into rules:
 
 ```csharp
-rules.Required(x => x.Name);      // field "name"
-rules.Required(x => x.Name, field: "petName");
+var total = x.Lines?.Sum(l => l.Price * l.Qty) ?? 0m;
+rules.Ensure(total <= x.CreditLimit);          // message: "total <= creditLimit."
 ```
 
-The selector must be a plain property path. Anything else is
-[VM0071](/reference/diagnostics#vm0071), because there is no field to hang the error on:
+::: warning Computation runs unguarded
+Your statements execute exactly as written, on exactly the malformed inputs validation exists to
+reject. `x.Lines.Sum(…)` throws when `Lines` is null even if a `Count` rule above it just reported
+the problem — write `x.Lines?.Sum(…) ?? 0m`, the way you would anywhere else.
 
-```csharp
-rules.Required(x => x.Name!.Trim());   // VM0071
-rules.Range(x => x.Nights + 1, 1, 30); // VM0071
-```
+The same goes for I/O: a database call in `Describe` compiles and runs on every validation pass.
+The line is convention now, not a build error — structural rules here, I/O in
+`IAsyncValidatorFor<T>`.
+:::
 
-## Anchored chaining
+## The vocabulary
 
-The first call carries the selector; the rest inherit it.
+Arguments are values, not selectors — `rules.Require(x.Name)`, not `rules.Required(x => x.Name)`.
+The first call in a chain carries the value; the rest inherit its anchor, and a failed `Require`
+suppresses the checks chained after it:
 
 <!-- verify:models -->
 ```csharp
 public sealed class AnchoredRules : IValidationRulesFor<Pet> {
-    public void Describe(ValidationRules<Pet> rules) {
-        rules.Required(x => x.Name).Length(1, 100);
+    public static void Describe(ValidationRules<Pet> rules, Pet x) {
+        rules.Require(x.Name).Length(1, 100);
     }
 }
 ```
 
-`For` exists for when the anchor reads better stated on its own:
-
-<!-- verify:models -->
-```csharp
-public sealed class ForRules : IValidationRulesFor<Pet> {
-    public void Describe(ValidationRules<Pet> rules) {
-        rules.For(x => x.Name).Required().Length(1, 100);
-    }
-}
-```
-
-The vocabulary mirrors the attributes, and produces the same codes and messages — a rule declared
-here and the same rule declared as an attribute are the same model before the emitter sees either:
+The vocabulary mirrors the attributes and produces the same codes and messages:
 
 | Builder | Attribute | Code |
 |---|---|---|
-| `rules.Required(x => x.Name)` | `[Required]` | `required` |
+| `rules.Require(x.Name)` | `[Required]` | `required` |
 | `.Length(1, 100)` | `[StringLength(1, 100)]` | `string_length` |
-| `.Range(x => x.Age, 0, 30)` | `[Range(0, 30)]` | `range` |
-| `.Pattern(x => x.Sku, Patterns.Sku)` | `[Pattern(…)]` | `pattern` |
-| `.AllowedValues(x => x.Status, "a", "b")` | `[AllowedValues("a", "b")]` | `enum` |
-| `.Count(x => x.Toys, 1, 10)` | `[ItemCount(1, 10)]` | `array_bounds` |
-| `.Nested(x => x.Home)` | `[ValidateNested]` | — |
-| `.Each()` | `[ValidateNested]` on a collection | — |
+| `rules.Range(x.Age, 0, 30)` | `[Range(0, 30)]` | `range` |
+| `rules.Pattern(x.Sku, Patterns.Sku)` | `[Pattern(…)]` | `pattern` |
+| `rules.AllowedValues(x.Status, ["a", "b"])` | `[AllowedValues("a", "b")]` | `enum` |
+| `rules.Count(x.Toys, 1, 10)` | `[ItemCount(1, 10)]` | `array_bounds` |
+| `rules.Nested(x.Home)` | `[ValidateNested]` | — |
+| `rules.Each(x.Toys)` | `[ValidateNested]` on a collection | — |
 
 Members that only make sense for particular value types are extension methods constrained on the
-receiver's type argument — which is how `Length` is offered on `PropertyRules<T, string?>` and not on
-`PropertyRules<T, int>`. The compiler catches the mistake rather than a runtime check.
+chain's type argument — which is how `Length` is offered on a string anchor and not on an `int`.
+The compiler catches the mistake rather than a runtime check.
 
 ::: tip `Pattern` takes a method group
-`rules.Pattern(x => x.Sku, PetPatterns.Sku)` — not a `(Type, string)` pair. An attribute has to spell
-a member reference that way because it cannot hold a method group; a method body can, so you get
-compile-time checking, go-to-definition and rename for free.
+`rules.Pattern(x.Sku, PetPatterns.Sku)` — the accessor for a `[GeneratedRegex]` partial method,
+never an inline string. There is no inline form to leak the regex engine into an AOT publish.
 :::
+
+## Field names
+
+An island's value must be a member path on the subject — nested paths and `?.` included:
+
+```csharp
+rules.Require(x.Home?.PostalCode);   // field "home.postalCode"
+rules.Require(x.Name, field: "petName");
+```
+
+`[JsonPropertyName]` on the property wins, then the
+[naming policy](/reference/msbuild#validationmodules-fieldnaming). An explicit `field:` is a raw
+wire name on your head — it is not put through the namer. Anything that is not a member path needs
+one, or it is [VM0071](/reference/diagnostics#vm0071).
+
+Where free-form code needs a field name, `nameof` through the subject parameter rewrites to the
+wire path — including inside interpolated strings:
+
+```csharp
+rules.Context.Report(nameof(x.AccountNumber), "checksum",   // → "accountNumber"
+    $"{nameof(x.AccountNumber)} failed its checksum");
+```
+
+`nameof(Pet.Name)` — through the type — stays ordinary C# and yields the CLR name; that is the
+deliberate escape hatch.
 
 ## `Ensure` {#ensure}
 
-The exit from the vocabulary: cross-field comparisons, arithmetic, anything the six constraints
-cannot say.
+One assertion with no vocabulary name:
 
 ```csharp
-rules.Ensure(x => x.Start < x.End);
-rules.Ensure(x => x.Discount <= x.Price * 0.5m, code: "discount_too_large");
+rules.Ensure(x.Start < x.End);
+rules.Ensure(x.Discount <= x.Price * 0.5m, code: "discount_too_large");
 ```
 
-**The message is the predicate, rendered.** `CallerArgumentExpression` supplies the source text, the
-lambda parameter is stripped, and member accesses take their wire names:
+**The message is the condition, rendered**: the subject parameter stripped, member accesses
+wire-named, a period appended — `start < end.` It cannot drift, because it *is* the rule, and it is
+redaction-safe by construction: the text is compile-time source, so no runtime value can reach it.
+Locals appear under their own names (`total <= creditLimit.`), which makes local naming part of
+your user-facing text — a feature, once you know.
 
-| Written | Message |
-|---|---|
-| `x => x.Start < x.End` | `start < end.` |
-| `x => x.Age is >= 0 and <= 30` | `age is >= 0 and <= 30.` |
-| `x => !string.IsNullOrWhiteSpace(x.Name)` | `!string.IsNullOrWhiteSpace(name).` |
+The rule anchors to the first member access off the subject; a condition that reads none needs
+`field:`, or it is [VM0075](/reference/diagnostics#vm0075). The code defaults to `predicate` and
+never derives from the expression — the message should track the rule, while the code is a wire
+contract that widening a bound must not break.
 
-That message cannot drift, because it *is* the rule — where a composed message repeats a bound
-someone can edit without editing the text. Both engines produce it identically, because both start
-from the same string: the generator bakes a literal, the runtime renders once at rule-build time.
+## The reporter tier {#reporter}
 
-It is also redaction-safe by construction. The text is compile-time source, so no runtime value can
-reach it.
+When free-form logic finds something, report it through `rules.Context` — a narrow view of the
+validation pass with exactly the members that work here:
 
-::: tip An ugly render means the wrong tool
-The last row above is a case the vocabulary has a word for — `Required` — and it is shorter. You do
-not need to read a diagnostic to notice; the message tells you.
+```csharp
+if (!Luhn.Validates(x.AccountNumber)) {
+    rules.Context.Report(nameof(x.AccountNumber), "checksum",
+        "account number failed its checksum");
+}
+```
+
+- Reporter calls are transcription, not islands — legal anywhere, **loops included**. Per-element
+  reporting uses a computed field string: `rules.Context.Report($"lines[{i}].sku", …)`.
+- Any expression-statement whose type is `ValidationFlow` is checked and propagated automatically —
+  the built-in `Report*` helpers, future ones, and your own helpers alike. Assign the result to
+  opt into manual control.
+- Values may reach messages here. The composed vocabulary and `Ensure` are redaction-safe by
+  construction; `Report` deliberately reopens that, at an explicit call site, on your head.
+
+## Fragments {#fragments}
+
+Decomposition and reuse are method extraction, read by the generator: any `static`, `void`,
+same-compilation method that receives the builder is followed.
+
+```csharp
+public static class AuditRules {
+    // The mixin the attributes never had: every audited type gets these rules, said once.
+    public static void Standard<T>(ValidationRules<T> rules, T audited) where T : IAudited {
+        rules.Require(audited.CreatedBy);
+        rules.RangeAtLeast(audited.Version, 1);
+    }
+}
+
+public sealed class OrderRules : IValidationRulesFor<Order> {
+    public static void Describe(ValidationRules<Order> rules, Order x) {
+        rules.Require(x.Number);
+        AuditRules.Standard(rules, x);          // expanded here, in body order
+    }
+}
+```
+
+- **Generic fragments are stamped out per concrete type**, and members resolve against it —
+  `[JsonPropertyName]` on the implementing property wins for field naming.
+- **Extra parameters bind at the call site**: `CustomsRules.Declare(rules, x, strict: x.Tier > 2)`.
+- The parameter typed as the subject must be passed the `Describe` subject — a facet of a child is
+  `Nested`'s territory. Fragments may call fragments; a cycle is
+  [VM0086](/reference/diagnostics#vm0086), not a hang.
+- Each fragment expands into a companion method carrying **its own file's** using directives, so it
+  compiles exactly as written where it was written.
+
+::: warning Fragments travel as source
+A fragment is read from syntax, and a referenced assembly ships IL — there is no body to read, so a
+plain `ProjectReference` is on the wrong side of the line
+([VM0085](/reference/diagnostics#vm0085)). Share fragments through a shared project or a
+source-only package — or ship the rules as a compiled facet, below.
 :::
 
-### The code does not derive from the predicate
+## Facets — `rules.As<TFacet>` {#facets}
 
-`Ensure` reports `predicate` unless you pass `code:`. Deriving a code from the expression — slug or
-hash — was rejected because message and code have opposite churn requirements. The message is
-human-facing and *should* track the rule. The code is a wire contract, so deriving it would make
-widening `30` to `35` a breaking change for every client switching on it.
-
-Two `Ensure`s on one field both report `predicate`, told apart by their messages. Pass `code:` when a
-client needs to tell them apart programmatically, which promotes that one rule into your contract
-deliberately rather than by accident.
-
-### Two constraints on `Ensure`
-
-**The predicate may capture only its own parameter, and static or constant state.**
+The route when shared rules ship as IL, and the general spelling for "validate `x` as one of its
+facets":
 
 ```csharp
-private readonly int _limit = 7;
+// The shared assembly declares the facet and its rules, and runs the generator itself:
+public interface IAudited {
+    string? CreatedBy { get; }
+}
 
-rules.Ensure(x => x.Nights <= _limit);      // VM0072 — captures the rules instance
-rules.Ensure(x => x.Nights <= Limit);       // fine, if Limit is const or static
+public sealed class AuditRules : IValidationRulesFor<IAudited> {
+    public static void Describe(ValidationRules<IAudited> rules, IAudited x) {
+        rules.Require(x.CreatedBy);
+    }
+}
+
+// Consumers opt in, in the body:
+rules.As<IAudited>(x);
 ```
 
-The generator lifts a predicate into a static method; the runtime holds it as a delegate. A delegate
-can close over the rules class instance and a static method cannot, so a capture is the one
-construct that would genuinely compile on one path and not the other.
+One spelling, two bindings. A facet whose validator is generated in **this** compilation binds
+statically — no DI involved, and a facet with no rules here is
+[VM0091](/reference/diagnostics#vm0091), never a silent no-op. A facet from a **referenced**
+assembly resolves the closed `IValidatorFor<TFacet>` through the pass's services — compose the
+facet's own `Add…Validators()` at your root, and a missing registration throws naming exactly
+that, never silently skipping.
 
-**The predicate must read some property of its parameter**, so the rule has somewhere to live:
+The argument must be the subject — a facet of a child is `Nested`'s territory, where the path
+pushes. Here it does not: facet fields report at the current level (`createdBy`, not
+`audited.createdBy`).
 
-```csharp
-rules.Ensure(x => true);                    // VM0075
-rules.Ensure(x => true, field: "nights");   // VM0075 as well
-```
-
-::: warning `field:` renames; it does not anchor
-Passing `field:` does **not** silence [VM0075](/reference/diagnostics#vm0075). A rule is emitted
-inside its anchored property's chain so both engines agree on ordering, and a rule belonging to no
-property has nowhere to go.
-
-This is also the one place the two engines legitimately diverge: `DescribedValidator<T>` accepts
-`rules.Ensure(x => true, field: "nights")` and runs it; the generator rejects it. The generated path
-is the stricter of the two, which is the safe direction — the build fails rather than two
-deployments disagreeing.
+::: tip Declare facet rules in a rules class, not as attributes on the interface
+An interface's *attribute* constraints already reach every implementer through
+[constraint inheritance](/guide/constraints) — an `As` on top of those reports every facet error
+twice. `As` exists for exactly the rules inheritance cannot see: a rules class targeting the
+facet.
 :::
 
 ## `Apply` — a hand-written rule
 
-For anything the DSL cannot express at all:
-
-```csharp
-public static class PetChecks {
-    public static ValidationFlow SkuChecksum(ref ValidationContext context, Pet value) =>
-        value.Sku is { } sku && !ChecksumIsValid(sku)
-            ? context.Report("sku", "checksum", "sku checksum does not match.")
-            : ValidationFlow.Continue;
-}
-```
+For a shared opaque check that wants the raw context:
 
 ```csharp
 rules.Apply(PetChecks.SkuChecksum);
 ```
 
-Taken as a method group rather than a `(Type, string)` pair, for the same reason `Pattern` is. The
-generator emits a direct call to it.
+Taken as a method group and emitted as a direct call. Applied rules own no position: they run after
+everything else, unconditionally, in declaration order — which is why an `Apply` under an `if` is
+an error rather than a promise the ordering cannot keep.
 
 ## Ordering
 
-Rules from a rules class land **after** the attributes on each property, and both live in one
-validator rather than two.
+The generated validator runs its regions in a fixed order: the attribute-declared checks first (in
+source order), then one region per rules class — classes ordered by name, statements in body order,
+because the body *is* the validator. `Apply` rules run last.
 
-For a type that carries no attributes of its own, properties report in the order the `Describe` body
-first mentioned them — a body constraining `Notes` before `Start` reports in that order. It has to:
-`DescribedValidator<T>` has only the body to go on and cannot see source order without reflection.
+Rules for one field belong in one chain. Two separate statements against the same field report
+independently — a failed `Require` suppresses the rest of *its own* chain, nothing more.
 
-Where the type *does* carry attributes, source order stays authoritative. Mixing the two orderings on
-one type would be worse than either.
+## What is rejected
 
-## Running without this generator
+Almost everything transcribes. What does not, and why:
 
-If your project does not run `ValidationModules.SourceGenerator` — the rules class came from a
-referenced assembly, or another generator emitted it — register it to be run:
-
-```csharp
-services.AddDescribedValidator<Pet, PetRules>();
-```
-
-`DescribedValidator<Pet>` calls `Describe` once in its constructor and walks the rules it recorded.
-Costs an interface dispatch and a delegate call per rule instead of a branch, and needs no build-time
-machinery at all.
-
-::: danger Never do both for one type
-If this generator compiled the class it also registered the validator it emitted. Calling
-`AddDescribedValidator` as well gives the type two validators, and `ValidationRunner<T>` merges every
-registered one — so every error appears twice.
-:::
-
-## Where the two engines diverge
-
-They agree on codes, messages, ordering and field paths. Two exceptions, both known:
-
-1. **`[JsonPropertyName]` field naming.** The generator reads it and bakes the JSON name in;
-   `DescribedValidator<T>` cannot, because reading an attribute at run time is reflection.
-2. **`Ensure` with no property access**, above.
-
-If both matter to you, avoid `[JsonPropertyName]` on types validated by a rules class that might run
-un-compiled, and set
-[`ValidationModules_FieldNaming`](/reference/msbuild#validationmodules-fieldnaming) to match the
-namer you register.
+- **The builder flowing where the reader cannot follow** —
+  [VM0087](/reference/diagnostics#vm0087): storing `rules` or a chain in a local, capturing it in a
+  lambda, passing it to anything that is not a fragment. A rule call the generator cannot see would
+  validate nothing, so it is an error instead.
+- **A member the companion file cannot reach** — [VM0088](/reference/diagnostics#vm0088):
+  `private` members of the rules class. Make them `internal`; a `private const` is carried across
+  by value.
+- **Islands in loops, lambdas, or local functions** — [VM0089](/reference/diagnostics#vm0089).
+  Collections are `Each`'s job; the reporter tier covers the exotic per-element case.
+- **The v1-rejected exotica** — [VM0070](/reference/diagnostics#vm0070): `goto`, `try`/`catch`,
+  `lock`, `using` statements, assignment to the subject.

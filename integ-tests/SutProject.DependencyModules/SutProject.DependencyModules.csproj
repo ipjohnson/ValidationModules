@@ -10,6 +10,9 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <!-- The cross-assembly facet case: IAudited and its generated validator ship as IL
+             from SutProject, and rules classes here compose them through DI (rules.As). -->
+        <ProjectReference Include="..\SutProject\SutProject.csproj"/>
         <ProjectReference Include="..\..\src\ValidationModules.Runtime\ValidationModules.Runtime.csproj"/>
         <ProjectReference Include="..\..\src\ValidationModules.SourceGenerator\ValidationModules.SourceGenerator.csproj"
                           OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>

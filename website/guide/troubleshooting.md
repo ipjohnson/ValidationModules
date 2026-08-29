@@ -99,12 +99,10 @@ load its module, from your composition root.
 
 ## Every error appears twice
 
-A type has two validators registered. The usual cause is calling `AddDescribedValidator<T, TRules>()`
-for a rules class that this generator already compiled — the generator registered the validator it
-emitted, and `ValidationRunner<T>` merges every registered `IValidatorFor<T>`.
-
-Pick one: let the generator compile it, or register it to be run. Within one compilation this is
-VM0074.
+A type has two validators registered — `ValidationRunner<T>` merges every registered
+`IValidatorFor<T>`, deliberately, so a hand-written validator composes with the generated one.
+The usual cause is calling the assembly's `Add…Validators()` twice, or registering by hand a
+validator the generated registration already added.
 
 ## Errors are in the wrong order
 
@@ -112,9 +110,9 @@ Ordering is: properties in source order, constraints in attribute order, nested 
 of their property, collection elements ascending. Two exceptions by design:
 
 - `[Required]` is evaluated first within a property, whatever order you wrote the attributes in.
-- For a type whose rules come **only** from a rule class, properties report in the order the
-  `Describe` body first mentioned them — `DescribedValidator<T>` cannot see source order without
-  reflection, so the generator matches it.
+- Rules from a [rule class](/guide/rule-classes) report after the attribute-declared checks, in
+  body order — the body is the validator. Two rules classes for one type run in class-name
+  order.
 
 An async validator that fans out internally produces its own errors in completion order.
 
@@ -124,9 +122,9 @@ Precedence, highest first: `[JsonPropertyName]`, `[Display(Name = …)]`, then t
 [`ValidationModules_FieldNaming`](/reference/msbuild#validationmodules-fieldnaming) property
 (camelCase by default).
 
-Field names are **baked in at build time**, so registering a different `IValidationFieldNamer` does
-not rename a generated validator's errors — it only affects `DescribedValidator<T>` and the
-FluentValidation adapter. Set both to the same policy if you use both engines.
+Field names are **baked in at build time**, so registering a different `IValidationFieldNamer`
+does not rename a generated validator's errors — it only affects the FluentValidation adapter.
+Set both to the same policy if you use both.
 
 ## The AOT binary grew by half a megabyte
 

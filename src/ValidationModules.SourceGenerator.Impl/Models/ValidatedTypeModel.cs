@@ -32,6 +32,13 @@ namespace ValidationModules.SourceGenerator.Impl.Models;
 /// nothing else having failed, which is <c>Validator.TryValidateObject</c>'s sequencing. A type
 /// carrying it also loses the straight-line <c>IsValid</c>, for the reason applied rules do.
 /// </param>
+/// <param name="Regions">
+/// The rules-class regions this validator calls, ordered by rules-class name (ordinal). Each is a
+/// method in a companion file carrying the rules class's own using directives; the validator calls
+/// it after the attribute-declared checks, passing the injected validator arrays its descents
+/// need. A type with any region loses the straight-line <c>IsValid</c> - regions carry free-form
+/// computation and reporter calls a boolean path with no collector cannot always project.
+/// </param>
 public sealed record ValidatedTypeModel(
     string Namespace,
     string TypeName,
@@ -40,7 +47,17 @@ public sealed record ValidatedTypeModel(
     EquatableArray<ValidatedPropertyModel> Properties,
     EquatableArray<string> AppliedRules = default,
     bool IsPublic = true,
-    bool ImplementsValidatableObject = false) : IEquatable<ValidatedTypeModel>;
+    bool ImplementsValidatableObject = false,
+    EquatableArray<RegionModel> Regions = default) : IEquatable<ValidatedTypeModel>;
+
+/// <summary>
+/// One transcribed rules-class region: where its method lives and which of the validator's
+/// injected sets it takes, in parameter order.
+/// </summary>
+public sealed record RegionModel(
+    string CompanionQualifiedName,
+    string MethodName,
+    EquatableArray<string> ValidatorAccessors = default) : IEquatable<RegionModel>;
 
 /// <summary>Which registration shape the assembly gets. See plan §7.3.</summary>
 public enum RegistrationMode {

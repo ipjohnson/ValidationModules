@@ -63,3 +63,23 @@ public sealed class InMemoryHandleDirectory : IHandleDirectory {
     public ValueTask<bool> IsTakenAsync(string handle, CancellationToken cancellationToken) =>
         new(handle == "taken");
 }
+
+/// <summary>
+/// The cross-assembly facet case: <see cref="SutProject.Declared.IAudited"/> and its generated
+/// validator ship as IL from SutProject, so <c>rules.As</c> resolves the closed
+/// <c>IValidatorFor&lt;IAudited&gt;</c> through the pass's services - composed by calling
+/// SutProject's own <c>AddSutProjectValidators()</c>, per plan §7.3, and loud when it was not.
+/// </summary>
+public sealed record Deployment : SutProject.Declared.IAudited {
+    public string? CreatedBy { get; init; }
+
+    public int Version { get; init; }
+
+    [Required] public string? Environment { get; init; }
+}
+
+public sealed class DeploymentRules : IValidationRulesFor<Deployment> {
+    public static void Describe(ValidationRules<Deployment> rules, Deployment x) {
+        rules.As<SutProject.Declared.IAudited>(x);
+    }
+}

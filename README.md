@@ -64,6 +64,32 @@ foreach (var error in result.Errors) {
 // toys[3].name     required
 ```
 
+## Rules as code
+
+For the type you cannot edit, and the rule that is not a per-property fact, write a rules class —
+full C#, **read at build time and never run**:
+
+```csharp
+public sealed class OrderRules : IValidationRulesFor<Order> {
+    public static void Describe(ValidationRules<Order> rules, Order x) {
+        rules.Require(x.Number).Length(4, 12);
+
+        if (x.International) {
+            rules.Require(x.CustomsCode);
+        }
+
+        var total = x.Lines?.Sum(l => l.Price * l.Qty) ?? 0m;
+        rules.Ensure(total <= x.CreditLimit);   // message: "total <= creditLimit."
+    }
+}
+```
+
+Locals, `if`/`else` and helpers transcribe into the generated validator and run there;
+vocabulary calls expand into the same checks the attributes produce. The declaration layer —
+attributes and rules classes alike — is build-time-only: what ships is generated validators plus
+the small reporting runtime, and under trimming or Native AOT a rules class disappears
+entirely. See [Rule classes](https://ipjohnson.github.io/ValidationModules/guide/rule-classes).
+
 ## Performance
 
 | Scenario | ValidationModules | FluentValidation | DataAnnotations |
@@ -154,8 +180,9 @@ Release candidate for 1.0.0. Built so far:
 | 6 | FluentValidation adapter and conformance suite | not started |
 | — | ASP.NET Core integration | **done** |
 
-Also built since the plan was written: a declarative rule-class front end
-(`IValidationRulesFor<T>`, `API-SURFACE.md` §19) and a DataAnnotations front end (§18).
+Also built since the plan was written: the rules-class front end
+(`IValidationRulesFor<T>` — redesigned 2026-08-29 to the read-never-run transcription model,
+`docs/active-rules-redesign.md`) and a DataAnnotations front end (§18).
 Profiles and overlays are deferred past 1.0.0 with their declaration surfaces withdrawn;
 `docs/deferred-features.md` records how each returns additively.
 

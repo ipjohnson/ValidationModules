@@ -21,31 +21,35 @@ column before writing rules.
 
 | FluentValidation | Here | Note |
 |---|---|---|
-| `class V : AbstractValidator<T>` + ctor body | `class V : IValidationRulesFor<T>` + `Describe(ValidationRules<T> rules)` | Interface, not base class |
-| `RuleFor(x => x.Name)` | `rules.For(x => x.Name)` | Name only |
-| `Expression<Func<T,TValue>>` | `Func<T,TValue>` + `[CallerArgumentExpression]` | Same call site, no expression tree. This is why it is AOT-safe |
-| `.NotNull()`, `.NotEmpty()` | `.Required()`, `.RequiredAllowingEmpty()` | Name only |
+| `class V : AbstractValidator<T>` + ctor body | `class V : IValidationRulesFor<T>` + `static Describe(ValidationRules<T> rules, T x)` | Interface, not base class — and the body is **read at build time, never run** |
+| `RuleFor(x => x.Name)` | `rules.Require(x.Name)` etc. — the entry call carries the value | Values, not selectors; the generator resolves `x.Name` as a symbol |
+| `Expression<Func<T,TValue>>` | plain values on a symbolic `x` | No expression tree, no delegate. This is why it is AOT-safe and fully trimmable |
+| `.NotNull()`, `.NotEmpty()` | `.Require()`, `.RequireAllowingEmpty()` | Name only |
 | `.Length(1,100)` | `.Length(1,100)` | Same |
 | `.InclusiveBetween(0,30)` | `.Range(0,30)` | Name only |
 | `.GreaterThanOrEqualTo(x)` / `.LessThanOrEqualTo(x)` | `.RangeAtLeast(x)` / `.RangeAtMost(x)` | Name only |
 | `.Matches(regex)` | `.Pattern(() => MyRegex())` | Takes a thunk; pair with `[GeneratedRegex]` |
-| `.SetValidator(child)` | `.Nested(x => x.Child)` or `[ValidateNested]` | Declarative; no child validator to wire |
-| `RuleForEach(x => x.Items)` | `.Each(x => x.Items)` | Name only |
-| `.When(p)` / `.Unless(p)` | `.When(p)` / `.Unless(p)`, plus block form `When(p, () => { … })` | Superset |
+| `.SetValidator(child)` | `rules.Nested(x.Child)` or `[ValidateNested]` | Declarative; no child validator to wire |
+| `RuleForEach(x => x.Items)` | `rules.Each(x.Items)` | Name only |
+| `.When(p)` / `.Unless(p)` | `if (p) { … }` / `if (!p) { … }` | Control flow is C#, evaluated where written |
 | `.WithSeverity(...)` | `severity:` parameter | Name only |
-| separate statements per rule | `.And` chains back to `ValidationRules<T>` | Or just start a new statement |
-| `IValidator<T>` | **`IValidatorFor<T>`** | `IValidator<T>` belongs to FluentValidation. Never introduce it |
-| `.Must((model, value) => …)` | **`Ensure(Func<T,bool>)` — restricted, see below** | **Semantic difference** |
+| `.Must((model, value) => …)` | **`Ensure(bool)` — a plain condition, see below** | **Semantic difference** |
 | `.WithMessage("{PropertyName} …")` | `message:` parameter, no interpolation | **Semantic difference** |
+| `IValidator<T>` | **`IValidatorFor<T>`** | `IValidator<T>` belongs to FluentValidation. Never introduce it |
 | `RuleSet` | none — deferred past 1.0.0 | Not a gap to work around; see Non-goals |
+
+Shared rule sets are [fragments](docs/active-rules-redesign.md) — a `static void` method receiving
+`rules`, expanded by the generator, generics included. Free-form findings report through
+`rules.Context`; a chain is one statement and its own suppression unit.
 
 ### The two that are not name changes
 
-**`Ensure` is not `Must`.** A predicate must be self-contained: it may reference its own parameter
-and nothing else, because it is flattened into straight-line C# at build time rather than held as a
-closure. `VM0072` enforces this. Do not reach for `.Must((model, value) => ...)` patterns that close
-over outside state — extract a named static, or use a hand-written `IValidatorFor<T>` composed
-through DI when the rule genuinely needs a service.
+**`Ensure` is not `Must`.** `rules.Ensure(x.Start < x.End)` takes a plain bool the generator
+captures syntactically and transcribes into the region — `Describe` is static, so `this` cannot
+exist, and a `private` member of the rules class is `VM0088` ("make it internal"; a private
+const bakes by value). Do not reach for `.Must((model, value) => ...)` patterns — write the
+condition inline, or use a hand-written `IValidatorFor<T>` composed through DI when the rule
+genuinely needs a service.
 
 **Messages carry no interpolated values.** `ValidationError` is `Field, Code, Message, Severity`.
 Build UI and i18n off the stable `Code`, not by parsing the message.
@@ -91,7 +95,9 @@ From `IMPLEMENTATION-PLAN.md` §2, repeated because they are easy to violate by 
   as of 2026-08-28** — `IMPLEMENTATION-PLAN.md` §7.6 records the conversion and the shared
   settings in `Emitters/EmitterOutput.cs`. Do not add a non-compliant fourth.
 - `[GeneratedRegex]`, never `new Regex(..., RegexOptions.Compiled)`.
-- Rule graphs are built once, never per validation call.
+- Nothing expensive is constructed per validation call — no graph building, no compiled-regex
+  construction, no hot-path allocation. (Rules-class computation runs per call by design;
+  `docs/active-rules-redesign.md`.)
 - The service interface is `IValidatorFor<T>`.
 - Registration is emitted per assembly; there is no cross-assembly scanning, deliberately.
 

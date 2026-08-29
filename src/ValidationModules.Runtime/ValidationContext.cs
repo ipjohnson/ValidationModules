@@ -34,7 +34,7 @@ namespace ValidationModules;
 /// which is faster than sharing one anyway.
 /// </para>
 /// </remarks>
-public readonly struct ValidationContext {
+public readonly struct ValidationContext : IValidationContextReporter {
 
     /// <summary>The index value meaning "this segment is not a collection element".</summary>
     private const int NoIndex = -1;
@@ -141,10 +141,20 @@ public readonly struct ValidationContext {
     /// carries on.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The returned <see cref="ValidationFlow"/> is <see cref="ValidationFlow.Stop"/> when the
     /// collector is in <see cref="ValidationStopMode.StopOnFirstError"/> and this was a blocking
     /// failure. A caller that discards it simply keeps validating, which is what every
     /// <see cref="ValidationStopMode.CollectAll"/> pass does anyway.
+    /// </para>
+    /// <para>
+    /// Records without consulting the collector's Required-suppression rule, deliberately: this
+    /// path reports positions, and under <see cref="ValidationPathMode.Bounded"/> two different
+    /// positions can render to the same path text, so a path-keyed rule here silenced sibling
+    /// errors - the regression <c>RequiredSuppressionTests</c> pins. A failed <c>Require</c>
+    /// suppresses the rest of <i>its own chained statement</i> through the <c>else if</c> the
+    /// generator emits; rules on one field written as separate statements report independently.
+    /// </para>
     /// </remarks>
     /// <param name="field">The field name, appended to the current path.</param>
     /// <param name="code">A stable machine-readable code - see the vocabulary in API-SURFACE.md §4.1.</param>

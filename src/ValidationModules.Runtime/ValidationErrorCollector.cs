@@ -218,9 +218,10 @@ public sealed class ValidationErrorCollector {
 
     /// <summary>
     /// Records an error without consulting the Required suppression rule. Used by
-    /// <see cref="ValidationContext"/>, whose engines short-circuit a failed Required per field
-    /// themselves - the emitter with an <c>else if</c>, the rule builder with a field chain - so a
-    /// second, path-keyed rule here would only ever fire when two positions rendered alike.
+    /// <see cref="ValidationContext"/>: that path reports positions, and two different positions
+    /// can render to the same path text under <see cref="ValidationPathMode.Bounded"/>, so a
+    /// path-keyed rule here silenced sibling errors. A chained statement short-circuits through the
+    /// <c>else if</c> the generator emits instead.
     /// </summary>
     internal ValidationFlow AddDirect(in ValidationError error) {
         if (Finished) {
@@ -289,14 +290,13 @@ public sealed class ValidationErrorCollector {
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Why here rather than in the emitter.</b> Generated code expresses suppression as an
-    /// <c>else if</c> chain, which works only for engines that generate code. The FluentValidation
-    /// adapter maps <c>ValidationFailure</c>s that FluentValidation has already produced - it has no
-    /// control flow to put an <c>else</c> in - so if suppression were only a shape in emitted
-    /// source, the adapter could never honour it and §8's conformance suite would have to exclude
-    /// it. Enforcing it here makes it a property of the error model, which every engine reaches
-    /// through, and the <c>else if</c> in generated code becomes an optimization rather than the
-    /// mechanism.
+    /// <b>Why here, and why only for this path.</b> An adapter maps failures another engine has
+    /// already produced - it has no control flow to put an <c>else</c> in, so if suppression were
+    /// only a shape in emitted source it could never conform. Enforcing it at this entry gives it
+    /// that shape. It stays off <see cref="AddDirect"/> deliberately: that path reports positions,
+    /// whose rendered paths can collide under <see cref="ValidationPathMode.Bounded"/>, and the
+    /// generated engine's suppression is the <c>else if</c> of a chained statement - rules on one
+    /// field written as separate statements report independently, by design.
     /// </para>
     /// <para>
     /// <b>Forward-only, and exact-match.</b> A field is suppressed from the moment it fails
@@ -307,6 +307,12 @@ public sealed class ValidationErrorCollector {
     /// <c>work.postalCode</c> are different fields, and it is not a prefix match: a failed Required
     /// on <c>home</c> does not suppress <c>home.postalCode</c>. Nothing recurses into a value that
     /// failed Required in the first place, so there is nothing there to suppress.
+    /// </para>
+    /// <para>
+    /// The key is the path as rendered, because it is what the error itself carries. Under
+    /// <see cref="ValidationPathMode.Bounded"/> a deep path elides its middle, so two distinct deep
+    /// positions can render alike and suppress as one field; the deliberate trade, since an error
+    /// list that distinguishes two positions its own paths cannot distinguish would be stranger.
     /// </para>
     /// </remarks>
     private void AddCore(in ValidationError error) {

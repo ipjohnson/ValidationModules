@@ -29,7 +29,10 @@ public static class KnownTypes {
 
     /// <summary>Assembly-level, and part of the profile feature that is not built. See VM0019.</summary>
 
-    /// <summary>The marker for a declarative rule class. See API-SURFACE.md §19.2.</summary>
+    /// <summary>The marker for a declarative rule class. See docs/active-rules-redesign.md.</summary>
     public const string ValidationRulesForInterface = "ValidationModules.IValidationRulesFor<T>";
+
+    /// <summary>The inert vocabulary a Describe body is written against, read and never run.</summary>
+    public const string ValidationRulesBuilder = "ValidationModules.ValidationRules<T>";
 
 }

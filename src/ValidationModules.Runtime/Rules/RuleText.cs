@@ -8,10 +8,10 @@ namespace ValidationModules.Rules;
 /// <remarks>
 /// <para>
 /// <b>This file is compiled into ValidationModules.SourceGenerator.Impl as well as into the
-/// runtime.</b> API-SURFACE.md §19.5 rests on the generated validator and
-/// <see cref="DescribedValidator{T}"/> producing byte-identical messages for the same rule, and two
-/// implementations of the same string transform would only agree until someone edited one of them.
-/// Sharing the source removes the possibility rather than testing for it.
+/// runtime.</b> The runtime engine that once ran these transforms is gone - rules classes are read
+/// by the generator, never run - but the file stays at this path because both generator projects
+/// link it from here, and a single implementation of the render is still the point: the message an
+/// <c>Ensure</c> bakes into generated code comes from exactly one transform.
 /// </para>
 /// <para>
 /// Consequently it must compile as netstandard2.0 under LangVersion 10 as well as net8.0+: no
