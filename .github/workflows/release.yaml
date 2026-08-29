@@ -101,7 +101,8 @@ jobs:
             src/ValidationModules.Runtime/ValidationModules.Runtime.csproj \
             src/ValidationModules.AspNetCore/ValidationModules.AspNetCore.csproj \
             src/ValidationModules.SourceGenerator/ValidationModules.SourceGenerator.csproj \
-            src/ValidationModules.SourceGenerator.Impl/ValidationModules.SourceGenerator.Impl.csproj; do
+            src/ValidationModules.SourceGenerator.Impl/ValidationModules.SourceGenerator.Impl.csproj \
+            src/ValidationModules.Messages/ValidationModules.Messages.csproj; do
             dotnet pack "$project" --configuration Release --output ./artifacts \
               "/p:PackageVersion=${{ steps.version.outputs.version }}"
           done

@@ -21,7 +21,7 @@
     <ItemGroup Condition="'$(ValidationModulesLanguages)' != 'all' AND '$(ValidationModulesLanguages)' != 'none'">
         <_ValidationModulesLanguage Include="$(ValidationModulesLanguages)"/>
         <AdditionalFiles
-            Include="@(_ValidationModulesLanguage->'..\MessagesDemo\LanguagePacks\%(Identity).validation-messages.json')"/>
+            Include="@(_ValidationModulesLanguage->'..\..\src\ValidationModules.Messages\messages\%(Identity).validation-messages.json')"/>
     </ItemGroup>
 
     <ItemGroup>

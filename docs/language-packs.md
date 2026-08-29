@@ -151,8 +151,13 @@ file came from is invisible to it.
 
 ## All-in-one, opt-out in the csproj
 
-The bundled offering is one `ValidationModules.Messages` package carrying every language as data
-files, filtered by an MSBuild property before the generator ever sees them:
+The bundled offering ships: **`ValidationModules.Messages`**, one package carrying every language
+as data files under `messages/`, delivered into the consumer's `AdditionalFiles` by
+`build/ValidationModules.Messages.props` and filtered by an MSBuild property before the generator
+ever sees them. It ships no assembly - `scripts/verify-packages.sh` pins that (`messages/*.json` +
+`build/props`, no `lib/`) and consumes it from a cold feed, asserting a French render through one
+`Add<Assembly>Validators()` call. Its dependencies on Runtime and SourceGenerator are the version
+floor: a runtime too old to know packs fails the contract gate, not generated code.
 
 ```xml
 <ValidationModulesLanguages>fr;de</ValidationModulesLanguages>   <!-- unset = all; 'none' = off -->

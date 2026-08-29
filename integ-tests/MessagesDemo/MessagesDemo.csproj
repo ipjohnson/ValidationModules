@@ -6,9 +6,9 @@
         <Nullable>enable</Nullable>
         <IsPackable>false</IsPackable>
         <!--
-            The point of this project: the language-pack pipeline end to end, in the exact shape
-            the all-in-one ValidationModules.Messages package would deliver it - every language as
-            a data file, the ValidationModulesLanguages property choosing which ones compile.
+            The point of this project: the language-pack pipeline end to end, over the exact files
+            ValidationModules.Messages ships - included here by path the way the package's props
+            include them by props, with the same ValidationModulesLanguages filter.
             MessagesDemo.Filtered.Tests compiles these same sources with the property set to prove
             that opting out removes a language from the binary rather than carrying it disabled.
         -->
@@ -19,14 +19,14 @@
 
     <!-- The all-in-one shape: unset means every language compiles in. -->
     <ItemGroup Condition="'$(ValidationModulesLanguages)' == 'all'">
-        <AdditionalFiles Include="LanguagePacks/*.validation-messages.json"/>
+        <AdditionalFiles Include="..\..\src\ValidationModules.Messages\messages\*.validation-messages.json"/>
     </ItemGroup>
 
     <!-- The opt-out shape: 'fr;de' compiles exactly those; 'none' compiles none. -->
     <ItemGroup Condition="'$(ValidationModulesLanguages)' != 'all' AND '$(ValidationModulesLanguages)' != 'none'">
         <_ValidationModulesLanguage Include="$(ValidationModulesLanguages)"/>
         <AdditionalFiles
-            Include="@(_ValidationModulesLanguage->'LanguagePacks/%(Identity).validation-messages.json')"/>
+            Include="@(_ValidationModulesLanguage->'..\..\src\ValidationModules.Messages\messages\%(Identity).validation-messages.json')"/>
     </ItemGroup>
 
     <!--

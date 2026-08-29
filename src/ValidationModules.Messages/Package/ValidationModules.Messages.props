@@ -1,0 +1,30 @@
+<Project>
+
+    <!--
+        The language filter (docs/language-packs.md). Unset means every language this package
+        carries compiles into the consuming assembly; a semicolon list compiles exactly those;
+        'none' turns the package off without removing it. Because the filter runs before the
+        generator ever sees a file, opting out means not compiled - the language is absent from
+        the binary, which is the same tier of guarantee as ValidationModules_CaptureValues.
+
+        These items are added by package props, which MSBuild evaluates before project items - so
+        a consumer's own *.validation-messages.json always registers later and wins per key. The
+        person closest to the user has the last word, with no configuration.
+    -->
+    <PropertyGroup>
+        <ValidationModulesLanguages Condition="'$(ValidationModulesLanguages)' == ''">all</ValidationModulesLanguages>
+    </PropertyGroup>
+
+    <ItemGroup Condition="'$(ValidationModulesLanguages)' == 'all'">
+        <AdditionalFiles Include="$(MSBuildThisFileDirectory)../messages/*.validation-messages.json"
+                         Visible="false"/>
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(ValidationModulesLanguages)' != 'all' AND '$(ValidationModulesLanguages)' != 'none'">
+        <_ValidationModulesLanguage Include="$(ValidationModulesLanguages)"/>
+        <AdditionalFiles
+            Include="@(_ValidationModulesLanguage->'$(MSBuildThisFileDirectory)../messages/%(Identity).validation-messages.json')"
+            Visible="false"/>
+    </ItemGroup>
+
+</Project>
