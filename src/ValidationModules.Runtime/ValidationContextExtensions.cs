@@ -248,6 +248,128 @@ public static class ValidationContextExtensions {
             severity);
 
     /// <summary>
+    /// Records that a value was not an email address.
+    /// </summary>
+    /// <remarks>
+    /// The format family's messages state what the value was not, like <see cref="ReportPattern"/>,
+    /// and never echo the value itself - the same probing-and-logging argument made there.
+    /// </remarks>
+    public static ValidationFlow ReportEmail(
+        this ValidationContext context,
+        string field,
+        ValidationSeverity severity = ValidationSeverity.Error,
+        string? code = null) =>
+        context.Report(
+            field,
+            code ?? ValidationCodes.Email,
+            string.Concat(field, " is not a valid email address."),
+            severity);
+
+    /// <summary>
+    /// Records that a value was not a phone number.
+    /// </summary>
+    public static ValidationFlow ReportPhone(
+        this ValidationContext context,
+        string field,
+        ValidationSeverity severity = ValidationSeverity.Error,
+        string? code = null) =>
+        context.Report(
+            field,
+            code ?? ValidationCodes.Phone,
+            string.Concat(field, " is not a valid phone number."),
+            severity);
+
+    /// <summary>
+    /// Records that a value was not an http, https or ftp URL.
+    /// </summary>
+    /// <remarks>
+    /// The message names the accepted schemes because they are the whole check - a caller sent
+    /// something like <c>www.example.com</c> often enough that "not a valid URL" alone reads as
+    /// wrong to them.
+    /// </remarks>
+    public static ValidationFlow ReportUrl(
+        this ValidationContext context,
+        string field,
+        ValidationSeverity severity = ValidationSeverity.Error,
+        string? code = null) =>
+        context.Report(
+            field,
+            code ?? ValidationCodes.Url,
+            string.Concat(field, " is not a valid http, https or ftp URL."),
+            severity);
+
+    /// <summary>
+    /// Records that a value failed the credit card checksum.
+    /// </summary>
+    public static ValidationFlow ReportCreditCard(
+        this ValidationContext context,
+        string field,
+        ValidationSeverity severity = ValidationSeverity.Error,
+        string? code = null) =>
+        context.Report(
+            field,
+            code ?? ValidationCodes.CreditCard,
+            string.Concat(field, " is not a valid credit card number."),
+            severity);
+
+    /// <summary>
+    /// Records that a value was not well-formed Base64.
+    /// </summary>
+    public static ValidationFlow ReportBase64(
+        this ValidationContext context,
+        string field,
+        ValidationSeverity severity = ValidationSeverity.Error,
+        string? code = null) =>
+        context.Report(
+            field,
+            code ?? ValidationCodes.Base64,
+            string.Concat(field, " is not a valid Base64 string."),
+            severity);
+
+    /// <summary>
+    /// Records that a file name's extension was not in the permitted set.
+    /// </summary>
+    /// <param name="context">The context to record against.</param>
+    /// <param name="field">The field name.</param>
+    /// <param name="extensions">
+    /// The permitted extensions, already joined - <c>".png, .jpg"</c>. A compile-time constant,
+    /// so the generator emits the joined form once rather than joining an array on every failure -
+    /// the same arrangement as <see cref="ReportAllowedValues"/>.
+    /// </param>
+    /// <param name="severity">Defaults to <see cref="ValidationSeverity.Error"/>.</param>
+    /// <param name="code">Overrides the default code for this check. Null keeps it.</param>
+    public static ValidationFlow ReportFileExtension(
+        this ValidationContext context,
+        string field,
+        string extensions,
+        ValidationSeverity severity = ValidationSeverity.Error,
+        string? code = null) =>
+        context.Report(
+            field,
+            code ?? ValidationCodes.FileExtension,
+            string.Concat(field, " must have one of these file extensions: ", extensions, "."),
+            severity);
+
+    /// <summary>
+    /// Records that a custom constraint's check failed.
+    /// </summary>
+    /// <remarks>
+    /// The composed message is deliberately terse - the check is yours, so only you can say what
+    /// "valid" meant. A <c>Message</c> on the attribute replaces it, and setting one is the
+    /// recommendation, not an edge case.
+    /// </remarks>
+    public static ValidationFlow ReportCustom(
+        this ValidationContext context,
+        string field,
+        ValidationSeverity severity = ValidationSeverity.Error,
+        string? code = null) =>
+        context.Report(
+            field,
+            code ?? ValidationCodes.Custom,
+            string.Concat(field, " is invalid."),
+            severity);
+
+    /// <summary>
     /// Builds the at-least / at-most / between message shared by the two bounded constraints,
     /// including the singular-plural switch that reads wrong often enough to be worth centralizing.
     /// </summary>

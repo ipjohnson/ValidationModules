@@ -52,12 +52,12 @@ silently does not is worse than one you know is missing.
 | [VM0018](#vm0018) | Error | referenced regex member is unusable |
 | [VM0040](#vm0040) | Error | `ValidationModules.Runtime` is too old |
 | [VM0051](#vm0051) | Warning | constraint on a record parameter without `property:` |
-| [VM0060](#vm0060) | Warning¹ | a custom `ValidationAttribute` is not compiled |
+| [VM0060](#vm0060) | Info¹ | a custom `ValidationAttribute` is constructed once and invoked |
 | [VM0061](#vm0061) | Warning | a cross-field DataAnnotations attribute is not compiled |
-| [VM0063](#vm0063) | Warning | a format DataAnnotations attribute is not compiled |
+| [VM0063](#vm0063) | Info | a format DataAnnotations attribute is compiled with its BCL semantics |
 | [VM0064](#vm0064) | Error | a length constraint on neither a string nor a collection |
 | [VM0065](#vm0065) | Error | `[Range]` bounds do not parse as the member's type |
-| [VM0067](#vm0067) | Warning¹ | `IValidatableObject` is not called |
+| [VM0067](#vm0067) | Info¹ | `IValidatableObject` runs after every other rule passes |
 | [VM0070](#vm0070) | Error | a statement in `Describe` is not a rule declaration |
 | [VM0071](#vm0071) | Error | a rule selector is not a property path |
 | [VM0072](#vm0072) | Error | a predicate captures state |
@@ -66,6 +66,11 @@ silently does not is worse than one you know is missing.
 | [VM0077](#vm0077) | Warning | a chained `When`/`Unless` applies to no rules |
 | [VM0078](#vm0078) | Error | a lifted predicate references a private member of the rules class |
 | [VM0079](#vm0079) | Error | a generic type cannot have a generated validator |
+| [VM0080](#vm0080) | Error | a `[CustomValidation]` target cannot be called |
+| [VM0081](#vm0081) | Warning | resource-based `ErrorMessage` resolves reflectively |
+| [VM0082](#vm0082) | Error | a custom constraint attribute's `IsValid` is missing or the wrong shape |
+| [VM0083](#vm0083) | Error | an `IConstraintFor<T>` attribute does not fit the member, or mixes shapes |
+| [VM0084](#vm0084) | Info | a `[PerValidationInstance]` constraint constructs an instance at every check |
 
 ---
 
@@ -489,11 +494,11 @@ public sealed record Pet {
 
 ## DataAnnotations diagnostics
 
-¹ VM0060 and VM0067 drop to **Info** when
-[`ValidationModules_DataAnnotations`](/reference/msbuild) is `Ignore`, and their message says
-that *ValidationModules* is the one ignoring the rule: with the front end deliberately off, an
-attribute this library leaves alone is configuration working rather than a problem, and another
-validation system reading the same attributes may still enforce it.
+¹ Under [`ValidationModules_DataAnnotations`](/reference/msbuild) `Ignore`, VM0060 and VM0067 keep
+their Info severity but swap their message's tail: it says that *ValidationModules* is the one
+ignoring the rule. With the front end deliberately off, an attribute this library leaves alone is
+configuration working rather than a problem, and another validation system reading the same
+attributes may still enforce it.
 
 ### VM0010 {#vm0010}
 
@@ -507,14 +512,16 @@ it. To have this library enforce the rule, remove the `Ignore` setting or move i
 
 ### VM0060 {#vm0060}
 
-**Warning** (**Info** under `Ignore`¹) — *`'EvenNumberAttribute' on 'Age' derives from ValidationAttribute and carries arbitrary code, which cannot be compiled`*
+**Info** (**Info** with an ignoring tail under `Ignore`¹) — *`'EvenNumberAttribute' on 'Age' derives from ValidationAttribute, so its check is user code. It is constructed once and invoked with DataAnnotations semantics, so this property pays DataAnnotations' costs: a ValidationContext per check, and a box if the value is a value type`*
 
-A custom `ValidationAttribute` subclass, or `[CustomValidation]`. Its `IsValid` is arbitrary code
-that only exists at run time; compiling it would mean invoking it, which is the reflection this
-library exists to avoid.
+A custom `ValidationAttribute` subclass is [invoked, not compiled](/guide/data-annotations#custom-rules-are-invoked):
+constructed once from its compile-time-constant arguments into a static field, then run through
+`GetValidationResult` exactly as `Validator.TryValidateObject` would run it. The Info exists for
+the cost model — this is the one place a property's validation allocates on a passing value —
+and a [rule class](/guide/rule-classes) remains the zero-cost home for the same logic.
 
-Move the rule to a [rule class](/guide/rule-classes) or an
-[`IAsyncValidatorFor<T>`](/guide/async).
+The rare attribute whose arguments cannot be rendered (a broken compilation) reports the same id
+back at **Warning** with the old not-enforced message.
 
 ### VM0061 {#vm0061}
 
@@ -533,15 +540,18 @@ rules.Ensure(x => x.Password == x.Confirm, code: "password_mismatch");
 
 ### VM0063 {#vm0063}
 
-**Warning** — *`'EmailAddressAttribute' on 'Email' is not enforced. Its DataAnnotations implementation is more lenient than most callers expect; declare a [Pattern] whose behaviour is visible in your own source`*
+**Info** — *`'EmailAddressAttribute' on 'Email' compiles to the DataAnnotations check: the value must contain exactly one '@', neither first nor last, and no line breaks - 'a@b' passes, as RFC 5322 permits. Declare a [Pattern] instead if you want a stricter rule`*
 
 Covers `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]` and
-`[FileExtensions]`.
+`[FileExtensions]`, each compiled to
+[the BCL's exact check](/guide/data-annotations#the-format-validators).
 
-These are skipped rather than approximated on purpose. `EmailAddressAttribute` accepts anything with
-exactly one `@` not at either end — `a@b` passes — which is far more lenient than almost anyone
-declaring it believes they asked for. Reproducing that faithfully ships a surprise; reproducing it
-strictly changes what an existing model means.
+Info rather than Warning, because there is nothing to fix: the attribute is enforced, with the
+same semantics every other DataAnnotations consumer gives it — semantics Microsoft documents as
+frozen by design. The message exists because those semantics are looser than the attribute names
+suggest — `a@b` really does pass `[EmailAddress]`, and RFC 5322 agrees it should — so the exact
+compiled check is stated once, at the site that declared it, where an author who wanted something
+stricter will actually read it.
 
 ### VM0064 {#vm0064}
 
@@ -586,10 +596,69 @@ to whatever the build machine happened to be in would make the same source mean 
 
 ### VM0067 {#vm0067}
 
-**Warning** (**Info** under `Ignore`¹) — *`'Customer' implements IValidatableObject; its Validate method is not called by the generated validator`*
+**Info** (**Info** with an ignoring tail under `Ignore`¹) — *`'Customer' implements IValidatableObject; the generated validator calls its Validate method after every other rule on the type has passed, exactly as Validator.TryValidateObject sequences it, and the type keeps no boolean fast path`*
 
-The type is still validated for everything else it declares. Dropping it entirely would be a worse
-answer than validating what can be validated and saying what was left out.
+Object-level validation is [compiled with DataAnnotations' own sequencing](/guide/data-annotations#custom-rules-are-invoked):
+last, and only when the pass is otherwise clean. The boolean fast path cannot know "the whole pass
+was clean", so the type falls back to the interface default `IsValid` — correct, just not free —
+the same trade a type carrying `rules.Apply(…)` already makes.
+
+### VM0080 {#vm0080}
+
+**Error** — *`'CustomValidationAttribute' on 'Name' cannot be compiled: 'Sample.Checks.Verify' is not a public static method taking one or two parameters`*
+
+`[CustomValidation]` names its method as a string, which DataAnnotations resolves reflectively per
+validation; this generator resolves it once, at build time, and emits a direct call — so a target
+that cannot be called is a build error naming the reason, not a rule that silently never runs.
+Accepted shapes are DataAnnotations' own: public static, returning `ValidationResult`, taking the
+value alone or the value and a `ValidationContext`.
+
+One deliberate narrowing: the value parameter must accept the member's type as declared, or be
+`object`. DataAnnotations would attempt a runtime string conversion; this library will not convert
+silently, and the message says what to change.
+
+### VM0081 {#vm0081}
+
+**Warning** — *`'EvenNumberAttribute' on 'Age' sets ErrorMessageResourceType, which DataAnnotations resolves with reflection when the message is formatted`*
+
+The one part of an invoked attribute the trimmer can break: resource-based messages reflect over
+the resource type at format time, and a trimmed publish may have removed the property. Set
+`ErrorMessage`, or keep the resource type rooted.
+
+### VM0082 {#vm0082}
+
+**Error** — *`'SkuAttribute' on 'Code' cannot be compiled: IsValid's first parameter is 'int', which cannot accept this member's 'string?'`*
+
+A [`CustomConstraintAttribute`](/guide/custom-constraints) subclass whose contract does not hold:
+no public static bool `IsValid`, a first parameter that cannot accept the member, extra
+parameters that do not line up with the constructor positionally and by type, or a custom
+property setter — which a static check has no way to receive, so erroring beats an argument that
+silently never arrives.
+
+Catching the shape at build time is the feature. The invoked DataAnnotations form discovers the
+same mistakes at run time, or never.
+
+### VM0083 {#vm0083}
+
+**Error** — *`'EvenAttribute' on 'Code' cannot be compiled: it implements IConstraintFor<int>, and none of those accepts this member's 'string?'`*
+
+An attribute implementing [`IConstraintFor<T>`](/guide/custom-constraints#when-the-check-needs-an-instance)
+that cannot be compiled, with the reason in the tail: no implemented instantiation accepts the
+member's type, more than one does (implement the member's own type — an exact instantiation always
+wins outright), an argument in the declaration is not a renderable constant, the attribute class
+is generic, or the class also derives from `CustomConstraintAttribute` — two native shapes that
+disagree about who runs the check.
+
+Deriving from DataAnnotations' `ValidationAttribute` *and* implementing the interface is not an
+error — it is the migration story, and the interface wins.
+
+### VM0084 {#vm0084}
+
+**Info** — *`'StampedAttribute' is marked [PerValidationInstance], so checking 'Sequence' constructs a new instance on every validation pass, passing values included - the allocation a shared instance would not cost`*
+
+Nothing is wrong: the class asked for per-check isolation and gets it. But a clean pass otherwise
+allocates nothing, and this is the one constraint cost that breaks that — so it is stated at every
+site that pays it, not only on the class that caused it.
 
 ---
 

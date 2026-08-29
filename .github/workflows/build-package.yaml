@@ -18,6 +18,11 @@ permissions:
   contents: write
   packages: write
 
+env:
+  # Ratchet: raise this as coverage improves. Kept just below the current figure (89.2% on
+  # 2026-08-28) so an unrelated change does not fail the build on rounding.
+  COVERAGE_THRESHOLD: 88
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -40,8 +45,22 @@ jobs:
 
       - run: dotnet build ValidationModules.sln --no-restore --configuration Release
 
-      - name: Test
-        run: dotnet test ValidationModules.sln --no-build --configuration Release
+      # Runs every test suite with coverage collection and merges the results.
+      - name: Test with coverage
+        run: ./scripts/coverage.sh "${{ env.COVERAGE_THRESHOLD }}"
+
+      - name: Publish coverage to the job summary
+        if: always()
+        run: |
+          if [ -f artifacts/coverage/SummaryGithub.md ]; then
+            cat artifacts/coverage/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: artifacts/coverage
 
       # The runtime exists to be AOT-clean, so proving it is a build step rather than a claim in a
       # README. The IL* warnings are already errors in the csproj; this catches what only ILC sees.
@@ -52,6 +71,29 @@ jobs:
       # ProjectReference-based test suite cannot see.
       - name: Verify packages
         run: ./scripts/verify-packages.sh
+
+      # The badge lives on an orphan branch so README can link to a stable raw URL without
+      # adding commit noise to main.
+      - name: Publish coverage badge
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          set -euo pipefail
+
+          BADGE_DIR="$(mktemp -d)"
+          cp artifacts/coverage/badge_linecoverage.svg "${BADGE_DIR}/coverage.svg"
+          cp artifacts/coverage/badge_branchcoverage.svg "${BADGE_DIR}/branch-coverage.svg"
+          cp artifacts/coverage/Summary.txt "${BADGE_DIR}/summary.txt"
+
+          cd "${BADGE_DIR}"
+          git init -q
+          git checkout -q -b badges
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -q -m "Coverage badge for ${GITHUB_SHA}"
+          git push -q --force \
+            "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" \
+            badges
 
   publish-prerelease:
     # Development builds for anyone tracking main; released packages come from release.yaml.

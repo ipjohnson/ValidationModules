@@ -4,15 +4,17 @@ using Xunit;
 namespace ValidationModules.SourceGenerator.Tests;
 
 /// <summary>
-/// The diagnostics that report what the DataAnnotations front end will not compile.
+/// The diagnostics the DataAnnotations front end reports: what it will not compile, and what it
+/// compiles with semantics worth stating.
 /// </summary>
 /// <remarks>
 /// API-SURFACE.md §18 accepts <c>System.ComponentModel.DataAnnotations</c> as a second vocabulary,
-/// which makes silence dangerous in a way it is not for the native attributes: a
-/// <c>[EmailAddress]</c> that this generator skips still looks enforced, because the reader has
-/// every reason to believe <c>Validator.TryValidateObject</c> would have honoured it. So every
-/// attribute that is recognised and *not* compiled says so at build time rather than at run time,
-/// where it would say nothing at all.
+/// which makes silence dangerous in a way it is not for the native attributes: an attribute this
+/// generator skips still looks enforced, because the reader has every reason to believe
+/// <c>Validator.TryValidateObject</c> would have honoured it. So everything recognised and *not*
+/// compiled says so at build time - and the format validators, which *are* compiled, say exactly
+/// what check was emitted, because the BCL's semantics are looser than the attribute names
+/// suggest.
 /// </remarks>
 public class DataAnnotationsDiagnosticsTests {
 
@@ -109,10 +111,10 @@ public class DataAnnotationsDiagnosticsTests {
         Assert.Contains("\"kept\"", result.Sources["Sample.CustomerValidator.g.cs"]);
     }
 
-    // VM0060 — an attribute carrying arbitrary code, which cannot be compiled by reading metadata.
+    // VM0060 — a custom attribute is user code, so it is constructed once and invoked.
 
     [Fact]
-    public void CustomValidationAttribute_IsVM0060() {
+    public void CustomValidationAttribute_IsConstructedOnceAndInvoked() {
         var source = """
             using System.ComponentModel.DataAnnotations;
 
@@ -132,9 +134,76 @@ public class DataAnnotationsDiagnosticsTests {
         var result = GeneratorHarness.Run(source);
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0060");
-        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+
+        // Info, not Warning: the attribute is enforced by running it, which is the only faithful
+        // reading of user code. The message carries the cost model instead of a refusal.
+        Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
         Assert.Contains("EvenNumberAttribute", diagnostic.GetMessage());
-        Assert.Contains("It is not enforced", diagnostic.GetMessage());
+        Assert.Contains("constructed once and invoked", diagnostic.GetMessage());
+
+        var emitted = result.Sources["Sample.CustomerValidator.g.cs"];
+
+        Assert.Contains("new global::Sample.EvenNumberAttribute()", emitted);
+        Assert.Contains("DataAnnotationsSupport.Validate(ref ctx, NameCustom0", emitted);
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    [Fact]
+    public void CustomValidationAttribute_ArgumentsAreRenderedFullyQualified() {
+        // Constructor and named arguments are compile-time constants, re-rendered rather than
+        // lifted as syntax, so the construction binds in a generated file with no usings.
+        var source = """
+            using System.ComponentModel.DataAnnotations;
+
+            namespace Sample;
+
+            public sealed class DivisibleAttribute : ValidationAttribute {
+                public DivisibleAttribute(int divisor) => Divisor = divisor;
+                public int Divisor { get; }
+                public bool Strict { get; set; }
+                public override bool IsValid(object? value) => value is int n && n % Divisor == 0;
+            }
+
+            public class Customer {
+                [Divisible(3, Strict = true, ErrorMessage = "must divide by three")]
+                public int Count { get; set; }
+            }
+            """;
+
+        var result = GeneratorHarness.Run(source);
+
+        Assert.Contains(
+            "new global::Sample.DivisibleAttribute(3) { Strict = true, ErrorMessage = \"must divide by three\" }",
+            result.Sources["Sample.CustomerValidator.g.cs"]);
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    [Fact]
+    public void CustomValidationAttribute_WithResourceMessages_IsAlsoVM0081() {
+        // The one part of an invoked attribute the trimmer can break, visible in metadata.
+        var source = """
+            using System.ComponentModel.DataAnnotations;
+
+            namespace Sample;
+
+            public static class Messages {
+                public static string Even => "must be even";
+            }
+
+            public sealed class EvenNumberAttribute : ValidationAttribute {
+                public override bool IsValid(object? value) => value is int number && number % 2 == 0;
+            }
+
+            public class Customer {
+                [EvenNumber(ErrorMessageResourceType = typeof(Messages), ErrorMessageResourceName = "Even")]
+                public int Count { get; set; }
+            }
+            """;
+
+        var result = GeneratorHarness.Run(source);
+
+        Assert.Single(result.Diagnostics, d => d.Id == "VM0081");
+        Assert.Contains("typeof(global::Sample.Messages)", result.Sources["Sample.CustomerValidator.g.cs"]);
     }
 
     [Fact]
@@ -168,9 +237,9 @@ public class DataAnnotationsDiagnosticsTests {
     }
 
     [Fact]
-    public void CustomValidationAttribute_FromTheDataAnnotationsNamespace_IsAlsoVM0060() {
-        // [CustomValidation] points at a method by name and reflects to call it — the one thing this
-        // library exists to avoid, and unresolvable at build time regardless.
+    public void CustomValidation_ResolvesToADirectStaticCall() {
+        // DataAnnotations reflects to find this method per validation; the generator resolves it
+        // once at build time and emits the call, so nothing dispatches by name at run time.
         var result = GeneratorHarness.Run(Model("""
             [CustomValidation(typeof(Customer), "Check")]
             [Required]
@@ -179,7 +248,53 @@ public class DataAnnotationsDiagnosticsTests {
             public static ValidationResult? Check(object value) => ValidationResult.Success;
             """));
 
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0060");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0060");
+
+        var emitted = result.Sources["Sample.CustomerValidator.g.cs"];
+
+        Assert.Contains("DataAnnotationsSupport.Apply(ref ctx, global::Sample.Customer.Check(value.Name)", emitted);
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    [Fact]
+    public void CustomValidation_ContextTakingOverload_GetsABuiltContext() {
+        var result = GeneratorHarness.Run(Model("""
+            [CustomValidation(typeof(Customer), "Check")]
+            public string? Name { get; set; }
+
+            public static ValidationResult? Check(string? value, ValidationContext context) =>
+                ValidationResult.Success;
+            """));
+
+        var emitted = result.Sources["Sample.CustomerValidator.g.cs"];
+
+        Assert.Contains("global::Sample.Customer.Check(value.Name, ", emitted);
+        Assert.Contains("DataAnnotationsSupport.CreateContext(ctx.Services, value, \"Name\"", emitted);
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    // VM0080 — a [CustomValidation] target that cannot be called is an error, with the reason.
+
+    [Theory]
+    [InlineData("public static ValidationResult? Check(int value) => ValidationResult.Success;",
+        "cannot accept this member")]
+    [InlineData("public static string Check(object value) => \"no\";",
+        "does not return ValidationResult")]
+    [InlineData("public ValidationResult? Check(object value) => ValidationResult.Success;",
+        "is not a public static method")]
+    [InlineData("", "is not a public static method")]
+    public void CustomValidation_UnusableTarget_IsVM0080(string method, string reason) {
+        var result = GeneratorHarness.Run(Model($$"""
+            [CustomValidation(typeof(Customer), "Check")]
+            public string? Name { get; set; }
+
+            {{method}}
+            """));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0080");
+
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        Assert.Contains(reason, diagnostic.GetMessage());
     }
 
     // VM0061 — a rule about two members, which a per-property constraint cannot express.
@@ -198,15 +313,16 @@ public class DataAnnotationsDiagnosticsTests {
         Assert.Contains("Confirm", diagnostic.GetMessage());
     }
 
-    // VM0063 — the format validators, skipped on purpose rather than by omission.
+    // VM0063 — the format validators compile to the BCL's own checks, and the Info states which.
 
     [Theory]
-    [InlineData("EmailAddress")]
-    [InlineData("Phone")]
-    [InlineData("Url")]
-    [InlineData("CreditCard")]
-    [InlineData("Base64String")]
-    public void FormatValidator_IsVM0063(string attribute) {
+    [InlineData("EmailAddress", "IsEmail", "ReportEmail")]
+    [InlineData("Phone", "IsPhone", "ReportPhone")]
+    [InlineData("Url", "IsUrl", "ReportUrl")]
+    [InlineData("CreditCard", "IsCreditCard", "ReportCreditCard")]
+    [InlineData("Base64String", "IsBase64", "ReportBase64")]
+    public void FormatValidator_CompilesTheCheckAndReportsVM0063AsInfo(
+        string attribute, string check, string report) {
         var result = GeneratorHarness.Run(Model($$"""
             [{{attribute}}]
             [Required]
@@ -214,22 +330,131 @@ public class DataAnnotationsDiagnosticsTests {
             """));
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0063");
-        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+
+        // Info, not Warning: the attribute is enforced, identically to every other DataAnnotations
+        // consumer, so there is nothing to fix - only the compiled semantics, stated verbatim.
+        Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
         Assert.Contains($"{attribute}Attribute", diagnostic.GetMessage());
+        Assert.Contains("compiles to the DataAnnotations check", diagnostic.GetMessage());
+
+        var emitted = result.Sources["Sample.CustomerValidator.g.cs"];
+
+        Assert.Contains($"ConstraintChecks.{check}", emitted);
+        Assert.Contains(report, emitted);
+        Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
-    public void FormatValidator_MessagePointsAtThePatternReplacement() {
-        // The reason it is skipped rather than approximated: DataAnnotations' EmailAddressAttribute
-        // accepts anything with one '@' not at either end, which is far more lenient than what
-        // almost anyone declaring [EmailAddress] believes they asked for. Emitting a [Pattern] the
-        // author can read beats silently reproducing that.
+    public void FormatValidator_EmailInfoStatesTheSemanticsExactly() {
+        // The check is looser than the attribute's name suggests - by the BCL's design, and
+        // consistently with RFC 5322 - so the Info says precisely what passes, at the site that
+        // declared it, and still points at [Pattern] for anyone who wanted more.
         var result = GeneratorHarness.Run(Model("""
             [EmailAddress]
             public string? Email { get; set; }
             """));
 
-        Assert.Contains("[Pattern]", Assert.Single(result.Diagnostics, d => d.Id == "VM0063").GetMessage());
+        var message = Assert.Single(result.Diagnostics, d => d.Id == "VM0063").GetMessage();
+
+        Assert.Contains("'a@b' passes", message);
+        Assert.Contains("[Pattern]", message);
+    }
+
+    [Fact]
+    public void FormatValidator_OnANonStringMember_IsVM0001AndNoInfo() {
+        // DataAnnotations would run [EmailAddress] against the int and fail every value; a rule
+        // that can never pass is a build error here, and the Info stays quiet rather than
+        // narrating semantics beside an error that removes them.
+        var result = GeneratorHarness.Run(Model("""
+            [EmailAddress]
+            public int Age { get; set; }
+            """));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0001");
+
+        Assert.Contains("[EmailAddress]", diagnostic.GetMessage());
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0063");
+    }
+
+    [Fact]
+    public void Url_OnAUriMember_CompilesTheUriOverload() {
+        // The one format kind with a second legal member type. The emitted call is textually
+        // identical; overload resolution picks the Uri form. net8's UrlAttribute rejects every
+        // Uri - the branch arrived later - and one semantics is emitted for both TFMs, which
+        // ConstraintChecksTests pins as deliberate.
+        var result = GeneratorHarness.Run(Model("""
+            [Url]
+            public Uri? Homepage { get; set; }
+            """));
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0001");
+        Assert.Contains("ConstraintChecks.IsUrl", result.Sources["Sample.CustomerValidator.g.cs"]);
+        Assert.Contains(
+            "absolute with scheme http, https or ftp",
+            Assert.Single(result.Diagnostics, d => d.Id == "VM0063").GetMessage());
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    [Fact]
+    public void FileExtensions_DefaultSetIsNormalizedAndHoisted() {
+        var result = GeneratorHarness.Run(Model("""
+            [FileExtensions]
+            public string? Avatar { get; set; }
+            """));
+
+        var emitted = result.Sources["Sample.CustomerValidator.g.cs"];
+
+        // jquery validate's defaults, dot-prefixed at build time, hoisted like a pattern, and
+        // joined once into the report rather than joined per failure.
+        Assert.Contains("\".png\"", emitted);
+        Assert.Contains("\".gif\"", emitted);
+        Assert.Contains("AvatarExtensions0", emitted);
+        Assert.Contains("ReportFileExtension", emitted);
+        Assert.Contains(".png, .jpg, .jpeg, .gif", emitted);
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    [Fact]
+    public void FileExtensions_NormalizesACustomSetTheWayTheAttributeDoes() {
+        // Spaces and dots removed, lowercased, split on commas - so "tar.gz" becomes ".targz",
+        // which is the attribute's own quirk reproduced rather than repaired.
+        var result = GeneratorHarness.Run(Model("""
+            [FileExtensions(Extensions = " .PNG, tar.gz ")]
+            public string? Upload { get; set; }
+            """));
+
+        var emitted = result.Sources["Sample.CustomerValidator.g.cs"];
+
+        Assert.Contains("\".png\"", emitted);
+        Assert.Contains("\".targz\"", emitted);
+    }
+
+    [Fact]
+    public void FormatValidator_WithAnErrorMessage_EmitsTheLiteralAndKeepsTheCode() {
+        var result = GeneratorHarness.Run(Model("""
+            [EmailAddress(ErrorMessage = "That is not an email we can reach.")]
+            public string? Email { get; set; }
+            """));
+
+        var emitted = result.Sources["Sample.CustomerValidator.g.cs"];
+
+        Assert.Contains("That is not an email we can reach.", emitted);
+        Assert.Contains("ValidationCodes.Email", emitted);
+    }
+
+    [Fact]
+    public void FormatValidator_UnderIgnore_IsVM0010LikeAnyOtherConstraint() {
+        // Now that the format validators compile, Ignore mode owes them the same news it gives
+        // [Required]: this library is leaving the attribute alone, and someone else may not.
+        var result = GeneratorHarness.Run(
+            Model("""
+                [EmailAddress]
+                public string? Email { get; set; }
+                """),
+            ("ValidationModules_DataAnnotations", "Ignore"));
+
+        Assert.Single(result.Diagnostics, d => d.Id == "VM0010");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0063");
     }
 
     // VM0064 — a length constraint on a member that is neither a string nor a collection.
@@ -273,10 +498,10 @@ public class DataAnnotationsDiagnosticsTests {
         Assert.Contains("ReportItemCount", emitted);
     }
 
-    // VM0067 — IValidatableObject, whose Validate method the generated validator does not call.
+    // VM0067 — IValidatableObject, compiled with TryValidateObject's sequencing.
 
     [Fact]
-    public void ValidatableObject_IsVM0067() {
+    public void ValidatableObject_IsCompiledLastAndGatedOnACleanPass() {
         var source = """
             using System.Collections.Generic;
             using System.ComponentModel.DataAnnotations;
@@ -296,9 +521,20 @@ public class DataAnnotationsDiagnosticsTests {
         var result = GeneratorHarness.Run(source);
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0067");
-        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+
+        Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
         Assert.Contains("Customer", diagnostic.GetMessage());
-        Assert.Contains("not called by the generated validator", diagnostic.GetMessage());
+        Assert.Contains("after every other rule", diagnostic.GetMessage());
+
+        var emitted = result.Sources["Sample.CustomerValidator.g.cs"];
+
+        // Last, and only when nothing else failed - Validator.TryValidateObject's sequencing.
+        Assert.Contains("!ctx.HasErrors && global::ValidationModules.DataAnnotationsSupport.ValidateObject(ref ctx, value", emitted);
+
+        // The boolean fast path cannot know "the whole pass was clean", so the type falls back to
+        // the interface default, the way applied rules do.
+        Assert.DoesNotContain("public bool IsValid", emitted);
+        Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
@@ -330,8 +566,7 @@ public class DataAnnotationsDiagnosticsTests {
 
     [Fact]
     public void ValidatableObject_StillEmitsAValidatorForTheConstraintsItDoesUnderstand() {
-        // The warning is about the half that is not compiled. Dropping the type entirely would be a
-        // worse answer than validating what can be validated and saying what was left out.
+        // The attribute half compiles as it always did; the interface rides behind it.
         var source = """
             using System.Collections.Generic;
             using System.ComponentModel.DataAnnotations;

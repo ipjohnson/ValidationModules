@@ -22,6 +22,13 @@ drifting silently.
 | `multiple_of` | `ValidationCodes.MultipleOf` | `[MultipleOf]`, `.MultipleOf(…)` |
 | `unique_items` | `ValidationCodes.UniqueItems` | `[UniqueItems]`, `.Unique(…)` |
 | `predicate` | `ValidationCodes.Predicate` | `rules.Ensure(…)` |
+| `email` | `ValidationCodes.Email` | DataAnnotations `[EmailAddress]` |
+| `phone` | `ValidationCodes.Phone` | DataAnnotations `[Phone]` |
+| `url` | `ValidationCodes.Url` | DataAnnotations `[Url]` |
+| `credit_card` | `ValidationCodes.CreditCard` | DataAnnotations `[CreditCard]` |
+| `base64` | `ValidationCodes.Base64` | DataAnnotations `[Base64String]` |
+| `file_extension` | `ValidationCodes.FileExtension` | DataAnnotations `[FileExtensions]` |
+| `custom` | `ValidationCodes.Custom` | [custom constraint attributes](/guide/custom-constraints), custom `ValidationAttribute`s, `[CustomValidation]`, `IValidatableObject` |
 | `invalid` | `ValidationCodes.Invalid` | nothing in this library — see below |
 
 These are a **wire contract**. A client attaching messages to form inputs, or branching on failure
@@ -48,8 +55,16 @@ failure, not validation's.
 
 It lives in this vocabulary anyway, because the vocabulary is defined by the wire rather than by
 which library produced the value. A client switching on `Code` sees this alongside the rest, and
-splitting it out would leave nine codes in one place and the tenth somewhere a consumer has to
-already know to look.
+splitting it out would leave every other code in one place and this one somewhere a consumer has
+to already know to look.
+
+## The format family gets a code each
+
+`email`, `phone`, `url`, `credit_card`, `base64` and `file_extension` are six codes rather than one
+`format`, for the reason `unique_items` is not folded into `array_bounds`: a client mapping codes to
+its own messages wants to say "enter a valid email address", not "invalid format", and the field
+name alone cannot tell it which. This is also the localization seam — the code is stable and
+machine-readable, and the client owns the words.
 
 It is deliberately distinct from `range` rather than folded into it: the value never became the right
 type, so no constraint on it was evaluated at all, and reporting `range` would claim one was.

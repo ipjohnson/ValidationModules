@@ -248,11 +248,7 @@ public sealed class RegistrationEmitter {
     /// </remarks>
     private static string Identifier(string ns) => ns.Replace(".", string.Empty);
 
-    private static string NamerFor(string? fieldNamer) => fieldNamer switch {
-        "PascalCase" or "AsDeclared" => "PascalCaseFieldNamer",
-        "SnakeCase" => "SnakeCaseFieldNamer",
-        _ => "CamelCaseFieldNamer",
-    };
+    private static string NamerFor(string? fieldNamer) => EmitterOutput.NamerFor(fieldNamer);
 
     private static ITypeDefinition AdapterType(ValidatedTypeModel model) =>
         NamedType(model.Namespace, $"{model.TypeName}DynamicValidator");

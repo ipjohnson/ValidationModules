@@ -17,8 +17,23 @@ namespace ValidationModules
     public static class ConstraintChecks
     {
         public static bool AllUnique<T>(System.Collections.Generic.IEnumerable<T> items) { }
+        public static bool HasFileExtension(string value, string[] extensions) { }
+        public static bool IsBase64(string value) { }
+        public static bool IsCreditCard(string value) { }
+        public static bool IsEmail(string value) { }
         public static bool IsMultipleOf(double value, decimal divisor) { }
         public static bool IsMultipleOf(float value, decimal divisor) { }
+        public static bool IsPhone(string value) { }
+        public static bool IsUrl(System.Uri value) { }
+        public static bool IsUrl(string value) { }
+    }
+    public static class DataAnnotationsSupport
+    {
+        public static ValidationModules.ValidationFlow Apply(ref ValidationModules.ValidationContext context, System.ComponentModel.DataAnnotations.ValidationResult? result, string? field, ValidationModules.Naming.IValidationFieldNamer namer) { }
+        public static System.ComponentModel.DataAnnotations.ValidationContext CreateContext(System.IServiceProvider? services, object instance, string? memberName, string displayName) { }
+        public static bool IsValid(System.ComponentModel.DataAnnotations.ValidationAttribute attribute, object instance, object? value, string memberName, string displayName) { }
+        public static ValidationModules.ValidationFlow Validate(ref ValidationModules.ValidationContext context, System.ComponentModel.DataAnnotations.ValidationAttribute attribute, object instance, object? value, string field, string memberName, string displayName) { }
+        public static ValidationModules.ValidationFlow ValidateObject(ref ValidationModules.ValidationContext context, System.ComponentModel.DataAnnotations.IValidatableObject value, ValidationModules.Naming.IValidationFieldNamer namer) { }
     }
     public sealed class DescribedValidator<T> : ValidationModules.IValidatorFor<T>
     {
@@ -38,6 +53,11 @@ namespace ValidationModules
     public interface IAsyncValidatorFor<in T>
     {
         System.Threading.Tasks.ValueTask ValidateAsync(ValidationModules.ValidationContext context, T value, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IConstraintFor<in T>
+    {
+        bool IsValid(T value);
+        ValidationModules.ValidationFlow Validate(ref ValidationModules.ValidationContext context, T value, string field);
     }
     public interface IDynamicValidator
     {
@@ -94,20 +114,27 @@ namespace ValidationModules
     public delegate ValidationModules.ValidationFlow RuleAction<in T>(ref ValidationModules.ValidationContext context, T value);
     public static class RuntimeContract
     {
-        public const int Version = 5;
+        public const int Version = 7;
     }
     public static class ValidationCodes
     {
         public const string ArrayBounds = "array_bounds";
+        public const string Base64 = "base64";
+        public const string CreditCard = "credit_card";
+        public const string Custom = "custom";
+        public const string Email = "email";
         public const string Enum = "enum";
+        public const string FileExtension = "file_extension";
         public const string Invalid = "invalid";
         public const string MultipleOf = "multiple_of";
         public const string Pattern = "pattern";
+        public const string Phone = "phone";
         public const string Predicate = "predicate";
         public const string Range = "range";
         public const string Required = "required";
         public const string StringLength = "string_length";
         public const string UniqueItems = "unique_items";
+        public const string Url = "url";
     }
     public readonly struct ValidationContext
     {
@@ -125,9 +152,15 @@ namespace ValidationModules
     public static class ValidationContextExtensions
     {
         public static ValidationModules.ValidationFlow ReportAllowedValues(this ValidationModules.ValidationContext context, string field, string allowedValues, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
+        public static ValidationModules.ValidationFlow ReportBase64(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
+        public static ValidationModules.ValidationFlow ReportCreditCard(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
+        public static ValidationModules.ValidationFlow ReportCustom(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
+        public static ValidationModules.ValidationFlow ReportEmail(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
+        public static ValidationModules.ValidationFlow ReportFileExtension(this ValidationModules.ValidationContext context, string field, string extensions, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
         public static ValidationModules.ValidationFlow ReportItemCount(this ValidationModules.ValidationContext context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
         public static ValidationModules.ValidationFlow ReportMultipleOf(this ValidationModules.ValidationContext context, string field, decimal divisor, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
         public static ValidationModules.ValidationFlow ReportPattern(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
+        public static ValidationModules.ValidationFlow ReportPhone(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
         public static ValidationModules.ValidationFlow ReportRange<T>(this ValidationModules.ValidationContext context, string field, T min, T max, ValidationModules.ValidationSeverity severity = 0, string? code = null)
             where T : System.IFormattable { }
         public static ValidationModules.ValidationFlow ReportRangeAtLeast<T>(this ValidationModules.ValidationContext context, string field, T min, ValidationModules.ValidationSeverity severity = 0, string? code = null)
@@ -137,6 +170,7 @@ namespace ValidationModules
         public static ValidationModules.ValidationFlow ReportRequired(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
         public static ValidationModules.ValidationFlow ReportStringLength(this ValidationModules.ValidationContext context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
         public static ValidationModules.ValidationFlow ReportUniqueItems(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
+        public static ValidationModules.ValidationFlow ReportUrl(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
     }
     public readonly struct ValidationError : System.IEquatable<ValidationModules.ValidationError>
     {
@@ -267,6 +301,10 @@ namespace ValidationModules.Constraints
         public System.StringComparison Comparison { get; init; }
         public object[] Values { get; }
     }
+    public abstract class CustomConstraintAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        protected CustomConstraintAttribute() { }
+    }
     [System.AttributeUsage(System.AttributeTargets.Property | System.AttributeTargets.Field | System.AttributeTargets.Parameter)]
     public sealed class EnumDefinedAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
     {
@@ -301,6 +339,11 @@ namespace ValidationModules.Constraints
         public string? Pattern { get; }
         public string? RegexMember { get; }
         public System.Type? RegexProvider { get; }
+    }
+    [System.AttributeUsage(System.AttributeTargets.Class)]
+    public sealed class PerValidationInstanceAttribute : System.Attribute
+    {
+        public PerValidationInstanceAttribute() { }
     }
     public enum Polymorphism
     {

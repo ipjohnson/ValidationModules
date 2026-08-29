@@ -70,6 +70,7 @@ export default defineConfig({
           text: 'Declaring rules',
           items: [
             { text: 'Rule classes', link: '/guide/rule-classes' },
+            { text: 'Custom constraints', link: '/guide/custom-constraints' },
             { text: 'DataAnnotations', link: '/guide/data-annotations' },
             { text: 'Patterns and regex', link: '/guide/patterns' },
           ],

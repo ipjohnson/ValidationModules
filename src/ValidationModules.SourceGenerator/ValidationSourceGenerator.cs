@@ -93,12 +93,15 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             .Combine(options)
             .Select(static (input, _) => BuildModels(input.Left.Left, input.Left.Right, input.Right));
 
-        // The two settings the validator stage needs, projected together so the stage caches on
-        // the pair rather than re-running on unrelated option edits.
-        var emitterSettings = options.Select(static (option, _) => (option.EmitFailFast, option.CodeStyle));
+        // The settings the validator stage needs, projected together so the stage caches on
+        // the tuple rather than re-running on unrelated option edits. Naming rides along for the
+        // DataAnnotations bridge: custom rules can report member names at run time, and the
+        // emitted namer has to be the policy the literals were baked with.
+        var emitterSettings = options.Select(static (option, _) =>
+            (option.EmitFailFast, option.CodeStyle, option.Naming));
 
         context.RegisterSourceOutput(models.Combine(emitterSettings), static (production, input) => {
-            var (results, (emitFailFast, codeStyle)) = (input.Left, input.Right);
+            var (results, (emitFailFast, codeStyle, naming)) = (input.Left, input.Right);
 
             // An IDynamicValidator adapter is only worth emitting for an assembly that actually
             // dispatches dynamically. Registering one per validated type roots every adapter, so
@@ -125,7 +128,8 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
                 if (result.Model is { } model) {
                     production.AddSource(
                         HintNameFor(model),
-                        new ValidatorEmitter().Emit(model, dispatchesDynamically, emitFailFast, nesting, codeStyle));
+                        new ValidatorEmitter().Emit(
+                            model, dispatchesDynamically, emitFailFast, nesting, codeStyle, naming));
                 }
 
                 if (result.Predicates is { } predicates) {

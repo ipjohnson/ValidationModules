@@ -33,6 +33,61 @@ public class ValidatorEmitterGoldenTests {
     }
 
     [Fact]
+    public void ConstraintInterfaceAttributes_HoistAndInvokeTheInstance() {
+        // The instance shape of a custom constraint, every binding it can need: both members
+        // public (direct calls), only IsValid (Validate casts to the interface default), the
+        // constraint base's knobs riding into the construction with When woven outside the call,
+        // a nullable member guarded and unwrapped, and [PerValidationInstance] trading the
+        // hoisted field for a construction at the check.
+        Snapshot.Match(Emit("""
+            using System;
+            using ValidationModules;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed class ChannelAttribute : Attribute, IConstraintFor<string> {
+                private readonly string[] _allowed;
+
+                public ChannelAttribute(params string[] allowed) { _allowed = allowed; }
+
+                public bool IsValid(string value) => Array.IndexOf(_allowed, value) >= 0;
+
+                public ValidationFlow Validate(ref ValidationContext context, string value, string field) =>
+                    IsValid(value)
+                        ? ValidationFlow.Continue
+                        : context.Report(field, "channel", $"{field} must be one of: {string.Join(", ", _allowed)}.");
+            }
+
+            public sealed class EvenAttribute : ValidationConstraintAttribute, IConstraintFor<int> {
+                public bool IsValid(int value) => value % 2 == 0;
+            }
+
+            [PerValidationInstance]
+            public sealed class StampAttribute : Attribute, IConstraintFor<int> {
+                public bool IsValid(int value) => value >= 0;
+
+                public ValidationFlow Validate(ref ValidationContext context, int value, string field) =>
+                    IsValid(value) ? ValidationFlow.Continue : context.ReportCustom(field);
+            }
+
+            public record Broadcast {
+                public bool IsScheduled { get; init; }
+
+                [Required]
+                [Channel("email", "sms")]
+                public string? Channel { get; init; }
+
+                [Even(Code = "pair", Message = "{field} must come in pairs", When = nameof(IsScheduled))]
+                public int? Batch { get; init; }
+
+                [Stamp]
+                public int Sequence { get; init; }
+            }
+            """));
+    }
+
+    [Fact]
     public void FlatModel_EveryConstraintKind() {
         Snapshot.Match(Emit("""
             using System;
@@ -235,6 +290,118 @@ public class ValidatorEmitterGoldenTests {
 
                 [MaxLength(5)]
                 public List<string> Tags { get; set; } = new();
+            }
+            """));
+    }
+
+    [Fact]
+    public void DataAnnotationsFormatValidators_CompileToTheBclChecks() {
+        // Each format attribute becomes a straight call into ConstraintChecks with the BCL's own
+        // semantics - null passing exactly as the attributes read it, [Url] on a Uri member
+        // resolving to the Uri overload by nothing more than overload resolution, and the
+        // [FileExtensions] set hoisted into a static field the way patterns are.
+        Snapshot.Match(Emit("""
+            using System;
+            using System.ComponentModel.DataAnnotations;
+
+            namespace Sample;
+
+            public class Contact {
+                [EmailAddress]
+                public string? Email { get; set; }
+
+                [Phone]
+                public string? Mobile { get; set; }
+
+                [Url]
+                public string? Homepage { get; set; }
+
+                [Url]
+                public Uri? Avatar { get; set; }
+
+                [CreditCard]
+                public string? Card { get; set; }
+
+                [Base64String]
+                public string? Payload { get; set; }
+
+                [FileExtensions(Extensions = "png,jpg")]
+                public string? Attachment { get; set; }
+            }
+            """));
+    }
+
+    [Fact]
+    public void DataAnnotationsCustomSurfaces_InvokeThroughTheBridge() {
+        // The three DataAnnotations surfaces that carry user code: a custom attribute constructed
+        // once into a static field, a [CustomValidation] method resolved to a direct static call
+        // in both arities, and IValidatableObject sequenced last behind a clean-pass gate - which
+        // also costs the type its boolean fast path.
+        Snapshot.Match(Emit("""
+            using System.Collections.Generic;
+            using System.ComponentModel.DataAnnotations;
+
+            namespace Sample;
+
+            public sealed class DivisibleAttribute : ValidationAttribute {
+                public DivisibleAttribute(int divisor) => Divisor = divisor;
+                public int Divisor { get; }
+                public override bool IsValid(object? value) => value is int n && n % Divisor == 0;
+            }
+
+            public class Order : IValidatableObject {
+                [Divisible(3, ErrorMessage = "must divide by three")]
+                public int Count { get; set; }
+
+                [CustomValidation(typeof(Order), "CheckName")]
+                public string? Name { get; set; }
+
+                [CustomValidation(typeof(Order), "CheckSku")]
+                public string? Sku { get; set; }
+
+                public static ValidationResult? CheckName(string? value) => ValidationResult.Success;
+
+                public static ValidationResult? CheckSku(string? value, ValidationContext context) =>
+                    ValidationResult.Success;
+
+                public IEnumerable<ValidationResult> Validate(ValidationContext validationContext) {
+                    yield break;
+                }
+            }
+            """));
+    }
+
+    [Fact]
+    public void CustomConstraintAttributes_CompileLikeBuiltIns() {
+        // The native extensibility shape: the author's attribute, the author's static check,
+        // compiled to the same straight-line form as a built-in - constructor constants in the
+        // call, base knobs riding along, zero cost the model did not write.
+        Snapshot.Match(Emit("""
+            using System;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed class SkuAttribute : CustomConstraintAttribute {
+                public static bool IsValid(string value) => value.StartsWith("SKU-", StringComparison.Ordinal);
+            }
+
+            public sealed class DivisibleAttribute : CustomConstraintAttribute {
+                public DivisibleAttribute(int divisor) { }
+
+                public static bool IsValid(int value, int divisor) => value % divisor == 0;
+            }
+
+            public record Product {
+                [Required]
+                [Sku(Message = "sku must start with SKU-")]
+                public string? Sku { get; init; }
+
+                [Divisible(4)]
+                public int Count { get; init; }
+
+                [Divisible(2, Code = "pair")]
+                public int? Spare { get; init; }
             }
             """));
     }

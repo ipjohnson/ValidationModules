@@ -69,6 +69,57 @@ public static class ValidationCodes {
     public const string Invalid = "invalid";
 
     /// <summary>
+    /// A value was not an email address, as <c>[EmailAddress]</c> reads one: exactly one interior
+    /// <c>'@'</c> and no line breaks. See <see cref="ConstraintChecks.IsEmail"/>.
+    /// </summary>
+    /// <remarks>
+    /// The format family gets one code each rather than sharing a <c>format</c> code, for the
+    /// reason <see cref="UniqueItems"/> is not folded into <see cref="ArrayBounds"/>: a client
+    /// mapping codes to its own messages wants "enter a valid email address", not "invalid
+    /// format", and the field name alone cannot tell it which to say.
+    /// </remarks>
+    public const string Email = "email";
+
+    /// <summary>
+    /// A value was not a phone number, as <c>[Phone]</c> reads one. See
+    /// <see cref="ConstraintChecks.IsPhone"/>.
+    /// </summary>
+    public const string Phone = "phone";
+
+    /// <summary>
+    /// A value was not an http, https or ftp URL, as <c>[Url]</c> reads one. See
+    /// <see cref="ConstraintChecks.IsUrl(string)"/>.
+    /// </summary>
+    public const string Url = "url";
+
+    /// <summary>
+    /// A value failed <c>[CreditCard]</c>'s Luhn checksum. See
+    /// <see cref="ConstraintChecks.IsCreditCard"/>.
+    /// </summary>
+    public const string CreditCard = "credit_card";
+
+    /// <summary>A value was not well-formed Base64, per <c>[Base64String]</c>.</summary>
+    public const string Base64 = "base64";
+
+    /// <summary>
+    /// A file name's extension was not in <c>[FileExtensions]</c>' permitted set.
+    /// </summary>
+    public const string FileExtension = "file_extension";
+
+    /// <summary>
+    /// A custom DataAnnotations rule failed: a <c>ValidationAttribute</c> subclass, a
+    /// <c>[CustomValidation]</c> method, or <c>IValidatableObject.Validate</c>.
+    /// </summary>
+    /// <remarks>
+    /// One code for the whole family, for the reason <see cref="Predicate"/> covers every
+    /// <c>Ensure</c>: the message is the rule's own and free to change; the code is the wire
+    /// contract. DataAnnotations results carry no code at all, so any per-rule value would be one
+    /// this library invented - and a client switching on an invented code would break the moment
+    /// the rule's author renamed anything.
+    /// </remarks>
+    public const string Custom = "custom";
+
+    /// <summary>
     /// A rule declared with <c>rules.Ensure(…)</c> failed. See API-SURFACE.md §19.5.
     /// </summary>
     /// <remarks>

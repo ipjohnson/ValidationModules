@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using ValidationModules.SourceGenerator.Impl.Models;
 
 namespace ValidationModules.SourceGenerator.Impl.FrontEnds;
@@ -14,7 +15,16 @@ namespace ValidationModules.SourceGenerator.Impl.FrontEnds;
 /// </remarks>
 public static class DataAnnotationsConstraintReader {
 
-    public readonly record struct Outcome(ConstraintModel? Constraint, DiagnosticDescriptor? Diagnostic);
+    /// <param name="Constraint">The constraint read, when the attribute maps to one.</param>
+    /// <param name="Diagnostic">A diagnostic to report beside it, when there is news.</param>
+    /// <param name="Detail">
+    /// The third format argument the diagnostic's message wants, when it wants one - the member's
+    /// type for VM0064, the exact compiled semantics for VM0063. The front end falls back to the
+    /// VM0060 enforce tail when this is null, which is the argument every other reader diagnostic
+    /// ignores.
+    /// </param>
+    public readonly record struct Outcome(
+        ConstraintModel? Constraint, DiagnosticDescriptor? Diagnostic, string? Detail = null);
 
     private static readonly string[] Constraints = {
         "RequiredAttribute", "StringLengthAttribute", "LengthAttribute", "MinLengthAttribute",
@@ -27,7 +37,20 @@ public static class DataAnnotationsConstraintReader {
         "Base64StringAttribute", "FileExtensionsAttribute",
     };
 
-    public static bool IsConstraint(string attributeName) => Array.IndexOf(Constraints, attributeName) >= 0;
+    /// <summary>
+    /// <c>FileExtensionsAttribute</c>'s default set, verbatim - "Default file extensions match
+    /// those from jquery validate", per its source.
+    /// </summary>
+    private const string DefaultFileExtensions = "png,jpg,jpeg,gif";
+
+    /// <summary>
+    /// Whether the attribute reads as a constraint here - including the format validators, which
+    /// compile like any other constraint and so count wherever "is this enforced" is the question:
+    /// VM0010 under Ignore, and VM0051 on a record parameter.
+    /// </summary>
+    public static bool IsConstraint(string attributeName) =>
+        Array.IndexOf(Constraints, attributeName) >= 0 ||
+        Array.IndexOf(FormatValidators, attributeName) >= 0;
 
     public static Outcome Read(AttributeData attribute, string attributeName, ITypeSymbol memberType) {
         switch (attributeName) {
@@ -118,13 +141,198 @@ public static class DataAnnotationsConstraintReader {
                 return new Outcome(null, ValidationDiagnostics.CrossFieldAttribute);
 
             case "CustomValidationAttribute":
-                return new Outcome(null, ValidationDiagnostics.CustomValidationAttribute);
+                return CustomValidation(attribute, memberType);
+
+            // The format validators compile to the BCL's own checks - semantics in
+            // ConstraintChecks, parity pinned by its tests. Each carries VM0063 (Info) stating
+            // exactly what was emitted, because the checks are looser than the attribute names
+            // suggest and an author who wants more should hear it where they typed the attribute.
+            case "EmailAddressAttribute":
+                return Format(ConstraintKind.Email, attribute, memberType,
+                    "the value must contain exactly one '@', neither first nor last, and no line " +
+                    "breaks - 'a@b' passes, as RFC 5322 permits");
+
+            case "PhoneAttribute":
+                return Format(ConstraintKind.Phone, attribute, memberType,
+                    "'+' signs are stripped, a trailing extension ('ext.', 'ext' or 'x' plus " +
+                    "digits) is removed, and what remains must contain a digit and only digits, " +
+                    "whitespace and '-.()'");
+
+            case "UrlAttribute":
+                return Format(ConstraintKind.Url, attribute, memberType,
+                    IsUri(memberType)
+                        ? "the Uri must be absolute with scheme http, https or ftp"
+                        : "the value must start with 'http://', 'https://' or 'ftp://' " +
+                          "(case-insensitive); nothing past the prefix is checked");
+
+            case "CreditCardAttribute":
+                return Format(ConstraintKind.CreditCard, attribute, memberType,
+                    "the digits (spaces and dashes allowed) must pass the Luhn mod-10 checksum");
+
+            case "Base64StringAttribute":
+                return Format(ConstraintKind.Base64, attribute, memberType,
+                    "the value must be well-formed Base64, as Convert.FromBase64String reads it");
+
+            case "FileExtensionsAttribute": {
+                // Normalized at build time exactly as the attribute normalizes its Extensions
+                // property - spaces and dots removed, lowercased invariantly, split on commas,
+                // dot-prefixed - so its quirks survive: "tar.gz" reads as ".targz" in both.
+                var raw = NativeConstraintReader.Named(attribute, "Extensions") as string;
+                var extensions = (string.IsNullOrWhiteSpace(raw) ? DefaultFileExtensions : raw!)
+                    .Replace(" ", string.Empty)
+                    .Replace(".", string.Empty)
+                    .ToLowerInvariant()
+                    .Split(',')
+                    .Select(extension => "." + extension)
+                    .ToImmutableArray();
+
+                var constraint = new ConstraintModel(
+                    ConstraintKind.FileExtension,
+                    Message: NativeConstraintReader.Named(attribute, "ErrorMessage") as string,
+                    Values: new EquatableArray<string>(
+                        extensions.Select(e => SymbolDisplay.FormatLiteral(e, quote: true)).ToImmutableArray()),
+                    ValueDisplays: new EquatableArray<string>(extensions));
+
+                return memberType.SpecialType == SpecialType.System_String
+                    ? new Outcome(constraint, ValidationDiagnostics.FormatValidatorCompiled,
+                        "the file name's extension must be one of " +
+                        $"{string.Join(", ", extensions)} (case-insensitive)")
+                    : new Outcome(constraint, null);
+            }
 
             default:
-                return Array.IndexOf(FormatValidators, attributeName) >= 0
-                    ? new Outcome(null, ValidationDiagnostics.FormatValidatorAttribute)
-                    : default;
+                return default;
         }
+    }
+
+    /// <summary>
+    /// A format validator's outcome: the constraint, and - only when the member's type can carry
+    /// it - the VM0063 Info stating the compiled semantics. On any other type the constraint
+    /// still flows, so the applicability check drops it with VM0001 and the Info does not talk
+    /// over the error.
+    /// </summary>
+    private static Outcome Format(
+        ConstraintKind kind, AttributeData attribute, ITypeSymbol memberType, string semantics) {
+
+        var constraint = new ConstraintModel(
+            kind, Message: NativeConstraintReader.Named(attribute, "ErrorMessage") as string);
+
+        var fits = memberType.SpecialType == SpecialType.System_String ||
+            (kind == ConstraintKind.Url && IsUri(memberType));
+
+        return fits
+            ? new Outcome(constraint, ValidationDiagnostics.FormatValidatorCompiled, semantics)
+            : new Outcome(constraint, null);
+    }
+
+    /// <summary>
+    /// Whether the member is <c>System.Uri</c>, ignoring nullable annotation - which
+    /// <c>ToDisplayString</c> would not.
+    /// </summary>
+    internal static bool IsUri(ITypeSymbol type) =>
+        type is INamedTypeSymbol {
+            Name: "Uri",
+            ContainingNamespace: { Name: "System", ContainingNamespace.IsGlobalNamespace: true },
+        };
+
+    /// <summary>
+    /// Resolves <c>[CustomValidation(typeof(T), "Method")]</c> to the static method the emitter
+    /// will call directly, or to VM0080 with the reason it cannot.
+    /// </summary>
+    /// <remarks>
+    /// The accepted signatures are DataAnnotations' own - public static, returning
+    /// <c>ValidationResult</c>, taking the value alone or the value and a
+    /// <c>ValidationContext</c> - with one deliberate narrowing, recorded on the descriptor: the
+    /// value parameter must accept the member's type or be <c>object</c>, because the runtime
+    /// string-conversion fallback <c>CustomValidationAttribute</c> performs is a conversion this
+    /// library will not do silently.
+    /// </remarks>
+    private static Outcome CustomValidation(AttributeData attribute, ITypeSymbol memberType) {
+        var args = attribute.ConstructorArguments;
+
+        if (args.Length != 2 ||
+            args[0].Value is not INamedTypeSymbol provider ||
+            args[1].Value is not string methodName) {
+            return new Outcome(null, ValidationDiagnostics.CustomValidationTargetUnusable,
+                "its arguments are not a validator type and a method name");
+        }
+
+        IMethodSymbol? candidate = null;
+
+        foreach (var member in provider.GetMembers(methodName)) {
+            if (member is IMethodSymbol { IsStatic: true, DeclaredAccessibility: Accessibility.Public } method &&
+                method.Parameters.Length is 1 or 2) {
+                candidate = method;
+                break;
+            }
+        }
+
+        if (candidate is null) {
+            return new Outcome(null, ValidationDiagnostics.CustomValidationTargetUnusable,
+                $"'{provider.ToDisplayString()}.{methodName}' is not a public static method " +
+                "taking one or two parameters");
+        }
+
+        if (candidate.ReturnType.ToDisplayString() is not
+            ("System.ComponentModel.DataAnnotations.ValidationResult"
+            or "System.ComponentModel.DataAnnotations.ValidationResult?")) {
+            return new Outcome(null, ValidationDiagnostics.CustomValidationTargetUnusable,
+                $"'{provider.ToDisplayString()}.{methodName}' does not return ValidationResult");
+        }
+
+        if (candidate.Parameters.Length == 2 &&
+            candidate.Parameters[1].Type.ToDisplayString() !=
+                "System.ComponentModel.DataAnnotations.ValidationContext") {
+            return new Outcome(null, ValidationDiagnostics.CustomValidationTargetUnusable,
+                $"'{provider.ToDisplayString()}.{methodName}' has a second parameter that is not " +
+                "a ValidationContext");
+        }
+
+        if (!Accepts(candidate.Parameters[0].Type, memberType)) {
+            return new Outcome(null, ValidationDiagnostics.CustomValidationTargetUnusable,
+                $"'{provider.ToDisplayString()}.{methodName}' takes " +
+                $"'{candidate.Parameters[0].Type.ToDisplayString()}', which cannot accept this " +
+                "member without DataAnnotations' runtime string conversion; take the member's " +
+                "type, or object");
+        }
+
+        var qualified = provider.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+        return new Outcome(
+            new ConstraintModel(
+                ConstraintKind.CustomValidationMethod,
+                CustomAccessor: $"{qualified}.{methodName}",
+                CustomTakesContext: candidate.Parameters.Length == 2),
+            null);
+    }
+
+    /// <summary>
+    /// Whether the member's value can be passed where <paramref name="parameter"/> is declared:
+    /// identity, a base type, an implemented interface, or <c>object</c>. The member's type is
+    /// compared as declared - a <c>int?</c> member needs a parameter that takes <c>int?</c> or
+    /// <c>object</c>, never bare <c>int</c>, because the emitted call passes the property straight
+    /// through and has no null to hide.
+    /// </summary>
+    private static bool Accepts(ITypeSymbol parameter, ITypeSymbol memberType) {
+        if (parameter.SpecialType == SpecialType.System_Object) {
+            return true;
+        }
+
+        var comparer = SymbolEqualityComparer.Default;
+
+        for (ITypeSymbol? current = memberType; current is not null; current = current.BaseType) {
+            if (comparer.Equals(parameter, current)) {
+                return true;
+            }
+        }
+
+        foreach (var contract in memberType.AllInterfaces) {
+            if (comparer.Equals(parameter, contract)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static Outcome Sized(AttributeData attribute, ITypeSymbol memberType, string min, string max) {
@@ -136,7 +344,7 @@ public static class DataAnnotationsConstraintReader {
             return new Outcome(Bounded(ConstraintKind.ItemCount, attribute, min, max), null);
         }
 
-        return new Outcome(null, ValidationDiagnostics.LengthOnUnsupportedMember);
+        return new Outcome(null, ValidationDiagnostics.LengthOnUnsupportedMember, memberType.ToDisplayString());
     }
 
     private static ConstraintModel Bounded(ConstraintKind kind, AttributeData attribute, string min, string max) =>

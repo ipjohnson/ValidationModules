@@ -1170,7 +1170,7 @@ feature that prompted it shipped. Anything naming `PetValidator_V2`, `FromProfil
 | 14.19 | `[Required]` against `0` and an empty `List<int>` | both **pass** |
 | 14.20 | `[Range(0, 10)]` against the string `"5"` | **passes** — DA converts at runtime |
 | 14.21 | `[MinLength(2)]` against `int[1]`; `[StringLength(3)]` against `null` | fails; **passes** |
-| 14.22 | `[EmailAddress]` against `"a@b"` | **passes** — DA is lenient |
+| 14.22 | `[EmailAddress]` against `"a@b"` | **passes** — per RFC 5322's grammar; the compiled check reproduces it (§18.5) |
 | 14.23 | emission shape, success path, 12 constraints (BenchmarkDotNet) | AOT 19.9 / 19.9 / 20.2 ns |
 | 14.24 | emission shape, success path, JIT | 10.3 / 10.0 / **16.2** ns |
 | 14.25 | message composition, per error | **56 bytes**; 0 for an emitted literal |
@@ -1427,10 +1427,11 @@ constraint into `VM0010` so the situation is visible rather than silent.
 | `[DeniedValues(...)]` | `AllowedValues { Negated = true }` | .NET 8+ |
 | `[Display(Name = "x")]` | field name override | ranks with `[JsonPropertyName]` in §8's precedence |
 | `ErrorMessage = "..."` | `Message` override | the emitter falls back to a literal `ctx.Add`, as it does for a native `Message` |
-| `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]` | — | `VM0063`, see §18.5 |
-| `[Compare]`, `[CustomValidation]` | — | `VM0061`, `VM0062` |
-| `IValidatableObject` | — | `VM0067` |
-| any other `ValidationAttribute` subclass | — | `VM0060` |
+| `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]`, `[FileExtensions]` | `Email`/`Phone`/`Url`/`CreditCard`/`Base64`/`FileExtension` kinds | compiled to `ConstraintChecks.Is*` with the BCL's exact semantics; `VM0063` (Info) states them — see §18.5 |
+| `[CustomValidation]` | `CustomValidationMethod` kind | resolved to a direct static call at build time; `VM0080` when the target is unusable — see §18.5 |
+| any other `ValidationAttribute` subclass | `CustomAttribute` kind | constructed once, invoked through `DataAnnotationsSupport`; `VM0060` (Info) — see §18.5 |
+| `IValidatableObject` | type-level flag | invoked last, gated on a clean pass; `VM0067` (Info) — see §18.5 |
+| `[Compare]` | — | `VM0061` — the one remaining refusal; rule classes are the cross-field form |
 
 ### 18.3 `[RegularExpression]` is anchored and `[Pattern]` is not
 
@@ -1509,21 +1510,94 @@ and none are merged — two `[StringLength]` bounds on one field is ambiguous an
 `VM0030` warns when hiding drops something. An `override` is one property rather than two, so its
 declarations accumulate the way `Inherited = true` says they should.
 
-### 18.5 What is not compiled
+### 18.5 What is compiled, invoked, and (still) not compiled
 
-A custom `ValidationAttribute` subclass carries arbitrary C# in a method body. The only way to honour
-it is to invoke it, which is the thing this front-end exists to avoid — so there is no
-inheritance-based extensibility here, and that is a limitation rather than an oversight. `VM0060`
-names the specific attribute and the specific property, so it is visible at the build that
-introduced it. The migration path is a native constraint, or `IAsyncValidatorFor<T>` for anything
-genuinely custom.
+A custom `ValidationAttribute` subclass carries arbitrary C# in a method body, and since 2026-08-28
+it is **invoked** rather than refused: constructed once from its compile-time-constant arguments
+into a static field on the validator — every argument re-rendered fully qualified, never lifted as
+syntax — and run through `GetValidationResult` via `DataAnnotationsSupport`, with `MemberName` and
+`DisplayName` resolved at build time so the context's reflective display-name path is never
+entered (net8's constructors carry `RequiresUnreferencedCode` for exactly that path; net10 has a
+displayName constructor without it). This reverses the paragraph that stood here ("the only way to
+honour it is to invoke it, which is the thing this front-end exists to avoid"): invoking a
+statically constructed instance through its ordinary virtual surface involves none of §2's
+forbidden five, and refusing it made this the one migration target where custom rules vanished —
+`TryValidateObject`, MVC and .NET 10's `AddValidation()` all run them. What the refusal was
+actually protecting — the zero-allocation pass — is preserved everywhere except the property that
+asked: a custom check pays DataAnnotations' own prices (a context per call, a box for value-type
+members), stated by `VM0060` as an Info at the use site. A fast path that skipped the context when
+`RequiresValidationContext` was false was written and removed: an attribute overriding only the
+protected context-taking `IsValid` without overriding that property works under `Validator` and
+would have received null from the fast path, inside user code.
 
-The format validators — `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]` — are a closed set and
-*could* be compiled, by baking in the expression each one uses. They are diagnosed instead
-(`VM0063`, pointing at `[Pattern]`). Reproducing them means committing to bug-compatibility with
-implementations that are lenient in ways nobody wants: DA's `EmailAddressAttribute` accepts `"a@b"`
-(§14.22). A user who wants email validation is better served by a pattern whose behaviour is written
-down in their own source than by inheriting ours.
+`[CustomValidation]` resolves at build time to a direct static call (`VM0080` when the target is
+not callable — with one recorded narrowing: no silent runtime string conversion, the value
+parameter accepts the member's declared type or `object`). `IValidatableObject.Validate` is
+emitted last and gated on `!ctx.HasErrors`, which is `TryValidateObject`'s sequencing; the type
+falls back to the interface-default `IsValid` for the applied-rules reason. Both report Info
+(`VM0060`-family tails, `VM0067`). Resource-based `ErrorMessage` lookup is the one part of an
+invoked attribute the trimmer can break, and `VM0081` says so where it is configured. Failures
+across all three report `ValidationCodes.Custom` — one code for the family, the `Predicate`
+argument — with run-time `MemberNames` converted through the same namer the emitted literals were
+baked with.
+
+The native counterpart shipped beside the invocation path (2026-08-28):
+`CustomConstraintAttribute`, the inheritance-based extensibility §18.5 used to rule out, made
+compilable by constraining its shape. A subclass declares `public static bool IsValid(TMember,
+…ctorArgs)`; the generator resolves it, lines the extra parameters up with the constructor the
+declaration called, renders the supplied constants, and emits the direct call - the attribute
+class is never constructed, so the check costs a branch, and the base's `Code`/`Message`/
+`When`/`Unless` knobs ride along unchanged. Every wrong shape is `VM0082` with the reason,
+custom property setters included (a static check has no instance to read one from). This is the
+"high performance custom attribute" answer: DataAnnotations subclasses remain the migration
+path, `CustomConstraintAttribute` is what an author writes when they get to choose.
+
+The instance shape completes the family (2026-08-28): `IConstraintFor<T>`, for the check a static
+method cannot express because it needs something built once and kept - a lookup table computed
+from the constructor's arguments, a `SearchValues`, custom reporting. An attribute implements
+`bool IsValid(T)` and optionally overrides the interface's default `Validate(ref
+ValidationContext, T, string)`; the generator constructs it once from the declaration - every
+argument re-rendered fully qualified, the CustomConstruction machinery the invoked-DataAnnotations
+path built - into a static field *typed as the attribute class*, so both woven calls bind direct
+wherever the implementation is implicit, and go through a cast to the interface exactly where the
+class left a member to the default or implemented it explicitly. Null skips, a nullable value type
+unwraps (`decimal?` matches `IConstraintFor<decimal>`), and the two engine paths split the
+contract: `IsValid` is the boolean path's form and must return the blocking verdict, `Validate`
+the reporting one. The base's knobs split the same way when the attribute also derives from
+`ValidationConstraintAttribute`: `When`/`Unless` weave as generator conditions outside the call,
+`Code`/`Message` ride into the instance and are honoured by the default `Validate`, `{field}`
+substituted at reporting time because one instance serves every field it is declared on. The
+shared instance is called concurrently and must be immutable after construction;
+`[PerValidationInstance]` opts a class out, trading the field for a construction at every check -
+priced by a `VM0084` Info at each site, the one constraint cost a clean pass pays. Every wrong
+shape is `VM0083` with the reason: no implemented instantiation accepting the member, more than
+one (exact match wins first; the fix names the member's own instantiation), an unrenderable
+argument, a generic attribute class, or mixing this contract with `CustomConstraintAttribute` -
+whereas subclassing `ValidationAttribute` *and* implementing the interface is not a mistake but
+the migration story, and the interface wins: one class that runs fast here and keeps working under
+MVC and `Validator.TryValidateObject`. One ergonomic caught by the tests: a file importing both
+`ValidationModules` and `System.ComponentModel.DataAnnotations` hits CS0104 on the bare
+`ValidationContext` in a `Validate` override - qualify it, the collision the Constraints
+namespace's own design note already documents from the other side.
+
+The format validators — `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]`,
+`[FileExtensions]` — **compile** (2026-08-28), to straight-line reproductions in
+`ConstraintChecks`, with a per-use `VM0063` Info stating the exact check emitted. This reverses
+the paragraph that stood here, which refused them as "lenient in ways nobody wants: DA's
+`EmailAddressAttribute` accepts `"a@b"` (§14.22)". Three things unwound that reasoning. The
+semantics are not a defect to avoid inheriting: RFC 5322's addr-spec permits a dotless domain, so
+`a@b` is the *grammar's* answer, and Microsoft holds the implementation frozen by design
+(dotnet/runtime#45670 - "not something we plan to change"), which also makes bug-compatibility a
+stationary target, pinned by parity tests running the same canon through the real attributes. The
+modern implementations contain no regex at all - a handful of character walks, exactly the shape
+this emitter already writes, so reproducing them costs no allocation and no AOT size. And refusing
+them made this the one migration target where the checks *vanished*: `Validator.TryValidateObject`,
+MVC, and .NET 10's `AddValidation()` all enforce these attributes, while VM0063-as-a-Warning
+dropped them - more lenient than the leniency it objected to. A user who wants stricter validation
+is still pointed at `[Pattern]`, now by the Info rather than by a refusal. One emitted divergence,
+recorded in ConstraintChecksTests: `[Url]` on a `System.Uri` member applies the current scheme
+check on both TFMs, where net8's own `UrlAttribute` predates the `Uri` branch and rejects every
+non-string.
 
 ### 18.6 Mixing with native constraints, and profiles
 
@@ -1612,18 +1686,24 @@ Added to the table in §11:
 
 | ID | Severity | |
 |---|---|---|
-| VM0060 | Warning | custom `ValidationAttribute` subclass — cannot be compiled, not applied |
+| VM0060 | Info | custom `ValidationAttribute` subclass — constructed once and invoked; the message carries the cost model (2026-08-28; formerly a Warning that it was not applied) |
 | VM0061 | Warning | `[Compare]` — cross-field, not expressible as a per-property constraint |
-| VM0062 | Warning | `[CustomValidation]` — dispatches reflectively, not applied |
-| VM0063 | Warning | `[EmailAddress]`/`[Phone]`/`[Url]`/`[CreditCard]` — not applied; use `[Pattern]` |
+| VM0063 | Info | the format validators — compiled with the BCL's exact semantics, stated in the message (2026-08-28; formerly a Warning that they were not applied) |
 | VM0064 | Error | `[MinLength]`/`[MaxLength]` on a member that is neither a string nor a collection |
 | VM0065 | Error | `[Range]` bounds do not parse as the member's type |
 | VM0066 | Warning | a DataAnnotations and a native constraint conflict on one property |
-| VM0067 | Warning | type implements `IValidatableObject` — not compiled |
+| VM0067 | Info | type implements `IValidatableObject` — invoked last, gated on a clean pass (2026-08-28; formerly a Warning that it was not compiled) |
+| VM0080 | Error | `[CustomValidation]` target does not resolve to a callable public static `ValidationResult` method |
+| VM0081 | Warning | resource-based `ErrorMessage` resolution reflects at run time; trimming can break it |
+| VM0082 | Error | `CustomConstraintAttribute` subclass has no usable `public static bool IsValid`, its parameters do not line up with the constructor, or a property is set that the static check cannot receive |
+| VM0083 | Error | `IConstraintFor<T>` attribute cannot be compiled: no implemented instantiation accepts the member, more than one does, an argument is not renderable, the class is generic, or it mixes shapes with `CustomConstraintAttribute` |
+| VM0084 | Info | `[PerValidationInstance]` — the constraint constructs a fresh instance at every check; the cost model, stated where it is paid |
 
 Warnings rather than errors throughout, except where the attribute is simply wrong for the member.
-A build should not break because a model picked up `[EmailAddress]` for some other consumer's
-benefit; it should tell you the constraint is not being enforced.
+A build should not break because a model picked up `[Compare]` for some other consumer's benefit;
+it should tell you the constraint is not being enforced. The format validators, which now *are*
+enforced, drop further still to Info for the same reason inverted: there is nothing to fix, only
+semantics worth stating.
 
 ---
 

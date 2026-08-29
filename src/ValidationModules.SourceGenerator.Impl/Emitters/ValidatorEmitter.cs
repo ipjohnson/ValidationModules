@@ -37,6 +37,9 @@ public sealed class ValidatorEmitter {
 
     private const string Codes = "global::ValidationModules.ValidationCodes";
 
+    /// <summary>The bridge that runs custom DataAnnotations surfaces. See DataAnnotationsSupport.</summary>
+    private const string DataAnnotations = "global::ValidationModules.DataAnnotationsSupport";
+
     private const string SeverityEnum = "global::ValidationModules.ValidationSeverity";
 
     /// <summary>
@@ -136,15 +139,35 @@ public sealed class ValidatorEmitter {
     /// serialization decision - the tree this builds is style-independent, which is what makes the
     /// property safe to flip on a whim.
     /// </param>
+    /// <param name="fieldNamer">
+    /// The <c>ValidationModules_FieldNaming</c> value the literals were baked with. The
+    /// DataAnnotations bridge receives the same policy's runtime instance, so a member name a
+    /// custom rule reports at run time lands on the path a compiled constraint would have used.
+    /// </param>
     public string Emit(
         ValidatedTypeModel model,
         bool withDynamicAdapter = false,
         bool failFast = true,
         NestingGraph? nesting = null,
-        BraceStyle style = BraceStyle.Allman) {
+        BraceStyle style = BraceStyle.Allman,
+        string? fieldNamer = null) {
 
         var graph = nesting ?? NestingGraph.Empty;
         var patterns = new List<(string Field, ConstraintModel Constraint)>();
+
+        // [FileExtensions] sets, hoisted into static fields the way patterns are: the set is a
+        // compile-time constant and the check walks it, so building the array per call would
+        // allocate on every pass over the property.
+        var extensionSets = new List<(string Field, ConstraintModel Constraint)>();
+
+        // Custom ValidationAttribute instances, also hoisted: constructed once from their
+        // compile-time-constant arguments, never per pass - the "rule graphs are built once" rule
+        // applied to an attribute that is itself the rule.
+        var customAttributes = new List<(string Field, ConstraintModel Constraint)>();
+
+        // IConstraintFor<T> instances, hoisted for the same reason - except the ones marked
+        // [PerValidationInstance], which are constructed at the check and never land here.
+        var instanceConstraints = new List<(string Field, ConstraintModel Constraint)>();
 
         // One field per distinct subtype validator this type dispatches to, shared across every
         // property that dispatches to it. Indexed rather than named after the type: two subtypes in
@@ -172,7 +195,8 @@ public sealed class ValidatorEmitter {
 
         foreach (var property in model.Properties) {
             EmitProperty(
-                body, fast, property, model, patterns, bodyConditions, fastConditions, dispatchers, failFast);
+                body, fast, property, model, patterns, extensionSets, customAttributes,
+                instanceConstraints, bodyConditions, fastConditions, dispatchers, failFast, fieldNamer);
         }
 
         // Applied rules own no property, so they run once every property has been walked. Ordering
@@ -183,6 +207,19 @@ public sealed class ValidatorEmitter {
                 body.If($"{rule}(ref ctx, value).ShouldStop").Return($"{Flow}.Stop");
             } else {
                 body.AddIndentedStatement($"{rule}(ref ctx, value)");
+            }
+        }
+
+        // IValidatableObject runs last and only when nothing else failed, which is
+        // Validator.TryValidateObject's sequencing: object-level validation is the rule the type
+        // wrote for "everything else is fine".
+        if (model.ImplementsValidatableObject) {
+            var call = $"{DataAnnotations}.ValidateObject(ref ctx, value, {NamerInstance(fieldNamer)})";
+
+            if (failFast) {
+                body.If($"!ctx.HasErrors && {call}.ShouldStop").Return($"{Flow}.Stop");
+            } else {
+                body.If("!ctx.HasErrors").AddIndentedStatement(call);
             }
         }
 
@@ -224,6 +261,35 @@ public sealed class ValidatorEmitter {
 
             pattern.Modifiers = ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
             pattern.InitializeValue = New(TypeDefinition.Get(typeof(Regex)), arguments.ToArray());
+        }
+
+        foreach (var (field, constraint) in extensionSets) {
+            var set = validator.AddField(TypeDefinition.Get(typeof(string)).MakeArray(), field);
+
+            set.Modifiers = ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
+            set.InitializeValue = NewArray(
+                TypeDefinition.Get(typeof(string)), constraint.Values.Cast<object>().ToArray());
+        }
+
+        foreach (var (field, constraint) in customAttributes) {
+            // Held as the base type rather than the concrete attribute: the bridge takes
+            // ValidationAttribute, and the construction on the right already names the real class.
+            var instance = validator.AddField(
+                TypeDefinition.Get("System.ComponentModel.DataAnnotations", "ValidationAttribute"), field);
+
+            instance.Modifiers = ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
+            instance.InitializeValue = new CodeOutputComponent(constraint.CustomConstruction!) { Indented = false };
+        }
+
+        foreach (var (field, constraint) in instanceConstraints) {
+            // Held as the concrete attribute class, unlike the bridge fields above: there is no
+            // bridge, the calls bind on the class, and a public implicit implementation stays a
+            // direct - inlineable - call. The sites the class cannot bind go through a cast the
+            // front end already decided on.
+            var instance = validator.AddField(TypeRef(constraint.InstanceType!), field);
+
+            instance.Modifiers = ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
+            instance.InitializeValue = new CodeOutputComponent(constraint.CustomConstruction!) { Indented = false };
         }
 
         for (var i = 0; i < dispatchers.Count; i++) {
@@ -268,7 +334,12 @@ public sealed class ValidatorEmitter {
         var nestsItself = model.Properties.Any(property => NestsItsOwnType(property, model))
             || graph.ParticipatesInACycle(model);
 
-        if (model.AppliedRules.Count == 0 && !dispatchesDynamically && !nestsItself) {
+        // An IValidatableObject type falls back for the applied-rules reason: its object-level
+        // rule is gated on the whole pass being clean, which a boolean path with no collector
+        // cannot know. The interface default walks Validate into a throwaway collector and keeps
+        // the sequencing.
+        if (model.AppliedRules.Count == 0 && !dispatchesDynamically && !nestsItself &&
+            !model.ImplementsValidatableObject) {
             var isValid = validator.AddMethod("IsValid");
 
             isValid.Comment =
@@ -576,10 +647,14 @@ public sealed class ValidatorEmitter {
         ValidatedPropertyModel property,
         ValidatedTypeModel model,
         List<(string, ConstraintModel)> patterns,
+        List<(string, ConstraintModel)> extensionSets,
+        List<(string, ConstraintModel)> customAttributes,
+        List<(string, ConstraintModel)> instanceConstraints,
         ConditionScope conditions,
         ConditionScope fastConditions,
         List<string> dispatchers,
-        bool failFast) {
+        bool failFast,
+        string? fieldNamer) {
 
         var access = $"value.{Escape(property.PropertyName)}";
         var field = QuoteString(property.FieldName);
@@ -587,13 +662,27 @@ public sealed class ValidatorEmitter {
 
         // Every non-Required test is computed before anything is written, because whether the
         // Required check is worth hoisting into a local depends on whether anything ends up
-        // chaining off it, and TestFor can decline a constraint outright.
-        var others = new List<(ConstraintModel Constraint, string Test)>();
+        // chaining off it, and TestFor can decline a constraint outright. A custom DataAnnotations
+        // rule is not a test at all but a flow-returning call that reports for itself, so it
+        // carries its boolean-path form beside it; for everything else the test serves both paths.
+        var others = new List<(ConstraintModel Constraint, string Test, string? BooleanTest)>();
 
         foreach (var constraint in property.Constraints) {
-            if (constraint.Kind != ConstraintKind.Required
-                && TestFor(access, property, constraint, model, patterns) is { } test) {
-                others.Add((constraint, test));
+            if (constraint.Kind == ConstraintKind.Required) {
+                continue;
+            }
+
+            if (constraint.Kind is ConstraintKind.CustomAttribute or ConstraintKind.CustomValidationMethod
+                or ConstraintKind.CustomInstance) {
+                var (flow, boolean) = CustomCalls(
+                    access, property, constraint, customAttributes, instanceConstraints, fieldNamer);
+
+                others.Add((constraint, flow, boolean));
+                continue;
+            }
+
+            if (TestFor(access, property, constraint, model, patterns, extensionSets) is { } test) {
+                others.Add((constraint, test, null));
             }
         }
 
@@ -631,7 +720,43 @@ public sealed class ValidatorEmitter {
                 .Return("false");
         }
 
-        foreach (var (constraint, test) in others) {
+        foreach (var (constraint, test, booleanTest) in others) {
+            // A custom rule reports for itself, so its call is the whole rule: guarded like any
+            // other constraint - DataAnnotations also skips a property's remaining attributes
+            // after Required fails. A DataAnnotations rule is never null-guarded, because the
+            // attribute owns its null semantics and most pass null deliberately; an
+            // IConstraintFor<T> check is, because its contract says null never arrives - the same
+            // guard-and-skip every structural constraint gets.
+            if (booleanTest is not null) {
+                var guards = new List<string>();
+
+                if (constraint.Condition is { } guard) {
+                    guards.Add(conditions.Local(guard));
+                }
+
+                if (missing is not null) {
+                    guards.Add($"!{missing}");
+                }
+
+                if (constraint.Kind == ConstraintKind.CustomInstance &&
+                    (property.IsReferenceType || property.IsNullableValueType)) {
+                    guards.Add($"{access} is not null");
+                }
+
+                if (failFast) {
+                    var prefix = guards.Count == 0 ? string.Empty : string.Join(" && ", guards) + " && ";
+
+                    builder.If($"{prefix}{test}.ShouldStop").Return($"{Flow}.Stop");
+                } else if (guards.Count == 0) {
+                    builder.AddIndentedStatement(test);
+                } else {
+                    builder.If(string.Join(" && ", guards)).AddIndentedStatement(test);
+                }
+
+                fast.If(Guarded(fastConditions, constraint.Condition, booleanTest)).Return("false");
+                continue;
+            }
+
             // Guarding on the Required result is an optimization, not the suppression mechanism -
             // the collector drops anything on a field that already failed required (§4.3). It earns
             // its place by not evaluating a length or pattern test against a value known to be null.
@@ -915,12 +1040,96 @@ public sealed class ValidatorEmitter {
         return property.IsNullableValueType ? $"{access} is null" : $"{access} is null";
     }
 
+    /// <summary>
+    /// The two forms of one custom rule: the flow-returning call the Validate body writes, and the
+    /// boolean test the fast path writes. Built together because an attribute's pair shares the
+    /// hoisted instance field.
+    /// </summary>
+    private static (string Flow, string Boolean) CustomCalls(
+        string access,
+        ValidatedPropertyModel property,
+        ConstraintModel constraint,
+        List<(string, ConstraintModel)> customAttributes,
+        List<(string, ConstraintModel)> instanceConstraints,
+        string? fieldNamer) {
+
+        var fieldLiteral = QuoteString(property.FieldName);
+        var memberLiteral = QuoteString(property.PropertyName);
+        var displayLiteral = QuoteString(property.DisplayName ?? property.PropertyName);
+
+        // An IConstraintFor<T> check: the author's instance, its two members bound the cheapest
+        // way each can be - on the class when it declares the method publicly, through the
+        // interface when the default or an explicit implementation is what answers. The value is
+        // unwrapped here; the null guard sits with the caller, where the boolean form carries its
+        // own because the fast path has no guard list to join.
+        if (constraint.Kind == ConstraintKind.CustomInstance) {
+            var unwrapped = property.IsNullableValueType ? $"{access}.Value" : access;
+
+            string instance;
+
+            if (constraint.PerPassInstance) {
+                // [PerValidationInstance]: constructed at the check, exactly as asked. VM0084
+                // already told the author what that costs.
+                instance = constraint.CustomConstruction!;
+            } else {
+                instance = $"{property.PropertyName}Constraint{instanceConstraints.Count}";
+                instanceConstraints.Add((instance, constraint));
+            }
+
+            var validateTarget = constraint.ValidateThroughInterface
+                ? $"(({constraint.InstanceInterface}){instance})"
+                : instance;
+            var isValidTarget = constraint.IsValidThroughInterface
+                ? $"(({constraint.InstanceInterface}){instance})"
+                : instance;
+
+            var nullGuard = property.IsReferenceType || property.IsNullableValueType
+                ? $"{access} is not null && "
+                : string.Empty;
+
+            return (
+                $"{validateTarget}.Validate(ref ctx, {unwrapped}, {fieldLiteral})",
+                $"{nullGuard}!{isValidTarget}.IsValid({unwrapped})");
+        }
+
+        if (constraint.Kind == ConstraintKind.CustomAttribute) {
+            var instance = $"{property.PropertyName}Custom{customAttributes.Count}";
+
+            customAttributes.Add((instance, constraint));
+
+            return (
+                $"{DataAnnotations}.Validate(ref ctx, {instance}, value, {access}, " +
+                    $"{fieldLiteral}, {memberLiteral}, {displayLiteral})",
+                $"!{DataAnnotations}.IsValid({instance}, value, {access}, {memberLiteral}, {displayLiteral})");
+        }
+
+        // [CustomValidation]: a direct static call, with a context built only for the overload
+        // that asked for one. The boolean form reads the result itself - non-null is
+        // DataAnnotations' spelling of failure - and hands its context no services, which is what
+        // a boolean pass has.
+        var accessor = constraint.CustomAccessor!;
+
+        if (constraint.CustomTakesContext) {
+            return (
+                $"{DataAnnotations}.Apply(ref ctx, {accessor}({access}, " +
+                    $"{DataAnnotations}.CreateContext(ctx.Services, value, {memberLiteral}, {displayLiteral})), " +
+                    $"{fieldLiteral}, {NamerInstance(fieldNamer)})",
+                $"{accessor}({access}, {DataAnnotations}.CreateContext(null, value, " +
+                    $"{memberLiteral}, {displayLiteral})) is not null");
+        }
+
+        return (
+            $"{DataAnnotations}.Apply(ref ctx, {accessor}({access}), {fieldLiteral}, {NamerInstance(fieldNamer)})",
+            $"{accessor}({access}) is not null");
+    }
+
     private static string? TestFor(
         string access,
         ValidatedPropertyModel property,
         ConstraintModel constraint,
         ValidatedTypeModel model,
-        List<(string, ConstraintModel)> patterns) {
+        List<(string, ConstraintModel)> patterns,
+        List<(string, ConstraintModel)> extensionSets) {
 
         var value = property.IsNullableValueType ? $"{access}.Value" : access;
         var guard = property.IsReferenceType || property.IsNullableValueType ? $"{access} is not null && " : string.Empty;
@@ -1005,6 +1214,51 @@ public sealed class ValidatorEmitter {
                 var field = $"{property.PropertyName}Pattern{patterns.Count}";
                 patterns.Add((field, constraint));
                 return $"{guard}!{field}.IsMatch({access})";
+            }
+
+            // The DataAnnotations format checks, each a straight call into the runtime's
+            // reproduction of the BCL's own semantics. Null passes, exactly as the attributes
+            // read it, which is what the guard already says. [Url] on a System.Uri member picks
+            // the Uri overload by ordinary resolution - the test's text is identical.
+            case ConstraintKind.Email:
+                return $"{guard}!global::ValidationModules.ConstraintChecks.IsEmail({access})";
+
+            case ConstraintKind.Phone:
+                return $"{guard}!global::ValidationModules.ConstraintChecks.IsPhone({access})";
+
+            case ConstraintKind.Url:
+                return $"{guard}!global::ValidationModules.ConstraintChecks.IsUrl({access})";
+
+            case ConstraintKind.CreditCard:
+                return $"{guard}!global::ValidationModules.ConstraintChecks.IsCreditCard({access})";
+
+            case ConstraintKind.Base64:
+                return $"{guard}!global::ValidationModules.ConstraintChecks.IsBase64({access})";
+
+            case ConstraintKind.FileExtension: {
+                if (constraint.Values.Count == 0) {
+                    return null;
+                }
+
+                var field = $"{property.PropertyName}Extensions{extensionSets.Count}";
+                extensionSets.Add((field, constraint));
+                return $"{guard}!global::ValidationModules.ConstraintChecks.HasFileExtension({access}, {field})";
+            }
+
+            // A CustomConstraintAttribute's check: the author's own static method, called like a
+            // built-in, with the constructor's constants following the member's value. Null-guarded
+            // and unwrapped like every structural constraint - a null passes, [Required] is the
+            // presence check.
+            case ConstraintKind.CustomCheck: {
+                if (constraint.CustomAccessor is not { } accessor) {
+                    return null;
+                }
+
+                var arguments = constraint.Values.Count == 0
+                    ? string.Empty
+                    : ", " + string.Join(", ", constraint.Values);
+
+                return $"{guard}!{accessor}({value}{arguments})";
             }
 
             // Membership against the declared members, or - on a [Flags] enum - whether any bit
@@ -1092,6 +1346,14 @@ public sealed class ValidatorEmitter {
             ConstraintKind.Pattern => Report(field, constraint, "ReportPattern", ""),
             ConstraintKind.AllowedValues => Report(field, constraint, "ReportAllowedValues",
                 $", {QuoteString(string.Join(", ", Displays(constraint)))}"),
+            ConstraintKind.Email => Report(field, constraint, "ReportEmail", ""),
+            ConstraintKind.Phone => Report(field, constraint, "ReportPhone", ""),
+            ConstraintKind.Url => Report(field, constraint, "ReportUrl", ""),
+            ConstraintKind.CreditCard => Report(field, constraint, "ReportCreditCard", ""),
+            ConstraintKind.Base64 => Report(field, constraint, "ReportBase64", ""),
+            ConstraintKind.FileExtension => Report(field, constraint, "ReportFileExtension",
+                $", {QuoteString(string.Join(", ", Displays(constraint)))}"),
+            ConstraintKind.CustomCheck => Report(field, constraint, "ReportCustom", ""),
             // A flags value is a combination, so "must be one of" would be wrong about what the
             // type accepts. Says which flags exist instead.
             ConstraintKind.EnumDefined when constraint.FlagsMask is not null =>
@@ -1163,6 +1425,13 @@ public sealed class ValidatorEmitter {
         ConstraintKind.MultipleOf => $"{Codes}.MultipleOf",
         ConstraintKind.UniqueItems => $"{Codes}.UniqueItems",
         ConstraintKind.Predicate => $"{Codes}.Predicate",
+        ConstraintKind.Email => $"{Codes}.Email",
+        ConstraintKind.Phone => $"{Codes}.Phone",
+        ConstraintKind.Url => $"{Codes}.Url",
+        ConstraintKind.CreditCard => $"{Codes}.CreditCard",
+        ConstraintKind.Base64 => $"{Codes}.Base64",
+        ConstraintKind.FileExtension => $"{Codes}.FileExtension",
+        ConstraintKind.CustomCheck => $"{Codes}.Custom",
         _ => $"{Codes}.ArrayBounds",
     };
 

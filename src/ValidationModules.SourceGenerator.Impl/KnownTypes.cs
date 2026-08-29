@@ -11,6 +11,12 @@ public static class KnownTypes {
     public const string DataAnnotationsNamespace = "System.ComponentModel.DataAnnotations";
 
     public const string GenerateValidatorAttribute = "ValidationModules.Constraints.GenerateValidatorAttribute";
+    public const string CustomConstraintAttribute = "ValidationModules.Constraints.CustomConstraintAttribute";
+    public const string ValidationConstraintAttribute = "ValidationModules.Constraints.ValidationConstraintAttribute";
+    public const string PerValidationInstanceAttribute = "ValidationModules.Constraints.PerValidationInstanceAttribute";
+
+    /// <summary>The instance shape of a custom constraint. Matched by original definition.</summary>
+    public const string ConstraintForInterface = "ValidationModules.IConstraintFor<T>";
     public const string ValidationAttribute = "System.ComponentModel.DataAnnotations.ValidationAttribute";
     public const string ValidatableObject = "System.ComponentModel.DataAnnotations.IValidatableObject";
 

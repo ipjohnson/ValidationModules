@@ -17,10 +17,68 @@ public enum ConstraintKind {
     MultipleOf,
 
     /// <summary>
-    /// The only kind that does not compile to a comparison - it calls
-    /// <c>ConstraintChecks.AllUnique</c>. See <c>UniqueItemsAttribute</c>.
+    /// Does not compile to a comparison - it calls <c>ConstraintChecks.AllUnique</c>. See
+    /// <c>UniqueItemsAttribute</c>.
     /// </summary>
     UniqueItems,
+
+    /// <summary>
+    /// The DataAnnotations format validators, each compiling to its <c>ConstraintChecks</c>
+    /// check with the BCL's own semantics. Produced only by the DataAnnotations front end -
+    /// the native vocabulary deliberately has no format validators.
+    /// </summary>
+    Email,
+    Phone,
+
+    /// <summary>
+    /// The one format kind whose member may be <c>System.Uri</c> as well as <c>string</c>; the
+    /// emitted call resolves to the matching <c>ConstraintChecks.IsUrl</c> overload.
+    /// </summary>
+    Url,
+    CreditCard,
+    Base64,
+
+    /// <summary>
+    /// Carries its permitted set in <c>Values</c>/<c>ValueDisplays</c>, normalized at build time
+    /// exactly as <c>FileExtensionsAttribute</c> normalizes its <c>Extensions</c> property, and
+    /// hoisted into a static field by the emitter the way patterns are.
+    /// </summary>
+    FileExtension,
+
+    /// <summary>
+    /// A custom <c>ValidationAttribute</c> subclass, constructed once from
+    /// <c>CustomConstruction</c> into a static field and invoked through
+    /// <c>DataAnnotationsSupport</c>. Unlike every kind above, its check is user code run at
+    /// validation time rather than a test this emitter writes - the faithful reading of an
+    /// attribute whose semantics only its author knows.
+    /// </summary>
+    CustomAttribute,
+
+    /// <summary>
+    /// A <c>[CustomValidation]</c> target, resolved at build time to the static method in
+    /// <c>CustomAccessor</c> and called directly - no attribute instance, no reflective dispatch.
+    /// </summary>
+    CustomValidationMethod,
+
+    /// <summary>
+    /// A native <c>CustomConstraintAttribute</c> subclass: the author's own check, compiled like a
+    /// built-in. <c>CustomAccessor</c> holds the attribute class's static <c>IsValid</c>;
+    /// <c>Values</c> carries the constructor arguments, already rendered, that follow the member's
+    /// value in the call. The high-performance counterpart of <see cref="CustomAttribute"/>: no
+    /// instance, no context, nothing allocated on a passing value.
+    /// </summary>
+    CustomCheck,
+
+    /// <summary>
+    /// An attribute implementing <c>IConstraintFor&lt;T&gt;</c>: the author's own instance,
+    /// constructed by generated code from <c>CustomConstruction</c> and invoked through the two
+    /// members the interface pins - <c>IsValid</c> on the boolean path, <c>Validate</c> on the
+    /// reporting one. The stateful middle of the custom family: cheaper than
+    /// <see cref="CustomAttribute"/> because nothing boxes and no context is built, richer than
+    /// <see cref="CustomCheck"/> because the constructor may precompute and the reporting side
+    /// sees the pass's context.
+    /// </summary>
+    CustomInstance,
 
     /// <summary>
     /// A predicate declared with <c>rules.Ensure(…)</c>. Carries no bounds and composes no message -
@@ -153,4 +211,61 @@ public sealed record ConstraintModel(
     /// DSL one as <c>global::My.ClaimRules_Rules.Cond0(value)</c>, and both are hoisted and tested
     /// identically.
     /// </remarks>
-    string? Condition = null) : IEquatable<ConstraintModel>;
+    string? Condition = null,
+
+    /// <summary>
+    /// <see cref="ConstraintKind.CustomAttribute"/> only: the complete construction expression -
+    /// <c>new global::My.EvenNumberAttribute(2) { ErrorMessage = "…" }</c> - every argument
+    /// rendered fully qualified from the attribute's compile-time constants. The emitter hoists it
+    /// into a static field, so the instance is built once per validator rather than per pass.
+    /// </summary>
+    string? CustomConstruction = null,
+
+    /// <summary>
+    /// <see cref="ConstraintKind.CustomValidationMethod"/> only: the fully qualified static method
+    /// - <c>global::My.Checks.EvenNumber</c> - already resolved and signature-checked, so the
+    /// emitter writes a direct call.
+    /// </summary>
+    string? CustomAccessor = null,
+
+    /// <summary>
+    /// <see cref="ConstraintKind.CustomValidationMethod"/> only: whether the method's second
+    /// parameter takes the DataAnnotations <c>ValidationContext</c>, which the emitted call then
+    /// builds through <c>DataAnnotationsSupport.CreateContext</c>.
+    /// </summary>
+    bool CustomTakesContext = false,
+
+    /// <summary>
+    /// <see cref="ConstraintKind.CustomInstance"/> only: the attribute class, fully qualified. It
+    /// types the hoisted field, so the woven calls stay direct - and inlineable - whenever the
+    /// class implements the interface implicitly.
+    /// </summary>
+    string? InstanceType = null,
+
+    /// <summary>
+    /// <see cref="ConstraintKind.CustomInstance"/> only: the <c>IConstraintFor&lt;T&gt;</c>
+    /// instantiation the member matched, fully qualified. A call the class cannot bind - a member
+    /// left to the interface's default implementation, or implemented explicitly - goes through a
+    /// cast to this.
+    /// </summary>
+    string? InstanceInterface = null,
+
+    /// <summary>
+    /// <see cref="ConstraintKind.CustomInstance"/> only: <c>Validate</c> is not a public method of
+    /// the class, so the woven call must go through <see cref="InstanceInterface"/>.
+    /// </summary>
+    bool ValidateThroughInterface = false,
+
+    /// <summary>
+    /// The same question for <c>IsValid</c>, answered separately: an author who overrides
+    /// <c>Validate</c> but implements <c>IsValid</c> explicitly - or the reverse - gets each call
+    /// bound the cheapest way it can be.
+    /// </summary>
+    bool IsValidThroughInterface = false,
+
+    /// <summary>
+    /// <see cref="ConstraintKind.CustomInstance"/> only: <c>[PerValidationInstance]</c> is on the
+    /// attribute class, so the emitter constructs the attribute at every check instead of hoisting
+    /// one instance into a static field.
+    /// </summary>
+    bool PerPassInstance = false) : IEquatable<ConstraintModel>;

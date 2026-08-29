@@ -129,6 +129,22 @@ internal static class EmitterOutput {
             TypeDefinitionEnum.InterfaceDefinition, "System.Collections.Generic", "IEnumerable", new[] { element });
 
     /// <summary>
+    /// The runtime namer class for a <c>ValidationModules_FieldNaming</c> value. Shared by the
+    /// registration emitter, which registers it as the default, and the validator emitter, which
+    /// hands the same instance to the DataAnnotations bridge - one mapping, so a member name
+    /// resolved at run time lands on the same path a compiled literal would have.
+    /// </summary>
+    public static string NamerFor(string? fieldNamer) => fieldNamer switch {
+        "PascalCase" or "AsDeclared" => "PascalCaseFieldNamer",
+        "SnakeCase" => "SnakeCaseFieldNamer",
+        _ => "CamelCaseFieldNamer",
+    };
+
+    /// <summary>The namer's singleton, spelled the way generated code says it.</summary>
+    public static string NamerInstance(string? fieldNamer) =>
+        $"global::ValidationModules.Naming.{NamerFor(fieldNamer)}.Instance";
+
+    /// <summary>
     /// A blank separator line. <see cref="BaseBlockDefinition.NewLine"/> writes the block's indent
     /// before the break, which leaves trailing whitespace on an empty line; this writes the break
     /// alone.

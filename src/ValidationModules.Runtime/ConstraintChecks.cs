@@ -1,24 +1,45 @@
+using System.Buffers.Text;
 using System.Collections.Generic;
 
 namespace ValidationModules;
 
 /// <summary>
-/// The two checks that do not fit in a comparison, called from generated validators.
+/// The checks that do not fit in a comparison, called from generated validators.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Every other constraint compiles to a branch the emitter writes inline, because every other
-/// constraint is a comparison. These two are not: <c>[UniqueItems]</c> has to look at elements
-/// against each other, and <c>[MultipleOf]</c> on a floating-point member has to leave the binary
-/// domain before <c>%</c> means anything. Both live here rather than being open-coded into every
-/// validator, so there is one implementation to reason about and one to test.
+/// Most constraints compile to a branch the emitter writes inline, because most constraints are
+/// comparisons. The ones here are not: <c>[UniqueItems]</c> has to look at elements against each
+/// other, <c>[MultipleOf]</c> on a floating-point member has to leave the binary domain before
+/// <c>%</c> means anything, and the DataAnnotations format validators each walk the value. All
+/// live here rather than being open-coded into every validator, so there is one implementation to
+/// reason about and one to test.
 /// </para>
 /// <para>
-/// Both are ordinary generic methods, instantiated by the emitter at a type it knows statically.
-/// Nothing here constructs a type or looks one up.
+/// The <c>Is*</c> format checks reproduce <c>System.ComponentModel.DataAnnotations</c> exactly -
+/// each summary states the semantics, which are the BCL's own and are by design
+/// (dotnet/runtime#45670: "the current implementation is by design and not something we plan to
+/// change"). Reproduced rather than called so that a validation pass constructs no attribute,
+/// touches no <c>ValidationContext</c>, and allocates nothing; parity is pinned by
+/// ConstraintChecksTests running the same inputs through the real attributes.
+/// </para>
+/// <para>
+/// Everything here is an ordinary method, instantiated by the emitter at a type it knows
+/// statically. Nothing constructs a type or looks one up.
 /// </para>
 /// </remarks>
 public static class ConstraintChecks {
+
+    private const string PhoneCharacters = "-.()";
+    private const string PhoneExtensionExtDot = "ext.";
+    private const string PhoneExtensionExt = "ext";
+    private const string PhoneExtensionX = "x";
+
+    /// <summary>
+    /// Above this length, the phone check heap-allocates its scratch copy rather than growing the
+    /// stack. Real phone numbers sit far below it, so the common case allocates nothing.
+    /// </summary>
+    private const int PhoneStackLimit = 128;
 
     /// <summary>
     /// Above this many elements, uniqueness allocates a set rather than comparing pairwise.
@@ -110,5 +131,226 @@ public static class ConstraintChecks {
         }
 
         return (decimal)value % divisor == 0m;
+    }
+
+    /// <summary>
+    /// <c>[EmailAddress]</c>: exactly one <c>'@'</c>, neither first nor last, and no line breaks.
+    /// <c>"a@b"</c> passes.
+    /// </summary>
+    /// <remarks>
+    /// RFC 5322's addr-spec permits a dotless domain - <c>root@localhost</c> is a valid address -
+    /// so the check is an approximation of a deliberately permissive grammar, not a loose stand-in
+    /// for a strict one. The line-break rejection is the BCL's own hardening and is kept.
+    /// </remarks>
+    public static bool IsEmail(string value) {
+        if (value.AsSpan().IndexOfAny('\r', '\n') >= 0) {
+            return false;
+        }
+
+        var index = value.IndexOf('@');
+
+        return index > 0 &&
+            index != value.Length - 1 &&
+            index == value.LastIndexOf('@');
+    }
+
+    /// <summary>
+    /// <c>[Phone]</c>: after stripping every <c>'+'</c>, trailing whitespace, and a trailing
+    /// extension (<c>ext.</c>, <c>ext</c> or <c>x</c> followed by digits), the value must contain
+    /// at least one digit and nothing but digits, whitespace and <c>- . ( )</c>.
+    /// </summary>
+    /// <remarks>
+    /// The BCL strips <c>'+'</c> with <c>string.Replace</c>, which allocates on every call; this
+    /// copies into stack scratch instead, above <see cref="PhoneStackLimit"/> falling back to the
+    /// allocation DataAnnotations always makes. Same answer either way, including the quirk that
+    /// a <c>'+'</c> inside <c>e+xt.</c> still reads as an extension marker, because the strip
+    /// happens before the extension search there too.
+    /// </remarks>
+    public static bool IsPhone(string value) {
+        Span<char> scratch = value.Length <= PhoneStackLimit
+            ? stackalloc char[PhoneStackLimit]
+            : new char[value.Length];
+        var length = 0;
+
+        foreach (var c in value) {
+            if (c != '+') {
+                scratch[length++] = c;
+            }
+        }
+
+        var span = ((ReadOnlySpan<char>)scratch.Slice(0, length)).TrimEnd();
+
+        span = RemovePhoneExtension(span);
+
+        var digitFound = false;
+
+        foreach (var c in span) {
+            if (char.IsDigit(c)) {
+                digitFound = true;
+                break;
+            }
+        }
+
+        if (!digitFound) {
+            return false;
+        }
+
+        foreach (var c in span) {
+            if (!(char.IsDigit(c) || char.IsWhiteSpace(c) || PhoneCharacters.Contains(c))) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// <c>[Url]</c> on a string: the value must start with <c>http://</c>, <c>https://</c> or
+    /// <c>ftp://</c>, case-insensitively. Nothing past the prefix is checked.
+    /// </summary>
+    public static bool IsUrl(string value) =>
+        value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+        value.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+        value.StartsWith("ftp://", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// <c>[Url]</c> on a <see cref="Uri"/>: absolute, with scheme http, https or ftp.
+    /// </summary>
+    /// <remarks>
+    /// The <see cref="Uri"/> branch entered DataAnnotations after .NET 8, whose
+    /// <c>UrlAttribute</c> rejects every non-string value. One semantics is emitted for both
+    /// target frameworks, and it is the current one - the direction the BCL moved, and the only
+    /// answer that does not fail a member for being better-typed.
+    /// </remarks>
+    public static bool IsUrl(Uri value) =>
+        value.IsAbsoluteUri &&
+        (value.Scheme == Uri.UriSchemeHttp ||
+            value.Scheme == Uri.UriSchemeHttps ||
+            value.Scheme == Uri.UriSchemeFtp);
+
+    /// <summary>
+    /// <c>[CreditCard]</c>: digits, with dashes and spaces skipped, passing the Luhn mod-10
+    /// checksum.
+    /// </summary>
+    public static bool IsCreditCard(string value) {
+        var checksum = 0;
+        var evenDigit = false;
+
+        for (var i = value.Length - 1; i >= 0; i--) {
+            var digit = value[i];
+
+            if (!char.IsAsciiDigit(digit)) {
+                if (digit is '-' or ' ') {
+                    continue;
+                }
+
+                return false;
+            }
+
+            var digitValue = (digit - '0') * (evenDigit ? 2 : 1);
+
+            evenDigit = !evenDigit;
+
+            while (digitValue > 0) {
+                checksum += digitValue % 10;
+                digitValue /= 10;
+            }
+        }
+
+        return checksum % 10 == 0;
+    }
+
+    /// <summary>
+    /// <c>[Base64String]</c>: whatever <see cref="Base64.IsValid(ReadOnlySpan{char})"/> accepts -
+    /// well-formed Base64 as <c>Convert.FromBase64String</c> reads it, whitespace included.
+    /// </summary>
+    /// <remarks>
+    /// A pass-through, kept so the six format checks live and are pinned in one place.
+    /// </remarks>
+    public static bool IsBase64(string value) => Base64.IsValid(value);
+
+    /// <summary>
+    /// <c>[FileExtensions]</c>: the file name's extension is one of the permitted set.
+    /// </summary>
+    /// <param name="value">The file name.</param>
+    /// <param name="extensions">
+    /// The permitted extensions, dot-prefixed and lowercased. Normalized at build time by the
+    /// generator exactly as the attribute normalizes its <c>Extensions</c> property - spaces and
+    /// dots removed, lowercased invariantly, split on commas - so the quirks survive: an entry of
+    /// <c>tar.gz</c> becomes <c>.targz</c> there and becomes it here.
+    /// </param>
+    /// <remarks>
+    /// The BCL lowercases the file's extension with <c>ToLowerInvariant</c> and compares
+    /// ordinally, allocating the lowered copy; comparing case-insensitively against the
+    /// already-lowered set gives the same answer for any extension representable in the attribute
+    /// and allocates nothing.
+    /// </remarks>
+    public static bool HasFileExtension(string value, string[] extensions) {
+        var extension = System.IO.Path.GetExtension(value.AsSpan());
+
+        foreach (var candidate in extensions) {
+            if (extension.Equals(candidate.AsSpan(), StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The trailing-extension strip, ported from <c>PhoneAttribute</c> verbatim: the last
+    /// occurrence of each marker in turn, kept only when nothing but digits follows it.
+    /// </summary>
+    private static ReadOnlySpan<char> RemovePhoneExtension(ReadOnlySpan<char> potentialPhoneNumber) {
+        var lastIndexOfExtension = potentialPhoneNumber
+            .LastIndexOf(PhoneExtensionExtDot.AsSpan(), StringComparison.OrdinalIgnoreCase);
+
+        if (lastIndexOfExtension >= 0) {
+            var extension = potentialPhoneNumber.Slice(lastIndexOfExtension + PhoneExtensionExtDot.Length);
+
+            if (MatchesPhoneExtension(extension)) {
+                return potentialPhoneNumber.Slice(0, lastIndexOfExtension);
+            }
+        }
+
+        lastIndexOfExtension = potentialPhoneNumber
+            .LastIndexOf(PhoneExtensionExt.AsSpan(), StringComparison.OrdinalIgnoreCase);
+
+        if (lastIndexOfExtension >= 0) {
+            var extension = potentialPhoneNumber.Slice(lastIndexOfExtension + PhoneExtensionExt.Length);
+
+            if (MatchesPhoneExtension(extension)) {
+                return potentialPhoneNumber.Slice(0, lastIndexOfExtension);
+            }
+        }
+
+        lastIndexOfExtension = potentialPhoneNumber
+            .LastIndexOf(PhoneExtensionX.AsSpan(), StringComparison.OrdinalIgnoreCase);
+
+        if (lastIndexOfExtension >= 0) {
+            var extension = potentialPhoneNumber.Slice(lastIndexOfExtension + PhoneExtensionX.Length);
+
+            if (MatchesPhoneExtension(extension)) {
+                return potentialPhoneNumber.Slice(0, lastIndexOfExtension);
+            }
+        }
+
+        return potentialPhoneNumber;
+    }
+
+    private static bool MatchesPhoneExtension(ReadOnlySpan<char> potentialExtension) {
+        potentialExtension = potentialExtension.TrimStart();
+
+        if (potentialExtension.Length == 0) {
+            return false;
+        }
+
+        foreach (var c in potentialExtension) {
+            if (!char.IsDigit(c)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

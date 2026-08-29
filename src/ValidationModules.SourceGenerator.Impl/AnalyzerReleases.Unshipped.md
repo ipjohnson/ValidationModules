@@ -25,12 +25,12 @@ VM0017 | ValidationModules.Usage | Warning | An inline pattern roots the regex e
 VM0018 | ValidationModules.Usage | Error | A referenced regex member is missing, not static, inaccessible or not a Regex.
 VM0040 | ValidationModules.Usage | Error | The referenced ValidationModules.Runtime is older than the emitted code requires.
 VM0051 | ValidationModules.Usage | Warning | A constraint on a record parameter is missing the property: target.
-VM0060 | ValidationModules.Usage | Warning | A custom ValidationAttribute subclass cannot be compiled. Reported as Info when ValidationModules_DataAnnotations is Ignore.
+VM0060 | ValidationModules.Usage | Info | A custom ValidationAttribute subclass is constructed once and invoked with DataAnnotations semantics. Reported as Warning when its arguments cannot be rendered, and as Info with an ignoring tail when ValidationModules_DataAnnotations is Ignore.
 VM0061 | ValidationModules.Usage | Warning | A cross-field DataAnnotations attribute cannot be compiled.
-VM0063 | ValidationModules.Usage | Warning | A format DataAnnotations attribute is not compiled.
+VM0063 | ValidationModules.Usage | Info | A format DataAnnotations attribute is compiled with the BCL's exact semantics, stated in the message.
 VM0064 | ValidationModules.Usage | Error | A length constraint was applied to a member that is neither string nor collection.
 VM0065 | ValidationModules.Usage | Error | Range bounds do not parse as the member's type.
-VM0067 | ValidationModules.Usage | Warning | IValidatableObject is not called by the generated validator. Reported as Info when ValidationModules_DataAnnotations is Ignore.
+VM0067 | ValidationModules.Usage | Info | IValidatableObject.Validate is called after every other rule on the type passes, as Validator.TryValidateObject sequences it. Reported with an ignoring tail when ValidationModules_DataAnnotations is Ignore.
 VM0070 | ValidationModules.Usage | Error | A statement in Describe is not a rule declaration.
 VM0071 | ValidationModules.Usage | Error | A rule selector is not a simple property path.
 VM0072 | ValidationModules.Usage | Error | A predicate references state outside its own parameter.
@@ -47,3 +47,8 @@ VM0032 | ValidationModules.Usage | Error | Polymorphism.Runtime was applied to a
 VM0034 | ValidationModules.Usage | Warning | A When/Unless condition folds to a constant.
 VM0078 | ValidationModules.Usage | Error | A lifted predicate references a private member of the rules class.
 VM0079 | ValidationModules.Usage | Error | A generic type cannot have a generated validator.
+VM0080 | ValidationModules.Usage | Error | A [CustomValidation] target does not resolve to a callable public static ValidationResult method.
+VM0081 | ValidationModules.Usage | Warning | Resource-based ErrorMessage resolution reflects at run time and may break under trimming.
+VM0082 | ValidationModules.Usage | Error | A CustomConstraintAttribute subclass has no usable public static bool IsValid, or its parameters do not line up with the constructor.
+VM0083 | ValidationModules.Usage | Error | An IConstraintFor<T> attribute cannot be compiled: no implemented instantiation accepts the member, several do, an argument is not renderable, or the class mixes custom shapes.
+VM0084 | ValidationModules.Usage | Info | A [PerValidationInstance] constraint constructs a new attribute instance on every check.

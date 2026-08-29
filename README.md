@@ -2,6 +2,11 @@
      variant with its theme. The logo rides inside the heading so mark and name share a line. -->
 # <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ipjohnson/ValidationModules/main/assets/logo-dark.svg"><img src="https://raw.githubusercontent.com/ipjohnson/ValidationModules/main/assets/logo.svg" alt="" width="42" height="42" align="absmiddle"></picture> ValidationModules
 
+[![NuGet](https://img.shields.io/nuget/v/ValidationModules.Runtime.svg)](https://www.nuget.org/packages/ValidationModules.Runtime/)
+[![build](https://github.com/ipjohnson/ValidationModules/actions/workflows/build-package.yaml/badge.svg)](https://github.com/ipjohnson/ValidationModules/actions/workflows/build-package.yaml)
+[![coverage](https://raw.githubusercontent.com/ipjohnson/ValidationModules/badges/coverage.svg)](https://github.com/ipjohnson/ValidationModules/actions/workflows/build-package.yaml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE.txt)
+
 Compile-time validation for .NET. Attributes on your models become straight-line C# at build time,
 so a validation pass is a handful of `if` statements: **~32 ns and 56 B** for a clean pass over a
 flat model — **23 ns and 0 B** on the boolean fast path — where FluentValidation takes 179 ns and
@@ -20,6 +25,9 @@ Web apps also want the [ASP.NET Core integration](#aspnet-core):
 ```bash
 dotnet add package ValidationModules.AspNetCore
 ```
+
+Requires .NET 8.0 or later. The packages ship both `net8.0` and `net10.0` assemblies, so a
+project on either LTS release gets one built against its own framework.
 
 ## Declare, then validate
 

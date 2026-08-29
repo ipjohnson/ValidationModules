@@ -1,7 +1,9 @@
 # Constraints
 
 Ten attributes, all in `ValidationModules.Constraints`. Each one is read at build time and
-becomes a branch; none of them is ever constructed at run time.
+becomes a branch; none of them is ever constructed at run time. When the vocabulary is missing
+the constraint your domain repeats — a SKU, a slug, an IBAN — you can
+[add your own attribute](/guide/custom-constraints) and it compiles the same way.
 
 <!-- verify -->
 ```csharp

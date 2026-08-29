@@ -42,6 +42,13 @@ public enum PropertyShape {
 /// The subtypes a <see cref="PolymorphismMode.CompileTime"/> descent dispatches to, already sorted
 /// most-derived first. Empty for every other mode.
 /// </param>
+/// <param name="DisplayName">
+/// What DataAnnotations calls the member in a formatted message: <c>[Display(Name = …)]</c> when
+/// present, otherwise the CLR name. Distinct from <see cref="FieldName"/>, which is the wire name
+/// and additionally honours <c>[JsonPropertyName]</c> and the naming policy - a custom attribute's
+/// <c>{0}</c> placeholder wants the DataAnnotations answer, resolved at build time so the runtime
+/// never resolves it reflectively. Null when no constraint needs it.
+/// </param>
 public sealed record ValidatedPropertyModel(
     string PropertyName,
     string FieldName,
@@ -58,4 +65,5 @@ public sealed record ValidatedPropertyModel(
     EquatableArray<ConstraintModel> Constraints,
     string? Condition = null,
     PolymorphismMode Polymorphism = PolymorphismMode.DeclaredOnly,
-    EquatableArray<SubtypeModel> Subtypes = default) : IEquatable<ValidatedPropertyModel>;
+    EquatableArray<SubtypeModel> Subtypes = default,
+    string? DisplayName = null) : IEquatable<ValidatedPropertyModel>;
