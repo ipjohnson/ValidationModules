@@ -156,14 +156,17 @@ public sealed class RulesFrontEnd {
         var definition = constructed.OriginalDefinition;
         var key = $"{definition.ToDisplayString()}|{(constructed.IsGenericMethod ? target.ToDisplayString() : string.Empty)}";
 
-        if (_fragments.TryGetValue(key, out var existing)) {
-            return existing;
-        }
-
+        // The stack check comes before the registry: a fragment registers itself before its body
+        // is read so two callers share one method, and a cycle would otherwise hit that early
+        // registration and emit mutually recursive methods that run forever at validation time.
         if (expanding.Any(open => SymbolEqualityComparer.Default.Equals(open, definition))) {
             Report(ValidationDiagnostics.FragmentCallCycle, site,
                 string.Join(" -> ", expanding.Select(m => m.Name).Concat(new[] { definition.Name })));
             return null;
+        }
+
+        if (_fragments.TryGetValue(key, out var existing)) {
+            return existing;
         }
 
         if (definition.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax()
@@ -336,13 +339,14 @@ public sealed class RulesFrontEnd {
 
         public IReadOnlyList<string> AppliedRules => _applied;
 
-        public void ReadBlock(IEnumerable<StatementSyntax> statements, int depth, bool inLoop = false) {
+        public void ReadBlock(
+            IEnumerable<StatementSyntax> statements, int depth, bool inLoop = false, bool inSwitch = false) {
             foreach (var statement in statements) {
-                ReadStatement(statement, depth, inLoop);
+                ReadStatement(statement, depth, inLoop, inSwitch);
             }
         }
 
-        private void ReadStatement(StatementSyntax statement, int depth, bool inLoop) {
+        private void ReadStatement(StatementSyntax statement, int depth, bool inLoop, bool inSwitch = false) {
             switch (statement) {
                 case ExpressionStatementSyntax { Expression: { } expression }:
                     ReadExpressionStatement(expression, depth, statement, inLoop);
@@ -359,7 +363,7 @@ public sealed class RulesFrontEnd {
                     return;
 
                 case IfStatementSyntax conditional:
-                    ReadIf(conditional, depth, inLoop);
+                    ReadIf(conditional, depth, inLoop, inSwitch);
                     return;
 
                 case SwitchStatementSyntax dispatch:
@@ -398,7 +402,7 @@ public sealed class RulesFrontEnd {
 
                 case BlockSyntax nested:
                     Line(depth, "{");
-                    ReadBlock(nested.Statements, depth + 1, inLoop);
+                    ReadBlock(nested.Statements, depth + 1, inLoop, inSwitch);
                     Line(depth, "}");
                     return;
 
@@ -407,7 +411,8 @@ public sealed class RulesFrontEnd {
                     Transcribe(function, depth);
                     return;
 
-                case BreakStatementSyntax or ContinueStatementSyntax when inLoop:
+                case BreakStatementSyntax when inLoop || inSwitch:
+                case ContinueStatementSyntax when inLoop:
                     Transcribe(statement, depth);
                     return;
 
@@ -490,20 +495,20 @@ public sealed class RulesFrontEnd {
             Line(depth, $"{Rewrite(expression)};");
         }
 
-        private void ReadIf(IfStatementSyntax conditional, int depth, bool inLoop) {
+        private void ReadIf(IfStatementSyntax conditional, int depth, bool inLoop, bool inSwitch = false) {
             Line(depth, $"if ({Rewrite(conditional.Condition)}) {{");
-            ReadEmbedded(conditional.Statement, depth + 1, inLoop);
+            ReadEmbedded(conditional.Statement, depth + 1, inLoop, inSwitch);
 
             var alternative = conditional.Else;
 
             while (alternative is not null) {
                 if (alternative.Statement is IfStatementSyntax chained) {
                     Line(depth, $"}} else if ({Rewrite(chained.Condition)}) {{");
-                    ReadEmbedded(chained.Statement, depth + 1, inLoop);
+                    ReadEmbedded(chained.Statement, depth + 1, inLoop, inSwitch);
                     alternative = chained.Else;
                 } else {
                     Line(depth, "} else {");
-                    ReadEmbedded(alternative.Statement, depth + 1, inLoop);
+                    ReadEmbedded(alternative.Statement, depth + 1, inLoop, inSwitch);
                     alternative = null;
                 }
             }
@@ -519,7 +524,7 @@ public sealed class RulesFrontEnd {
                     Line(depth + 1, Rewrite(label).TrimEnd());
                 }
 
-                ReadBlock(section.Statements, depth + 2, inLoop);
+                ReadBlock(section.Statements, depth + 2, inLoop, inSwitch: true);
             }
 
             Line(depth, "}");
@@ -532,11 +537,11 @@ public sealed class RulesFrontEnd {
             Line(depth, "}");
         }
 
-        private void ReadEmbedded(StatementSyntax statement, int depth, bool inLoop) {
+        private void ReadEmbedded(StatementSyntax statement, int depth, bool inLoop, bool inSwitch = false) {
             if (statement is BlockSyntax block) {
-                ReadBlock(block.Statements, depth, inLoop);
+                ReadBlock(block.Statements, depth, inLoop, inSwitch);
             } else {
-                ReadStatement(statement, depth, inLoop);
+                ReadStatement(statement, depth, inLoop, inSwitch);
             }
         }
 
@@ -849,9 +854,28 @@ public sealed class RulesFrontEnd {
                 if (!_compilation.IsSymbolAccessibleWithin(symbol, _declaringClass.ContainingAssembly)) {
                     _owner.Report(ValidationDiagnostics.MemberNotReachableFromRegion, identifier,
                         symbol.Name, _declaringClass.Name);
+                    continue;
+                }
+
+                // A generic fragment's members bind through the constraint interface, but the
+                // emitted method's subject is the concrete type - so a member the target
+                // implements explicitly is not reachable by name there, and would fail as CS1061
+                // inside generated code.
+                if (_subject?.Type is ITypeParameterSymbol &&
+                    symbol.ContainingType is { TypeKind: TypeKind.Interface } &&
+                    _target.FindImplementationForInterfaceMember(symbol) is { } implementation &&
+                    Explicitly(implementation)) {
+                    _owner.Report(ValidationDiagnostics.MemberNotReachableFromRegion, identifier,
+                        $"{_target.Name}.{symbol.Name} (implemented explicitly)", _declaringClass.Name);
                 }
             }
         }
+
+        private static bool Explicitly(ISymbol implementation) => implementation switch {
+            IPropertySymbol { ExplicitInterfaceImplementations.Length: > 0 } => true,
+            IMethodSymbol { ExplicitInterfaceImplementations.Length: > 0 } => true,
+            _ => false,
+        };
 
         /// <summary>
         /// A constant rendered as a literal that reads back as the same value <i>and</i> the same
@@ -1026,7 +1050,47 @@ public sealed class RulesFrontEnd {
         }
 
         private string WirePathOf(List<IPropertySymbol> segments) =>
-            string.Join(".", segments.Select(_owner.WireNameOf));
+            string.Join(".", segments.Select(WireNameOf));
+
+        /// <summary>
+        /// Whether every segment of an island's value path can be named on the concrete target.
+        /// Inside a generic fragment a member binds through the constraint interface, and one the
+        /// target implements explicitly is not reachable by name in the emitted method - reported
+        /// here instead of failing as CS1061 inside generated code.
+        /// </summary>
+        private bool PathIsReachable(List<IPropertySymbol> path, SyntaxNode site) {
+            if (_subject?.Type is not ITypeParameterSymbol) {
+                return true;
+            }
+
+            foreach (var segment in path) {
+                if (segment.ContainingType is { TypeKind: TypeKind.Interface } &&
+                    _target.FindImplementationForInterfaceMember(segment) is { } implementation &&
+                    Explicitly(implementation)) {
+                    _owner.Report(ValidationDiagnostics.MemberNotReachableFromRegion, site,
+                        $"{_target.Name}.{segment.Name} (implemented explicitly)", _declaringClass.Name);
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// The wire name of one path segment, resolved against the concrete target. Inside a
+        /// generic fragment a member binds through the constraint interface; the name the wire
+        /// sees is the implementing property's - <c>[JsonPropertyName]</c> on the implementer
+        /// wins, which is the point of stamping fragments out per concrete type.
+        /// </summary>
+        private string WireNameOf(IPropertySymbol property) {
+            if (property.ContainingType is { TypeKind: TypeKind.Interface } &&
+                !SymbolEqualityComparer.Default.Equals(property.ContainingType, _target) &&
+                _target.FindImplementationForInterfaceMember(property) is IPropertySymbol implementer) {
+                return _owner.WireNameOf(implementer);
+            }
+
+            return _owner.WireNameOf(property);
+        }
 
         // ---- the island expansion --------------------------------------------------------------
 
@@ -1080,8 +1144,12 @@ public sealed class RulesFrontEnd {
                         return false;
                     }
 
+                    if (path is not null && !_writer.PathIsReachable(path, value)) {
+                        return false;
+                    }
+
                     _access = value.ToString();
-                    _field = explicitField ?? _writer.WirePathOf(path!);
+                    _field = explicitField ?? (path is null ? null : _writer.WirePathOf(path));
                     _facts = FactsFor(value, path);
                 }
 

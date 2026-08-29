@@ -3,7 +3,7 @@ using Xunit;
 namespace ValidationModules.SourceGenerator.Tests;
 
 /// <summary>
-/// An expression-bodied <c>Describe</c> is one rule without a block, which
+/// An expression-bodied <c>Describe</c> is one statement's worth of rules without a block, which
 /// <c>RulesFrontEnd</c> accepts deliberately: a rules class that says one thing should not have to
 /// open a block to say it.
 /// </summary>
@@ -33,12 +33,12 @@ public class ExpressionBodiedRulesTests {
         }
 
         public sealed class ModelRules : IValidationRulesFor<Model> {
-            public void Describe(ValidationRules<Model> rules){{describe}}
+            public static void Describe(ValidationRules<Model> rules, Model x){{describe}}
         }
         """;
 
-    private const string Arrow = " => rules.Required(x => x.Name);";
-    private const string Block = " { rules.Required(x => x.Name); }";
+    private const string Arrow = " => rules.Require(x.Name);";
+    private const string Block = " { rules.Require(x.Name); }";
 
     [Fact]
     public void ArrowForm_GeneratesTheValidatorRatherThanCrashingTheGenerator() {
@@ -52,9 +52,9 @@ public class ExpressionBodiedRulesTests {
     }
 
     /// <summary>
-    /// The two spellings are one rule, so they have to emit one validator. Comparing the whole file
-    /// rather than probing it for a substring is what pins that the arrow form carries the rule
-    /// through the front end, and not merely that something was emitted under the right name.
+    /// The two spellings are one rule, so they have to transcribe to one region. Comparing the
+    /// whole companion rather than probing for a substring pins that the arrow form carries the
+    /// rule through the transcriber, not merely that something was emitted under the right name.
     /// </summary>
     [Fact]
     public void ArrowForm_EmitsExactlyWhatTheBlockFormEmits() {
@@ -62,19 +62,51 @@ public class ExpressionBodiedRulesTests {
         var block = GeneratorHarness.Run(Rules(Block));
 
         Assert.Equal(
+            block.Sources.Single(s => s.Key.Contains("_Rules")).Value,
+            arrow.Sources.Single(s => s.Key.Contains("_Rules")).Value);
+        Assert.Equal(
             block.Sources.Single(s => s.Key.Contains("ModelValidator")).Value,
             arrow.Sources.Single(s => s.Key.Contains("ModelValidator")).Value);
     }
 
     /// <summary>
-    /// The arrow form still has to be a rule declaration. VM0070 is anchored to the expression
-    /// itself here, there being no statement to anchor it to.
+    /// The arrow form is transcribed under the same rules as a block - here, plain computation is
+    /// legal and lands in the region.
     /// </summary>
     [Fact]
-    public void ArrowFormThatIsNotARuleDeclaration_IsStillVM0070() {
-        var result = GeneratorHarness.Run(Rules(" => System.Console.WriteLine(\"hello\");"));
+    public void ArrowFormWithOrdinaryComputation_Transcribes() {
+        var result = GeneratorHarness.Run(Rules(" => System.Console.WriteLine(x.Name);"));
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "CS8785");
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM0070");
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains(
+            "System.Console.WriteLine(x.Name);",
+            result.Sources.Single(s => s.Key.Contains("_Rules")).Value);
+    }
+
+    /// <summary>
+    /// And the invariants still hold with no statement to anchor to - the diagnostic lands on the
+    /// expression itself.
+    /// </summary>
+    [Fact]
+    public void ArrowFormThatLeaksTheBuilder_IsStillVM0087() {
+        var result = GeneratorHarness.Run($$"""
+            using ValidationModules;
+
+            namespace Sample;
+
+            public sealed record Model {
+                public string? Name { get; init; }
+            }
+
+            public sealed class ModelRules : IValidationRulesFor<Model> {
+                internal static bool Helper(ValidationRules<Model> r) => true;
+
+                public static void Describe(ValidationRules<Model> rules, Model x) => Helper(rules);
+            }
+            """);
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "CS8785");
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM0087");
     }
 }
