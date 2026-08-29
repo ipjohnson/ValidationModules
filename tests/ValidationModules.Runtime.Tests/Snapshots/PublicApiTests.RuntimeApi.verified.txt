@@ -2,18 +2,12 @@ namespace Microsoft.Extensions.DependencyInjection
 {
     public static class ValidationModulesServiceCollectionExtensions
     {
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddDescribedValidator<T, TRules>(this Microsoft.Extensions.DependencyInjection.IServiceCollection services)
-            where TRules : ValidationModules.IValidationRulesFor<T>, new () { }
         public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValidationModules(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.Collections.Generic.IReadOnlyList<ValidationModules.ValidatorRegistration> registrations) { }
         public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValidationRunner<T>(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
     }
 }
 namespace ValidationModules
 {
-    public sealed class ConditionalRules<T>
-    {
-        public ValidationModules.ValidationRules<T> Otherwise(System.Action rules) { }
-    }
     public static class ConstraintChecks
     {
         public static bool AllUnique<T>(System.Collections.Generic.IEnumerable<T> items) { }
@@ -34,11 +28,6 @@ namespace ValidationModules
         public static bool IsValid(System.ComponentModel.DataAnnotations.ValidationAttribute attribute, object instance, object? value, string memberName, string displayName) { }
         public static ValidationModules.ValidationFlow Validate(ref ValidationModules.ValidationContext context, System.ComponentModel.DataAnnotations.ValidationAttribute attribute, object instance, object? value, string field, string memberName, string displayName) { }
         public static ValidationModules.ValidationFlow ValidateObject(ref ValidationModules.ValidationContext context, System.ComponentModel.DataAnnotations.IValidatableObject value, ValidationModules.Naming.IValidationFieldNamer namer) { }
-    }
-    public sealed class DescribedValidator<T> : ValidationModules.IValidatorFor<T>
-    {
-        public DescribedValidator(ValidationModules.IValidationRulesFor<T> rules, ValidationModules.IValidatorProvider? nested = null, ValidationModules.Naming.IValidationFieldNamer? namer = null) { }
-        public ValidationModules.ValidationFlow Validate(ref ValidationModules.ValidationContext context, T value) { }
     }
     public static class DynamicValidation
     {
@@ -65,18 +54,19 @@ namespace ValidationModules
         bool IsValid(object value);
         ValidationModules.ValidationFlow Validate(ref ValidationModules.ValidationContext context, object value);
     }
+    public interface IValidationContextReporter
+    {
+        ValidationModules.ValidationFlow Report(string field, string code, string message, ValidationModules.ValidationSeverity severity = 0);
+        ValidationModules.ValidationFlow ReportHere(string code, string message, ValidationModules.ValidationSeverity severity = 0);
+    }
     public interface IValidationRulesFor<T>
     {
-        void Describe(ValidationModules.ValidationRules<T> rules);
+        void Describe(ValidationModules.ValidationRules<T> rules, T x);
     }
     public interface IValidatorFor<in T>
     {
         bool IsValid(T value);
         ValidationModules.ValidationFlow Validate(ref ValidationModules.ValidationContext context, T value);
-    }
-    public interface IValidatorProvider
-    {
-        ValidationModules.IValidatorFor<T>? GetValidator<T>();
     }
     public static class PropertyRulesExtensions
     {
@@ -97,24 +87,19 @@ namespace ValidationModules
             where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
         public static ValidationModules.PropertyRules<T, TValue?> RangeAtMost<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules, TValue max)
             where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
-        public static ValidationModules.PropertyRules<T, string?> Required<T>(this ValidationModules.PropertyRules<T, string?> rules) { }
-        public static ValidationModules.PropertyRules<T, TValue?> Required<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules)
+        public static ValidationModules.PropertyRules<T, string?> Require<T>(this ValidationModules.PropertyRules<T, string?> rules) { }
+        public static ValidationModules.PropertyRules<T, TValue?> Require<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules)
             where TValue :  class { }
-        public static ValidationModules.PropertyRules<T, TValue?> Required<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules)
+        public static ValidationModules.PropertyRules<T, TValue?> Require<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules)
             where TValue :  struct { }
-        public static ValidationModules.PropertyRules<T, string?> RequiredAllowingEmpty<T>(this ValidationModules.PropertyRules<T, string?> rules) { }
+        public static ValidationModules.PropertyRules<T, string?> RequireAllowingEmpty<T>(this ValidationModules.PropertyRules<T, string?> rules) { }
         public static ValidationModules.PropertyRules<T, System.Collections.Generic.IEnumerable<TElement>?> Unique<T, TElement>(this ValidationModules.PropertyRules<T, System.Collections.Generic.IEnumerable<TElement>?> rules) { }
-        public static ValidationModules.PropertyRules<T, TValue> Unless<T, TValue>(this ValidationModules.PropertyRules<T, TValue> rules, System.Func<T, bool> condition) { }
-        public static ValidationModules.PropertyRules<T, TValue> When<T, TValue>(this ValidationModules.PropertyRules<T, TValue> rules, System.Func<T, bool> condition) { }
     }
-    public sealed class PropertyRules<T, TValue>
-    {
-        public ValidationModules.ValidationRules<T> And { get; }
-    }
+    public sealed class PropertyRules<T, TValue> { }
     public delegate ValidationModules.ValidationFlow RuleAction<in T>(ref ValidationModules.ValidationContext context, T value);
     public static class RuntimeContract
     {
-        public const int Version = 7;
+        public const int Version = 8;
     }
     public static class ValidationCodes
     {
@@ -136,7 +121,7 @@ namespace ValidationModules
         public const string UniqueItems = "unique_items";
         public const string Url = "url";
     }
-    public readonly struct ValidationContext
+    public readonly struct ValidationContext : ValidationModules.IValidationContextReporter
     {
         public ValidationContext(ValidationModules.ValidationErrorCollector collector) { }
         public int ErrorCount { get; }
@@ -151,26 +136,43 @@ namespace ValidationModules
     }
     public static class ValidationContextExtensions
     {
-        public static ValidationModules.ValidationFlow ReportAllowedValues(this ValidationModules.ValidationContext context, string field, string allowedValues, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
-        public static ValidationModules.ValidationFlow ReportBase64(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
-        public static ValidationModules.ValidationFlow ReportCreditCard(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
-        public static ValidationModules.ValidationFlow ReportCustom(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
-        public static ValidationModules.ValidationFlow ReportEmail(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
-        public static ValidationModules.ValidationFlow ReportFileExtension(this ValidationModules.ValidationContext context, string field, string extensions, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
-        public static ValidationModules.ValidationFlow ReportItemCount(this ValidationModules.ValidationContext context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
-        public static ValidationModules.ValidationFlow ReportMultipleOf(this ValidationModules.ValidationContext context, string field, decimal divisor, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
-        public static ValidationModules.ValidationFlow ReportPattern(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
-        public static ValidationModules.ValidationFlow ReportPhone(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
-        public static ValidationModules.ValidationFlow ReportRange<T>(this ValidationModules.ValidationContext context, string field, T min, T max, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+        public static ValidationModules.ValidationFlow ReportAllowedValues<TReporter>(this TReporter context, string field, string allowedValues, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+            where TReporter : ValidationModules.IValidationContextReporter { }
+        public static ValidationModules.ValidationFlow ReportBase64<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+            where TReporter : ValidationModules.IValidationContextReporter { }
+        public static ValidationModules.ValidationFlow ReportCreditCard<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+            where TReporter : ValidationModules.IValidationContextReporter { }
+        public static ValidationModules.ValidationFlow ReportCustom<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+            where TReporter : ValidationModules.IValidationContextReporter { }
+        public static ValidationModules.ValidationFlow ReportEmail<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+            where TReporter : ValidationModules.IValidationContextReporter { }
+        public static ValidationModules.ValidationFlow ReportFileExtension<TReporter>(this TReporter context, string field, string extensions, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+            where TReporter : ValidationModules.IValidationContextReporter { }
+        public static ValidationModules.ValidationFlow ReportItemCount<TReporter>(this TReporter context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+            where TReporter : ValidationModules.IValidationContextReporter { }
+        public static ValidationModules.ValidationFlow ReportMultipleOf<TReporter>(this TReporter context, string field, decimal divisor, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+            where TReporter : ValidationModules.IValidationContextReporter { }
+        public static ValidationModules.ValidationFlow ReportPattern<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+            where TReporter : ValidationModules.IValidationContextReporter { }
+        public static ValidationModules.ValidationFlow ReportPhone<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+            where TReporter : ValidationModules.IValidationContextReporter { }
+        public static ValidationModules.ValidationFlow ReportRange<TReporter, T>(this TReporter context, string field, T min, T max, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+            where TReporter : ValidationModules.IValidationContextReporter
             where T : System.IFormattable { }
-        public static ValidationModules.ValidationFlow ReportRangeAtLeast<T>(this ValidationModules.ValidationContext context, string field, T min, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+        public static ValidationModules.ValidationFlow ReportRangeAtLeast<TReporter, T>(this TReporter context, string field, T min, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+            where TReporter : ValidationModules.IValidationContextReporter
             where T : System.IFormattable { }
-        public static ValidationModules.ValidationFlow ReportRangeAtMost<T>(this ValidationModules.ValidationContext context, string field, T max, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+        public static ValidationModules.ValidationFlow ReportRangeAtMost<TReporter, T>(this TReporter context, string field, T max, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+            where TReporter : ValidationModules.IValidationContextReporter
             where T : System.IFormattable { }
-        public static ValidationModules.ValidationFlow ReportRequired(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
-        public static ValidationModules.ValidationFlow ReportStringLength(this ValidationModules.ValidationContext context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
-        public static ValidationModules.ValidationFlow ReportUniqueItems(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
-        public static ValidationModules.ValidationFlow ReportUrl(this ValidationModules.ValidationContext context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null) { }
+        public static ValidationModules.ValidationFlow ReportRequired<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+            where TReporter : ValidationModules.IValidationContextReporter { }
+        public static ValidationModules.ValidationFlow ReportStringLength<TReporter>(this TReporter context, string field, int min = 0, int max = 2147483647, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+            where TReporter : ValidationModules.IValidationContextReporter { }
+        public static ValidationModules.ValidationFlow ReportUniqueItems<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+            where TReporter : ValidationModules.IValidationContextReporter { }
+        public static ValidationModules.ValidationFlow ReportUrl<TReporter>(this TReporter context, string field, ValidationModules.ValidationSeverity severity = 0, string? code = null)
+            where TReporter : ValidationModules.IValidationContextReporter { }
     }
     public readonly struct ValidationError : System.IEquatable<ValidationModules.ValidationError>
     {
@@ -229,37 +231,34 @@ namespace ValidationModules
     }
     public sealed class ValidationRules<T>
     {
-        public ValidationModules.PropertyRules<T, TValue> AllowedValues<TValue>(System.Func<T, TValue> value, TValue[] allowed, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
+        public ValidationModules.IValidationContextReporter Context { get; }
+        public ValidationModules.PropertyRules<T, TValue> AllowedValues<TValue>(TValue value, TValue[] allowed, string? field = null) { }
         public ValidationModules.ValidationRules<T> Apply(ValidationModules.RuleAction<T> rule) { }
-        public ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Count<TElement>(System.Func<T, System.Collections.Generic.IReadOnlyList<TElement>?> value, int min = 0, int max = 2147483647, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
-        public ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Each<TElement>(System.Func<T, System.Collections.Generic.IReadOnlyList<TElement>?> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null)
+        public ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Count<TElement>(System.Collections.Generic.IReadOnlyList<TElement>? value, int min = 0, int max = 2147483647, string? field = null) { }
+        public ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Each<TElement>(System.Collections.Generic.IReadOnlyList<TElement>? value, string? field = null)
             where TElement :  class { }
-        public ValidationModules.ValidationRules<T> Ensure(System.Func<T, bool> predicate, string? field = null, string? code = null, string? message = null, ValidationModules.ValidationSeverity severity = 0, [System.Runtime.CompilerServices.CallerArgumentExpression("predicate")] string? expression = null) { }
-        public ValidationModules.PropertyRules<T, TValue> For<TValue>(System.Func<T, TValue> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
-        public ValidationModules.PropertyRules<T, string?> Length(System.Func<T, string?> value, int min = 0, int max = 2147483647, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
-        public ValidationModules.PropertyRules<T, decimal?> MultipleOf(System.Func<T, decimal?> value, decimal divisor, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
-        public ValidationModules.PropertyRules<T, double?> MultipleOf(System.Func<T, double?> value, double divisor, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
-        public ValidationModules.PropertyRules<T, long?> MultipleOf(System.Func<T, long?> value, long divisor, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
-        public ValidationModules.PropertyRules<T, TValue?> Nested<TValue>(System.Func<T, TValue?> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null)
+        public ValidationModules.ValidationRules<T> Ensure(bool condition, string? field = null, string? code = null, string? message = null, ValidationModules.ValidationSeverity severity = 0) { }
+        public ValidationModules.PropertyRules<T, TValue> For<TValue>(TValue value, string? field = null) { }
+        public ValidationModules.PropertyRules<T, string?> Length(string? value, int min = 0, int max = 2147483647, string? field = null) { }
+        public ValidationModules.PropertyRules<T, decimal?> MultipleOf(decimal? value, decimal divisor, string? field = null) { }
+        public ValidationModules.PropertyRules<T, double?> MultipleOf(double? value, double divisor, string? field = null) { }
+        public ValidationModules.PropertyRules<T, long?> MultipleOf(long? value, long divisor, string? field = null) { }
+        public ValidationModules.PropertyRules<T, TValue?> Nested<TValue>(TValue? value, string? field = null)
             where TValue :  class { }
-        public ValidationModules.PropertyRules<T, string?> Pattern(System.Func<T, string?> value, System.Func<System.Text.RegularExpressions.Regex> pattern, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
-        public ValidationModules.PropertyRules<T, TValue?> Range<TValue>(System.Func<T, TValue?> value, TValue min, TValue max, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null)
+        public ValidationModules.PropertyRules<T, string?> Pattern(string? value, System.Func<System.Text.RegularExpressions.Regex> pattern, string? field = null) { }
+        public ValidationModules.PropertyRules<T, TValue?> Range<TValue>(TValue? value, TValue min, TValue max, string? field = null)
             where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
-        public ValidationModules.PropertyRules<T, TValue?> RangeAtLeast<TValue>(System.Func<T, TValue?> value, TValue min, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null)
+        public ValidationModules.PropertyRules<T, TValue?> RangeAtLeast<TValue>(TValue? value, TValue min, string? field = null)
             where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
-        public ValidationModules.PropertyRules<T, TValue?> RangeAtMost<TValue>(System.Func<T, TValue?> value, TValue max, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null)
+        public ValidationModules.PropertyRules<T, TValue?> RangeAtMost<TValue>(TValue? value, TValue max, string? field = null)
             where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
-        public ValidationModules.PropertyRules<T, string?> Required(System.Func<T, string?> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
-        public ValidationModules.PropertyRules<T, TValue?> Required<TValue>(System.Func<T, TValue?> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null)
+        public ValidationModules.PropertyRules<T, string?> Require(string? value, string? field = null) { }
+        public ValidationModules.PropertyRules<T, TValue?> Require<TValue>(TValue? value, string? field = null)
             where TValue :  class { }
-        public ValidationModules.PropertyRules<T, TValue?> Required<TValue>(System.Func<T, TValue?> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null)
+        public ValidationModules.PropertyRules<T, TValue?> Require<TValue>(TValue? value, string? field = null)
             where TValue :  struct { }
-        public ValidationModules.PropertyRules<T, string?> RequiredAllowingEmpty(System.Func<T, string?> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
-        public ValidationModules.PropertyRules<T, System.Collections.Generic.IEnumerable<TElement>?> Unique<TElement>(System.Func<T, System.Collections.Generic.IEnumerable<TElement>?> value, string? field = null, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? selector = null) { }
-        public ValidationModules.ValidationRules<T> Unless(System.Func<T, bool> condition) { }
-        public ValidationModules.ConditionalRules<T> Unless(System.Func<T, bool> condition, System.Action rules) { }
-        public ValidationModules.ValidationRules<T> When(System.Func<T, bool> condition) { }
-        public ValidationModules.ConditionalRules<T> When(System.Func<T, bool> condition, System.Action rules) { }
+        public ValidationModules.PropertyRules<T, string?> RequireAllowingEmpty(string? value, string? field = null) { }
+        public ValidationModules.PropertyRules<T, System.Collections.Generic.IEnumerable<TElement>?> Unique<TElement>(System.Collections.Generic.IEnumerable<TElement>? value, string? field = null) { }
     }
     public sealed class ValidationRunner<T>
     {

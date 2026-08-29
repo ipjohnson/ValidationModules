@@ -76,10 +76,23 @@ public static class RuntimeContract {
     // [PerValidationInstance]) and weaves calls to its IsValid and Validate members, neither of
     // which a contract-6 runtime declares. Additive, as the rule below requires.
 
+    // 7 -> 8: the rules surface became read-only and the runtime engine left.
+    // IValidationRulesFor<T>.Describe is static abstract with a symbolic subject parameter;
+    // ValidationRules<T> and PropertyRules<T,TValue> are inert and value-based; and
+    // DescribedValidator<T>, AddDescribedValidator, the ICompiledRule machinery,
+    // ConditionalRules<T> and IValidatorProvider are gone. Additive for the emitter:
+    // IValidationContextReporter, and the Report* helpers moved to a receiver constrained to it -
+    // emitted call sites are textually unchanged, so nothing older than this is required of them.
+    //
+    // Like 4 -> 5 this is not additive overall - the rules-engine members are removed, which the
+    // number cannot express, so it is written down here instead. Taken while the rules surface had
+    // zero consumers outside this repo (verified against ~/Hardened), which is what priced the
+    // break at a snapshot re-verify and this bump.
+
     /// <summary>
     /// The contract this runtime implements. Compared against
     /// <c>EmitterContract.RequiredRuntimeContract</c> by the generator, and against
     /// <c>$(ValidationModulesRuntimeContract)</c> by build tasks driving the emitter.
     /// </summary>
-    public const int Version = 7;
+    public const int Version = 8;
 }

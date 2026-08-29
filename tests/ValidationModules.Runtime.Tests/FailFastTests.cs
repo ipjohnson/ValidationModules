@@ -1,4 +1,3 @@
-using ValidationModules.Rules;
 using Xunit;
 
 namespace ValidationModules.Runtime.Tests;
@@ -8,9 +7,17 @@ namespace ValidationModules.Runtime.Tests;
 /// not evaluated, rather than evaluated and discarded.
 /// </summary>
 /// <remarks>
+/// <para>
 /// The distinction is the whole feature, and it is not observable from the error list alone - a pass
 /// that ran everything and reported one error looks identical. Every test that cares counts the
-/// rules that actually ran, through a predicate with a side effect.
+/// rules that actually ran, through a check with a side effect.
+/// </para>
+/// <para>
+/// The validators here are hand-written mirrors of what the emitter writes -
+/// <c>if (test &amp;&amp; ctx.ReportX(...).ShouldStop) return Stop;</c> per check - because the
+/// semantics under test belong to the collector and the flow protocol, not to any one engine.
+/// Real generated validators are covered by the integ-tests' own fail-fast suite.
+/// </para>
 /// </remarks>
 public class FailFastTests {
 
@@ -27,33 +34,50 @@ public class FailFastTests {
 
     private static int _evaluated;
 
-    private sealed class AddressRules : IValidationRulesFor<Address> {
-        public void Describe(ValidationRules<Address> rules) {
-            rules.Required(x => x.Line1);
-            rules.Required(x => x.PostalCode);
+    private sealed class AddressValidator : IValidatorFor<Address> {
+        public static readonly AddressValidator Instance = new();
+
+        public ValidationFlow Validate(ref ValidationContext context, Address value) {
+            if (value.Line1 is null && context.ReportRequired("line1").ShouldStop) {
+                return ValidationFlow.Stop;
+            }
+
+            if (value.PostalCode is null && context.ReportRequired("postalCode").ShouldStop) {
+                return ValidationFlow.Stop;
+            }
+
+            return ValidationFlow.Continue;
         }
     }
 
-    private sealed class OrderRules : IValidationRulesFor<Order> {
-        public void Describe(ValidationRules<Order> rules) {
-            rules.Required(x => x.Reference);
-            rules.Required(x => x.Customer);
-            rules.Nested(x => x.ShipTo);
+    private sealed class OrderValidator : IValidatorFor<Order> {
+        public static readonly OrderValidator Instance = new();
+
+        public ValidationFlow Validate(ref ValidationContext context, Order value) {
+            if (string.IsNullOrWhiteSpace(value.Reference) && context.ReportRequired("reference").ShouldStop) {
+                return ValidationFlow.Stop;
+            }
+
+            if (string.IsNullOrWhiteSpace(value.Customer) && context.ReportRequired("customer").ShouldStop) {
+                return ValidationFlow.Stop;
+            }
+
+            if (value.ShipTo is { } shipTo) {
+                var nested = context.Push("shipTo");
+
+                if (AddressValidator.Instance.Validate(ref nested, shipTo).ShouldStop) {
+                    return ValidationFlow.Stop;
+                }
+            }
+
+            return ValidationFlow.Continue;
         }
-    }
-
-    private static DescribedValidator<Order> Validator() =>
-        new(new OrderRules(), new AddressProvider());
-
-    private sealed class AddressProvider : IValidatorProvider {
-        public IValidatorFor<T>? GetValidator<T>() =>
-            new DescribedValidator<Address>(new AddressRules()) as IValidatorFor<T>;
     }
 
     private static ValidationResult Run(Order order, ValidationStopMode mode) {
         var collector = new ValidationErrorCollector { StopMode = mode };
 
-        Validator().ValidateInto(collector, order);
+        OrderValidator.Instance.ValidateInto(collector, order);
 
         return collector.ToResult();
     }
@@ -75,7 +99,7 @@ public class FailFastTests {
     public void StopOnFirstError_ReportsOnlyTheFirst() {
         var result = Run(new Order(), ValidationStopMode.StopOnFirstError);
 
-        Assert.Equal("Reference", Assert.Single(result.Errors).Field, ignoreCase: true);
+        Assert.Equal("reference", Assert.Single(result.Errors).Field);
     }
 
     /// <summary>
@@ -85,10 +109,9 @@ public class FailFastTests {
     public void StopOnFirstError_DoesNotEvaluateLaterRules() {
         _evaluated = 0;
 
-        var rules = new CountingRules();
         var collector = new ValidationErrorCollector { StopMode = ValidationStopMode.StopOnFirstError };
 
-        new DescribedValidator<Order>(rules).ValidateInto(collector, new Order());
+        CountingValidator.Instance.ValidateInto(collector, new Order());
 
         Assert.Equal(1, _evaluated);
     }
@@ -97,15 +120,26 @@ public class FailFastTests {
     public void CollectAll_EvaluatesLaterRules() {
         _evaluated = 0;
 
-        new DescribedValidator<Order>(new CountingRules()).Validate(new Order());
+        CountingValidator.Instance.Validate(new Order());
 
         Assert.Equal(2, _evaluated);
     }
 
-    private sealed class CountingRules : IValidationRulesFor<Order> {
-        public void Describe(ValidationRules<Order> rules) {
-            rules.Ensure(x => Count() && x.Reference is not null, code: "first");
-            rules.Ensure(x => Count() && x.Customer is not null, code: "second");
+    private sealed class CountingValidator : IValidatorFor<Order> {
+        public static readonly CountingValidator Instance = new();
+
+        public ValidationFlow Validate(ref ValidationContext context, Order value) {
+            if (!(Count() && value.Reference is not null) &&
+                context.Report("reference", "first", "reference is set.").ShouldStop) {
+                return ValidationFlow.Stop;
+            }
+
+            if (!(Count() && value.Customer is not null) &&
+                context.Report("customer", "second", "customer is set.").ShouldStop) {
+                return ValidationFlow.Stop;
+            }
+
+            return ValidationFlow.Continue;
         }
 
         private static bool Count() {
@@ -128,7 +162,7 @@ public class FailFastTests {
 
         var result = Run(order, ValidationStopMode.StopOnFirstError);
 
-        Assert.Equal("ShipTo.Line1", Assert.Single(result.Errors).Field, ignoreCase: true);
+        Assert.Equal("shipTo.line1", Assert.Single(result.Errors).Field);
     }
 
     // -- severity --------------------------------------------------------------------------------
@@ -171,7 +205,7 @@ public class FailFastTests {
 
     [Fact]
     public void ValidateFirst_ReturnsAtMostOneError() {
-        var result = Validator().ValidateFirst(new Order());
+        var result = OrderValidator.Instance.ValidateFirst(new Order());
 
         Assert.Single(result.Errors);
     }
@@ -184,7 +218,7 @@ public class FailFastTests {
             ShipTo = new Address { Line1 = "12 Analytical Engine Way", PostalCode = "12345" }
         };
 
-        Assert.True(Validator().ValidateFirst(order).IsValid);
+        Assert.True(OrderValidator.Instance.ValidateFirst(order).IsValid);
     }
 
     // -- a validator that cannot stop still gets the mode's answer --------------------------------

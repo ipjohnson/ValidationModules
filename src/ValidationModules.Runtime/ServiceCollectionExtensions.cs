@@ -102,38 +102,4 @@ public static class ValidationModulesServiceCollectionExtensions {
         return services;
     }
 
-    /// <summary>
-    /// Registers a rules class to be run by <see cref="DescribedValidator{T}"/>, for when the source
-    /// generator has not compiled it.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The entry point for the generator-less path: a rules class emitted by another generator, or
-    /// hand-written in an assembly this package's generator does not run over. Where our generator
-    /// <i>did</i> compile the class it also registered the validator it emitted, and calling this as
-    /// well registers a second, slower validator for the same type - <see cref="ValidationRunner{T}"/>
-    /// merges every registered <see cref="IValidatorFor{T}"/>, so every error would appear twice.
-    /// Within one compilation that is VM0074.
-    /// </para>
-    /// <para>
-    /// Singleton, so <see cref="IValidationRulesFor{T}.Describe"/> runs once per process. The
-    /// factory resolves <see cref="IValidatorProvider"/> optionally, because only a declaration that
-    /// descends into a nested type needs one.
-    /// </para>
-    /// </remarks>
-    /// <typeparam name="T">The validated type.</typeparam>
-    /// <typeparam name="TRules">The rules class.</typeparam>
-    public static IServiceCollection AddDescribedValidator<T, TRules>(this IServiceCollection services)
-        where TRules : IValidationRulesFor<T>, new() {
-        ArgumentNullException.ThrowIfNull(services);
-
-        services.AddSingleton<IValidatorFor<T>>(provider => new DescribedValidator<T>(
-            new TRules(),
-            provider.GetService<IValidatorProvider>(),
-            provider.GetService<IValidationFieldNamer>()));
-
-        services.TryAddSingleton<IValidationFieldNamer>(CamelCaseFieldNamer.Instance);
-
-        return services;
-    }
 }

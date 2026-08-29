@@ -4,42 +4,24 @@ using Xunit;
 namespace ValidationModules.Runtime.Tests;
 
 /// <summary>
-/// Pins the rule from IMPLEMENTATION-PLAN.md §4: a failed <c>[Required]</c> suppresses every other
-/// constraint on the same field.
+/// Pins the two scopes of the rule from IMPLEMENTATION-PLAN.md §4: a failed <c>Require</c>
+/// suppresses the rest of its own chained statement through the <c>else if</c> the generator
+/// emits, and the collector's path-keyed rule covers only the adapter path.
 /// </summary>
 /// <remarks>
-/// These assert it at the collector rather than through generated control flow, because that is
-/// where it is now enforced - an engine that maps errors from somewhere else, like the
-/// FluentValidation adapter, has no <c>else</c> to put it in and would otherwise be unable to
-/// conform.
+/// The collector rule exists because an engine that maps errors from somewhere else, like the
+/// FluentValidation adapter, has no <c>else</c> to put suppression in. It deliberately does not
+/// cover <see cref="ValidationContext"/> reports: that path reports positions, and two positions
+/// can render to the same bounded path - the sibling regression pinned below. Chain-scoped
+/// suppression in real generated validators is the integ-tests' coverage.
 /// </remarks>
 public class RequiredSuppressionTests {
 
     [Fact]
-    public void RuleChain_AfterRequiredOnTheSameField_IsSuppressed() {
-        var validator = new DescribedValidator<Pet>(new NameRequiredThenLength());
-
-        var error = Assert.Single(validator.Validate(new Pet()).Errors);
-        Assert.Equal(ValidationCodes.Required, error.Code);
-    }
-
-    [Fact]
-    public void RuleChain_SuppressesEvenWhenTheRulesAreDeclaredApart() {
-        // Build groups a field's rules together regardless of where they were written, so the
-        // chain still sees them as one field.
-        var validator = new DescribedValidator<Pet>(new NameRulesSplitByAnotherField());
-
-        var errors = validator.Validate(new Pet()).Errors;
-
-        Assert.Equal(ValidationCodes.Required, Assert.Single(errors, e => e.Field == "name").Code);
-    }
-
-    [Fact]
-    public void ContextAdd_NoLongerSuppressesAcrossTheWholePass() {
-        // The rule moved to where a field's rules are composed. Generated code short-circuits by
-        // testing the required result on each of the field's other constraints; a described
-        // validator with a field chain. A bare context does neither, so it records what it is told -
-        // which is what stops two positions that render alike from silencing each other.
+    public void ContextAdd_DoesNotSuppressAcrossStatements() {
+        // A bare context records what it is told - which is what stops two positions that render
+        // alike from silencing each other. Statement-to-statement suppression is the else-if of a
+        // single chain, emitted by the generator.
         var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
 
@@ -197,19 +179,6 @@ public class RequiredSuppressionTests {
         }
 
         Assert.Equal(20, collector.ToResult().Errors.Count);
-    }
-
-    private sealed class NameRequiredThenLength : IValidationRulesFor<Pet> {
-        public void Describe(ValidationRules<Pet> rules) =>
-            rules.Required(x => x.Name).Length(5, 10);
-    }
-
-    private sealed class NameRulesSplitByAnotherField : IValidationRulesFor<Pet> {
-        public void Describe(ValidationRules<Pet> rules) {
-            rules.Required(x => x.Name);
-            rules.Required(x => x.Tag);
-            rules.Length(x => x.Name, 5, 10);
-        }
     }
 
     private sealed class RequiredOnly : IValidatorFor<Pet> {

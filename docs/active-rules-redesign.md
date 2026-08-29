@@ -119,11 +119,13 @@ place; ordinary statements are copied through.
   then one region per rules class, classes ordered by name (ordinal), statements in body order.
   §19.7's field-grouping rule for rules classes is replaced by body order — now trivially true,
   because the body *is* the validator.
-- **Suppression survives without grouping.** A chain (`rules.Require(x.Number).Length(4, 12)`)
-  is one contiguous expression and emits as `if`/`else if`. Across separate statements,
-  suppression is the collector's job (field-keyed: later errors on a field whose `required`
-  already failed are dropped), so it applies to vocabulary rules and free-form reports alike,
-  automatically.
+- **Suppression is chain-scoped.** A chain (`rules.Require(x.Number).Length(4, 12)`) is one
+  contiguous expression and emits as `if`/`else if`, so a failed `Require` suppresses the rest of
+  its own statement. Separate statements on one field report independently, deliberately — the
+  collector's path-keyed rule was tried for this and silenced sibling errors whose bounded paths
+  rendered alike (`RequiredSuppressionTests` pins the regression); it stays scoped to the adapter
+  path, where flat field names are all there is. Rules for one field belong in one chain; that is
+  the documented line, not a runtime rule.
 - **Semantics are C# semantics.** Conditions evaluate where written. The old once-per-pass
   condition hoisting existed so two engines would agree; with one engine, what the code says is
   the spec.
