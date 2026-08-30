@@ -74,6 +74,10 @@ public class CodeDerivationContractTests {
         ("emptiness", "x => x.Items.Length > 0"),
         ("emptiness", "x => x.Items.Any()"),
         ("emptiness", "x => !x.Items.Any()"),
+        ("emptiness", "x => x.Items.Count > 0 && x.Paid"),
+
+        ("compound idiom", "x => x.Paid && !string.IsNullOrEmpty(x.Name)"),
+        ("compound idiom", "x => !string.IsNullOrEmpty(x.Name) && x.Age > 0"),
 
         ("member path", "x => x.Home.PostalCode != null"),
         ("member path", "x => x.Home?.PostalCode != null"),
@@ -164,9 +168,14 @@ public class CodeDerivationContractTests {
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <c>x.Home.PostalCode</c> and <c>x.Home?.PostalCode</c> are one rule written two ways. The
-    /// difference is what happens when <c>Home</c> is null, which is a null-safety choice in the
-    /// author's own code rather than a different thing being asserted, so one key is right.
+    /// Each of these is one assertion with more than one spelling, and collapsing them is what the
+    /// idiom table is for. <c>== null</c> and <c>is null</c> say the same thing; so do <c>Count</c>
+    /// and <c>Length</c> against zero.
+    /// </para>
+    /// <para>
+    /// <c>x.Home.PostalCode</c> and <c>x.Home?.PostalCode</c> differ only in what happens when
+    /// <c>Home</c> is null, which is a null-safety choice in the author's own code rather than a
+    /// different thing being asserted.
     /// </para>
     /// <para>
     /// <c>Sum(l =&gt; l.Price)</c> and <c>Sum(line =&gt; line.Price)</c> are the same rule under two
@@ -175,7 +184,10 @@ public class CodeDerivationContractTests {
     /// </para>
     /// </remarks>
     private static readonly HashSet<string> IntendedCollisions = [
-        "home_postal_code_not_equal_null",
+        "name_is_null",
+        "name_is_not_null",
+        "home_postal_code_is_not_null",
+        "items_is_not_empty",
         "lines_sum_price_greater_than_0",
     ];
 

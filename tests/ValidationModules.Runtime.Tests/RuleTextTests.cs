@@ -106,7 +106,7 @@ public class RuleTextTests {
     [InlineData("x => x.Start > x.End", "start_greater_than_end")]
     [InlineData("x => x.Count >= x.Minimum", "count_greater_than_or_equal_minimum")]
     [InlineData("x => x.Status == x.Wanted", "status_equal_wanted")]
-    [InlineData("x => x.CustomsCode != null", "customs_code_not_equal_null")]
+    [InlineData("x => x.CustomsCode != null", "customs_code_is_not_null")]
     [InlineData("x => x.Paid && x.Shipped", "paid_and_shipped")]
     [InlineData("x => x.Paid || x.Waived", "paid_or_waived")]
     [InlineData("x => !x.Cancelled", "not_cancelled")]
@@ -143,7 +143,7 @@ public class RuleTextTests {
 
     [Theory]
     [InlineData("x => x.Name.Length > 3", "name_length_greater_than_3")]
-    [InlineData("x => !string.IsNullOrWhiteSpace(x.Name)", "not_string_is_null_or_white_space_name")]
+    [InlineData("x => !string.IsNullOrWhiteSpace(x.Name)", "name_is_not_null_or_blank")]
     [InlineData("x => x.HTTPStatus == 200", "http_status_equal_200")]
     [InlineData("x => x.Total * 2 > x.Limit", "total_times_2_greater_than_limit")]
     public void CodeOfPredicate_SplitsHumpsAndAcronymsAndDropsStructure(string predicate, string expected) {
@@ -155,6 +155,58 @@ public class RuleTextTests {
         Assert.Equal(
             RuleText.CodeOfPredicate("x => x.Start < x.End", Name),
             RuleText.CodeOfPredicate("x =>\n        x.Start\n            < x.End", Name));
+    }
+
+    [Theory]
+    [InlineData("x => string.IsNullOrEmpty(x.Name)", "name_is_null_or_empty")]
+    [InlineData("x => !string.IsNullOrEmpty(x.Name)", "name_is_not_null_or_empty")]
+    [InlineData("x => string.IsNullOrWhiteSpace(x.Name)", "name_is_null_or_blank")]
+    [InlineData("x => x.Name == null", "name_is_null")]
+    [InlineData("x => x.Items.Count == 0", "items_is_empty")]
+    [InlineData("x => x.Items.Length > 0", "items_is_not_empty")]
+    public void CodeOfPredicate_NamesAnIdiomForWhatItAsserts(string predicate, string expected) {
+        // The subject comes first even though the tokens do not, which is the readability the
+        // table exists for: not_string_is_null_or_white_space_name said the same thing far worse.
+        Assert.Equal(expected, RuleText.CodeOfPredicate(predicate, Name));
+    }
+
+    [Fact]
+    public void CodeOfPredicate_TwoSpellingsOfOneAssertion_Agree() {
+        // Collapsing these is the point of the table, not a collision.
+        Assert.Equal(
+            RuleText.CodeOfPredicate("x => x.Name == null", Name),
+            RuleText.CodeOfPredicate("x => x.Name is null", Name));
+    }
+
+    [Fact]
+    public void CodeOfPredicate_AnIdiomInsideALargerRule_KeepsTheRest() {
+        // The emptiness idiom only fires when the comparison is the whole rule; a count being
+        // used for something else still reads as a count.
+        Assert.Equal("paid_and_name_is_not_null_or_empty",
+            RuleText.CodeOfPredicate("x => x.Paid && !string.IsNullOrEmpty(x.Name)", Name));
+
+        Assert.Equal("items_count_greater_than_0_and_paid",
+            RuleText.CodeOfPredicate("x => x.Items.Count > 0 && x.Paid", Name));
+    }
+
+    [Fact]
+    public void CodeOfPredicate_DropsLambdaParameters() {
+        // A parameter name is not part of the rule, so renaming one must not move the code.
+        Assert.Equal(
+            RuleText.CodeOfPredicate("x => x.Lines.Sum(l => l.Price) > 0", Name),
+            RuleText.CodeOfPredicate("x => x.Lines.Sum(line => line.Price) > 0", Name));
+    }
+
+    [Fact]
+    public void CodeOfPredicate_KeepsPrecedenceAndPunctuation() {
+        // Both pairs used to collide, which is two different rules under one wire code.
+        Assert.NotEqual(
+            RuleText.CodeOfPredicate("x => !(x.Paid && x.Shipped)", Name),
+            RuleText.CodeOfPredicate("x => !x.Paid && x.Shipped", Name));
+
+        Assert.NotEqual(
+            RuleText.CodeOfPredicate("x => x.Email.Contains(\"@\")", Name),
+            RuleText.CodeOfPredicate("x => x.Email.Contains(\".\")", Name));
     }
 
     [Fact]

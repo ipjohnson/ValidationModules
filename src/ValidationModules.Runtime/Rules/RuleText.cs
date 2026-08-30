@@ -58,7 +58,7 @@ internal static class RuleText {
     /// The pinned corpus's checksum under <see cref="CodeDerivationContract"/>. Changing this
     /// without bumping the contract is the mistake the pairing exists to catch.
     /// </summary>
-    public const string CodeDerivationChecksum = "518407fef50e32e2";
+    public const string CodeDerivationChecksum = "6a6d7f7399daad37";
 
     /// <summary>
     /// The property name a selector reads - <c>"x =&gt; x.Age"</c> gives <c>"Age"</c>, and
@@ -273,7 +273,17 @@ internal static class RuleText {
             }
 
             if (IsIdentifierStart(character)) {
+                if (TryAppendBlankIdiom(rendered, ref index, builder)) {
+                    afterValue = true;
+                    continue;
+                }
+
                 var identifier = ReadIdentifier(rendered, ref index)!;
+
+                if (TryAppendEmptinessIdiom(identifier, rendered, ref index, end, builder)) {
+                    afterValue = true;
+                    continue;
+                }
 
                 if (IsLambdaArrowAhead(rendered, index)) {
                     // "l => …": the parameter and its arrow are both structure.
@@ -310,6 +320,11 @@ internal static class RuleText {
                 continue;
             }
 
+            if (TryAppendNullIdiom(rendered, ref index, end, builder)) {
+                afterValue = true;
+                continue;
+            }
+
             var word = ReadOperator(rendered, ref index);
 
             if (word is not null) {
@@ -324,6 +339,181 @@ internal static class RuleText {
         }
 
         return builder.Length == 0 ? null : builder.ToString();
+    }
+
+    /// <summary>
+    /// The recognised idioms, named for what they assert rather than for the tokens that spell
+    /// them: <c>!string.IsNullOrWhiteSpace(name)</c> is <c>name_is_not_null_or_blank</c> rather
+    /// than <c>not_string_is_null_or_white_space_name</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every entry is a wire contract, so the table only holds shapes whose meaning is not in
+    /// doubt, and it can only grow in a major release. Recognising one more idiom later moves the
+    /// codes of rules nobody edited.
+    /// </para>
+    /// <para>
+    /// <c>Any()</c> is deliberately absent. Its useful form is the negated one, and inverting
+    /// <c>!x.Items.Any()</c> to <c>items_is_empty</c> means knowing the <c>!</c> covers the whole
+    /// call rather than its receiver, which is parsing rather than matching. It derives
+    /// <c>items_any</c> and reads well enough.
+    /// </para>
+    /// </remarks>
+    private static bool TryAppendBlankIdiom(string text, ref int index, StringBuilder builder) {
+        string suffix;
+
+        if (Matches(text, index, "string.IsNullOrEmpty(")) {
+            suffix = "is_null_or_empty";
+            index += "string.IsNullOrEmpty(".Length;
+        } else if (Matches(text, index, "string.IsNullOrWhiteSpace(")) {
+            suffix = "is_null_or_blank";
+            index += "string.IsNullOrWhiteSpace(".Length;
+        } else {
+            return false;
+        }
+
+        var close = MatchingParenthesis(text, index);
+
+        if (close < 0) {
+            return false;
+        }
+
+        // The '!' is already in the builder as its own segment. Popping it and inverting is what
+        // puts the subject first, which is the whole readability gain.
+        if (PopTrailingNot(builder)) {
+            suffix = suffix == "is_null_or_empty" ? "is_not_null_or_empty" : "is_not_null_or_blank";
+        }
+
+        AppendWords(builder, text.Substring(index, close - index));
+        AppendSegment(builder, suffix);
+
+        index = close + 1;
+        return true;
+    }
+
+    /// <summary>
+    /// <c>.Count == 0</c> and its family. The receiver is already in the builder, so this appends
+    /// what the comparison asserts and drops the count itself.
+    /// </summary>
+    private static bool TryAppendEmptinessIdiom(
+        string identifier, string text, ref int index, int end, StringBuilder builder) {
+
+        if (identifier != "Count" && identifier != "Length") {
+            return false;
+        }
+
+        var scan = index;
+
+        while (scan < end && text[scan] == ' ') {
+            scan++;
+        }
+
+        string suffix;
+
+        if (Matches(text, scan, "== 0")) {
+            suffix = "is_empty";
+        } else if (Matches(text, scan, "> 0") || Matches(text, scan, "!= 0")) {
+            suffix = "is_not_empty";
+        } else {
+            return false;
+        }
+
+        // Only when the comparison ends the expression. "x.Items.Count > 0 && …" is a count being
+        // used, not an emptiness test, and rewriting it would drop the rest of the rule's shape.
+        var after = scan + (suffix == "is_empty" ? 4 : Matches(text, scan, "> 0") ? 3 : 4);
+
+        while (after < end && text[after] == ' ') {
+            after++;
+        }
+
+        if (after != end) {
+            return false;
+        }
+
+        AppendSegment(builder, suffix);
+        index = end;
+        return true;
+    }
+
+    /// <summary>
+    /// <c>== null</c> and <c>!= null</c>, so they agree with the <c>is null</c> spelling the walk
+    /// already produces rather than deriving a second code for the same assertion.
+    /// </summary>
+    private static bool TryAppendNullIdiom(string text, ref int index, int end, StringBuilder builder) {
+        string suffix;
+        int width;
+
+        if (Matches(text, index, "== null")) {
+            suffix = "is_null";
+            width = "== null".Length;
+        } else if (Matches(text, index, "!= null")) {
+            suffix = "is_not_null";
+            width = "!= null".Length;
+        } else {
+            return false;
+        }
+
+        if (index + width > end) {
+            return false;
+        }
+
+        AppendSegment(builder, suffix);
+        index += width;
+        return true;
+    }
+
+    private static bool Matches(string text, int index, string expected) {
+        if (index < 0 || index + expected.Length > text.Length) {
+            return false;
+        }
+
+        for (var offset = 0; offset < expected.Length; offset++) {
+            if (text[index + offset] != expected[offset]) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>The index of the parenthesis closing the one whose contents start at the index.</summary>
+    private static int MatchingParenthesis(string text, int index) {
+        var depth = 1;
+
+        while (index < text.Length) {
+            if (text[index] == '"' || text[index] == '\'') {
+                SkipLiteral(text, ref index);
+                continue;
+            }
+
+            if (text[index] == '(') {
+                depth++;
+            } else if (text[index] == ')' && --depth == 0) {
+                return index;
+            }
+
+            index++;
+        }
+
+        return -1;
+    }
+
+    /// <summary>Removes a trailing <c>not</c> segment, reporting whether there was one.</summary>
+    private static bool PopTrailingNot(StringBuilder builder) {
+        const string Segment = "not";
+
+        if (builder.Length == Segment.Length && Matches(builder.ToString(), 0, Segment)) {
+            builder.Length = 0;
+            return true;
+        }
+
+        if (builder.Length > Segment.Length + 1 &&
+            Matches(builder.ToString(), builder.Length - Segment.Length - 1, "_" + Segment)) {
+            builder.Length -= Segment.Length + 1;
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>Whether a lambda arrow follows, skipping spaces.</summary>

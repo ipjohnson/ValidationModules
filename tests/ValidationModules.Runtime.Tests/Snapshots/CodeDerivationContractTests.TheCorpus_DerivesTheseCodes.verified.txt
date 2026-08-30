@@ -46,45 +46,53 @@ x => x.Total % 5 == 0
 
 -- null
 x => x.Name != null
-  -> name_not_equal_null
+  -> name_is_not_null
 x => x.Name == null
-  -> name_equal_null
+  -> name_is_null
 x => x.Name is null
   -> name_is_null
 x => x.Name is not null
   -> name_is_not_null
 x => string.IsNullOrEmpty(x.Name)
-  -> string_is_null_or_empty_name
+  -> name_is_null_or_empty
 x => !string.IsNullOrEmpty(x.Name)
-  -> not_string_is_null_or_empty_name
+  -> name_is_not_null_or_empty
 x => string.IsNullOrWhiteSpace(x.Name)
-  -> string_is_null_or_white_space_name
+  -> name_is_null_or_blank
 x => !string.IsNullOrWhiteSpace(x.Name)
-  -> not_string_is_null_or_white_space_name
+  -> name_is_not_null_or_blank
 
 -- emptiness
 x => x.Items.Count > 0
-  -> items_count_greater_than_0
+  -> items_is_not_empty
 x => x.Items.Count == 0
-  -> items_count_equal_0
+  -> items_is_empty
 x => x.Items.Length > 0
-  -> items_length_greater_than_0
+  -> items_is_not_empty
 x => x.Items.Any()
   -> items_any
 x => !x.Items.Any()
   -> not_items_any
+x => x.Items.Count > 0 && x.Paid
+  -> items_count_greater_than_0_and_paid
+
+-- compound idiom
+x => x.Paid && !string.IsNullOrEmpty(x.Name)
+  -> paid_and_name_is_not_null_or_empty
+x => !string.IsNullOrEmpty(x.Name) && x.Age > 0
+  -> name_is_not_null_or_empty_and_age_greater_than_0
 
 -- member path
 x => x.Home.PostalCode != null
-  -> home_postal_code_not_equal_null
+  -> home_postal_code_is_not_null
 x => x.Home?.PostalCode != null
-  -> home_postal_code_not_equal_null
+  -> home_postal_code_is_not_null
 x => x.Name.Length > 3
   -> name_length_greater_than_3
 x => x.HTTPStatus == 200
   -> http_status_equal_200
 x => x.CustomsCode != null
-  -> customs_code_not_equal_null
+  -> customs_code_is_not_null
 
 -- literal
 x => x.Status == "active"
@@ -108,7 +116,7 @@ x => x.Lines.Sum(line => line.Price) > 0
 x => x.Lines.All(l => l.Qty > 0)
   -> lines_all_qty_greater_than_0
 x => x.Lines.Any(l => l.Sku == null)
-  -> lines_any_sku_equal_null
+  -> lines_any_sku_is_null
 
 -- call
 x => Patterns.Sku().IsMatch(x.Sku)
@@ -116,7 +124,7 @@ x => Patterns.Sku().IsMatch(x.Sku)
 x => x.Start.AddDays(x.Nights) <= x.End
   -> start_add_days_nights_less_than_or_equal_end
 x => x.Name.Trim().Length > 0
-  -> name_trim_length_greater_than_0
+  -> name_trim_is_not_empty
 
 -- pattern
 x => x.Age is >= 0 and <= 30
