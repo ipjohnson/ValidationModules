@@ -1,7 +1,6 @@
-<!-- Absolute URLs so the image survives being packed into the NuGet README; GitHub swaps the
-     variant with its theme. The logo is sized to the H1 text (~32px), so default baseline
-     alignment sits it level with the name on every renderer - no align attribute, which NuGet's
-     sanitizer strips anyway. -->
+<!-- Absolute URLs so the logo resolves when this file is packed into the NuGet package. It is sized
+     to the H1 text so default baseline alignment sits it level with the name; NuGet's sanitizer
+     strips an align attribute anyway. -->
 # <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ipjohnson/ValidationModules/main/assets/logo-dark.svg"><img src="https://raw.githubusercontent.com/ipjohnson/ValidationModules/main/assets/logo.svg" alt="" width="32" height="32"></picture> ValidationModules
 
 [![NuGet](https://img.shields.io/nuget/v/ValidationModules.Runtime.svg)](https://www.nuget.org/packages/ValidationModules.Runtime/)
@@ -9,35 +8,25 @@
 [![coverage](https://raw.githubusercontent.com/ipjohnson/ValidationModules/badges/coverage.svg)](https://github.com/ipjohnson/ValidationModules/actions/workflows/build-package.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE.txt)
 
-Compile-time validation for .NET. Attributes on your models become straight-line C# at build time,
-so a validation pass is a handful of `if` statements: **~32 ns and 56 B** for a clean pass over a
-flat model — **23 ns and 0 B** on the boolean fast path — where FluentValidation takes 179 ns and
-664 B for the same work. No reflection, no expression trees, no regex compiled at runtime, and a
-Native AOT publish is verified on every release, not just supported.
+Compile-time validation for .NET. You declare constraints as attributes on a model, and a source
+generator writes the validator into your assembly during the build.
 
-## Install
+Nothing reflects at runtime. There are no expression trees, no regex compiled at startup, and no
+rule graph to assemble. A clean pass over a flat model takes 32 ns and allocates 56 bytes, where
+FluentValidation takes 179 ns and 664 bytes for the same rules. Native AOT is verified by publishing
+and running a real binary on every release.
 
-```bash
-dotnet add package ValidationModules.Runtime
-dotnet add package ValidationModules.SourceGenerator
-```
+## Declare and validate
 
-Web apps also want the [ASP.NET Core integration](#aspnet-core):
-
-```bash
-dotnet add package ValidationModules.AspNetCore
-```
-
-Requires .NET 8.0 or later. The packages ship both `net8.0` and `net10.0` assemblies, so a
-project on either LTS release gets one built against its own framework.
-
-## Declare, then validate
+Constraints go on the model:
 
 ```csharp
+using ValidationModules.Constraints;
+
 public record Pet {
     [Required]
     [StringLength(min: 1, max: 100)]
-    public string Name { get; init; }
+    public string? Name { get; init; }
 
     [Pattern("^[a-zA-Z0-9-]*$")]
     public string? Sku { get; init; }
@@ -50,9 +39,11 @@ public record Pet {
 }
 ```
 
-The generator emits a validator per type and one registration call for the assembly:
+The generator emits one validator per type and a single registration call for the assembly:
 
 ```csharp
+using ValidationModules;
+
 services.AddMyAppValidators();                 // named after your assembly
 
 var validator = provider.GetRequiredService<IValidatorFor<Pet>>();
@@ -66,10 +57,29 @@ foreach (var error in result.Errors) {
 // toys[3].name     required
 ```
 
-## Rules as code
+Every error carries a field path and a stable `Code`. Build UI and localization off the code rather
+than the message text.
 
-For the type you cannot edit, and the rule that is not a per-property fact, write a rules class —
-full C#, **read at build time and never run**:
+## Install
+
+```bash
+dotnet add package ValidationModules.Runtime
+dotnet add package ValidationModules.SourceGenerator
+```
+
+Web applications also want the [ASP.NET Core integration](#aspnet-core):
+
+```bash
+dotnet add package ValidationModules.AspNetCore
+```
+
+Requires .NET 8.0 or later. The packages ship both `net8.0` and `net10.0` assemblies, so a project
+on either LTS release gets one built against its own framework.
+
+## Rules classes
+
+Some rules do not fit an attribute. A cross-field comparison, a computed total, or a type you cannot
+edit belongs in a rules class. It is full C#, read at build time and never executed.
 
 ```csharp
 public sealed class OrderRules : IValidationRulesFor<Order> {
@@ -86,41 +96,49 @@ public sealed class OrderRules : IValidationRulesFor<Order> {
 }
 ```
 
-Locals, `if`/`else` and helpers transcribe into the generated validator and run there;
-vocabulary calls expand into the same checks the attributes produce. The declaration layer —
-attributes and rules classes alike — is build-time-only: what ships is generated validators plus
-the small reporting runtime, and under trimming or Native AOT a rules class disappears
-entirely. See [Rule classes](https://ipjohnson.github.io/ValidationModules/guide/rule-classes).
+Locals, `if`/`else`, and helper calls transcribe into the generated validator and run there. The
+vocabulary calls expand into the same checks the attributes produce.
+
+Both declaration layers are build-time only. What ships is the generated validators plus the small
+reporting runtime, and under trimming or Native AOT the rules class itself is gone. See
+[Rule classes](https://ipjohnson.github.io/ValidationModules/guide/rule-classes) for the full
+vocabulary.
 
 ## Performance
 
 | Scenario | ValidationModules | FluentValidation | DataAnnotations |
 |---|---|---|---|
 | Clean pass, flat model | 32 ns · 56 B | 179 ns · 664 B | 958 ns · 2,696 B |
-| Clean pass, boolean fast path¹ | 23 ns · 0 B | — | — |
+| Clean pass, flat model, `IsValid` only | 23 ns · 0 B | — | — |
 | Five failures, flat model | 169 ns · 1,072 B | 2,404 ns · 9,904 B | 1,582 ns · 4,136 B |
-| Clean pass, nested graph | 110 ns · 56 B | 1,817 ns · 5,224 B | 581 ns · top level only² |
+| Clean pass, nested graph | 110 ns · 56 B | 1,817 ns · 5,224 B | 581 ns, top level only |
 | 1,000-element collection | 15.4 µs · 56 B | 236 µs · 826 KB | — |
 
-Measured with BenchmarkDotNet (Apple M3 Pro, .NET 10.0.10, FluentValidation 12.1.1) on identical
-models carrying the same rules; every cross-engine row is a full pass that materializes a result
-on both sides. Allocations are counted, not timed, and are exact — the 56 B is the result object,
-and the pass itself allocates nothing at any nesting depth or collection size. ¹The generated
-`IsValid` returns at the first failure and builds no report; it is measured on its own row
-because neither competitor has a boolean-only API to pair it with. ²DataAnnotations does not
-descend into nested objects or collection elements. A parity check refuses to run the suite
-unless all three engines find the same failure counts, FluentValidation runs with
-`CascadeMode.Stop` and the same `[GeneratedRegex]` instances as the generated code, and every
-validator is constructed once in setup. Reproduce the numbers, with full tables and error terms,
-by running `./scripts/benchmark.sh --comparative`.
+Measured with BenchmarkDotNet on an Apple M3 Pro, .NET 10.0.10, FluentValidation 12.1.1. All three
+engines validate identical models carrying the same rules, and every cross-engine row is a full pass
+that materializes a result on both sides.
+
+Allocations are counted rather than timed, so they are exact and do not move between runs. The 56 B
+is the result object. The pass itself allocates nothing at any nesting depth or collection size.
+
+The `IsValid` row stands alone because neither competitor has a boolean-only API to pair with it.
+That call returns at the first failure and builds no report.
+
+DataAnnotations does not descend into nested objects or collection elements. Its nested figure
+covers the top level only, and it has no figure for the collection row at all.
+
+The suite refuses to run unless all three engines report the same failure counts. FluentValidation
+runs with `CascadeMode.Stop` and the same `[GeneratedRegex]` instances the generated code uses, and
+every validator is constructed once in setup. Run `./scripts/benchmark.sh --comparative` to
+reproduce the numbers with full tables and error terms.
 
 ## Native AOT
 
-`ValidationModules.Runtime` carries `IsAotCompatible` and escalates the trim/AOT warnings
-(`IL2026`, `IL3050`, and friends) to errors, so the compiler enforces the constraint.
-`scripts/verify-aot.sh` then publishes a real AOT binary and runs it — paths, nested descents,
-error codes, the ASP.NET Core filter — on every release. There is no separate AOT mode, because
-there is no runtime code generation for AOT to take away.
+`ValidationModules.Runtime` sets `IsAotCompatible` and escalates the trim and AOT warnings
+(`IL2026`, `IL3050`, and the rest) to errors, so the compiler enforces the constraint rather than
+code review. `scripts/verify-aot.sh` then publishes a real AOT binary on every release and runs it
+against field paths, nested descents, error codes, and the ASP.NET Core filter. There is no separate
+AOT mode, because no part of the library generates code at runtime.
 
 ## ASP.NET Core
 
@@ -131,56 +149,36 @@ app.MapPost("/orders", (CreateOrder order) => Results.Ok())
    .Validate<CreateOrder>();
 ```
 
-A failure answers with RFC 9457 before the handler runs, carrying the field paths and stable
-codes. The type argument is named rather than inferred, which keeps the request path free of
-reflection — `website/guide/aspnetcore.md` covers why, and what the response looks like.
-
-## Documentation
-
-The docs site publishes to <https://ipjohnson.github.io/ValidationModules/> and lives in
-`website/`:
-
-```bash
-cd website && npm install && npm run dev
-```
-
-`AGENTS.md` is the working guide for this repository. The exact public surface is pinned by
-`tests/ValidationModules.Runtime.Tests/Snapshots/PublicApiTests.RuntimeApi.verified.txt`.
+A failed request gets an RFC 9457 response before the handler runs, carrying the field paths and the
+stable codes. You name the type argument rather than let it be inferred, which keeps reflection out
+of the request path. See
+[ASP.NET Core](https://ipjohnson.github.io/ValidationModules/guide/aspnetcore) for the response
+shape and the reasoning.
 
 ## Packages
 
 | Package | Ships as | Referenced by |
 |---|---|---|
 | `ValidationModules.Runtime` | `lib/` | application code |
-| `ValidationModules.SourceGenerator` | `analyzers/dotnet/cs` | application code, `PrivateAssets=all` |
+| `ValidationModules.SourceGenerator` | `analyzers/dotnet/cs` | application code, with `PrivateAssets=all` |
 | `ValidationModules.AspNetCore` | `lib/` | web applications |
+| `ValidationModules.Messages` | `messages/` and `build/` | applications wanting non-English messages |
 | `ValidationModules.SourceGenerator.Impl` | source-only | framework authors |
-| `ValidationModules.FluentValidation` | `lib/` | planned adapter |
-| `ValidationModules.Testing` | `lib/` | planned conformance suite |
 
 `ValidationModules.Runtime` depends only on
-`Microsoft.Extensions.DependencyInjection.Abstractions`, framework-matched per TFM. It does
-**not** reference `DependencyModules.Runtime` — only the *generated module* needs DM types, and
-that lands in the consumer's assembly, which already references DM.
+`Microsoft.Extensions.DependencyInjection.Abstractions`, matched to the target framework. It does
+not reference `DependencyModules.Runtime`. Only the generated module needs DependencyModules types,
+and that module lands in your assembly, which already references DependencyModules if you use it.
 
-## Status
+## Documentation
 
-Release candidate for 1.0.0. Built so far:
+The docs site is at <https://ipjohnson.github.io/ValidationModules/> and lives in `website/`:
 
-| Stage | | |
-|---|---|---|
-| 1 | Runtime — contracts, context, error model, constraint attributes, naming | **done** |
-| 2 | Generator, no profiles | **done** |
-| 3 | Profiles | deferred past 1.0.0 |
-| 4 | `Impl` packaging for framework authors | **done** |
-| 5 | Hardened integration | substantially done |
-| 6 | FluentValidation adapter and conformance suite | not started |
-| — | ASP.NET Core integration — minimal APIs | **done** |
-| — | ASP.NET Core integration — MVC, Blazor, options validation | not started |
+```bash
+cd website && npm install && npm run dev
+```
 
-Also built: the rules-class front end (`IValidationRulesFor<T>`, which the generator reads at build
-time and never executes) and a DataAnnotations front end. Profiles and overlays are deferred past
-1.0.0 and their declaration surfaces were withdrawn. Both return additively when they ship.
+`AGENTS.md` is the working guide for this repository.
 
 ## Building
 
@@ -190,8 +188,8 @@ dotnet test  --configuration Release
 ```
 
 The public API is pinned by a snapshot at
-`tests/ValidationModules.Runtime.Tests/Snapshots/PublicApiTests.RuntimeApi.verified.txt` — also
-the quickest way to read the surface. Accept an intended change with:
+`tests/ValidationModules.Runtime.Tests/Snapshots/PublicApiTests.RuntimeApi.verified.txt`, which is
+also the quickest way to read the surface. Accept an intended change with:
 
 ```bash
 UPDATE_SNAPSHOTS=1 dotnet test tests/ValidationModules.Runtime.Tests

@@ -36,10 +36,10 @@ namespace Microsoft.Extensions.DependencyInjection {
 }
 ```
 
-**The method name carries the assembly, and has to.** Each assembly registers its own validators —
-there is deliberately no cross-assembly scanning — so two of them emitting `AddValidationModules()`
-on `IServiceCollection` would be CS0121 at the composition root. `AddMyAppValidators()` and
-`AddMyLibValidators()` compose without ceremony.
+**The method name carries the assembly, and has to.** Each assembly registers its own validators,
+and there is deliberately no cross-assembly scanning. Two assemblies both emitting
+`AddValidationModules()` on `IServiceCollection` would be CS0121 at the composition root.
+`AddMyAppValidators()` and `AddMyLibValidators()` compose without ceremony.
 
 **Not idempotent.** Calling it twice registers every validator twice, and a runner merges every
 registered validator for a type, so each error would be reported twice. `Add` rather than `TryAdd`
@@ -92,7 +92,7 @@ DM's writers and models as a library; do not use its host.
 
 | Value | Effect |
 |---|---|
-| *(unset)* | auto — DependencyModules if `IDependencyModule` resolves, otherwise the extension |
+| *(unset)* | auto: DependencyModules if `IDependencyModule` resolves, otherwise the extension |
 | `DependencyModules` | always emit the module |
 | `ServiceCollection` | always emit the extension alone |
 | `None` | emit no registration at all |
@@ -105,20 +105,21 @@ validators in a module. It emits the validators and nothing else; wire them up y
 Validators are **singletons**, always.
 
 Generated validators are stateless, and building a rule graph once rather than per call is a hard
-requirement rather than a preference. This is the single largest difference from FluentValidation in
-practice: `AddValidatorsFromAssemblyContaining` registers validators **scoped**, so by default it
-rebuilds its rule graph on every request — about 11 KB of allocation per resolve, against 0 B and
-roughly 4 ns to reach a generated singleton. Run `./scripts/benchmark.sh --comparative` in the
-repository for the measurement. The construction timing is quoted as an order of magnitude rather
-than a figure because it varies too much between runs to state precisely.
+requirement rather than a preference. This is the largest practical difference from
+FluentValidation. `AddValidatorsFromAssemblyContaining` registers validators **scoped**, so by
+default it rebuilds its rule graph on every request. That costs about 11 KB of allocation per
+resolve, against 0 B and roughly 6 ns to reach a generated singleton. Run
+`./scripts/benchmark.sh --comparative` in the repository for the measurement. The construction
+timing is quoted as an order of magnitude rather than a figure because it varies too much between
+runs to state precisely.
 
 `ValidationRunner<T>` is **scoped**, because the async validators it composes may take scoped
 dependencies.
 
 ## `ValidationRunner<T>`
 
-Once a type has more than one validator — a generated structural one plus a hand-written business
-rule — you want them run together and their results merged:
+Once a type has more than one validator, such as a generated structural one plus a hand-written
+business rule, you want them run together and their results merged:
 
 <!-- verify:models -->
 ```csharp
@@ -138,7 +139,7 @@ token passes positionally.
 `Validate(value)` is the synchronous half, and runs the structural validators only.
 
 The runner resolves every registered `IValidatorFor<T>` and `IAsyncValidatorFor<T>`, runs the
-structural ones first, and **only runs the async ones if structural validation passed** — so nothing
+structural ones first, and **only runs the async ones if structural validation passed**. Nothing
 hits the database to check uniqueness on a field that is null.
 
 Results merge rather than replacing by precedence. Structural constraints must not silently
@@ -151,7 +152,7 @@ It is registered closed, per type, by the generator:
 services.AddValidationRunner<Pet>();
 ```
 
-Closed rather than open generic, deliberately — `AddScoped(typeof(ValidationRunner<>))` would have
+Closed rather than open generic, on purpose. `AddScoped(typeof(ValidationRunner<>))` would have
 MS.DI construct it reflectively, which is what a Native AOT publish cannot do.
 
 ## Nested types compose too
@@ -195,28 +196,28 @@ public PetValidator(
 }
 ```
 
-Two consequences worth knowing. The set is resolved **once, when the singleton is built**, not per
-descent — so composition costs nothing on the hot path. And the closed generic is written by the
-generator, which knows the nested type at build time; the reflective spelling would be
+Two consequences are worth knowing. The set is resolved **once, when the singleton is built**,
+rather than per descent, so composition costs nothing on the hot path. The closed generic is written
+by the generator, which knows the nested type at build time. The reflective spelling would be
 `MakeGenericType`, so this stays AOT-safe.
 
 ::: tip What it costs when no container took part
-A validator you construct yourself — `new PetValidator()` — uses the parameterless constructor and
+A validator you construct yourself with `new PetValidator()` uses the parameterless constructor and
 falls back to each nested type's own generated validator, built lazily on first descent. That is the
 pre-composition behaviour, and it is what a unit test gets.
 :::
 
 ::: warning Match the field name
 The generated `AddressValidator` derives its field name from `[JsonPropertyName]` and the naming
-policy. A hand-written validator has to say the same thing — if the model carried
+policy. A hand-written validator has to say the same thing. If the model carried
 `[JsonPropertyName("postal_code")]`, write:
 
 ```csharp
 context.Report("postal_code", "blocked", "postal code is blocked.");   // not "postalCode"
 ```
 
-Otherwise one field arrives under two names depending on which rule failed. The runtime cannot check
-this for you — reading the attribute at run time is reflection.
+Otherwise one field arrives under two names depending on which rule failed. The runtime cannot
+check this for you, because reading the attribute at run time is reflection.
 :::
 
 ## Registering a validator by hand
@@ -233,8 +234,8 @@ works.
 ## Rule classes register like everything else
 
 A [rule class](/guide/rule-classes) is read by the generator and expanded into the same validator
-the attributes produce, so it needs nothing of its own here — `AddSampleValidators()` covers it.
-There is no runtime engine to register: a rules class in an assembly the generator never ran over
+the attributes produce, so it needs nothing of its own here. `AddSampleValidators()` covers it.
+There is no runtime engine to register. A rules class in an assembly the generator never ran over
 declares nothing, which is why [fragments travel as source](/guide/rule-classes#fragments) and
 shared *types* ship their own generated validators for consumers to compose.
 
@@ -248,8 +249,9 @@ services.AddSingleton<IValidationFieldNamer>(SnakeCaseFieldNamer.Instance);
 services.AddSampleValidators();   // keeps yours
 ```
 
-This only affects code that computes names at run time — principally the FluentValidation adapter.
-Generated validators have their field names baked in as literals at build time, so changing the
-registered namer does **not** rename their errors. Use
+This affects only the names computed at run time, which are the ones coming from
+`IValidatableObject` results and from DataAnnotations member names. Generated validators have their
+field names baked in as literals at build time, so changing the registered namer does **not** rename
+their errors. Use
 [`ValidationModules_FieldNaming`](/reference/msbuild#validationmodules-fieldnaming) for those, and
 set both to the same policy if you use both.

@@ -23,7 +23,7 @@ hand-written validator.
 ::: tip Profile attribution is deferred, and its surface has been withdrawn
 `FromProfile`, `UntilProfile` and `Profiles` were on this type before profiles were built, so
 setting one was an error rather than a restriction. They were removed rather than pinned into the
-first stable release — writing one is now an ordinary "no such member" from the compiler.
+first stable release, so writing one is now an ordinary "no such member" from the compiler.
 
 Every removal is additively reversible.
 :::
@@ -49,13 +49,13 @@ public string? Reference { get; init; }
 Setting both on one constraint is [VM0033](/reference/diagnostics#vm0033); write two constraints, or
 one negated condition.
 
-Because it lives on the base, every constraint has it — `[ValidateNested]` included, which is the
+Because it lives on the base, every constraint has it, `[ValidateNested]` included, which is the
 discriminated-union case: the half of a model its discriminator says to ignore reports nothing.
 
 ::: tip A condition is evaluated once per validation pass
 Not once per constraint that names it. Conditions may read live static state, so the two are
 different answers rather than two spellings of one. The generated validator hoists each distinct
-condition into a local above the method body. (This is the attribute surface's rule — in a
+condition into a local above the method body. (This is the attribute surface's rule. In a
 [rule class](/guide/rule-classes), conditions are `if` statements and evaluate where written.)
 
 One consequence worth knowing: hoisting means a condition runs even when a condition it is nested
@@ -63,7 +63,7 @@ inside is false, so `x => x.Auto.Wheels > 0` under `x => x.Auto != null` will th
 short-circuit. Write the null check into the inner condition.
 :::
 
-Three shapes that cannot capture anything is not an accident — it is what makes the self-containment
+Three shapes that cannot capture anything is not an accident. It is what makes the self-containment
 [VM0072](/reference/diagnostics#vm0072) enforces for `Ensure` predicates hold here by construction.
 There is no `WhenType`; shared logic is reached through a one-line forwarder on the model.
 
@@ -84,7 +84,7 @@ public string? Note { get; init; }
 ```
 
 Fails on null; on a `string`, also on empty and whitespace-only. On a non-nullable value type it can
-never fail — [VM0004](/reference/diagnostics#vm0004).
+never fail, which is [VM0004](/reference/diagnostics#vm0004).
 
 ## `[StringLength]`
 
@@ -106,18 +106,18 @@ public string? Notes { get; init; }
 public string? Token { get; init; }
 ```
 
-Constructors: `()` and `(int min, int max)`. Strings only —
+Constructors: `()` and `(int min, int max)`. Strings only,
 [VM0001](/reference/diagnostics#vm0001). Inverted bounds are
 [VM0008](/reference/diagnostics#vm0008).
 
-Length is `string.Length` — UTF-16 code units, not grapheme clusters.
+Length is `string.Length`, in UTF-16 code units rather than grapheme clusters.
 
 ## `[Range]`
 
 | Member | Type | Default |
 |---|---|---|
-| `Min` | `object?` | `null` — unbounded below |
-| `Max` | `object?` | `null` — unbounded above |
+| `Min` | `object?` | `null`, unbounded below |
+| `Max` | `object?` | `null`, unbounded above |
 | `ExclusiveMin` | `bool` | `false` |
 | `ExclusiveMax` | `bool` | `false` |
 | `Code` | `string?` | `"range"` |
@@ -136,12 +136,12 @@ public double Ratio { get; init; }
 public int Quantity { get; init; }
 ```
 
-Numeric and date-like types only — [VM0003](/reference/diagnostics#vm0003).
+Numeric and date-like types only, which is [VM0003](/reference/diagnostics#vm0003) otherwise.
 
 An absent bound emits no comparison and is not named in the message. Neither bound is
 [VM0026](/reference/diagnostics#vm0026).
 
-The `(string, string)` overload is for the types with no constant form in metadata — `decimal`,
+The `(string, string)` overload is for the types with no constant form in metadata: `decimal`,
 `DateTime`, `DateOnly`, `TimeOnly`, `TimeSpan`, `DateTimeOffset`. The bound is parsed against the
 member's type at build time and emitted as a constructor call, in both the comparison and the
 message. A bound that does not parse is [VM0065](/reference/diagnostics#vm0065).
@@ -150,9 +150,9 @@ message. A bound that does not parse is [VM0065](/reference/diagnostics#vm0065).
 
 | Member | Type | Default |
 |---|---|---|
-| `Pattern` | `string?` | — | inline form |
-| `RegexProvider` | `Type?` | — | reference form |
-| `RegexMember` | `string?` | — | reference form |
+| `Pattern` | `string?` | *(none)* | inline form |
+| `RegexProvider` | `Type?` | *(none)* | reference form |
+| `RegexMember` | `string?` | *(none)* | reference form |
 | `Options` | `RegexOptions` | `None` | inline form only |
 | `MatchTimeoutMilliseconds` | `int` | `0` | inline form only; `0` is no timeout |
 | `Anchored` | `bool` | `false` | |
@@ -167,15 +167,15 @@ Constructors: `(string pattern)` and `(Type regexProvider, string regexMember)`.
 ```
 
 `MatchTimeoutMilliseconds` becomes the emitted `Regex`'s match timeout, and a pattern that exceeds
-it throws `RegexMatchTimeoutException` rather than returning a verdict — the same thing
+it throws `RegexMatchTimeoutException` rather than returning a verdict, which is the same thing
 `[RegularExpression]` does. Worth setting for any pattern that can backtrack catastrophically on
 input you do not control. It applies to the inline form only: the reference form's `Regex` belongs
 to you, so set the timeout on your own `[GeneratedRegex]`. Setting it also passes `Options`
 explicitly, which costs the binary-size win described under
-[VM0017](/reference/diagnostics#vm0017) — paid only where a timeout was asked for.
+[VM0017](/reference/diagnostics#vm0017), paid only where a timeout was asked for.
 
 Strings only. Unanchored by default, following JSON Schema. `Options` is not consulted in the
-reference form — put them on your `[GeneratedRegex]`. `RegexOptions.Compiled` is
+reference form, so put them on your `[GeneratedRegex]`. `RegexOptions.Compiled` is
 [VM0016](/reference/diagnostics#vm0016).
 
 See [Patterns and regex](/guide/patterns) for which form to use.
@@ -184,7 +184,7 @@ See [Patterns and regex](/guide/patterns) for which form to use.
 
 | Member | Type | Default |
 |---|---|---|
-| `Values` | `object[]` | — |
+| `Values` | `object[]` | *(none)* |
 | `Comparison` | `StringComparison` | `Ordinal` |
 | `Code` | `string?` | `"enum"` |
 | `Message` | `string?` | *composed* |
@@ -194,7 +194,8 @@ See [Patterns and regex](/guide/patterns) for which form to use.
 public string? Status { get; init; }
 ```
 
-Constructor is `params object[]`. The permitted set is echoed in the message — an enum's members are
+Constructor is `params object[]`. The permitted set is echoed in the message, because an enum's
+members are
 a schema fact, published in your OpenAPI document anyway.
 
 ## `[ItemCount]`
@@ -211,14 +212,15 @@ a schema fact, published in your OpenAPI document anyway.
 public List<string> Tags { get; init; } = [];
 ```
 
-Collections only — [VM0002](/reference/diagnostics#vm0002). A `string` is not a collection here.
+Collections only, which is [VM0002](/reference/diagnostics#vm0002) otherwise. A `string` is not a
+collection here.
 Counted without enumerating where a `Count` or `Length` exists; walked once otherwise.
 
 ## `[MultipleOf]`
 
 | Member | Type | Default |
 |---|---|---|
-| `Divisor` | `object` | — |
+| `Divisor` | `object` | *(none)* |
 | `Code` | `string?` | `"multiple_of"` |
 | `Message` | `string?` | *composed* |
 
@@ -235,7 +237,8 @@ public decimal Price { get; init; }
 public double Ratio { get; init; }
 ```
 
-Numeric types only — [VM0021](/reference/diagnostics#vm0021). The divisor must be greater than zero
+Numeric types only, which is [VM0021](/reference/diagnostics#vm0021) otherwise. The divisor must be
+greater than zero
 ([VM0022](/reference/diagnostics#vm0022)) and must have a form the member's type can be checked
 against ([VM0023](/reference/diagnostics#vm0023)).
 
@@ -257,7 +260,8 @@ Constructors: `()`. Presence is the constraint.
 public List<string> Codes { get; init; } = [];
 ```
 
-Collections only — [VM0024](/reference/diagnostics#vm0024). Elements are compared with
+Collections only, which is [VM0024](/reference/diagnostics#vm0024) otherwise. Elements are compared
+with
 `EqualityComparer<T>.Default`; an element type with no equality of its own compares by reference and
 is [VM0025](/reference/diagnostics#vm0025).
 
@@ -267,7 +271,7 @@ is [VM0025](/reference/diagnostics#vm0025).
 |---|---|---|
 | `Polymorphism` | `Polymorphism` | how the descent treats subtypes; constructor argument |
 
-Tells the emitter to descend — into an object, into each element of a collection, or into each value
+Tells the emitter to descend into an object, into each element of a collection, or into each value
 of a dictionary. See [Nesting and collections](/guide/nesting).
 
 Does not recurse into a value that failed `[Required]`.
@@ -289,29 +293,31 @@ public Payment? Payment { get; init; }
 | `Runtime` | resolves a validator for the value's runtime type | a `GetType()` and a dictionary lookup |
 
 `CompileTime` emits a type switch, most-derived first, and exactly one arm runs. The declared type's
-validator sits in the `default` arm rather than after the switch — each subtype validator already
+validator sits in the `default` arm rather than after the switch, because each subtype validator
+already
 checks everything it inherits, so running both would report the base's failures twice.
 
 `Runtime` resolves through the provider on the validation pass, which means it **composes**: a
 separately registered `IValidatorFor<Card>` runs alongside the generated one, where `CompileTime`
 consults no container and so cannot. It needs `Add<Assembly>Validators()` to have been called, and
-there is no fallback — a missing provider throws rather than quietly checking less.
+there is no fallback. A missing provider throws rather than quietly checking less.
 
 ::: warning Never inferred
 Dispatching automatically over whatever subtypes the generator happened to see would make coverage
 depend on physical assembly layout: it would work while `Payment`, `Card` and `Bank` sat together
-and shrink silently the day one moved to a package — no code change, no warning, no failing test.
+and shrink silently the day one moved to a package, with no code change, no warning, and no failing
+test.
 Unearned confidence is worse than no feature, so the mode is always named.
 [VM0031](/reference/diagnostics#vm0031) prompts for one on an unsealed target.
 :::
 
 Subtypes are found by inverting the base chain over the compilation. Types in referenced assemblies
 are not enumerated, so a subtype declared in another assembly is not currently a `CompileTime`
-dispatch target — use `Runtime` for a hierarchy that spans assemblies.
+dispatch target. Use `Runtime` for a hierarchy that spans assemblies.
 
 ## `[GenerateValidator]`
 
-No members. Emits a validator for a type that carries no constraints of its own — because a
+No members. Emits a validator for a type that carries no constraints of its own, either because a
 [rule class](/guide/rule-classes) supplies them, or because you want the nested walk.
 
 ```csharp
@@ -366,5 +372,5 @@ public interface IAsyncValidatorFor<in T> {
 }
 ```
 
-The service interface is `IValidatorFor<T>`, not `IValidator<T>` — FluentValidation owns that name,
-and an adapter's author will have both namespaces imported.
+The service interface is `IValidatorFor<T>`, not `IValidator<T>`. FluentValidation owns that name,
+and a project using both libraries would have to disambiguate every use.

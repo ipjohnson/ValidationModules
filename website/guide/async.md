@@ -1,7 +1,7 @@
 # Async and business rules
 
-Structural validation — is this string present, is this number in range — is generated. Business
-rules that need I/O are hand-written, and they implement a different interface:
+Structural validation is generated: is this string present, is this number in range. Business rules
+that need I/O are hand-written, and they implement a different interface:
 
 ```csharp
 namespace ValidationModules;
@@ -47,15 +47,15 @@ public sealed class PetUniquenessValidator : IAsyncValidatorFor<Pet> {
 }
 ```
 
-Scoped, not singleton — unlike generated validators, these take dependencies.
+Scoped rather than singleton, because unlike generated validators these take dependencies.
 
 ## One context, both sides
 
 The sync side takes `ref ValidationContext`; the async side takes it **by value**. It has to:
 `ref` parameters are illegal on `async` methods.
 
-That works because `ValidationContext` is a `readonly struct` rather than a `ref struct` — the single
-most consequential decision in the library. A context is seven words: the collector reference plus
+That works because `ValidationContext` is a `readonly struct` rather than a `ref struct`, which is
+the most consequential decision in the library. A context is seven words: the collector reference plus
 the compact path it sits at. Copying it is free, and both copies address the same collector, so a
 merged run produces one ordered error list with one path vocabulary regardless of which side found
 each error.
@@ -82,7 +82,7 @@ public async ValueTask ValidateAsync(
 
 An earlier design indexed into shared storage by depth. It was wrong in a way that only showed up
 under concurrency: two sibling contexts at the same depth overwrote each other's segment, so a
-context parked on an `await` reported whichever sibling wrote last — which is precisely what a
+context parked on an `await` reported whichever sibling wrote last, which is precisely what a
 `Task.WhenAll` over collection elements does. The path now lives entirely inside the copied struct,
 so `Push` writes nothing any other context can observe.
 
@@ -107,7 +107,7 @@ carries a monotonic stamp, checked when an error is recorded, so a clean pass pa
 :::
 
 Note also that a validator which fans out internally gives up deterministic error ordering for its
-own errors — they land in completion order. That is your choice to make; the ordering guarantee
+own errors, which land in completion order. That is your choice to make, and the ordering guarantee
 across *validators* still holds.
 
 ## Running both together
@@ -156,7 +156,7 @@ At the top level that produces an error with an empty field; inside a nested obj
 path that got you there.
 
 For a cross-field rule that does *not* need I/O, prefer
-[`rules.Ensure`](/guide/rule-classes#ensure) — it is compiled to a branch, and its message is the
+[`rules.Ensure`](/guide/rule-classes#ensure). It compiles to a branch, and its message is the
 predicate itself.
 
 ## Choosing where a rule goes

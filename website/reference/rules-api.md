@@ -1,12 +1,12 @@
 # Rule builder API
 
 The surface of `ValidationRules<T>`, passed to `IValidationRulesFor<T>.Describe`. See
-[Rule classes](/guide/rule-classes) for the model — the body is **read at build time and never
-run** — and for what the body may contain.
+[Rule classes](/guide/rule-classes) for the model. The body is **read at build time and never
+run**. This page covers what that body may contain.
 
 ## Two classes to copy
 
-The everyday shape — anchored chains, one rule per line, the whole class:
+The everyday shape is anchored chains, one rule per line, the whole class:
 
 ```csharp
 using ValidationModules;
@@ -22,7 +22,7 @@ public sealed class PetRules : IValidationRulesFor<Pet> {
 }
 ```
 
-And the shape attributes cannot reach — cross-field facts, conditions, computation, your own codes
+And the shape attributes cannot reach: cross-field facts, conditions, computation, your own codes
 and messages:
 
 ```csharp
@@ -46,7 +46,8 @@ public sealed class BookingRules : IValidationRulesFor<Booking> {
 }
 ```
 
-Both expand into the same straight-line checks the attributes produce — same codes, same messages —
+Both expand into the same straight-line checks the attributes produce, with the same codes and
+messages,
 emitted into a companion region the validator calls. The rest of this page is the full surface, for
 when you need the exact signature.
 
@@ -91,12 +92,13 @@ public sealed class ValidationRules<T> {
 }
 ```
 
-Arguments are **values**, not selectors — `rules.Require(x.Name)`. The generator resolves the
+Arguments are **values** rather than selectors, as in `rules.Require(x.Name)`. The generator
+resolves the
 argument as a symbol; nothing here executes. The builder is inert by construction: its constructor
 is internal, its members throw, and nothing ever calls `Describe`.
 
-A class may implement the interface once per type it describes — one `Describe` overload each,
-implicit or explicit — and every target gets its own validator. See
+A class may implement the interface once per type it describes, with one `Describe` overload each,
+implicit or explicit. Every target gets its own validator. See
 [One class, several targets](/guide/rule-classes#one-class-several-targets).
 
 ## Values and field names
@@ -126,7 +128,7 @@ rules.For(x.Name).Require().Length(1, 100);   // same thing, anchor stated
 
 A chain is one statement, and one `if`/`else if` ladder in the region: **a failed `Require`
 suppresses the rest of its own chain**. Separate statements against one field report
-independently — rules for one field belong in one chain.
+independently, so rules for one field belong in one chain.
 
 Members that only make sense for particular value types are **extension methods constrained on the
 chain's type argument**, which is how `Length` is offered on a string anchor and not on an `int`.
@@ -152,7 +154,7 @@ chain's type argument**, which is how `Length` is offered on a string anchor and
 A rule declared here and the same rule declared as an attribute expand through one check writer,
 so codes, messages and check shapes match exactly.
 
-`Range<TValue>` is constrained `where TValue : IComparable<TValue>, IFormattable` — which is what
+`Range<TValue>` is constrained `where TValue : IComparable<TValue>, IFormattable`, which is what
 makes it work for `DateOnly` and `decimal` where the
 [`[Range]` string overload does not](/reference/diagnostics#vm0065).
 
@@ -162,13 +164,13 @@ without naming `TValue`, and naming it at every call site is worse than one extr
 
 `MultipleOf` resolves on the divisor's own type: `5` picks the integral overload, `0.05m` the
 decimal one and `0.01` the double one. The double overload checks in the decimal domain, the same
-as the attribute path — see [the guide](/guide/constraints#multipleof).
+as the attribute path. See [the guide](/guide/constraints#multipleof).
 
 `Unique` takes an `IEnumerable<TElement>` where `Count` takes an `IReadOnlyList<TElement>`, because
 uniqueness enumerates rather than reading a count.
 
-`Require` on a non-nullable value type cannot be written bare — inference will not unwrap
-`Nullable` — and is [VM0090](/reference/diagnostics#vm0090) with an explicit type argument.
+`Require` on a non-nullable value type cannot be written bare, because inference will not unwrap
+`Nullable`. With an explicit type argument it is [VM0090](/reference/diagnostics#vm0090).
 
 ## Conditions are C#
 
@@ -191,7 +193,7 @@ A guarded `Require` that does not run records nothing, so it suppresses nothing.
 
 ::: tip Porting from FluentValidation
 `.When()` becomes the `if` you would have written anyway. `ApplyConditionTo` has no counterpart
-because there is no retroactive default to opt out of — the brace says exactly what is guarded.
+because there is no retroactive default to opt out of. The brace says exactly what is guarded.
 `WhenAsync`/`UnlessAsync` and `DependentRules` still have no counterpart; async checks are
 `IAsyncValidatorFor<T>`.
 :::
@@ -203,17 +205,17 @@ rules.Ensure(x.Start < x.End);
 rules.Ensure(x.Discount <= x.Price * 0.5m, code: "discount_too_large");
 ```
 
-One assertion with no vocabulary name. **The message is the condition, rendered** — the subject
+One assertion with no vocabulary name. **The message is the condition, rendered**: the subject
 parameter stripped, member accesses wire-named, a period appended: `start < end.` Locals appear
 under their own names, so `var total = …; rules.Ensure(total <= x.CreditLimit);` reads
 `total <= creditLimit.`
 
 The rule anchors to the first property the condition reads; a condition that reads none needs
 `field:`, or it is [VM0075](/reference/diagnostics#vm0075). The code defaults to `predicate` and
-does not derive from the expression — see
+does not derive from the expression. See
 [Error codes](/reference/codes#why-ensure-does-not-derive-its-code).
 
-## `rules.Context` — the reporter tier
+## `rules.Context`: the reporter tier
 
 Free-form logic reports through a narrow view of the pass, typed `IValidationContextReporter`:
 
@@ -231,7 +233,7 @@ any expression-statement whose type is `ValidationFlow` is checked and propagate
 
 ## Fragments
 
-Any `static`, `void`, same-compilation method receiving the builder is followed and expanded —
+Any `static`, `void`, same-compilation method receiving the builder is followed and expanded,
 decomposition and reuse as method extraction, generics included:
 
 ```csharp
@@ -241,7 +243,7 @@ public static void Standard<T>(ValidationRules<T> rules, T audited) where T : IA
 }
 ```
 
-See [the guide](/guide/rule-classes#fragments) for the rules — same compilation
+See [the guide](/guide/rule-classes#fragments) for the rules: same compilation
 ([VM0085](/reference/diagnostics#vm0085)), subject argument, cycles
 ([VM0086](/reference/diagnostics#vm0086)).
 
@@ -251,12 +253,13 @@ See [the guide](/guide/rule-classes#fragments) for the rules — same compilatio
 rules.As<IAudited>(x);   // validate x as its IAudited facet
 ```
 
-Validates the subject as one of its facets — the route when shared rules ship as compiled IL. A
+Validates the subject as one of its facets. This is the route when shared rules ship as compiled
+IL. A
 facet generated in this compilation binds statically (no rules for it is
 [VM0091](/reference/diagnostics#vm0091)); a facet from a referenced assembly resolves the closed
 `IValidatorFor<TFacet>` through the pass's services, and a missing registration throws naming the
 module to compose. The path does not push. Declare facet rules in a rules class targeting the
-facet, not as attributes on it — see [the guide](/guide/rule-classes#facets).
+facet, rather than as attributes on it. See [the guide](/guide/rule-classes#facets).
 
 ## `Apply`
 
@@ -269,5 +272,5 @@ rules.Apply(PetChecks.SkuChecksum);
 ```
 
 Taken as a method group rather than a `(Type, string)` pair, and emitted as a direct call. Applied
-rules run after everything else, unconditionally, in declaration order — an `Apply` under an `if`
+rules run after everything else, unconditionally, in declaration order, so an `Apply` under an `if`
 is [VM0070](/reference/diagnostics#vm0070).
