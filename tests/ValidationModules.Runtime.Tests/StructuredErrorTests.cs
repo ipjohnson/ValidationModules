@@ -4,7 +4,7 @@ using Xunit;
 namespace ValidationModules.Runtime.Tests;
 
 /// <summary>
-/// The structured error shape from docs/structured-errors.md: the message is data until someone
+/// The structured error shape: the message is data until someone
 /// reads it, the value is captured but never rendered by any default, and the read side decides
 /// the text.
 /// </summary>

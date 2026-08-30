@@ -18,7 +18,7 @@ namespace ValidationModules.SourceGenerator.Impl.Emitters;
 /// constant-time however many packs and assemblies contribute. The first cut emitted a
 /// per-pack lookup chain instead; the storage benchmarks
 /// (<c>benchmarks/…/Design/LanguagePackStorageBenchmarks.cs</c>) retired it - linear degradation
-/// against flat - and docs/language-packs.md records the decision. Storage remains this
+/// against flat. Storage remains this
 /// emitter's implementation detail: the authoring format stays a data file whatever this becomes.
 /// </remarks>
 public sealed class LanguagePackEmitter {

@@ -9,7 +9,7 @@ namespace SutProject.Tests;
 /// alone, against a model that imports nothing from <c>ValidationModules.Constraints</c>.
 /// </summary>
 /// <remarks>
-/// That is the on-ramp API-SURFACE.md §18 exists for. It also means no
+/// That is the on-ramp the DataAnnotations front end exists for. It also means no
 /// <c>ValidationAttribute</c> is constructed and no <c>IsValid</c> is called anywhere in this
 /// path - the arguments were read out of metadata at build time and compiled.
 /// </remarks>

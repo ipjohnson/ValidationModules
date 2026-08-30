@@ -6,10 +6,9 @@ The machine-readable vocabulary, as constants on `ValidationCodes`.
 if (error.Code == ValidationCodes.Required) { … }
 ```
 
-Three things emit these codes — generated validators, hand-written ones, and the FluentValidation
-adapter — and they have to agree exactly, or a client switching on `ValidationError.Code` breaks
-depending on which engine found the error. Constants rather than literals is what stops that
-drifting silently.
+Generated validators and hand-written ones both emit these codes, and they have to agree exactly.
+Otherwise a client switching on `ValidationError.Code` breaks depending on which one found the
+error. Using the constants rather than the literals is what stops that drifting silently.
 
 | Code | Constant | Emitted by |
 |---|---|---|
@@ -29,7 +28,7 @@ drifting silently.
 | `base64` | `ValidationCodes.Base64` | DataAnnotations `[Base64String]` |
 | `file_extension` | `ValidationCodes.FileExtension` | DataAnnotations `[FileExtensions]` |
 | `custom` | `ValidationCodes.Custom` | [custom constraint attributes](/guide/custom-constraints), custom `ValidationAttribute`s, `[CustomValidation]`, `IValidatableObject` |
-| `invalid` | `ValidationCodes.Invalid` | nothing in this library — see below |
+| `invalid` | `ValidationCodes.Invalid` | nothing in this library, see below |
 
 These are a **wire contract**. A client attaching messages to form inputs, or branching on failure
 kind, depends on them not moving.
@@ -37,7 +36,8 @@ kind, depends on them not moving.
 ## `range` covers three shapes
 
 `[Range(1, 99)]`, `[Range(Min = 1)]` and `[Range(Max = 99)]` all report `range`. Only the message
-differs — "must be between 1 and 99", "must be at least 1", "must be at most 99" — because the
+differs between "must be between 1 and 99", "must be at least 1", and "must be at most 99", because
+the
 failure is the same one and a client should not have to learn a second code for it.
 
 An absent bound is never named. A specification setting only `minimum` used to compose the type's
@@ -50,7 +50,7 @@ originates and what the first consumer already puts on the wire. Renaming it wou
 consumers for cosmetics.
 
 **`invalid`, which nothing here emits.** A validator receives a typed model, so by the time it runs
-the conversion has already succeeded — `?limit=abc` where an integer was expected is the *binder's*
+the conversion has already succeeded. A `?limit=abc` where an integer was expected is the *binder's*
 failure, not validation's.
 
 It lives in this vocabulary anyway, because the vocabulary is defined by the wire rather than by
@@ -63,7 +63,7 @@ to already know to look.
 `email`, `phone`, `url`, `credit_card`, `base64` and `file_extension` are six codes rather than one
 `format`, for the reason `unique_items` is not folded into `array_bounds`: a client mapping codes to
 its own messages wants to say "enter a valid email address", not "invalid format", and the field
-name alone cannot tell it which. This is also the localization seam — the code is stable and
+name alone cannot tell it which. This is also the localization seam, because the code is stable and
 machine-readable, and the client owns the words.
 
 It is deliberately distinct from `range` rather than folded into it: the value never became the right
@@ -91,7 +91,7 @@ distinguished by their messages.
 Slugging or hashing the predicate would read better and was rejected: message and code have opposite
 churn requirements.
 
-The message is human-facing and *should* track the rule — which is why `Ensure`'s message is the
+The message is human-facing and *should* track the rule, which is why `Ensure`'s message is the
 predicate itself, rendered. The code is a wire contract. Derive it from the expression and widening a
 bound from `30` to `35` becomes a breaking change for every client switching on it, and reordering
 does the same if the code carries an ordinal.
@@ -109,11 +109,11 @@ public enum ValidationSeverity {
 ```
 
 `Error` is `0`, so an uninitialised severity is never silently benign. Only `Error` makes
-`ValidationResult.IsValid` false — a result carrying nothing but warnings is valid *and* has errors,
+`ValidationResult.IsValid` false. A result carrying nothing but warnings is valid *and* has errors,
 which is why `IsValid` and `HasErrors` are separate properties.
 
-The values match FluentValidation's `Severity` exactly, which makes the adapter's mapping a cast
-rather than a table.
+The numeric values match FluentValidation's `Severity`, so a migration can cast between the two
+rather than translate through a table.
 
 ## Messages
 
@@ -127,7 +127,7 @@ Composed at the call site from the field name and the bounds, not baked in as li
 | `range` | `age must be between 0 and 30.` |
 | `enum` | `status must be one of: available, pending, sold.` |
 | `array_bounds` | `tags must be between 1 and 10 items.` |
-| `predicate` | *the predicate, rendered* — `start < end.` |
+| `predicate` | *the predicate, rendered*, as `start < end.` |
 
 Composing rather than emitting a literal per constraint keeps the same text out of the binary once
 per constraint site. Override with `Message` on any constraint.

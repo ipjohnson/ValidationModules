@@ -17,7 +17,6 @@ namespace ValidationModules.SourceGenerator.Impl.Models;
 /// <param name="AppliedRules">
 /// Hand-written rules attached by <c>rules.Apply(…)</c>, as fully qualified method names. They own
 /// no property, so they run after every property has been walked, in declaration order.
-/// See API-SURFACE.md §19.6 and §19.7.
 /// </param>
 /// <param name="IsPublic">
 /// Whether the validated type is visible outside its assembly, which decides whether the emitted

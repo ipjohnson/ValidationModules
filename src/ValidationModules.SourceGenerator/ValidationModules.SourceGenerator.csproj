@@ -71,7 +71,7 @@
             RuleText lives in the runtime and Impl compiles it in from there, so the glob above -
             which only sees Impl's own directory - misses it. Restated here for the same reason it is
             restated in Impl: one implementation of the predicate render, not two that agree until
-            somebody edits one. API-SURFACE.md §19.5.
+            somebody edits one.
         -->
         <Compile Include="../ValidationModules.Runtime/Rules/RuleText.cs" Link="Impl\FrontEnds\RuleText.cs"/>
     </ItemGroup>

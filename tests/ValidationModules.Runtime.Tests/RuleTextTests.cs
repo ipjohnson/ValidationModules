@@ -5,7 +5,7 @@ using Xunit;
 namespace ValidationModules.Runtime.Tests;
 
 /// <summary>
-/// Pins the selector and predicate text transforms from API-SURFACE.md §19.3 and §19.5.
+/// Pins the selector and predicate text transforms.
 /// </summary>
 /// <remarks>
 /// <see cref="RuleText"/> is compiled into the source generator as well as into the runtime, so

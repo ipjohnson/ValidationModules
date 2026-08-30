@@ -17,7 +17,6 @@ namespace ValidationModules.SourceGenerator.Impl.FrontEnds;
 /// check-and-report code; every other statement - locals, LINQ, arithmetic, <c>if</c>/<c>else</c> -
 /// is transcribed and runs at validation time inside the region method. Positional transcription:
 /// the region mirrors the body statement for statement, and semantics are C# semantics.
-/// See docs/active-rules-redesign.md.
 /// </para>
 /// <para>
 /// <b>Two invariants, everything else relaxes.</b> The builder flows only where this reader can

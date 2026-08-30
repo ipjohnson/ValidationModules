@@ -14,7 +14,7 @@ namespace ValidationModules;
 /// string heap. The text moved here first, composed on the failure path; it has now moved once
 /// more, into <see cref="ValidationMessageTemplates"/>, and stopped being composed at all -
 /// <see cref="ValidationError.Message"/> renders when something reads it, which is what lets one
-/// result render per reader (docs/structured-errors.md).
+/// result render per reader.
 /// </para>
 /// <para>
 /// <b>What it costs.</b> Nothing on the success path, as ever. On the failure path the bounded

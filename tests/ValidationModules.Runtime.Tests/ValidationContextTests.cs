@@ -4,7 +4,7 @@ using Xunit;
 namespace ValidationModules.Runtime.Tests;
 
 /// <summary>
-/// Pins the path shapes and the ordering guarantees in IMPLEMENTATION-PLAN.md §4. Two engines
+/// Pins the path shapes and the ordering guarantees. Two engines
 /// producing "the same" errors in different orders are not substitutable, so these are the
 /// assertions the conformance suite will eventually run against every engine.
 /// </summary>

@@ -4,7 +4,7 @@ using Xunit;
 namespace ValidationModules.SourceGenerator.Tests;
 
 /// <summary>
-/// The structured-error emission from docs/structured-errors.md: hoisted static message infos,
+/// The structured-error emission: hoisted static message infos,
 /// value capture and its compile-time kill switch, and the message fixes that rode in with the
 /// reshape - {field} substitution, DataAnnotations template baking, resx compilation, the denied
 /// wording, and exclusive range wording.

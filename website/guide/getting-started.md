@@ -16,14 +16,13 @@ public sealed record Pet {
 }
 ```
 
-That is the whole declaration. No `PetValidator` to write, no registration call to remember — and
-because the result is ordinary C# in your own assembly, there is nothing to reflect over at
-startup, nothing for the trimmer to lose, and nothing between the attribute you wrote and the
-branch that runs.
+That is the whole declaration. There is no `PetValidator` to write and no registration call to
+remember. The result is ordinary C# in your own assembly, so nothing reflects at startup and the
+trimmer has nothing to lose.
 
-When a rule outgrows an attribute — a cross-field fact, a computed total, a type you do not own —
-the same generator reads a [rules class](/guide/rule-classes): full C#, read at build time and
-never run.
+When a rule outgrows an attribute, the same generator reads a
+[rules class](/guide/rule-classes) instead. Cross-field facts, computed totals, and types you do not
+own belong there. It is full C#, read at build time and never run.
 
 ```csharp
 public sealed class PetRules : IValidationRulesFor<Pet> {
@@ -37,7 +36,7 @@ public sealed class PetRules : IValidationRulesFor<Pet> {
 }
 ```
 
-The rest of this page walks the attribute path end to end; rules classes get
+The rest of this page walks the attribute path end to end. Rules classes get
 [their own guide](/guide/rule-classes).
 
 ## Install
@@ -51,9 +50,9 @@ Requires .NET 8.0 or later, and ships both `net8.0` and `net10.0` assemblies so 
 LTS release gets one built against its own framework.
 
 `ValidationModules.Runtime` depends only on `Microsoft.Extensions.DependencyInjection.Abstractions`.
-In particular it does **not** reference `DependencyModules.Runtime` — the library is
-DependencyModules-shaped in its ergonomics, but only the *generated module* needs DM types, and that
-lands in your assembly, which already references DM if you use it.
+In particular it does **not** reference `DependencyModules.Runtime`. Only the *generated module*
+needs DependencyModules types, and that module lands in your assembly, which already references
+DependencyModules if you use it.
 
 The generator should be referenced with `PrivateAssets="all"` so it does not flow to your package's
 consumers:
@@ -62,16 +61,15 @@ consumers:
 <PackageReference Include="ValidationModules.SourceGenerator" Version="…" PrivateAssets="all" />
 ```
 
-::: tip Two namespaces, and you will want both — in different files
-The constraint attributes live in `ValidationModules.Constraints`, on purpose: five of the names —
-`Required`, `StringLength`, `Range`, `AllowedValues` and the length family — collide with
-`System.ComponentModel.DataAnnotations`, and keeping them apart means the ambiguity is only
-reachable from a file that asks for both.
+::: tip Two namespaces, wanted in different files
+The constraint attributes live in `ValidationModules.Constraints` on purpose. Five of the names
+collide with `System.ComponentModel.DataAnnotations`: `Required`, `StringLength`, `Range`,
+`AllowedValues`, and the length family. Keeping them in their own namespace means the ambiguity is
+only reachable from a file that asks for both.
 
-A file that *declares* a model needs `ValidationModules.Constraints`. A file that *runs* a
-validator needs `ValidationModules`, where `Validate`, `IsValid`, `ValidateAndThrow` and
-`ValidateInto` live. Miss the second one and the call does not compile — see
-[Running it](#running-it).
+A file that *declares* a model needs `ValidationModules.Constraints`. A file that *runs* a validator
+needs `ValidationModules`, where `Validate`, `IsValid`, `ValidateAndThrow`, and `ValidateInto` live.
+Miss the second one and the call does not compile. See [Running it](#running-it).
 :::
 
 ## What was generated
@@ -110,16 +108,15 @@ public sealed partial class PetValidator : IValidatorFor<global::MyApp.Pet> {
 }
 ```
 
-Three things in that file are worth noticing, because each is a deliberate constraint rather than an
-implementation detail:
+Four things in that file are deliberate constraints rather than implementation details:
 
 - **A public parameterless constructor, and no state.** The validator is registered as a singleton
   and holds nothing, so constructing one costs an allocation and no work. A type with nested
   properties gets a second constructor taking the nested types' validators, which is how a
-  hand-written validator for a nested type composes — see [nesting](/guide/nesting).
+  hand-written validator for a nested type composes. See [nesting](/guide/nesting).
 - **The `else if` after a `required` check is an optimization, not the mechanism.** Suppressing the
-  rest of a field after `[Required]` fails is enforced by the collector, so every engine gets it —
-  see [the error model](/guide/errors#suppression).
+  rest of a field after `[Required]` fails is enforced by the collector, so every engine gets it.
+  See [the error model](/guide/errors#suppression).
 - **The class is `internal` if your model is.** A public validator taking a less accessible
   parameter is CS0051, so the emitter matches the model's accessibility.
 - **No attributes on the generated type.** Source generators cannot see each other's output, so an
@@ -134,18 +131,18 @@ of silence. The classic:
 public sealed record Pet([Required] string Name);   // the attribute lands on the parameter, not the property
 ```
 
-Under reflective validation, nothing tells you — the model reads as validated and validates
-nothing. Here it is a [VM diagnostic](/reference/diagnostics) in the IDE, along with a length
-constraint on an `int`, a pattern that will not parse, and the rest of the nonsense-pairing family.
+Under reflective validation nothing tells you. The model reads as validated and validates nothing.
+Here it is a [VM diagnostic](/reference/diagnostics) in the IDE, as are a length constraint on an
+`int`, a pattern that will not parse, and the other pairings that cannot mean anything.
 
-The same choice is what makes Native AOT a requirement rather than a hope: no reflection, no
-expression trees, no regex compiled at startup, and the trim warnings escalated to errors — see
-[Trimming and AOT](/guide/aot).
+The same choice is what makes Native AOT a requirement rather than a hope. There is no reflection,
+there are no expression trees, no regex is compiled at startup, and the trim warnings are escalated
+to errors. See [Trimming and AOT](/guide/aot).
 
 ## Running it
 
 The entry points are extension methods in `ValidationModules`, so the file calling them needs that
-import — the constraints namespace alone is not enough:
+import. The constraints namespace alone is not enough:
 
 ```csharp
 using ValidationModules;
@@ -178,8 +175,7 @@ name: required — name is required.
 age: range — age must be between 0 and 30.
 ```
 
-There are three other entry points, and which you want depends on what you are doing with the
-answer:
+There are four entry points in all. Which one you want depends on what you do with the answer:
 
 | Call | Use when |
 |---|---|
@@ -199,10 +195,9 @@ var services = new ServiceCollection();
 services.AddSampleValidators();
 ```
 
-The name carries the assembly because each one registers its own validators — `MyApp` gets
-`AddMyAppValidators()`, `MyApp.Contracts` gets `AddMyAppContractsValidators()`. Two assemblies both
-emitting `AddValidationModules()` would be ambiguous at the composition root; this composes without
-ceremony.
+The name carries the assembly because each assembly registers its own validators. `MyApp` gets
+`AddMyAppValidators()` and `MyApp.Contracts` gets `AddMyAppContractsValidators()`. Two assemblies
+both emitting `AddValidationModules()` would be ambiguous at the composition root.
 
 ::: tip Finding the name
 It is your assembly name with the dots removed, wrapped in `Add…Validators`. If you would rather
@@ -217,19 +212,18 @@ generator emits a module wrapping the same call instead, and you load it the usu
 services.AddModule<ValidationModule>();
 ```
 
-You do not choose between these — the generator probes for `IDependencyModule` and emits whichever
+You do not choose between these. The generator probes for `IDependencyModule` and emits whichever
 fits. [Registration and DI](/guide/registration) covers forcing the choice, and what
 `ValidationRunner<T>` adds once more than one validator exists for a type.
 
 ## Coming from another library
 
-**DataAnnotations** is migration support, not a rewrite: models already carrying
-`System.ComponentModel.DataAnnotations` attributes compile as-is — the generator reads them into
-the same validators, with the BCL's exact semantics stated per attribute. Migrate the declarations
-to the native vocabulary at your own pace, or not at all. See
-[DataAnnotations](/guide/data-annotations).
+**DataAnnotations** is migration support rather than a rewrite. Models already carrying
+`System.ComponentModel.DataAnnotations` attributes compile as they are, and the generator reads them
+into the same validators with the BCL's exact semantics. Migrate the declarations to the native
+vocabulary at your own pace, or not at all. See [DataAnnotations](/guide/data-annotations).
 
-**FluentValidation** translates rather than ports — the vocabulary maps almost one to one, into
+**FluentValidation** translates rather than ports. The vocabulary maps almost one to one, into
 attributes for per-property facts and a [rules class](/guide/rule-classes) for everything else:
 
 | FluentValidation | Here |
@@ -243,8 +237,8 @@ attributes for per-property facts and a [rules class](/guide/rule-classes) for e
 | `.MustAsync(…)` | [`IAsyncValidatorFor<T>`](/guide/async) — I/O never lives in a declaration |
 | `IValidator<T>` | `IValidatorFor<T>` — the FV name stays FV's |
 
-The deeper differences — one error shape, stable wire codes, no interpolated values in messages —
-are the [error model](/guide/errors)'s, and they hold whichever way you declare.
+The deeper differences belong to the [error model](/guide/errors): one error shape, stable wire
+codes, and no interpolated values in messages. They hold whichever way you declare a rule.
 
 ## Where to go next
 

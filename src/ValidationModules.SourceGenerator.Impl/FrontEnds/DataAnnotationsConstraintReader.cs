@@ -10,8 +10,7 @@ namespace ValidationModules.SourceGenerator.Impl.FrontEnds;
 /// </summary>
 /// <remarks>
 /// The attribute is never constructed and <c>IsValid</c> is never called - its arguments are read
-/// out of metadata and compiled. See API-SURFACE.md §18 for the full mapping, and §18.4 for the two
-/// DataAnnotations behaviours deliberately not reproduced.
+/// out of metadata and compiled. Two DataAnnotations behaviours are deliberately not reproduced.
 /// </remarks>
 public static class DataAnnotationsConstraintReader {
 
@@ -114,7 +113,7 @@ public static class DataAnnotationsConstraintReader {
 
                 // Anchored, unlike the native [Pattern]. DataAnnotations checks that the match
                 // starts at 0 and consumes the whole value; the native attribute follows JSON
-                // Schema, which does not. See API-SURFACE.md §18.3.
+                // Schema, which does not.
                 return new Outcome(
                     new ConstraintModel(
                         ConstraintKind.Pattern,

@@ -62,8 +62,8 @@ public void ElementFailure_CarriesItsIndex() {
 ```
 
 Remember that paths are [compact](/guide/nesting#field-paths-are-compact). At three or more descents
-the middle is elided, so assert what the library actually reports —
-`body...address.postalCode` — rather than the full ancestry.
+the middle is elided, so assert what the library actually reports, which is
+`body...address.postalCode`, rather than the full ancestry.
 
 ## Testing ordering and suppression
 
@@ -106,7 +106,7 @@ public async Task DuplicateSku_IsReported() {
 }
 ```
 
-To test the composition rather than one validator, construct a `ValidationRunner<T>` directly — it
+To test the composition rather than one validator, construct a `ValidationRunner<T>` directly. It
 takes its validators as constructor arguments, so no container is needed:
 
 ```csharp
@@ -165,13 +165,13 @@ var result = GeneratorHarness.Run("""
 Assert.Single(result.Diagnostics, d => d.Id == "VM0001");
 ```
 
-Assert both halves — that it fires on the bad input *and* stays silent on the good one. A diagnostic
-that fires on everything passes the first assertion.
+Assert both halves: that it fires on the bad input, *and* that it stays silent on the good one. A
+diagnostic that fires on everything passes the first assertion.
 
 **Golden-file the emitted text.** Substring assertions are right for "this constraint produced a
 call" and wrong for the thing most likely to go wrong: a change that alters everything slightly.
-Emitted source is real output — it lands in a consumer's `obj/`, the trimmer sees it, and its
-allocation behaviour is a documented promise — so a whole-file diff is the review surface that
+Emitted source is real output. It lands in a consumer's `obj/`, the trimmer sees it, and its
+allocation behaviour is a documented promise, so a whole-file diff is the review surface that
 matters.
 
 ```csharp
@@ -198,5 +198,5 @@ dotnet test --configuration Release --collect:"XPlat Code Coverage" --settings c
 ```
 
 The public API is pinned by a snapshot at
-`tests/ValidationModules.Runtime.Tests/Snapshots/PublicApiTests.RuntimeApi.verified.txt` — one file
-listing every public type and member, which is also the quickest way to read the surface.
+`tests/ValidationModules.Runtime.Tests/Snapshots/PublicApiTests.RuntimeApi.verified.txt`. It is one
+file listing every public type and member, and it is the quickest way to read the surface.

@@ -88,7 +88,7 @@ public static class ValidationDiagnostics {
     /// VM0021-VM0026 are a fresh block rather than the gaps at VM0005 and VM0011.
     /// </summary>
     /// <remarks>
-    /// Both gaps are spoken for. API-SURFACE §11 assigns VM0005 to "[Pattern] on a non-string",
+    /// Both gaps are spoken for. VM0005 was assigned to "[Pattern] on a non-string",
     /// whose meaning was folded into VM0001 at implementation time, and VM0011-VM0015 to profile
     /// semantics. Reclaiming a retired id is worse than leaving it retired: an .editorconfig line
     /// written against the old meaning would go on suppressing, silently, something else entirely.
@@ -144,8 +144,8 @@ public static class ValidationDiagnostics {
 
     /// <summary>
     /// Conditional rules. VM0028 and VM0029 continue the constraint-declaration block from VM0027;
-    /// VM0033 and VM0034 sit just past the polymorphism ids that follow. See
-    /// docs/design/CONDITIONS-AND-POLYMORPHISM.md for why the two features interleave here.
+    /// VM0033 and VM0034 sit just past the polymorphism ids that follow. Conditional rules and
+    /// polymorphism were designed together, which is why their ids interleave.
     /// </summary>
     public static readonly DiagnosticDescriptor ConditionMemberNotFound = Descriptor(
         "VM0028", "Condition member not found",
@@ -207,7 +207,7 @@ public static class ValidationDiagnostics {
     /// <remarks>
     /// VM0028 and VM0029 belong to conditional rules, which took the two ids adjacent to VM0027 for
     /// the constraint-declaration block. This continues that block from VM0030 rather than
-    /// interleaving; see docs/design/CONDITIONS-AND-POLYMORPHISM.md.
+    /// interleaving with them.
     /// </remarks>
     public static readonly DiagnosticDescriptor HiddenBaseConstraints = Descriptor(
         "VM0030", "Hidden property drops the base declaration's constraints",
@@ -523,7 +523,7 @@ public static class ValidationDiagnostics {
         "it, so this would check nothing. Give the facet constraint attributes or a rules class",
         DiagnosticSeverity.Error);
 
-    // Language packs (docs/language-packs.md). The block starts at VM0100 so the pack suite reads
+    // Language packs. The block starts at VM0100 so the pack suite reads
     // as its own family; the point of compiling packs is that these fire at the build they affect.
 
     public static readonly DiagnosticDescriptor LanguagePackUnreadable = Descriptor(

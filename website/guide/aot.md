@@ -28,7 +28,7 @@ sometimes.
 ## Why this exists
 
 FluentValidation compiles expression trees at run time. Under Native AOT `Expression.Compile()` does
-not throw — it falls back to the LINQ interpreter. So FluentValidation *works* under AOT, which is
+not throw. It falls back to the LINQ interpreter, so FluentValidation *works* under AOT. That is
 the awkward part: property access is interpreted rather than compiled, and you carry `IL2026` and
 `IL3050` warnings into a published build.
 
@@ -44,7 +44,8 @@ finds a constructor reflectively. So the generator emits **factory delegates** i
 validators are parameterless with a static `Instance` for the delegate to return.
 
 **Nested validators.** Injecting them would require the same activation. They are referenced
-from an array the constructor materialised — `validatorsHome[vi].Validate(ref ctxHome, nestedHome)`.
+from an array the constructor materialised, as
+`validatorsHome[vi].Validate(ref ctxHome, nestedHome)`.
 
 **Runtime type dispatch.** "Give me the validator for this `Type`" is `MakeGenericType` territory.
 Where that is needed the generator emits a switch over closed types instead, so every type is
@@ -55,7 +56,7 @@ statically referenced and the trimmer can see all of them.
 Everything above is handled for you. This is not:
 
 ```csharp
-[Pattern("^[A-Z]{3}$")] // roots the regex parser and interpreter — about 450 KB
+[Pattern("^[A-Z]{3}$")] // roots the regex parser and interpreter, about 450 KB
 public string? Sku { get; init; }
 ```
 
@@ -75,8 +76,8 @@ public static partial class PetPatterns {
 public string? Sku { get; init; }
 ```
 
-In an AOT-facing project the inline form is [VM0017](/reference/diagnostics#vm0017) — an error by
-default — so you find out at build time. [Patterns and regex](/guide/patterns) has the full policy.
+In an AOT-facing project the inline form is [VM0017](/reference/diagnostics#vm0017), an error by
+default, so you find out at build time. [Patterns and regex](/guide/patterns) has the full policy.
 
 ## Set `IsAotCompatible` on your model library
 
@@ -108,7 +109,7 @@ to `Allow`.
 ## Allocation
 
 A clean validation pass over a generated validator allocates nothing per `Push`, at any depth or
-element count — the path lives inside the context struct, which is copied rather than heap-allocated.
+element count. The path lives inside the context struct, which is copied rather than heap-allocated.
 
 Two caveats worth knowing rather than discovering:
 
@@ -116,7 +117,8 @@ Two caveats worth knowing rather than discovering:
   `ValidateInto(collector, value)` are the allocation-conscious entry points; the second lets you own
   and reuse the collector.
 - `ValidationRunner<T>` holds its validators as `IEnumerable<T>`, so `foreach` over an
-  array-as-`IEnumerable` boxes an enumerator — 32 bytes per call, and the async path pays it twice.
+  array-as-`IEnumerable` boxes an enumerator, costing 32 bytes per call, and the async path pays it
+  twice.
   Call the validator directly on a hot path where a single validator is registered.
 
 ## Trimming without AOT

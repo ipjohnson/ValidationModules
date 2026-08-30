@@ -5,7 +5,7 @@ using Xunit;
 namespace ValidationModules.SourceGenerator.Tests;
 
 /// <summary>
-/// The language-pack pipeline (docs/language-packs.md): JSON in <c>AdditionalFiles</c>, a sealed
+/// The language-pack pipeline: JSON in <c>AdditionalFiles</c>, a sealed
 /// <c>IValidationLanguagePack</c> out, registration folded into the assembly extension - and the
 /// diagnostic suite that is the reason packs compile instead of load.
 /// </summary>

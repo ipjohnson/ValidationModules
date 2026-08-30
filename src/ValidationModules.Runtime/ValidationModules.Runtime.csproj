@@ -11,9 +11,8 @@
 
         <!--
             The package is ValidationModules.Runtime; the namespace is ValidationModules. Consumers
-            write `using ValidationModules;` and get the contracts, which is what
-            IMPLEMENTATION-PLAN.md §4 specifies. Constraint attributes deliberately live one level
-            down in ValidationModules.Constraints - see API-SURFACE.md §1 for why that separation
+            write `using ValidationModules;` and get the contracts. Constraint attributes
+            deliberately live one level down in ValidationModules.Constraints, and that separation
             is load-bearing rather than tidiness.
         -->
         <RootNamespace>ValidationModules</RootNamespace>
@@ -22,7 +21,7 @@
             The reason this library exists. Every IL* warning is an error here: each one is a call
             the trimmer or the AOT compiler cannot follow, and the incumbent's trim warnings under
             Native AOT are precisely the gap this fills. Enforced by the compiler rather than by
-            review - see IMPLEMENTATION-PLAN.md §2.
+            review.
         -->
         <IsAotCompatible>true</IsAotCompatible>
         <WarningsAsErrors>$(WarningsAsErrors);IL2026;IL2055;IL2067;IL2072;IL2075;IL2087;IL3050</WarningsAsErrors>

@@ -1,7 +1,7 @@
 <Project>
 
     <!--
-        The language filter (docs/language-packs.md). Unset means every language this package
+        The language filter. Unset means every language this package
         carries compiles into the consuming assembly; a semicolon list compiles exactly those;
         'none' turns the package off without removing it. Because the filter runs before the
         generator ever sees a file, opting out means not compiled - the language is absent from

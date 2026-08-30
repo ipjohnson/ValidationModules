@@ -103,8 +103,8 @@ internal static class RuleText {
     /// <remarks>
     /// The message is the rule, so it cannot drift from what is actually checked the way a composed
     /// message repeating a bound can. It carries only compile-time source and therefore only schema,
-    /// never a runtime value - which is why <c>Ensure</c> sits outside the redaction ladder in
-    /// HANDOFF.md §3.2 rather than needing a policy of its own.
+    /// never a runtime value, which is why <c>Ensure</c> sits outside the redaction ladder rather
+    /// than needing a policy of its own.
     /// </remarks>
     /// <param name="predicateText">The predicate's source, as written.</param>
     /// <param name="fieldNamer">Applied to each member read directly off the parameter.</param>

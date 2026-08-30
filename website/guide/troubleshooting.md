@@ -11,7 +11,7 @@ using ValidationModules.Constraints;   // not ValidationModules
 ```
 
 **The constraint is on a record parameter.** This is the most common cause, and it now reports
-[VM0051](/reference/diagnostics#vm0051) — so check your warnings before reading further:
+[VM0051](/reference/diagnostics#vm0051), so check your warnings before reading further:
 
 ```csharp
 public sealed record Pet([Required] string Name);              // VM0051
@@ -42,8 +42,8 @@ did not run at all; if the files are there, the problem is downstream.
 
 **DataAnnotations are switched off.** If your model's only rules are
 `System.ComponentModel.DataAnnotations` attributes and
-`ValidationModules_DataAnnotations` is `Ignore`, no validator is emitted — but every skipped
-constraint reports [VM0010](/reference/diagnostics#vm0010), so check your warnings.
+`ValidationModules_DataAnnotations` is `Ignore`, no validator is emitted. Every skipped constraint
+reports [VM0010](/reference/diagnostics#vm0010), so check your warnings.
 
 ## The validator exists but a rule never fires
 
@@ -51,8 +51,8 @@ constraint reports [VM0010](/reference/diagnostics#vm0010), so check your warnin
 fail. That is [VM0004](/reference/diagnostics#vm0004), a warning. You probably wanted `[Range]`, or
 `int?`.
 
-**A pattern that is not anchored.** `[Pattern("abc")]` matches `"xabcx"` — patterns follow JSON
-Schema and are unanchored. Write `^abc$`.
+**A pattern that is not anchored.** `[Pattern("abc")]` matches `"xabcx"`, because patterns follow
+JSON Schema and are unanchored. Write `^abc$`.
 
 **A null value.** Every constraint except `[Required]` skips a null: a null string is not too long, a
 null collection has no element count. Add `[Required]` if absence should fail too.
@@ -66,14 +66,14 @@ about it; mark the type `[GenerateValidator]` if they come from somewhere it can
 
 **A `[Range]` bound that does not parse.** String bounds are parsed against the member's type at
 build time, and one that does not parse is [VM0065](/reference/diagnostics#vm0065) with the
-constraint dropped — so this should no longer reach generated code. If it does, that is a bug worth
+constraint dropped, so this should no longer reach generated code. If it does, that is a bug worth
 reporting.
 
 **A referenced pattern member that is not visible.** The generated validator lands in your assembly,
 so a `private` member is out of reach. [VM0018](/reference/diagnostics#vm0018) names the reason.
 
-**Two types with the same name in one assembly.** Handled — the hint name is qualified by namespace,
-so `Api.V1.Customer` and `Api.V2.Customer` coexist. If you see a duplicate-file error, it is a bug
+**Two types with the same name in one assembly.** This is handled. The hint name is qualified by
+namespace, so `Api.V1.Customer` and `Api.V2.Customer` coexist. If you see a duplicate-file error, it is a bug
 worth reporting.
 
 ## `IValidatorFor<T>` does not resolve
@@ -95,12 +95,12 @@ The method is named after the assembly with the dots removed, so `My.App` emits
 there is no cross-assembly scanning, deliberately. Call that assembly's own `Add…Validators()`, or
 load its module, from your composition root.
 
-**No validator was generated at all.** See the first section — this is usually that in disguise.
+**No validator was generated at all.** See the first section. This is usually that in disguise.
 
 ## Every error appears twice
 
-A type has two validators registered — `ValidationRunner<T>` merges every registered
-`IValidatorFor<T>`, deliberately, so a hand-written validator composes with the generated one.
+A type has two validators registered. `ValidationRunner<T>` merges every registered
+`IValidatorFor<T>` on purpose, so a hand-written validator composes with the generated one.
 The usual cause is calling the assembly's `Add…Validators()` twice, or registering by hand a
 validator the generated registration already added.
 
@@ -111,7 +111,7 @@ of their property, collection elements ascending. Two exceptions by design:
 
 - `[Required]` is evaluated first within a property, whatever order you wrote the attributes in.
 - Rules from a [rule class](/guide/rule-classes) report after the attribute-declared checks, in
-  body order — the body is the validator. Two rules classes for one type run in class-name
+  body order, because the body is the validator. Two rules classes for one type run in class-name
   order.
 
 An async validator that fans out internally produces its own errors in completion order.
@@ -123,13 +123,14 @@ Precedence, highest first: `[JsonPropertyName]`, `[Display(Name = …)]`, then t
 (camelCase by default).
 
 Field names are **baked in at build time**, so registering a different `IValidationFieldNamer`
-does not rename a generated validator's errors — it only affects the FluentValidation adapter.
-Set both to the same policy if you use both.
+does not rename a generated validator's errors. It affects only names computed at run time, from
+`IValidatableObject` results and DataAnnotations member names. Set both to the same policy if you
+use both.
 
 ## The AOT binary grew by half a megabyte
 
 An inline `[Pattern("…")]` roots the regex parser and interpreter. Declare the pattern with
-`[GeneratedRegex]` and reference it — see [Patterns and regex](/guide/patterns).
+`[GeneratedRegex]` and reference it. See [Patterns and regex](/guide/patterns).
 
 If you did not see [VM0017](/reference/diagnostics#vm0017) warning you, the policy resolved to
 `Allow`, which happens when neither `PublishAot` nor `IsAotCompatible` is set on the project holding
@@ -140,8 +141,8 @@ the models. Set `IsAotCompatible` there.
 Your object graph contains a cycle, or a genuinely very deep tree. The message names the path it
 reached.
 
-This is a guard rather than a cycle detector — tracking visited instances would cost an allocation
-and a lookup on every descent. It throws rather than reporting an error because a cycle is a bug in
+This is a guard rather than a cycle detector, because tracking visited instances would cost an
+allocation and a lookup on every descent. It throws rather than reporting an error because a cycle is a bug in
 the graph, not invalid data, and the alternative is a `StackOverflowException`, which cannot be
 caught.
 
@@ -165,5 +166,5 @@ is generated code that does not compile.
 ## Every diagnostic in the reference is wired up
 
 There is no longer a "declared but never reported" list. `DiagnosticCatalogueTests` fails in both
-directions — a descriptor with no report site fails, and a report site with no test fails — so a
-rule you expected to catch something either did, or is genuinely not the rule you wanted.
+directions: a descriptor with no report site fails, and a report site with no test fails. A rule
+you expected to catch something either did, or is genuinely not the rule you wanted.

@@ -7,7 +7,7 @@ namespace ValidationModules;
 /// <remarks>
 /// <para>
 /// The declaration form for a type you do not own, and the only one that can express a rule
-/// spanning two properties. See <c>docs/active-rules-redesign.md</c>.
+/// spanning two properties.
 /// </para>
 /// <para>
 /// <b><see cref="Describe"/> has one consumer: the source generator.</b> It transcribes the body

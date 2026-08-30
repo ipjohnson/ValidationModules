@@ -9,7 +9,7 @@ namespace ValidationModules.SourceGenerator.Impl.FrontEnds;
 /// Reads one <c>*.validation-messages.json</c> file into a <see cref="LanguagePackModel"/>,
 /// validating it against the shape-key inventory - which is the reason packs are compiled rather
 /// than loaded: an unknown shape key, a hole beyond a shape's argument contract, a duplicate key,
-/// all become diagnostics at the build they affect (docs/language-packs.md).
+/// all become diagnostics at the build they affect.
 /// </summary>
 /// <remarks>
 /// <para>

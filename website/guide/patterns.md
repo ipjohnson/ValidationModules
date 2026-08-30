@@ -13,8 +13,8 @@ public string? Sku { get; init; }
 public string? Sku { get; init; }
 ```
 
-Both are correct. Both publish AOT-clean — neither uses `RegexOptions.Compiled`, so nothing goes
-through `Reflection.Emit`. What differs is size.
+Both are correct, and both publish AOT-clean, because neither uses `RegexOptions.Compiled` and
+nothing goes through `Reflection.Emit`. What differs is size.
 
 ## Why the inline form costs so much
 
@@ -26,7 +26,7 @@ private static readonly Regex SkuPattern0 = new Regex("^[A-Z]{3}$");
 
 Constructing a `Regex` from a pattern string at run time means the **regex parser and interpreter
 have to be in the binary**, because the pattern is not known until the constructor runs. The trimmer
-cannot remove them. That is roughly 450 KB on a published AOT binary — paid **once**, however many
+cannot remove them. That is roughly 450 KB on a published AOT binary, paid **once** however many
 patterns follow.
 
 The referenced form points at a member you declared:
@@ -53,7 +53,7 @@ pattern, as straight-line C#. No parser, no interpreter, and the matching itself
 too. About 16 KB for the same pattern.
 
 ::: tip Why this library cannot emit `[GeneratedRegex]` for you
-It could — but a source generator cannot see another generator's output, so the regex generator
+It could, except that a source generator cannot see another generator's output. The regex generator
 would never see the partial method this one emitted, and the partial would have no implementation.
 Declaring the member in your own source is what puts it where the regex generator can find it.
 :::
@@ -105,7 +105,7 @@ error out of a generated file.
 
 The member can be a method, a property or a field, and must be:
 
-- **static** — there is no instance for the validator to reach,
+- **static**, since there is no instance for the validator to reach,
 - **parameterless**, if it is a method,
 - of type `Regex`,
 - at least `internal`, so the generated validator in the same assembly can see it.
@@ -134,9 +134,9 @@ public static partial class PetPatterns {
 `^…$` if you mean the whole value.
 
 This is the one place the native attribute and the DataAnnotations front end deliberately differ:
-`[RegularExpression]` from DataAnnotations *is* anchored — it checks that the match starts at 0 and
-consumes the whole value — and the front end reproduces that faithfully rather than quietly changing
-the meaning of a model you moved across.
+`[RegularExpression]` from DataAnnotations *is* anchored, checking that the match starts at 0 and
+consumes the whole value. The front end reproduces that faithfully rather than quietly changing the
+meaning of a model you moved across.
 
 A null value is not tested. Combine with `[Required]` if absence should also fail.
 
@@ -147,8 +147,8 @@ A null value is not tested. Combine with `[Required]` if absence should also fai
 ```
 
 Honoured, with one exception: `RegexOptions.Compiled` is
-[VM0016](/reference/diagnostics#vm0016). It emits IL through `Reflection.Emit`, which is the exact
-habit this library exists to remove — and it does nothing here anyway, because patterns go through
+[VM0016](/reference/diagnostics#vm0016). It emits IL through `Reflection.Emit`, which is the habit
+this library exists to remove. It does nothing here anyway, because patterns go through
 `[GeneratedRegex]` or a plain constructor.
 
 For the referenced form, options belong on your `[GeneratedRegex]` declaration instead; the

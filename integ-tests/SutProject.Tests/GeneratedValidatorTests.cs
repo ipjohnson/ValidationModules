@@ -11,7 +11,7 @@ namespace SutProject.Tests;
 /// <remarks>
 /// This is the half of source-generator testing that golden files cannot do. A snapshot proves the
 /// emitted text is what was expected; only a real compilation proves it is valid C# that binds, and
-/// only running it proves the semantics in API-SURFACE.md §4.2 survived the trip through the
+/// only running it proves the semantics survived the trip through the
 /// emitter.
 /// </remarks>
 public class GeneratedValidatorTests {

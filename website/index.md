@@ -5,9 +5,9 @@ hero:
   name: ValidationModules
   text: Validation, decided at compile time
   tagline: >-
-    Declare constraints on the model they belong to, and a source generator writes the checks during
-    the build. Nothing reflects, nothing compiles an expression tree, and no regex is built at
-    startup — so a Native AOT publish keeps every rule you declared.
+    Declare constraints on the model they belong to. A source generator writes the checks during the
+    build, so nothing reflects, no expression tree is compiled, and no regex is built at startup.
+    A Native AOT publish keeps every rule you declared.
   image:
     src: /hero.svg
     alt: A constrained model on the left becoming straight-line generated validation code on the right
@@ -25,25 +25,24 @@ hero:
 features:
   - title: Validators you can read
     details: >-
-      Every check is emitted into your assembly as plain C#. Set EmitCompilerGeneratedFiles and the
-      file under obj/ is the ground truth — no rule graph to reason about, no startup cost, and
-      nothing between the attribute you wrote and the branch that runs.
+      Every check is emitted into your assembly as plain C#. Set EmitCompilerGeneratedFiles and read
+      the file under obj/. There is no rule graph to reason about and no startup cost.
     link: /guide/constraints
     linkText: The constraint attributes
 
   - title: Native AOT is the requirement
     details: >-
       No MakeGenericType, no Activator.CreateInstance, no Expression.Compile, no assembly scanning.
-      The runtime escalates the trim and AOT warnings to errors, so the compiler enforces this
-      rather than review.
+      The runtime escalates the trim and AOT warnings to errors, so the compiler enforces it rather
+      than code review.
     link: /guide/aot
     linkText: Trimming and AOT
 
   - title: Mistakes reported at build time
     details: >-
       A length constraint on an int, a pattern that will not parse, bounds that can never both be
-      satisfied, a constrained property with no getter — each is a VM diagnostic in the IDE rather
-      than a rule that silently never fires.
+      satisfied, a constrained property with no getter. Each one is a VM diagnostic in the IDE
+      rather than a rule that silently never fires.
     link: /reference/diagnostics
     linkText: Diagnostics reference
 
@@ -51,31 +50,31 @@ features:
     details: >-
       Native constraint attributes, System.ComponentModel.DataAnnotations compiled rather than
       reflected, and rule classes for a type you do not own. All three read into one model and out
-      through one emitter, so a rule's origin stops mattering.
+      through one emitter, so where a rule came from stops mattering.
     link: /guide/rule-classes
     linkText: Rule classes
 
   - title: One error shape
     details: >-
       Declaration order, fixed wire codes, and a field path that reads home.postalCode or
-      toys[3].name. A failed required suppresses the rest of its field, enforced where every engine
-      reaches rather than in emitted control flow.
+      toys[3].name. A failed required suppresses the rest of its field, enforced in the collector so
+      that every engine gets it.
     link: /guide/errors
     linkText: The error model
 
   - title: Registers itself
     details: >-
-      One generated call named after your assembly, so two of them compose without ceremony. With
-      DependencyModules referenced you get a module wrapping the same body instead. Validators are
-      singletons; resolving one costs about 4ns.
+      One generated call named after your assembly, so two assemblies compose without ceremony.
+      With DependencyModules referenced you get a module wrapping the same body instead. Validators
+      are singletons, and resolving one costs about 6 ns.
     link: /guide/registration
     linkText: Registration and DI
 
   - title: Answers a request
     details: >-
-      An endpoint filter validates a minimal API argument before the handler runs and answers with
-      RFC 9457, carrying the field paths and the stable codes rather than only English. Published
-      Native AOT and served, not just unit tested.
+      An endpoint filter validates a minimal API argument before the handler runs, and answers with
+      RFC 9457 carrying the field paths and the stable codes. Verified by publishing Native AOT and
+      serving real requests, not only by unit tests.
     link: /guide/aspnetcore
     linkText: ASP.NET Core
 ---
@@ -102,7 +101,7 @@ public sealed record Pet {
 }
 ```
 
-What comes out the other side is the code you would have written by hand, in your own assembly:
+The generator writes this into your own assembly. It is the code you would have written by hand:
 
 ```csharp
 public sealed partial class PetValidator : IValidatorFor<Pet> {
@@ -129,8 +128,9 @@ public sealed partial class PetValidator : IValidatorFor<Pet> {
 }
 ```
 
-And when a rule outgrows an attribute — cross-field facts, computation, a type you do not own — a
-[rules class](/guide/rule-classes) is full C# that is **read at build time and never run**:
+When a rule outgrows an attribute, a [rules class](/guide/rule-classes) takes over. Cross-field
+facts, computation, and types you do not own belong there. It is full C#, **read at build time and
+never run**:
 
 ```csharp
 public sealed class PetRules : IValidationRulesFor<Pet> {
@@ -144,8 +144,8 @@ public sealed class PetRules : IValidationRulesFor<Pet> {
 }
 ```
 
-Then run it. The entry points are extension methods, so the calling file imports
-`ValidationModules` — the constraints namespace is for the model:
+Then run it. The entry points are extension methods in `ValidationModules`, so the calling file
+imports that namespace. The constraints namespace is for the model:
 
 ```csharp
 using ValidationModules;
@@ -163,42 +163,42 @@ foreach (var error in result.Errors) {
 ## Why the build, and not the request
 
 Validation is the layer most likely to be quietly reflective. FluentValidation compiles an
-expression tree per property access; `System.ComponentModel.DataAnnotations` walks attributes with
-`Validator.TryValidateObject`. Both work — and under Native AOT neither fails loudly:
-`Expression.Compile()` falls back to the LINQ interpreter, so the rules still run, just interpreted
-and carrying `IL2026`/`IL3050` trim warnings into the published build. They cost more than they
-look like they cost, in the configuration where you can least afford it.
+expression tree per property access. `System.ComponentModel.DataAnnotations` walks attributes with
+`Validator.TryValidateObject`.
 
-Both have a home here anyway: existing DataAnnotations models
-[compile as-is](/guide/data-annotations) — migration support, at your own pace — and
-FluentValidation [translates almost one to one](/guide/getting-started#coming-from-another-library)
-into attributes and rules classes.
+Both work, and neither fails loudly under Native AOT. `Expression.Compile()` falls back to the LINQ
+interpreter, so the rules still run, interpreted, and carry `IL2026` and `IL3050` trim warnings into
+the published build. The cost lands in the configuration where you can least afford it.
+
+Both have a home here anyway. Existing DataAnnotations models
+[compile as-is](/guide/data-annotations), so you can migrate at your own pace. FluentValidation
+[translates almost one to one](/guide/getting-started#coming-from-another-library) into attributes
+and rules classes.
 
 ## What it costs
 
-Measured against the same rules expressed in FluentValidation and in DataAnnotations, on .NET 10,
-Apple M3 Pro. The full method and the four choices made in FluentValidation's favour are in
-[`benchmarks/README.md`](https://github.com/ipjohnson/ValidationModules/blob/main/benchmarks/README.md);
-the run these came from, and what is and is not stable in it, is in
-[`benchmarks/RESULTS.md`](https://github.com/ipjohnson/ValidationModules/blob/main/benchmarks/RESULTS.md).
+Measured against the same rules expressed in FluentValidation and in DataAnnotations, on .NET
+10.0.10 and an Apple M3 Pro. Four choices in the setup are made in FluentValidation's favour. Run
+`./scripts/benchmark.sh --comparative` in the repository to reproduce the numbers and read the full
+method.
 
 | | ValidationModules | FluentValidation | DataAnnotations |
 |---|---|---|---|
-| Flat model, valid | **26.4 ns** / 40 B | 196 ns / 664 B | 1,031 ns / 2,696 B |
-| Nested model, valid | **104 ns** / 40 B | 1,804 ns / 5,224 B | 588 ns *(top level only)* |
-| 1,000 elements | **12.0 µs** / 40 B | 250 µs / 846 KB | *does not descend* |
-| Resolve from DI | **4 ns** / **0 B** | ~4–6 µs / 11 KB | — |
+| Flat model, valid | **32 ns** / 56 B | 179 ns / 664 B | 958 ns / 2,696 B |
+| Nested model, valid | **110 ns** / 56 B | 1,817 ns / 5,224 B | 581 ns *(top level only)* |
+| 1,000 elements | **15.4 µs** / 56 B | 236 µs / 826 KB | *does not descend* |
+| Resolve from DI | **6 ns** / **0 B** | ~4.4 µs / 11 KB | — |
 
-The allocation column is the one worth reading twice, because it is counted rather than timed and so
-does not move between runs. **40 bytes is the whole cost of a passing validation** — one result
-object, the same for a flat model, a nested one, and a thousand elements, because the walk itself
+Read the allocation column twice. It is counted rather than timed, so it does not move between runs.
+**56 bytes is the whole cost of a passing validation.** That is one result object, and it is the
+same figure for a flat model, a nested one, and a thousand elements, because the walk itself
 allocates nothing.
 
-The last row is a range rather than a figure deliberately. `AddValidatorsFromAssemblyContaining`
-registers validators **scoped**, so by default FluentValidation rebuilds its rule graph on every
-request. That costs about 11 KB per resolve, which is exact, and a few microseconds, which is
-dominated by garbage collection and moves too much between runs on our hardware to quote more
-precisely than that.
+The last row gives FluentValidation a range rather than a figure, on purpose.
+`AddValidatorsFromAssemblyContaining` registers validators **scoped**, so by default FluentValidation
+rebuilds its rule graph on every request. That costs about 11 KB per resolve, which is exact. The
+time it takes is dominated by garbage collection and moves too much between runs to quote more
+precisely.
 
 </div>
 
