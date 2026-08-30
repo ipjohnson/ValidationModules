@@ -54,7 +54,7 @@ internal static class OrderRules_Rules
     public static global::ValidationModules.ValidationFlow Describe(ref global::ValidationModules.ValidationContext ctx, global::Sample.Order x)
     {
         var total = x.Amounts?.Sum() ?? 0m;
-        if (!(total <= x.CreditLimit) && ctx.Report("creditLimit", global::ValidationModules.ValidationCodes.Predicate, "total <= creditLimit.").ShouldStop) {
+        if (!(total <= x.CreditLimit) && ctx.Report("creditLimit", "total_less_than_or_equal_credit_limit", "total <= creditLimit.").ShouldStop) {
             return global::ValidationModules.ValidationFlow.Stop;
         }
         if (!Luhn.Validates(x.AccountNumber)) {

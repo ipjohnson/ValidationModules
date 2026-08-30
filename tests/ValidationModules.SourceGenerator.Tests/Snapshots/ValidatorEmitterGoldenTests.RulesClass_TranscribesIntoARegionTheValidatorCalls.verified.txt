@@ -63,7 +63,7 @@ internal static class ReservationRules_Rules
         if ((x.Nights < 1 || x.Nights > 30) && global::ValidationModules.ValidationContextExtensions.ReportRange(ctx, "nights", 1, 30).ShouldStop) {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (!(x.Start < x.End) && ctx.Report("start", global::ValidationModules.ValidationCodes.Predicate, "start < end.").ShouldStop) {
+        if (!(x.Start < x.End) && ctx.Report("start", "start_less_than_end", "start < end.").ShouldStop) {
             return global::ValidationModules.ValidationFlow.Stop;
         }
         return global::ValidationModules.ValidationFlow.Continue;

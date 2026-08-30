@@ -51,12 +51,12 @@ public class RulesClassTests {
     }
 
     [Fact]
-    public void Validate_RendersAnEnsureAsItsOwnMessage() {
+    public void Validate_RendersAnEnsureAsItsOwnMessageAndCode() {
         var result = Validator.Validate(Valid() with { End = new DateOnly(2025, 1, 1) });
 
         var error = Assert.Single(result.Errors);
         Assert.Equal("start", error.Field);
-        Assert.Equal(ValidationCodes.Predicate, error.Code);
+        Assert.Equal("start_less_than_end", error.Code);
         Assert.Equal("start < end.", error.Message);
     }
 
@@ -109,7 +109,7 @@ public class RulesClassTests {
                 ("guest", ValidationCodes.Required),
                 ("nights", ValidationCodes.Range),
                 ("guests", ValidationCodes.Range),
-                ("start", ValidationCodes.Predicate),
+                ("start", "start_less_than_end"),
             ],
             Validator.Validate(new Reservation()).Errors.Select(error => (error.Field, error.Code)));
 

@@ -9,9 +9,9 @@ namespace ValidationModules.Runtime.Tests;
 /// </summary>
 /// <remarks>
 /// <see cref="RuleText"/> is compiled into the source generator as well as into the runtime, so
-/// these assertions bind both engines at once. That is the point of sharing the file: §19.5 rests on
-/// a generated validator and <see cref="DescribedValidator{T}"/> producing byte-identical messages,
-/// and two implementations would agree only until someone edited one of them.
+/// these assertions pin the transforms for both. That is the point of sharing the file: the message
+/// and the code an <c>Ensure</c> bakes into generated source come from exactly one render, and two
+/// implementations would agree only until someone edited one of them.
 /// </remarks>
 public class RuleTextTests {
 
@@ -98,5 +98,68 @@ public class RuleTextTests {
     [Fact]
     public void RenderPredicate_DoesNotDoubleThePeriod() {
         Assert.Equal("name.Length > 3.", RuleText.RenderPredicate("x => x.Name.Length > 3.", Name));
+    }
+
+    [Theory]
+    [InlineData("x => x.Start < x.End", "start_less_than_end")]
+    [InlineData("x => x.Total <= x.CreditLimit", "total_less_than_or_equal_credit_limit")]
+    [InlineData("x => x.Start > x.End", "start_greater_than_end")]
+    [InlineData("x => x.Count >= x.Minimum", "count_greater_than_or_equal_minimum")]
+    [InlineData("x => x.Status == x.Wanted", "status_equal_wanted")]
+    [InlineData("x => x.CustomsCode != null", "customs_code_not_equal_null")]
+    [InlineData("x => x.Paid && x.Shipped", "paid_and_shipped")]
+    [InlineData("x => x.Paid || x.Waived", "paid_or_waived")]
+    [InlineData("x => !x.Cancelled", "not_cancelled")]
+    public void CodeOfPredicate_SpellsTheOperator(string predicate, string expected) {
+        Assert.Equal(expected, RuleText.CodeOfPredicate(predicate, Name));
+    }
+
+    [Fact]
+    public void CodeOfPredicate_WideningABoundMovesTheCode() {
+        // The whole point. A key that survived this edit would assert that nothing happened, and a
+        // translation carried across it would be quietly wrong.
+        Assert.NotEqual(
+            RuleText.CodeOfPredicate("x => x.Start < x.End", Name),
+            RuleText.CodeOfPredicate("x => x.Start <= x.End", Name));
+    }
+
+    [Fact]
+    public void CodeOfPredicate_FollowsTheWireNameRatherThanTheClrName() {
+        // The reason this derives from the render. A property renamed in C# behind a pinned
+        // [JsonPropertyName] keeps its wire name, so neither the message nor the code moves.
+        static string Pinned(string clr) => clr == "BeginsAt" || clr == "Start" ? "start" : Name(clr);
+
+        Assert.Equal(
+            RuleText.CodeOfPredicate("x => x.Start < x.End", Pinned),
+            RuleText.CodeOfPredicate("x => x.BeginsAt < x.End", Pinned));
+    }
+
+    [Fact]
+    public void CodeOfPredicate_ReadsALiteralAsPartOfTheRule() {
+        // Comparing against a different value is a different rule, so the code moves with it.
+        Assert.Equal("status_equal_active", RuleText.CodeOfPredicate("x => x.Status == \"active\"", Name));
+        Assert.Equal("status_equal_pending", RuleText.CodeOfPredicate("x => x.Status == \"pending\"", Name));
+    }
+
+    [Theory]
+    [InlineData("x => x.Name.Length > 3", "name_length_greater_than_3")]
+    [InlineData("x => !string.IsNullOrWhiteSpace(x.Name)", "not_string_is_null_or_white_space_name")]
+    [InlineData("x => x.HTTPStatus == 200", "http_status_equal_200")]
+    [InlineData("x => x.Total * 2 > x.Limit", "total_times_2_greater_than_limit")]
+    public void CodeOfPredicate_SplitsHumpsAndAcronymsAndDropsStructure(string predicate, string expected) {
+        Assert.Equal(expected, RuleText.CodeOfPredicate(predicate, Name));
+    }
+
+    [Fact]
+    public void CodeOfPredicate_IsUnaffectedByFormatting() {
+        Assert.Equal(
+            RuleText.CodeOfPredicate("x => x.Start < x.End", Name),
+            RuleText.CodeOfPredicate("x =>\n        x.Start\n            < x.End", Name));
+    }
+
+    [Fact]
+    public void CodeOfPredicate_WithNothingDerivable_IsNull() {
+        // The caller keeps the generic code rather than emitting an empty one.
+        Assert.Null(RuleText.CodeOfPredicate(null, Name));
     }
 }

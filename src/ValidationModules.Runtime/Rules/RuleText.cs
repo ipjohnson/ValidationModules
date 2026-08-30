@@ -147,6 +147,194 @@ internal static class RuleText {
     }
 
     /// <summary>
+    /// The wire code for a predicate, derived from the same render its message comes from:
+    /// <c>x =&gt; x.Start &lt; x.End</c> gives <c>start_less_than_end</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Derived from the render, not from the source.</b> Going through
+    /// <see cref="RenderPredicate"/> is what puts members under their wire names, so a property
+    /// renamed in C# behind a pinned <c>[JsonPropertyName]</c> moves neither the message nor the
+    /// code. It also makes the two incapable of disagreeing, since one is a transform of the other.
+    /// </para>
+    /// <para>
+    /// <b>The code moves when the rule moves, and that is the point.</b> Widening <c>&lt;</c> to
+    /// <c>&lt;=</c> changes what the user is told and what a client should do about it, so a key
+    /// that survived the edit would be asserting that nothing happened - and a translation carried
+    /// across it would be quietly wrong. Pass <c>code:</c> to pin one rule against that.
+    /// </para>
+    /// <para>
+    /// <b>The operator spelling is a wire contract.</b> It is the
+    /// <c>System.Linq.Expressions.ExpressionType</c> names in snake_case, which is also how
+    /// FluentValidation names its comparison validators, and it matches the spelled-out house style
+    /// of <c>string_length</c> and <c>multiple_of</c>. The abbreviated dialects disagree with each
+    /// other - OData spells <c>&lt;=</c> as <c>le</c> where MongoDB spells it <c>lte</c> - so there
+    /// was no short convention to adopt. Respelling any of this later churns every derived code in
+    /// every consuming application at once, which is the one kind of churn nothing above justifies.
+    /// </para>
+    /// </remarks>
+    /// <param name="predicateText">The predicate's source, as written.</param>
+    /// <param name="fieldNamer">Applied to each member read directly off the parameter.</param>
+    /// <returns>Null when nothing derivable is left, so the caller keeps the generic code.</returns>
+    public static string? CodeOfPredicate(string? predicateText, Func<string, string> fieldNamer) {
+        var rendered = RenderPredicate(predicateText, fieldNamer);
+
+        if (rendered.Length == 0) {
+            return null;
+        }
+
+        var builder = new StringBuilder(rendered.Length + 16);
+
+        // RenderPredicate appends one period. It is punctuation on the sentence, not part of the
+        // rule, and it is the only trailing character that is ever there.
+        var end = rendered[rendered.Length - 1] == '.' ? rendered.Length - 1 : rendered.Length;
+        var index = 0;
+
+        while (index < end) {
+            var character = rendered[index];
+
+            if (character == '"' || character == '\'') {
+                var start = index;
+                SkipLiteral(rendered, ref index);
+
+                // The contents without the quotes. A compared literal is part of what the rule
+                // means, so changing it is a rule change and moves the code with it.
+                var length = index - start - 2;
+                AppendWords(builder, length > 0 ? rendered.Substring(start + 1, length) : string.Empty);
+                continue;
+            }
+
+            if (IsIdentifierStart(character)) {
+                AppendWords(builder, ReadIdentifier(rendered, ref index)!);
+                continue;
+            }
+
+            if (char.IsDigit(character)) {
+                var start = index;
+
+                while (index < end && (char.IsDigit(rendered[index]) || rendered[index] == '.')) {
+                    index++;
+                }
+
+                AppendWords(builder, rendered.Substring(start, index - start));
+                continue;
+            }
+
+            var word = ReadOperator(rendered, ref index);
+
+            if (word is not null) {
+                AppendSegment(builder, word);
+                continue;
+            }
+
+            // Whitespace, parentheses, commas, and the dots inside a member path. All of them are
+            // structure rather than meaning, and the underscore between segments carries it.
+            index++;
+        }
+
+        return builder.Length == 0 ? null : builder.ToString();
+    }
+
+    /// <summary>
+    /// Reads one operator at <paramref name="index"/>, longest first, and returns its wire word.
+    /// </summary>
+    private static string? ReadOperator(string text, ref int index) {
+        if (index + 1 < text.Length) {
+            var word = TwoCharacterOperator(text[index], text[index + 1]);
+
+            if (word is not null) {
+                index += 2;
+                return word;
+            }
+        }
+
+        var single = OneCharacterOperator(text[index]);
+
+        if (single is null) {
+            return null;
+        }
+
+        index++;
+        return single;
+    }
+
+    /// <remarks>
+    /// <c>AndAlso</c> and <c>OrElse</c> are the two <c>ExpressionType</c> names not taken verbatim.
+    /// They describe C#'s short-circuiting, which is a fact about evaluation rather than about what
+    /// the rule means, and neither reads as anything on a wire.
+    /// </remarks>
+    private static string? TwoCharacterOperator(char first, char second) {
+        if (first == '<' && second == '=') { return "less_than_or_equal"; }
+        if (first == '>' && second == '=') { return "greater_than_or_equal"; }
+        if (first == '=' && second == '=') { return "equal"; }
+        if (first == '!' && second == '=') { return "not_equal"; }
+        if (first == '&' && second == '&') { return "and"; }
+        if (first == '|' && second == '|') { return "or"; }
+
+        return null;
+    }
+
+    private static string? OneCharacterOperator(char character) {
+        switch (character) {
+            case '<': return "less_than";
+            case '>': return "greater_than";
+            case '!': return "not";
+            case '+': return "plus";
+            case '-': return "minus";
+            case '*': return "times";
+            case '/': return "divided_by";
+            case '%': return "modulo";
+            default: return null;
+        }
+    }
+
+    /// <summary>
+    /// Appends one identifier as snake_case segments, splitting camel humps and acronym runs so
+    /// <c>creditLimit</c> gives <c>credit_limit</c> and <c>HTTPStatus</c> gives <c>http_status</c>.
+    /// </summary>
+    private static void AppendWords(StringBuilder builder, string text) {
+        var start = 0;
+
+        for (var index = 0; index < text.Length; index++) {
+            var character = text[index];
+
+            if (!char.IsLetterOrDigit(character)) {
+                AppendSegment(builder, text.Substring(start, index - start));
+                start = index + 1;
+                continue;
+            }
+
+            // A hump starts at an upper following a non-upper, and an acronym run ends at the
+            // upper before a lower - which is the letter that starts the next word, not the last
+            // of the acronym.
+            if (index > start && char.IsUpper(character) &&
+                (!char.IsUpper(text[index - 1]) ||
+                 (index + 1 < text.Length && char.IsLower(text[index + 1])))) {
+                AppendSegment(builder, text.Substring(start, index - start));
+                start = index;
+            }
+        }
+
+        AppendSegment(builder, text.Substring(start));
+    }
+
+    private static void AppendSegment(StringBuilder builder, string segment) {
+        if (segment.Length == 0) {
+            return;
+        }
+
+        if (builder.Length > 0) {
+            builder.Append('_');
+        }
+
+        for (var index = 0; index < segment.Length; index++) {
+            var character = segment[index];
+
+            builder.Append(char.IsLetterOrDigit(character) ? char.ToLowerInvariant(character) : '_');
+        }
+    }
+
+    /// <summary>
     /// Splits a lambda into its parameter name and its body, with whitespace already normalised.
     /// </summary>
     /// <remarks>

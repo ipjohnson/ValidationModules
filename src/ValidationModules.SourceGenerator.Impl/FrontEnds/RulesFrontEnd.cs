@@ -1438,9 +1438,13 @@ public sealed class RulesFrontEnd {
                 var field = explicitField ?? _writer._owner.WireNameOf(anchor!);
                 var message = Literal(arguments, "message")
                     ?? RuleText.RenderPredicate($"{subject} => {text}", _writer._owner._fieldNamer);
+
+                // Derived from the condition rather than from `message`, so an author rewording
+                // their own text does not move the wire code. The rule is the condition.
+                var derived = RuleText.CodeOfPredicate($"{subject} => {text}", _writer._owner._fieldNamer);
                 var code = Literal(arguments, "code") is { } custom
                     ? Quote(custom)
-                    : $"{Codes}.Predicate";
+                    : derived is null ? $"{Codes}.Predicate" : Quote(derived);
                 var severity = SeverityOf(arguments) is { } member ? $", {SeverityEnum}.{member}" : string.Empty;
 
                 // Never null-guarded: the condition may read fields other than its anchor, so null
