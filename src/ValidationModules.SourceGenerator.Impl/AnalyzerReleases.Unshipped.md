@@ -31,6 +31,7 @@ VM0063 | ValidationModules.Usage | Info | A format DataAnnotations attribute is 
 VM0064 | ValidationModules.Usage | Error | A length constraint was applied to a member that is neither string nor collection.
 VM0065 | ValidationModules.Usage | Error | Range bounds do not parse as the member's type.
 VM0067 | ValidationModules.Usage | Info | IValidatableObject.Validate is called after every other rule on the type passes, as Validator.TryValidateObject sequences it. Reported with an ignoring tail when ValidationModules_DataAnnotations is Ignore.
+VM0068 | ValidationModules.Usage | Warning | [EnumDataType] checks a runtime string conversion and is not compiled.
 VM0070 | ValidationModules.Usage | Error | A statement in a Describe body is not transcribable.
 VM0071 | ValidationModules.Usage | Error | A rule's value argument is not a member path on the subject parameter.
 VM0075 | ValidationModules.Usage | Error | An Ensure has no inferable field and no explicit field name.
@@ -55,6 +56,7 @@ VM0089 | ValidationModules.Usage | Error | A rule declaration sits inside a loop
 VM0090 | ValidationModules.Usage | Error | Require on a non-nullable value type can never fail.
 VM0091 | ValidationModules.Usage | Error | A facet validated with As declares no rules in this compilation.
 VM0092 | ValidationModules.Usage | Info | An Ensure derived its code from its condition; the message states the code.
+VM0093 | ValidationModules.Usage | Warning | A rule value unwraps a nullable member with .Value; the rule takes the nullable directly.
 VM0100 | ValidationModules.Usage | Error | A language pack file cannot be read.
 VM0101 | ValidationModules.Usage | Warning | A language pack names an unknown shape key.
 VM0102 | ValidationModules.Usage | Error | A language pack template hole exceeds the shape's arguments.

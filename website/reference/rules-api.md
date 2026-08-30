@@ -113,8 +113,24 @@ rules.Require(x.Name, field: "petName");
 ```
 
 `[JsonPropertyName]` on the property wins, then the naming policy. An explicit `field:` is a raw
-wire name, not put through the namer. Anything that is not a member path is
+wire name, not put through the namer - with one exception: `field: nameof(x.AccountNumber)`,
+through the subject, names a *member*, so it takes that member's wire name (`accountNumber`),
+exactly as `nameof` does everywhere else in a rules class. Anything that is not a member path is
 [VM0071](/reference/diagnostics#vm0071) unless `field:` is given.
+
+A nullable member is passed as itself - every rule parameter is already nullable:
+
+```csharp
+public decimal? BatteryKwh { get; init; }
+
+rules.Range(x.BatteryKwh, 10m, 300m);          // field "batteryKwh"; null passes, [Required] is
+                                               // the presence check
+rules.Range(x.BatteryKwh.Value, 10m, 300m);    // VM0093: drop .Value
+```
+
+Writing `.Value` is never needed and is [VM0093](/reference/diagnostics#vm0093): the reader
+corrects the rule to the member itself, but the unwrap also skews type inference - see the next
+section's note on bound literals - so the source should say what is meant.
 
 ## Anchored chaining
 
@@ -154,9 +170,15 @@ chain's type argument**, which is how `Length` is offered on a string anchor and
 A rule declared here and the same rule declared as an attribute expand through one check writer,
 so codes, messages and check shapes match exactly.
 
-`Range<TValue>` is constrained `where TValue : IComparable<TValue>, IFormattable`, which is what
-makes it work for `DateOnly` and `decimal` where the
+`Range<TValue>` is constrained `where TValue : struct, IComparable<TValue>, IFormattable`, which
+is what makes it work for `DateOnly` and `decimal` where the
 [`[Range]` string overload does not](/reference/diagnostics#vm0065).
+
+**Suffix bound literals to the member's type.** `TValue` must infer to one type from the value
+*and* the bounds together, and an unsuffixed `10` is an `int` - so
+`rules.Range(x.BatteryKwh, 10, 300)` on a `decimal?` member pits `decimal` against `int` and the
+call does not compile. Write the bounds in the member's own type - `10m` and `300m` for a
+`decimal`, `-90.0` for a `double` - and inference has one answer.
 
 `RangeAtLeast` and `RangeAtMost` are separate methods rather than an optional bound on `Range`. A
 nullable bound parameter costs the type inference that lets `Range(x.Age, 0, 120)` be written

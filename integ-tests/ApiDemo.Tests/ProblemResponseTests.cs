@@ -81,6 +81,35 @@ public class ProblemResponseTests {
     }
 
     /// <summary>
+    /// Two endpoints in one app answering different statuses: /orders keeps the application-wide
+    /// 400 while /orders/strict overrides to 422 - and each body's type member matches its own
+    /// status rather than pointing every failure at the definition of 400.
+    /// </summary>
+    [Fact]
+    public async Task PerEndpointStatus_OverridesOneEndpointAndItsTypeMember() {
+        using var api = DemoApi.Development();
+        using var client = api.CreateClient();
+
+        var invalid = new CreateOrder { Reference = "x", Quantity = 0 };
+
+        var wide = await client.PostAsJsonAsync("/orders", invalid, Ct);
+        var strict = await client.PostAsJsonAsync("/orders/strict", invalid, Ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, wide.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, strict.StatusCode);
+
+        var wideProblem = await ProblemFrom(wide);
+        Assert.Equal(400, wideProblem.Status);
+        Assert.Equal("https://tools.ietf.org/html/rfc9110#section-15.5.1", wideProblem.Type);
+
+        var strictProblem = await ProblemFrom(strict);
+        Assert.Equal(422, strictProblem.Status);
+        Assert.Equal("https://tools.ietf.org/html/rfc9110#section-15.5.21", strictProblem.Type);
+        Assert.Contains("reference", strictProblem.Errors.Keys);
+        Assert.Equal(["string_length"], CodesFor(strictProblem, "reference"));
+    }
+
+    /// <summary>
     /// A type-level failure lands under the empty key, in both dictionaries. The guide's response
     /// sample never showed one, so nothing pinned it.
     /// </summary>

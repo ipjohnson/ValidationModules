@@ -29,6 +29,11 @@ app.UseStatusCodePages();
 app.MapPost("/orders", (CreateOrder order) => Results.Ok(new AcceptedOrder(order.Reference!, order.Quantity)))
     .Validate<CreateOrder>();
 
+// The same body under a per-endpoint status: this endpoint answers 422 while /orders stays on the
+// application-wide 400, and each body's type member follows its own status.
+app.MapPost("/orders/strict", (CreateOrder order) => Results.Ok(new AcceptedOrder(order.Reference!, order.Quantity)))
+    .Validate<CreateOrder>(statusCode: 422);
+
 // The thrown path: a service validating deeper in, which the exception handler maps to the same
 // body. It runs through ValidationRunner<T> rather than a single IValidatorFor<T>, because the
 // runner is what composes every registered validator - which is also what the filter resolves, so

@@ -53,4 +53,15 @@
         </AssemblyAttribute>
     </ItemGroup>
 
+    <!--
+        The documentation-coverage tests cross-check both public API snapshots against website/.
+        Injected rather than walked up from the binary, because deterministic builds rewrite paths.
+    -->
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+            <_Parameter1>RepositoryRoot</_Parameter1>
+            <_Parameter2>$(MSBuildProjectDirectory)/../..</_Parameter2>
+        </AssemblyAttribute>
+    </ItemGroup>
+
 </Project>

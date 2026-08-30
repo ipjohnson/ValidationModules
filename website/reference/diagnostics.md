@@ -57,6 +57,7 @@ silently does not is worse than one you know is missing.
 | [VM0064](#vm0064) | Error | a length constraint on neither a string nor a collection |
 | [VM0065](#vm0065) | Error | `[Range]` bounds do not parse as the member's type |
 | [VM0067](#vm0067) | Info¹ | `IValidatableObject` runs after every other rule passes |
+| [VM0068](#vm0068) | Warning | `[EnumDataType]` checks a runtime string conversion and is not compiled |
 | [VM0070](#vm0070) | Error | a statement in `Describe` is not transcribable |
 | [VM0071](#vm0071) | Error | a rule's value argument is not a member path on the subject |
 | [VM0075](#vm0075) | Error | an `Ensure` has no inferable field and no `field:` |
@@ -74,6 +75,7 @@ silently does not is worse than one you know is missing.
 | [VM0090](#vm0090) | Error | `Require` on a non-nullable value type can never fail |
 | [VM0091](#vm0091) | Error | a facet validated with `As` declares no rules in this compilation |
 | [VM0092](#vm0092) | Info | the code an `Ensure` derived from its condition |
+| [VM0093](#vm0093) | Warning | a rule value unwraps a nullable member with `.Value` |
 
 ---
 
@@ -595,6 +597,21 @@ last, and only when the pass is otherwise clean. The boolean fast path cannot kn
 was clean", so the type falls back to the interface default `IsValid`. That is correct but not
 free, the same trade a type carrying `rules.Apply(…)` already makes.
 
+### VM0068 {#vm0068}
+
+**Warning**: *`'EnumDataTypeAttribute' on 'Day' checks that a loosely-typed value parses as an enum, a runtime conversion this library does not compile. It is not enforced; type the member as the enum and use [EnumDefined]`*
+
+```csharp
+[EnumDataType(typeof(DayOfWeek))] // VM0068 - not enforced
+public string? Day { get; set; }
+```
+
+`[EnumDataType]` validates that a string or number *parses* as a member of the named enum, which
+is the same runtime string conversion [VM0080](#vm0080)'s narrowing refuses. The native answer is
+to type the member as the enum - the deserializer then owns the parse - and constrain it with
+[`[EnumDefined]`](/reference/attributes#enumdefined), which checks membership without boxing or
+reflection.
+
 ### VM0080 {#vm0080}
 
 **Error**: *`'CustomValidationAttribute' on 'Name' cannot be compiled: 'Sample.Checks.Verify' is not a public static method taking one or two parameters`*
@@ -816,6 +833,24 @@ the source already.
 
 [Error codes](/reference/codes#why-ensure-derives-its-code) has the derivation and the operator
 spellings.
+
+### VM0093 {#vm0093}
+
+**Warning**: *`'x.BatteryKwh.Value' unwraps a nullable member. The rule takes the nullable directly, and the field path is derived from the member - write 'x.BatteryKwh', and suffix any bound literals to the member's type`*
+
+```csharp
+rules.Range(x.BatteryKwh.Value, 10m, 300m);   // VM0093 - write x.BatteryKwh
+```
+
+Every rule parameter is already nullable, so the unwrap is never needed - and it is never
+harmless. With unsuffixed bound literals it skews `TValue` inference and the call fails as an
+opaque CS1503 plus [VM0070](#vm0070); when it compiles, the derived field path keeps the `.Value`
+hop, so the wire carries `batteryKwh.value` and the composed message names `value`.
+
+The reader corrects the rule - it compiles against the member itself, guard, path and all - and
+warns rather than erroring, because failing a build over a mistake it just fixed would be spite.
+The source should still drop the `.Value` so it says what is generated. See
+[nullable members in rule classes](/guide/rule-classes#the-vocabulary).
 
 ### VM0079 {#vm0079}
 

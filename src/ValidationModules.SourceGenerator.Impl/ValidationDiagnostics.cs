@@ -329,6 +329,20 @@ public static class ValidationDiagnostics {
         "ValidationModules is ignoring its Validate method because ValidationModules_DataAnnotations is set to Ignore; another validation system may still call it";
 
     /// <summary>
+    /// <c>[EnumDataType]</c> reached the bridge and was dropped without a word, which is the
+    /// anti-silent-drop rule broken in the one place it still could be: every other validating
+    /// DataAnnotations attribute either compiles or reports why it cannot. The check itself -
+    /// a loosely-typed value parses as an enum member - is a runtime string conversion, the same
+    /// family <c>[CustomValidation]</c>'s narrowing refuses.
+    /// </summary>
+    public static readonly DiagnosticDescriptor EnumDataTypeNotCompiled = Descriptor(
+        "VM0068", "[EnumDataType] is not compiled",
+        "'{0}' on '{1}' checks that a loosely-typed value parses as an enum, a runtime conversion " +
+        "this library does not compile. It is not enforced; type the member as the enum and use " +
+        "[EnumDefined]",
+        DiagnosticSeverity.Warning);
+
+    /// <summary>
     /// <c>[CustomValidation]</c> whose target cannot be called: the type or method does not
     /// resolve, or the signature is not one DataAnnotations would accept from here.
     /// </summary>
@@ -538,6 +552,24 @@ public static class ValidationDiagnostics {
         "VM0092", "Ensure derives its code from its condition",
         "This rule reports code '{0}', derived from '{1}'. Pass code: to pin it against a change " +
         "to the condition", DiagnosticSeverity.Info);
+
+    /// <summary>
+    /// A rule value written as <c>x.Member.Value</c>. The builder's parameters are already
+    /// nullable, so the unwrap is never needed, and it costs twice: type inference reads the
+    /// unwrapped type against unsuffixed bound literals (an opaque CS1503), and the derived field
+    /// path keeps the <c>.Value</c> hop, so the wire path and the composed message name
+    /// <c>value</c> rather than the member.
+    /// </summary>
+    /// <remarks>
+    /// Warning rather than error, because the reader also corrects it - the rule compiles against
+    /// the member itself, path and all - and failing a build the correction just fixed would be
+    /// spite. The diagnostic still fires so the source stops disagreeing with what is generated.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor NullableValueUnwrapped = Descriptor(
+        "VM0093", "Drop .Value; the rule takes the nullable directly",
+        "'{0}.Value' unwraps a nullable member. The rule takes the nullable directly, and the " +
+        "field path is derived from the member - write '{0}', and suffix any bound literals to " +
+        "the member's type", DiagnosticSeverity.Warning);
 
     // Language packs. The block starts at VM0100 so the pack suite reads
     // as its own family; the point of compiling packs is that these fire at the build they affect.

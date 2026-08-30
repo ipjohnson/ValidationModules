@@ -61,15 +61,16 @@ consumers:
 <PackageReference Include="ValidationModules.SourceGenerator" Version="…" PrivateAssets="all" />
 ```
 
-::: tip Two namespaces, wanted in different files
-The constraint attributes live in `ValidationModules.Constraints` on purpose. Five of the names
-collide with `System.ComponentModel.DataAnnotations`: `Required`, `StringLength`, `Range`,
-`AllowedValues`, and the length family. Keeping them in their own namespace means the ambiguity is
-only reachable from a file that asks for both.
-
+::: tip One using per file, by design
 A file that *declares* a model needs `ValidationModules.Constraints`. A file that *runs* a validator
 needs `ValidationModules`, where `Validate`, `IsValid`, `ValidateAndThrow`, and `ValidateInto` live.
 Miss the second one and the call does not compile. See [Running it](#running-it).
+
+The constraint names match `System.ComponentModel.DataAnnotations` on purpose, and the vocabulary
+is a superset: every DataAnnotations validation attribute has a native equivalent, under the same
+name where the concept is the same. So a model file never needs the second namespace, and
+[migrating one](/guide/data-annotations) is swapping the using directive. In the rare file that
+genuinely wants both, fully qualify the colliding attribute.
 :::
 
 ## What was generated
@@ -200,8 +201,12 @@ The name carries the assembly because each assembly registers its own validators
 both emitting `AddValidationModules()` would be ambiguous at the composition root.
 
 ::: tip Finding the name
-It is your assembly name with the dots removed, wrapped in `Add…Validators`. If you would rather
-read it than derive it, it is in
+The source is the **assembly name** (not the root namespace), transformed into a legal
+identifier: dots are removed, any other character that is not a letter, digit or underscore
+becomes an underscore, a segment that starts with a digit gains a leading underscore, and casing
+is untouched. `MyApp.Contracts` gets `AddMyAppContractsValidators()`; a kebab-case
+`app2-signupapi` gets `Addapp2_signupapiValidators()`. The name exists in no package -
+it is computed at build time - so if you would rather read it than derive it, it is in
 `obj/Debug/<tfm>/generated/…/GeneratedValidatorRegistration.g.cs`.
 :::
 

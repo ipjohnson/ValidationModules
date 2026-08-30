@@ -96,4 +96,35 @@ public class EnsureFieldRenameTests {
 
         Assert.Contains("\"shipping_address\"", result.Sources["Sample.OrderRules_Rules.g.cs"]);
     }
+
+    [Fact]
+    public void FieldFromNameof_TakesTheWireName() {
+        // nameof through the subject is the one field: spelling that names a member rather than
+        // choosing a string, and transcribed code already rewrites the same spelling to the wire
+        // path. Before this, one property could reach a client under two keys: 'AccountNumber'
+        // from `field: nameof(x.AccountNumber)` and 'accountNumber' from everything else.
+        const string source = """
+            using ValidationModules;
+
+            namespace Sample;
+
+            public sealed record Order {
+                public string? AccountNumber { get; init; }
+                public string? Reference { get; init; }
+            }
+
+            public sealed class OrderRules : IValidationRulesFor<Order> {
+                public static void Describe(ValidationRules<Order> rules, Order x) {
+                    rules.Ensure(x.Reference != null, field: nameof(x.AccountNumber), code: "window");
+                }
+            }
+            """;
+
+        var result = GeneratorHarness.Run(source);
+
+        var region = result.Sources["Sample.OrderRules_Rules.g.cs"];
+
+        Assert.Contains("\"accountNumber\"", region);
+        Assert.DoesNotContain("\"AccountNumber\"", region);
+    }
 }

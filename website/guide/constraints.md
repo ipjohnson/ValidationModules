@@ -1,9 +1,11 @@
 # Constraints
 
-Ten constraint attributes, all in `ValidationModules.Constraints`. Each one is read at build time
-and becomes a branch. None of them is ever constructed at run time. When the vocabulary is missing a
-constraint your domain repeats, such as a SKU, a slug, or an IBAN, you can
-[add your own attribute](/guide/custom-constraints) and it compiles the same way.
+The constraint attributes, all in `ValidationModules.Constraints`. Each one is read at build time
+and becomes a branch. None of them is ever constructed at run time. The
+[attributes reference](/reference/attributes) lists every member of every one; this page is the
+tour. When the vocabulary is missing a constraint your domain repeats, such as a SKU, a slug, or
+an IBAN, you can [add your own attribute](/guide/custom-constraints) and it compiles the same
+way.
 
 <!-- verify -->
 ```csharp
@@ -101,6 +103,11 @@ The named form exists so declaring one bound reads as declaring one bound. `Min`
 `Max` to `int.MaxValue`, so the omitted side imposes nothing. Inverted bounds are
 [VM0008](/reference/diagnostics#vm0008).
 
+The two spellings do not mix: lowercase `min:`/`max:` are the two-parameter constructor's
+parameters, and the capitalized `Min`/`Max` are properties on the parameterless form. Writing
+`[StringLength(min: 12)]` is CS7036 - the constructor requires both - so a single bound is always
+the property spelling, `[StringLength(Min = 12)]`.
+
 Length is measured in UTF-16 code units, which is `string.Length` rather than grapheme clusters. An
 emoji outside the BMP counts as two.
 
@@ -196,6 +203,32 @@ Setting it is [VM0016](/reference/diagnostics#vm0016). It emits IL through `Refl
 is what this library exists to avoid. Patterns go through `[GeneratedRegex]` instead.
 :::
 
+## The format validators
+
+`[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]` and `[FileExtensions]`
+check well-known string formats, under `System.ComponentModel.DataAnnotations`' exact names and
+semantics:
+
+```csharp
+[Required, EmailAddress]
+public string? Email { get; init; }
+
+[Url]
+public Uri? Homepage { get; init; }        // [Url] also reads a System.Uri member
+
+[FileExtensions(Extensions = "pdf,docx")]
+public string? Attachment { get; init; }
+```
+
+Each compiles to a call into `ConstraintChecks`, the runtime's reproduction of the BCL's own
+check - the same call the [DataAnnotations bridge](/guide/data-annotations#the-format-validators)
+emits for the BCL attribute of the same name, so which namespace an attribute came from changes
+nothing. The semantics are deliberately the BCL's, looseness included: `[EmailAddress]` accepts
+`a@b`, because RFC 5322 permits a dotless domain. A stricter rule is a `[Pattern]` whose grammar
+is in your own source. Codes: `email`, `phone`, `url`, `credit_card`, `base64`,
+`file_extension` - the [reference](/reference/attributes#emailaddress) has each check spelled
+out.
+
 ## `[AllowedValues]`
 
 Emits code `enum`, named for OpenAPI's `enum` keyword.
@@ -214,6 +247,14 @@ if (value.Status is not null &&
 Comparison is `StringComparison.Ordinal` by default, and `Comparison` changes it. The permitted set
 is echoed in the message on purpose. An enum's members are a *schema* fact, published in your
 OpenAPI document anyway, so repeating them discloses nothing the caller could not already read.
+
+`[DeniedValues]` is the same check negated - the value must be *none* of the set - under the
+BCL's own name and the same `enum` code:
+
+```csharp
+[DeniedValues("admin", "root", "system")]
+public string? Username { get; init; }
+```
 
 ## `[ItemCount]`
 

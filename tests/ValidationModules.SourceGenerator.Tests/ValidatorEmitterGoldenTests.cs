@@ -554,4 +554,28 @@ public class ValidatorEmitterGoldenTests {
             }
             """));
     }
+
+    [Fact]
+    public void RulesClassNullableValue_GuardsTheMemberAndKeepsItsPath() {
+        // A nullable-valued rule in both spellings: written against the member, and written with
+        // the .Value unwrap VM0093 corrects. The two must produce the same guarded shape and the
+        // same "batteryKwh" wire path - the unwrap's .value hop must appear nowhere.
+        Snapshot.Match(Emit("""
+            using ValidationModules;
+
+            namespace Sample;
+
+            public sealed record Vehicle {
+                public decimal? BatteryKwh { get; init; }
+                public decimal? ReserveKwh { get; init; }
+            }
+
+            public sealed class VehicleRules : IValidationRulesFor<Vehicle> {
+                public static void Describe(ValidationRules<Vehicle> rules, Vehicle x) {
+                    rules.Range(x.BatteryKwh, 10m, 300m);
+                    rules.Range(x.ReserveKwh.Value, 1m, 50m);
+                }
+            }
+            """));
+    }
 }

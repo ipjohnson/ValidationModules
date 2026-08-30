@@ -1064,6 +1064,20 @@ public sealed class RulesFrontEnd {
         }
 
         /// <summary>
+        /// The receiver of a trailing <c>Nullable&lt;T&gt;.Value</c> unwrap, or null when the
+        /// expression is not one. The unwrap is never needed - every rule parameter is already
+        /// nullable - and it is never harmless: it skews literal-type inference and puts
+        /// <c>.value</c> on the wire path. See VM0093.
+        /// </summary>
+        private ExpressionSyntax? NullableUnwrapReceiver(ExpressionSyntax expression) =>
+            expression is MemberAccessExpressionSyntax { Name.Identifier.Text: "Value" } member &&
+            _model.GetSymbolInfo(member).Symbol is IPropertySymbol {
+                ContainingType.OriginalDefinition.SpecialType: SpecialType.System_Nullable_T,
+            }
+                ? member.Expression
+                : null;
+
+        /// <summary>
         /// The member path a value argument reads off the subject, or null when it is not one.
         /// Conditional access is the nested-path spelling and reads through.
         /// </summary>
@@ -1217,6 +1231,18 @@ public sealed class RulesFrontEnd {
 
             public bool ReadCall(InvocationExpressionSyntax call, SyntaxNode report) {
                 if (_writer._model.GetSymbolInfo(call).Symbol is not IMethodSymbol method) {
+                    // Beside the generic VM0070, name the frequent cause: a .Value unwrap makes
+                    // TValue infer the unwrapped type, unsuffixed bound literals then fail
+                    // resolution (CS1503), and the call never binds. The arguments still bind on
+                    // their own, so the unwrap is visible even though the invocation is not.
+                    foreach (var argument in call.ArgumentList.Arguments) {
+                        if (_writer.NullableUnwrapReceiver(argument.Expression) is { } unwrapped &&
+                            _writer.PathOf(unwrapped) is not null) {
+                            _writer._owner.Report(ValidationDiagnostics.NullableValueUnwrapped,
+                                argument.Expression, unwrapped.ToString());
+                        }
+                    }
+
                     _writer._owner.Report(ValidationDiagnostics.NotTranscribable, call,
                         _writer._declaringClass.Name, "an unresolvable call on the builder");
                     return false;
@@ -1236,10 +1262,20 @@ public sealed class RulesFrontEnd {
 
                 // The entry call carries the value; chained calls inherit its anchor.
                 if (arguments.TryGetValue("value", out var value)) {
+                    // A trailing .Value on a nullable member is corrected - the rule reads the
+                    // member itself, so the path and the guard are the proven nullable shape -
+                    // and reported, so the source stops disagreeing with what is generated.
+                    if (_writer.NullableUnwrapReceiver(value) is { } unwrapped &&
+                        _writer.PathOf(unwrapped) is not null) {
+                        _writer._owner.Report(ValidationDiagnostics.NullableValueUnwrapped,
+                            value, unwrapped.ToString());
+                        value = unwrapped;
+                    }
+
                     _value = value;
 
                     var path = _writer.PathOf(value);
-                    var explicitField = Literal(arguments, "field");
+                    var explicitField = FieldLiteral(arguments);
 
                     if (path is null && explicitField is null && name is not "Ensure") {
                         _writer._owner.Report(ValidationDiagnostics.SelectorNotAPath, call,
@@ -1271,7 +1307,7 @@ public sealed class RulesFrontEnd {
                         _required = new ConstraintModel(
                             ConstraintKind.Required,
                             AllowEmptyStrings: name == "RequireAllowingEmpty",
-                            Field: Literal(arguments, "field"));
+                            Field: FieldLiteral(arguments));
                         return true;
 
                     case "Ensure":
@@ -1292,7 +1328,7 @@ public sealed class RulesFrontEnd {
                             return false;
                         }
 
-                        _constraints.Add(constraint with { Field = Literal(arguments, "field") });
+                        _constraints.Add(constraint with { Field = FieldLiteral(arguments) });
                         return true;
                     }
                 }
@@ -1411,7 +1447,7 @@ public sealed class RulesFrontEnd {
                     return false;
                 }
 
-                _descents.Add((elements, value, Literal(arguments, "field")));
+                _descents.Add((elements, value, FieldLiteral(arguments)));
 
                 return true;
             }
@@ -1449,7 +1485,7 @@ public sealed class RulesFrontEnd {
                 var subject = _writer._subject?.Name ?? "x";
                 var text = condition.ToString();
                 var anchorName = RuleText.AnchorOfPredicate($"{subject} => {text}");
-                var explicitField = Literal(arguments, "field");
+                var explicitField = FieldLiteral(arguments);
 
                 var anchor = anchorName is null
                     ? null
@@ -1720,6 +1756,27 @@ public sealed class RulesFrontEnd {
                 _writer._model.GetConstantValue(expression) is { HasValue: true, Value: string text }
                     ? text
                     : null;
+
+            /// <summary>
+            /// The <c>field:</c> argument. <c>nameof</c> through the subject names a member, and a
+            /// member's wire name is the field namer's business - transcribed code already rewrites
+            /// the same spelling (see <c>VisitInvocationExpression</c>), so without this one
+            /// property could reach a client under two keys: <c>AccountNumber</c> from a
+            /// <c>field:</c> and <c>accountNumber</c> from everything else. Any other constant
+            /// stays exactly as written, because an explicit string is the author choosing the
+            /// wire name.
+            /// </summary>
+            private string? FieldLiteral(IReadOnlyDictionary<string, ExpressionSyntax> arguments) {
+                if (arguments.TryGetValue("field", out var expression) &&
+                    expression is InvocationExpressionSyntax invocation &&
+                    invocation.Expression is IdentifierNameSyntax { Identifier.Text: "nameof" } &&
+                    invocation.ArgumentList.Arguments.Count == 1 &&
+                    _writer.PathOf(invocation.ArgumentList.Arguments[0].Expression) is { Count: > 0 } path) {
+                    return _writer.WirePathOf(path);
+                }
+
+                return Literal(arguments, "field");
+            }
 
             private string? SeverityOf(IReadOnlyDictionary<string, ExpressionSyntax> arguments) {
                 if (!arguments.TryGetValue("severity", out var expression)) {

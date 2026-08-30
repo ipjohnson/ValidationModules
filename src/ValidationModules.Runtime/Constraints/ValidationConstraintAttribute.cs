@@ -5,12 +5,13 @@ namespace ValidationModules.Constraints;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Why constraints live in their own namespace.</b> Five of the names here collide with
-/// <c>System.ComponentModel.DataAnnotations</c> - <c>Required</c>, <c>StringLength</c>,
-/// <c>Range</c>, <c>AllowedValues</c>, <c>Length</c> - and a model file importing both namespaces
-/// gets CS0104 on the bare attribute. Keeping them out of <c>ValidationModules</c> means service
-/// code, which imports the contracts, never trips it; only a model file that explicitly asks for
-/// both can.
+/// <b>The names match DataAnnotations on purpose, and the vocabulary is a superset.</b> Every
+/// <c>System.ComponentModel.DataAnnotations</c> validation attribute has an equivalent here, under
+/// the same name where the concept is the same - so a model file needs exactly one using, and
+/// migrating means swapping the directive rather than rewriting the model. The shared names only
+/// hurt a file that imports both namespaces (CS0104 on the bare attribute), which complete
+/// coverage makes unnecessary. Keeping constraints out of <c>ValidationModules</c> itself means
+/// service code, which imports the contracts, never sees the collision even then.
 /// </para>
 /// <para>
 /// <b>Profile attribution is not here, and its absence is deliberate.</b> <c>FromProfile</c>,

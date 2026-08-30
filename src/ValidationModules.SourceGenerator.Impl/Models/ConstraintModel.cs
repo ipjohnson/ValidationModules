@@ -23,9 +23,9 @@ public enum ConstraintKind {
     UniqueItems,
 
     /// <summary>
-    /// The DataAnnotations format validators, each compiling to its <c>ConstraintChecks</c>
-    /// check with the BCL's own semantics. Produced only by the DataAnnotations front end -
-    /// the native vocabulary deliberately has no format validators.
+    /// The format validators, each compiling to its <c>ConstraintChecks</c> check with the BCL's
+    /// own semantics. Produced by both front ends - the native vocabulary carries them under the
+    /// DataAnnotations names, so either attribute reaches the identical emitted check.
     /// </summary>
     Email,
     Phone,
