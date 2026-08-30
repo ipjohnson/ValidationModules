@@ -401,14 +401,36 @@ namespace ValidationModules.Constraints
         public System.StringComparison Comparison { get; init; }
         public object[] Values { get; }
     }
+    public sealed class Base64StringAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public Base64StringAttribute() { }
+    }
+    public sealed class CreditCardAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public CreditCardAttribute() { }
+    }
     public abstract class CustomConstraintAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
     {
         protected CustomConstraintAttribute() { }
+    }
+    public sealed class DeniedValuesAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public DeniedValuesAttribute(params object[] values) { }
+        public object[] Values { get; }
+    }
+    public sealed class EmailAddressAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public EmailAddressAttribute() { }
     }
     [System.AttributeUsage(System.AttributeTargets.Property | System.AttributeTargets.Field | System.AttributeTargets.Parameter)]
     public sealed class EnumDefinedAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
     {
         public EnumDefinedAttribute() { }
+    }
+    public sealed class FileExtensionsAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public FileExtensionsAttribute() { }
+        public string? Extensions { get; init; }
     }
     [System.AttributeUsage(System.AttributeTargets.Class | System.AttributeTargets.Struct | System.AttributeTargets.Interface)]
     public sealed class GenerateValidatorAttribute : System.Attribute
@@ -445,6 +467,10 @@ namespace ValidationModules.Constraints
     {
         public PerValidationInstanceAttribute() { }
     }
+    public sealed class PhoneAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public PhoneAttribute() { }
+    }
     public enum Polymorphism
     {
         DeclaredOnly = 0,
@@ -478,6 +504,10 @@ namespace ValidationModules.Constraints
     public sealed class UniqueItemsAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
     {
         public UniqueItemsAttribute() { }
+    }
+    public sealed class UrlAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
+    {
+        public UrlAttribute() { }
     }
     public sealed class ValidateNestedAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
     {

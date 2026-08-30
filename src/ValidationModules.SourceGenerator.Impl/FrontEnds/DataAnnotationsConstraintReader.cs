@@ -142,6 +142,13 @@ public static class DataAnnotationsConstraintReader {
             case "CompareAttribute":
                 return new Outcome(null, ValidationDiagnostics.CrossFieldAttribute);
 
+            // Validating in DataAnnotations - the value must parse as a member of the named enum -
+            // and the parse is a runtime string conversion this library will not compile. Reported
+            // rather than dropped: this was the one validating attribute the bridge lost in
+            // silence.
+            case "EnumDataTypeAttribute":
+                return new Outcome(null, ValidationDiagnostics.EnumDataTypeNotCompiled);
+
             case "CustomValidationAttribute":
                 return CustomValidation(attribute, memberType);
 
@@ -176,17 +183,8 @@ public static class DataAnnotationsConstraintReader {
                     "the value must be well-formed Base64, as Convert.FromBase64String reads it");
 
             case "FileExtensionsAttribute": {
-                // Normalized at build time exactly as the attribute normalizes its Extensions
-                // property - spaces and dots removed, lowercased invariantly, split on commas,
-                // dot-prefixed - so its quirks survive: "tar.gz" reads as ".targz" in both.
-                var raw = NativeConstraintReader.Named(attribute, "Extensions") as string;
-                var extensions = (string.IsNullOrWhiteSpace(raw) ? DefaultFileExtensions : raw!)
-                    .Replace(" ", string.Empty)
-                    .Replace(".", string.Empty)
-                    .ToLowerInvariant()
-                    .Split(',')
-                    .Select(extension => "." + extension)
-                    .ToImmutableArray();
+                var extensions = NormalizedFileExtensions(
+                    NativeConstraintReader.Named(attribute, "Extensions") as string);
 
                 var constraint = new ConstraintModel(
                     ConstraintKind.FileExtension,
@@ -206,6 +204,22 @@ public static class DataAnnotationsConstraintReader {
                 return default;
         }
     }
+
+    /// <summary>
+    /// The extension set as both attributes normalize it - spaces and dots removed, lowercased
+    /// invariantly, split on commas, dot-prefixed - so the quirks survive: <c>tar.gz</c> reads as
+    /// <c>.targz</c> in both. Shared with <see cref="NativeConstraintReader"/>, because the native
+    /// <c>[FileExtensions]</c> promises the BCL's exact semantics and two normalizations would
+    /// drift.
+    /// </summary>
+    internal static ImmutableArray<string> NormalizedFileExtensions(string? raw) =>
+        (string.IsNullOrWhiteSpace(raw) ? DefaultFileExtensions : raw!)
+            .Replace(" ", string.Empty)
+            .Replace(".", string.Empty)
+            .ToLowerInvariant()
+            .Split(',')
+            .Select(extension => "." + extension)
+            .ToImmutableArray();
 
     /// <summary>
     /// A format validator's outcome: the constraint, and - only when the member's type can carry

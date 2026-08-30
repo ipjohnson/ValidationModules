@@ -313,6 +313,25 @@ public class DataAnnotationsDiagnosticsTests {
         Assert.Contains("Confirm", diagnostic.GetMessage());
     }
 
+    // VM0068 — a runtime string conversion this library will not compile. It used to be dropped
+    // in silence, the only validating DataAnnotations attribute that was.
+
+    [Fact]
+    public void EnumDataType_IsVM0068_NamingTheNativeReplacement() {
+        var result = GeneratorHarness.Run(Model("""
+            [Required]
+            [EnumDataType(typeof(DayOfWeek))]
+            public string? Day { get; set; }
+            """));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0068");
+        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Contains("[EnumDefined]", diagnostic.GetMessage());
+
+        // Not enforced means not emitted - the [Required] beside it still is.
+        Assert.DoesNotContain("EnumDataType", result.Sources["Sample.CustomerValidator.g.cs"]);
+    }
+
     // VM0063 — the format validators compile to the BCL's own checks, and the Info states which.
 
     [Theory]

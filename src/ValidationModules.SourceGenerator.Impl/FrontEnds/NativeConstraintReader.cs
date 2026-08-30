@@ -101,16 +101,50 @@ public static class NativeConstraintReader {
                 };
             }
 
-            case "AllowedValuesAttribute": {
+            case "AllowedValuesAttribute":
+            case "DeniedValuesAttribute": {
                 var declared = attribute.ConstructorArguments.Length == 1 &&
                                attribute.ConstructorArguments[0].Kind == TypedConstantKind.Array
                     ? attribute.ConstructorArguments[0].Values
                     : ImmutableArray<TypedConstant>.Empty;
 
+                // [DeniedValues] is the same membership check negated - one kind, one code, the
+                // arrangement the DataAnnotations bridge already reads the BCL pair into.
                 return common with {
                     Kind = ConstraintKind.AllowedValues,
                     Values = new EquatableArray<string>(declared.Select(Literal).ToImmutableArray()),
                     ValueDisplays = new EquatableArray<string>(declared.Select(Display).ToImmutableArray()),
+                    Negated = attributeName == "DeniedValuesAttribute",
+                };
+            }
+
+            // The format validators. Each compiles to the same ConstraintChecks call the
+            // DataAnnotations bridge emits for the BCL attribute of the same name - one check, two
+            // spellings, so a model file needs only this namespace.
+            case "EmailAddressAttribute":
+                return common with { Kind = ConstraintKind.Email };
+
+            case "PhoneAttribute":
+                return common with { Kind = ConstraintKind.Phone };
+
+            case "UrlAttribute":
+                return common with { Kind = ConstraintKind.Url };
+
+            case "CreditCardAttribute":
+                return common with { Kind = ConstraintKind.CreditCard };
+
+            case "Base64StringAttribute":
+                return common with { Kind = ConstraintKind.Base64 };
+
+            case "FileExtensionsAttribute": {
+                var extensions = DataAnnotationsConstraintReader.NormalizedFileExtensions(
+                    Named(attribute, "Extensions") as string);
+
+                return common with {
+                    Kind = ConstraintKind.FileExtension,
+                    Values = new EquatableArray<string>(
+                        extensions.Select(e => SymbolDisplay.FormatLiteral(e, quote: true)).ToImmutableArray()),
+                    ValueDisplays = new EquatableArray<string>(extensions),
                 };
             }
 
