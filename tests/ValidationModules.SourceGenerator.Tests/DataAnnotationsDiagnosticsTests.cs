@@ -8,7 +8,7 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// compiles with semantics worth stating.
 /// </summary>
 /// <remarks>
-/// API-SURFACE.md §18 accepts <c>System.ComponentModel.DataAnnotations</c> as a second vocabulary,
+/// This generator accepts <c>System.ComponentModel.DataAnnotations</c> as a second vocabulary,
 /// which makes silence dangerous in a way it is not for the native attributes: an attribute this
 /// generator skips still looks enforced, because the reader has every reason to believe
 /// <c>Validator.TryValidateObject</c> would have honoured it. So everything recognised and *not*

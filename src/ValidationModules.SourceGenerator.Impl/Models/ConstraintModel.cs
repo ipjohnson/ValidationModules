@@ -82,7 +82,7 @@ public enum ConstraintKind {
 
     /// <summary>
     /// A predicate declared with <c>rules.Ensure(…)</c>. Carries no bounds and composes no message -
-    /// its message was rendered from its own source text when it was read. See API-SURFACE.md §19.5.
+    /// its message was rendered from its own source text when it was read.
     /// </summary>
     Predicate,
 }
@@ -108,7 +108,7 @@ public enum ConstraintKind {
 /// <param name="Anchored">
 /// Pattern only. DataAnnotations' [RegularExpression] requires a whole-value match; the native
 /// [Pattern] does not, because JSON Schema and OpenAPI patterns are unanchored. Two states rather
-/// than two kinds - see API-SURFACE.md §18.3.
+/// than two kinds.
 /// </param>
 /// <param name="RegexOptions">Pattern only: flows to the emitted Regex.</param>
 /// <param name="MatchTimeoutMilliseconds">
@@ -147,7 +147,7 @@ public enum ConstraintKind {
 /// Predicate only. The fully qualified name of the static method the predicate was lifted into -
 /// "global::My.PetRules_Rules.Rule0". The predicate is not inlined at the constraint site because
 /// the lambda's source resolves against its own file's using directives, which the validator file
-/// does not have; the lifted method lives in a file that carries them. See API-SURFACE.md §19.5.
+/// does not have; the lifted method lives in a file that carries them.
 /// </param>
 public sealed record ConstraintModel(
     ConstraintKind Kind,

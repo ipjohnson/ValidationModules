@@ -25,7 +25,7 @@ namespace ValidationModules;
 /// survive contact with the async contract: a <c>ref struct</c> cannot be a parameter of an
 /// <c>async</c> method (CS4012), and under C# 12 - net8.0's default - it cannot even be a local in
 /// one (CS9202). Keeping the modifier would have meant a second context type for the async side,
-/// or forcing every async caller into a sync-core/async-tail split. See API-SURFACE.md §13.1.
+/// or forcing every async caller into a sync-core/async-tail split.
 /// </para>
 /// <para>
 /// <b>Concurrency.</b> A pass is single-threaded. The buffer is a depth-indexed stack shared by
@@ -157,7 +157,7 @@ public readonly struct ValidationContext : IValidationContextReporter {
     /// </para>
     /// </remarks>
     /// <param name="field">The field name, appended to the current path.</param>
-    /// <param name="code">A stable machine-readable code - see the vocabulary in API-SURFACE.md §4.1.</param>
+    /// <param name="code">A stable machine-readable code. See <see cref="ValidationCodes"/>.</param>
     /// <param name="message">The human-readable message.</param>
     /// <param name="severity">Defaults to <see cref="ValidationSeverity.Error"/>.</param>
     public ValidationFlow Report(

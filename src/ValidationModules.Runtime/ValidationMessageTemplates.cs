@@ -136,7 +136,7 @@ public static class ValidationMessageTemplates {
     /// <summary>
     /// Every template above, by its stable shape key - <c>string_length.at_most</c>,
     /// <c>range.greater_and_less</c>, <c>enum.denied</c>. The key vocabulary language packs are
-    /// authored against (docs/language-packs.md): the first segment is the wire code, the second
+    /// authored against: the first segment is the wire code, the second
     /// exists only for the four codes whose sentence varies with their arguments.
     /// </summary>
     /// <remarks>

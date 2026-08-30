@@ -17,8 +17,7 @@ namespace ValidationModules.Constraints;
 /// <c>UntilProfile</c> and <c>Profiles</c> shipped on this type before the feature behind them
 /// existed, so setting one was a build error rather than a restriction. They were withdrawn for
 /// 1.0.0 rather than pinned into the first stable surface. Adding init-only properties back is
-/// additive in both source and binary, so this closes nothing - see <c>docs/deferred-features.md</c>
-/// for the full reversibility analysis.
+/// additive in both source and binary, so this closes nothing.
 /// </para>
 /// </remarks>
 [AttributeUsage(

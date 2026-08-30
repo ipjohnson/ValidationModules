@@ -49,7 +49,7 @@ public class NestingTests {
         // The documented cost of compact paths, pinned in executable form so it is a deliberate
         // change rather than an accident if it ever moves. `lines[1]` is neither the outermost
         // segment nor the immediate parent, so it goes and its index goes with it - the caller can
-        // see a postal code failed on some line, but not which. HANDOFF.md §3.1, API-SURFACE.md §3.2.
+        // see a postal code failed on some line, but not which.
         var basket = TwoLineBasket(secondLinePostalCode: null);
 
         var result = new BasketValidator().Validate(basket);

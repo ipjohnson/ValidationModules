@@ -13,8 +13,7 @@ namespace ValidationModules;
 /// <see cref="LanguagePackFormatter"/> folds every registered pack into one merged table per
 /// requested culture on that culture's first render, so per-error reads are constant-time
 /// whatever the pack count - the storage-strategy benchmarks in
-/// <c>benchmarks/…/Design/LanguagePackStorageBenchmarks.cs</c> are the numbers behind the shape,
-/// and docs/language-packs.md records the decision.
+/// <c>benchmarks/…/Design/LanguagePackStorageBenchmarks.cs</c> are the numbers behind the shape.
 /// </para>
 /// <para>
 /// Implementations are generated from <c>*.validation-messages.json</c> files - a static entry

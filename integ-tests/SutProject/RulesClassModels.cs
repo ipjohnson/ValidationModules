@@ -26,7 +26,7 @@ public static partial class ReservationPatterns {
 
 public static class ReservationChecks {
 
-    /// <summary>Applied by method group, emitted as a direct call. See API-SURFACE.md §19.6.</summary>
+    /// <summary>Applied by method group, emitted as a direct call.</summary>
     public static ValidationFlow GuestInitialMatchesReference(ref ValidationContext context, Reservation value) =>
         value.Guest is { Length: > 0 } guest && value.Reference is { Length: > 0 } reference &&
         guest[0] != reference[0]
@@ -35,7 +35,7 @@ public static class ReservationChecks {
 }
 
 /// <summary>
-/// The declaration form from API-SURFACE.md §19, compiled by the generator into
+/// The rules-class declaration form, compiled by the generator into
 /// <c>ReservationValidator</c> rather than run.
 /// </summary>
 public sealed class ReservationRules : IValidationRulesFor<Reservation> {

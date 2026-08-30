@@ -31,8 +31,8 @@ namespace ValidationModules.AspNetCore;
 /// </para>
 /// <para>
 /// <b>Internal, and deliberately.</b> It is only ever constructed by <c>Validate&lt;T&gt;()</c>, and
-/// a public constructor is a shape 1.0.0 would pin. The convention registration sketched in
-/// <c>docs/deferred-features.md</c> may well want this to take a table entry or a pre-resolved
+/// a public constructor is a shape 1.0.0 would pin. A future convention registration may well
+/// want this to take a table entry or a pre-resolved
 /// validator rather than options; keeping the type internal leaves that free. Nothing a consumer
 /// can write today needs it by name.
 /// </para>

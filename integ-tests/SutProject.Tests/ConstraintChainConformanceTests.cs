@@ -5,7 +5,7 @@ using Xunit;
 namespace SutProject.Tests;
 
 /// <summary>
-/// The rule from IMPLEMENTATION-PLAN.md §4.2 - all errors are collected, and a failed
+/// The rule: all errors are collected, and a failed
 /// <c>Require</c> is the only short-circuit, scoped to its own chain - asserted through real
 /// generated code.
 /// </summary>

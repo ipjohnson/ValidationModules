@@ -177,10 +177,9 @@ into attributes and rules classes.
 ## What it costs
 
 Measured against the same rules expressed in FluentValidation and in DataAnnotations, on .NET 10,
-Apple M3 Pro. The full method and the four choices made in FluentValidation's favour are in
-[`benchmarks/README.md`](https://github.com/ipjohnson/ValidationModules/blob/main/benchmarks/README.md);
-the run these came from, and what is and is not stable in it, is in
-[`benchmarks/RESULTS.md`](https://github.com/ipjohnson/ValidationModules/blob/main/benchmarks/RESULTS.md).
+Apple M3 Pro. Four choices in the setup are made in FluentValidation's favour. Run
+`./scripts/benchmark.sh --comparative` in the repository to reproduce the numbers and see the full
+method.
 
 | | ValidationModules | FluentValidation | DataAnnotations |
 |---|---|---|---|

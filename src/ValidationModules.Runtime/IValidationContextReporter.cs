@@ -30,7 +30,7 @@ public interface IValidationContextReporter {
     /// carries on.
     /// </summary>
     /// <param name="field">The field name, appended to the current path.</param>
-    /// <param name="code">A stable machine-readable code - see the vocabulary in API-SURFACE.md §4.1.</param>
+    /// <param name="code">A stable machine-readable code. See <see cref="ValidationCodes"/>.</param>
     /// <param name="message">The human-readable message.</param>
     /// <param name="severity">Defaults to <see cref="ValidationSeverity.Error"/>.</param>
     ValidationFlow Report(

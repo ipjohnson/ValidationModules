@@ -55,7 +55,7 @@ public sealed class ValidationProblemOptions {
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This is the HTTP boundary's read-side hook from docs/structured-errors.md: errors carry
+    /// This is the HTTP boundary's read-side hook for the structured error model: errors carry
     /// data, and the reader decides the text. A <see cref="ValidationMessageMap"/> here is how a
     /// second language reaches the <c>errors</c> object - the formatter runs inside the request,
     /// after localization middleware has set <c>CurrentUICulture</c>, so a map that reads the

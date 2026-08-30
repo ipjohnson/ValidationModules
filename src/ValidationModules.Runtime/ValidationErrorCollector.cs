@@ -8,7 +8,7 @@ namespace ValidationModules;
 /// <b>Construct one per validation.</b> It was made public so a request pipeline could pool one and
 /// skip a 472-byte allocation per request; that buffer is gone and a fresh collector is 48 bytes
 /// holding nothing, so pooling now saves 48 bytes and costs a node per error on every failing pass -
-/// measured 2026-08-13, HANDOFF.md §2.6. The first consumer runs on Lambda, where holding state
+/// measured 2026-08-13. The first consumer runs on Lambda, where holding state
 /// across invocations for a 48-byte saving is not a trade worth the complexity.
 /// </para>
 /// <para>

@@ -111,10 +111,8 @@ because neither competitor has a boolean-only API to pair it with. ²DataAnnotat
 descend into nested objects or collection elements. A parity check refuses to run the suite
 unless all three engines find the same failure counts, FluentValidation runs with
 `CascadeMode.Stop` and the same `[GeneratedRegex]` instances as the generated code, and every
-validator is constructed once in setup. Full tables with error terms are in
-[`benchmarks/RESULTS.md`](benchmarks/RESULTS.md), the methodology in
-[`benchmarks/README.md`](benchmarks/README.md); reproduce with
-`./scripts/benchmark.sh --comparative`.
+validator is constructed once in setup. Reproduce the numbers, with full tables and error terms,
+by running `./scripts/benchmark.sh --comparative`.
 
 ## Native AOT
 
@@ -146,11 +144,8 @@ The docs site publishes to <https://ipjohnson.github.io/ValidationModules/> and 
 cd website && npm install && npm run dev
 ```
 
-Design records, for the reasoning behind the surface:
-
-- `IMPLEMENTATION-PLAN.md` — what is being built and why. A specification, not a discussion
-  document.
-- `API-SURFACE.md` — the exact public surface and the verification log behind the claims.
+`AGENTS.md` is the working guide for this repository. The exact public surface is pinned by
+`tests/ValidationModules.Runtime.Tests/Snapshots/PublicApiTests.RuntimeApi.verified.txt`.
 
 ## Packages
 
@@ -183,11 +178,9 @@ Release candidate for 1.0.0. Built so far:
 | — | ASP.NET Core integration — minimal APIs | **done** |
 | — | ASP.NET Core integration — MVC, Blazor, options validation | not started |
 
-Also built since the plan was written: the rules-class front end
-(`IValidationRulesFor<T>` — redesigned 2026-08-29 to the read-never-run transcription model,
-`docs/active-rules-redesign.md`) and a DataAnnotations front end (§18).
-Profiles and overlays are deferred past 1.0.0 with their declaration surfaces withdrawn;
-`docs/deferred-features.md` records how each returns additively.
+Also built: the rules-class front end (`IValidationRulesFor<T>`, which the generator reads at build
+time and never executes) and a DataAnnotations front end. Profiles and overlays are deferred past
+1.0.0 and their declaration surfaces were withdrawn. Both return additively when they ship.
 
 ## Building
 

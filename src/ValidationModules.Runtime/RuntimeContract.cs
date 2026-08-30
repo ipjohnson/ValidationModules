@@ -89,7 +89,7 @@ public static class RuntimeContract {
     // zero consumers outside this repo (verified against ~/Hardened), which is what priced the
     // break at a snapshot re-verify and this bump.
 
-    // 8 -> 9: the message became data (docs/structured-errors.md). ValidationError carries Value
+    // 8 -> 9: the message became data. ValidationError carries Value
     // and MessageInfo and renders Message on read; IValidationContextReporter gains the structured
     // Report(field, code, value, info) overload; ValidationMessageInfo, its singletons,
     // ValidationMessageTemplates and ReportDeniedValues arrive, and the Report* helpers grow
@@ -105,7 +105,7 @@ public static class RuntimeContract {
     // rc window, which is the only time they are cheap; the number cannot express either, so they
     // are written down here, per the rule above.
 
-    // 9 -> 10: language packs (docs/language-packs.md). Generated pack classes implement
+    // 9 -> 10: language packs. Generated pack classes implement
     // IValidationLanguagePack, and the registration extension registers them and TryAdds a
     // LanguagePackFormatter over the set - none of which a contract-9 runtime declares. The shape
     // keys arrive with them: ValidationMessageTemplates.KeyOf/TemplatesByKey/KnownKeys, and the

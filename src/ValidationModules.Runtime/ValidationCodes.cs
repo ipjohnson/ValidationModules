@@ -120,7 +120,7 @@ public static class ValidationCodes {
     public const string Custom = "custom";
 
     /// <summary>
-    /// A rule declared with <c>rules.Ensure(…)</c> failed. See API-SURFACE.md §19.5.
+    /// A rule declared with <c>rules.Ensure(…)</c> failed.
     /// </summary>
     /// <remarks>
     /// One code for every predicate, deliberately. Slugging or hashing the expression would read

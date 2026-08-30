@@ -4,7 +4,7 @@ using Xunit;
 namespace ValidationModules.Runtime.Tests;
 
 /// <summary>
-/// Pins the composition policy in IMPLEMENTATION-PLAN.md §8: everything registered runs, results
+/// Pins the composition policy: everything registered runs, results
 /// merge rather than one replacing another, and business rules are gated on structural validation
 /// passing.
 /// </summary>
@@ -94,7 +94,7 @@ public class ValidationRunnerTests {
     public void Validate_CleanValue_DoesNotBoxAnEnumerator() {
         // The runner held both dependencies as IEnumerable<T> and foreach'd them. Iterating an
         // array through the interface boxes its enumerator - 32 bytes per call, and the async path
-        // paid it twice - which is what HANDOFF.md §2.3 measured and what holding arrays fixes.
+        // paid it twice, which is what holding arrays fixes.
         //
         // Asserted through the runner rather than by reading the field, because the promise is
         // about what a caller is charged, not about the storage that delivers it.

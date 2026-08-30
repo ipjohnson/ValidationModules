@@ -25,7 +25,7 @@ hand-written validator.
 setting one was an error rather than a restriction. They were removed rather than pinned into the
 first stable release — writing one is now an ordinary "no such member" from the compiler.
 
-Every removal is additively reversible, and the analysis is in `docs/deferred-features.md`.
+Every removal is additively reversible.
 :::
 
 ### Conditions

@@ -68,7 +68,7 @@ public static class MemberWalk {
         Func<IPropertySymbol, bool> carriesConstraints) {
 
         // Root-most base first, down the chain, then the type's own members. This satisfies the
-        // declaration-order guarantee of IMPLEMENTATION-PLAN.md §4.2 naturally: a shared base's
+        // declaration-order guarantee naturally: a shared base's
         // fields report before the fields of the type that extends it, which is the order someone
         // reading the two declarations top to bottom would expect.
         var chain = new List<INamedTypeSymbol>();

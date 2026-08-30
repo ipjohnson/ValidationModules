@@ -79,7 +79,7 @@ public static class BenchmarkConfig {
     /// what separates two close readings, and that is unchanged.
     /// </para>
     /// <para>
-    /// This was already known - HANDOFF.md §2.1 records one cell taking fifteen minutes, and the
+    /// This was already known. One cell took fifteen minutes, and the
     /// shape benchmarks carried <c>[IterationTime(100)]</c> for exactly this reason. Setting it on
     /// the job applies the same fix everywhere instead of one attribute at a time, and means a class
     /// added later inherits it rather than rediscovering the trap.

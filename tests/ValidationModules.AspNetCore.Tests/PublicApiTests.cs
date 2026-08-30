@@ -11,8 +11,8 @@ namespace ValidationModules.AspNetCore.Tests;
 /// <remarks>
 /// <para>
 /// The runtime has had one of these since early on; this package shipped without. That gap is the
-/// reason to add it now rather than later: the convention registration in
-/// <c>docs/deferred-features.md</c> is deferred past 1.0.0, and the whole argument for deferring it
+/// reason to add it now rather than later: the convention registration is deferred past 1.0.0,
+/// and the whole argument for deferring it
 /// safely is that nothing shipped today pins a shape it will need to change. A snapshot is what
 /// turns that argument into something the build checks.
 /// </para>

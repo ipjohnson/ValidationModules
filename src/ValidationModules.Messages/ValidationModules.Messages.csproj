@@ -6,7 +6,7 @@
         <PackageId>ValidationModules.Messages</PackageId>
         <Description>Every built-in language for ValidationModules' error messages, shipped as data: the *.validation-messages.json files compile into your assembly at your build, validated against your runtime's shape inventory. All languages by default; set &lt;ValidationModulesLanguages&gt;fr;de&lt;/ValidationModulesLanguages&gt; to compile exactly those, or 'none' to opt out - excluded languages are absent from the binary, not carried and ignored.</Description>
         <!--
-            The soft-publish shape (docs/language-packs.md): this package ships no assembly. The
+            The soft-publish shape: this package ships no assembly. The
             props below hand the JSON to the consumer's own generator, so validation and the
             VM0105 coverage check run against the consumer's template inventory - drift is visible
             to the build it affects - and trimming is exact because the packs are the consumer's

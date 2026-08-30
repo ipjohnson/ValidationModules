@@ -20,9 +20,8 @@ and the code and arguments verbatim to a client that renders its own text — wi
 and without the pass having known any of those readers existed.
 
 Nothing about this costs the paths that matter: a clean pass allocates nothing, as ever, and a
-failing pass now stores references instead of composing prose — it got cheaper, and the render is
-paid only by readers that actually want prose. `docs/structured-errors.md` in the repository has
-the measurements.
+failing pass stores references instead of composing prose, so it got cheaper. Only a reader that
+wants prose pays for rendering it.
 
 ## Start in one language
 

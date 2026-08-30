@@ -4,7 +4,7 @@ using Xunit;
 namespace ValidationModules.Runtime.Tests;
 
 /// <summary>
-/// Pins the two scopes of the rule from IMPLEMENTATION-PLAN.md §4: a failed <c>Require</c>
+/// Pins the two scopes of the rule: a failed <c>Require</c>
 /// suppresses the rest of its own chained statement through the <c>else if</c> the generator
 /// emits, and the collector's path-keyed rule covers only the adapter path.
 /// </summary>

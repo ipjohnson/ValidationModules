@@ -77,8 +77,8 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             SanitizeNamespace(compilation.AssemblyName));
 
         // Language packs ride AdditionalFiles, so the same feature serves every provenance: a
-        // file in the project, one delivered by a package's props, or a pack author's own build
-        // (docs/language-packs.md). Item order is preserved - it is the layering order.
+        // file in the project, one delivered by a package's props, or a pack author's own build.
+        // Item order is preserved, and it is the layering order.
         var languagePackFiles = context.AdditionalTextsProvider
             .Where(static text => text.Path.EndsWith(".validation-messages.json", StringComparison.OrdinalIgnoreCase))
             .Select(static (text, token) => new LanguagePackFile(text.Path, text.GetText(token)?.ToString() ?? string.Empty))

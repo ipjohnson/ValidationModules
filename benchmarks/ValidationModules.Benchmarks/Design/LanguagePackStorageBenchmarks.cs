@@ -6,7 +6,7 @@ namespace ValidationModules.Benchmarks.Design;
 
 /// <summary>
 /// What a language pack's template lookup costs under each storage the emitter could produce,
-/// and what each one pays at startup - the decision docs/language-packs.md records.
+/// and what each one pays at startup.
 /// </summary>
 /// <remarks>
 /// <para>

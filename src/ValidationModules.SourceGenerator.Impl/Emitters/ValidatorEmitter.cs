@@ -24,7 +24,7 @@ namespace ValidationModules.SourceGenerator.Impl.Emitters;
 /// the same reason.
 /// </para>
 /// <para>
-/// Messages are never emitted as literals here, and since docs/structured-errors.md they are never
+/// Messages are never emitted as literals here, and they are never
 /// composed at all: a parameterized constraint hoists a <c>static readonly ValidationMessageInfo</c>
 /// - template reference plus constant arguments, deduplicated per validator - and reports it
 /// structured, while the parameterless ones report the runtime's shared singletons through the
@@ -294,7 +294,7 @@ public sealed class ValidatorEmitter {
             // implemented; output from RegisterSourceOutput is not, and fails with CS8795. Both
             // verified. Post-initialization cannot help: it runs before anything has been examined
             // and can read neither the compilation nor additional files, while a pattern is always
-            // user data. See API-SURFACE.md §13.6.
+            // user data.
             //
             // What §2 was actually protecting against is intact. The instance is built once at type
             // initialization rather than per validation call, and RegexOptions.Compiled is never
@@ -355,8 +355,8 @@ public sealed class ValidatorEmitter {
         foreach (var (field, initializer) in messageInfos.Fields) {
             // One shared instance per distinct (template, arguments) pair: the arguments are
             // compile-time constants, so their boxes are built once at type initialization and a
-            // failing pass stores a reference. This is the static-data half of
-            // docs/structured-errors.md; the runtime singletons cover the parameterless kinds.
+            // failing pass stores a reference. This is the static-data half of the structured
+            // error model; the runtime singletons cover the parameterless kinds.
             var info = validator.AddField(TypeRef(MessageInfoType), field);
 
             info.Modifiers = ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
