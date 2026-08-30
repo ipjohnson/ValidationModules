@@ -51,10 +51,17 @@ public sealed class RulesFrontEnd {
 
     private readonly List<FragmentContainer> _containers = new();
 
-    public RulesFrontEnd(Func<string, string> fieldNamer, Func<INamedTypeSymbol, bool>? rulesTarget = null) {
+    public RulesFrontEnd(
+        Func<string, string> fieldNamer,
+        Func<INamedTypeSymbol, bool>? rulesTarget = null,
+        string? codeNamespace = null) {
         _fieldNamer = fieldNamer;
         _rulesTarget = rulesTarget;
+        _codeNamespace = codeNamespace;
     }
+
+    /// <summary>The assembly's code namespace, applied to what an Ensure authors or derives.</summary>
+    private readonly string? _codeNamespace;
 
     public IReadOnlyList<Diagnostic> Diagnostics => _diagnostics;
 
@@ -1460,8 +1467,10 @@ public sealed class RulesFrontEnd {
 
                 // Derived from the condition rather than from `message`, so an author rewording
                 // their own text does not move the wire code. The rule is the condition.
-                var derived = RuleText.CodeOfPredicate($"{subject} => {text}", _writer._owner._fieldNamer);
-                var authored = Literal(arguments, "code");
+                var owner = _writer._owner;
+                var derived = CodeNaming.Apply(
+                    owner._codeNamespace, RuleText.CodeOfPredicate($"{subject} => {text}", owner._fieldNamer));
+                var authored = CodeNaming.Apply(owner._codeNamespace, Literal(arguments, "code"));
                 var code = authored is not null
                     ? Quote(authored)
                     : derived is null ? $"{Codes}.Predicate" : Quote(derived);
@@ -1469,7 +1478,7 @@ public sealed class RulesFrontEnd {
                 // A derived code is the one part of a rules class that cannot be read off the
                 // source, so it is stated at the site that owns it.
                 if (authored is null && derived is not null) {
-                    _writer._owner.Report(ValidationDiagnostics.EnsureCodeDerived, call, derived, message);
+                    owner.Report(ValidationDiagnostics.EnsureCodeDerived, call, derived, message);
                 }
                 var severity = SeverityOf(arguments) is { } member ? $", {SeverityEnum}.{member}" : string.Empty;
 

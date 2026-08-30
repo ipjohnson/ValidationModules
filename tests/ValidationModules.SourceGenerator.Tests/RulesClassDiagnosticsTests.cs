@@ -190,6 +190,65 @@ public class RulesClassDiagnosticsTests {
         Assert.Contains("start_less_than_end", string.Concat(result.Sources.Values));
     }
 
+    // ValidationModules_CodeNamespace - opt-in, and only over the codes this assembly owns.
+
+    [Fact]
+    public void WithACodeNamespace_TheDerivedCodeCarriesIt() {
+        var result = GeneratorHarness.Run(
+            Rules("        rules.Ensure(x.Start < x.End);"),
+            ("ValidationModules_CodeNamespace", "myapp"));
+
+        Assert.Contains("myapp.start_less_than_end", string.Concat(result.Sources.Values));
+    }
+
+    [Fact]
+    public void WithACodeNamespace_AnAuthoredCodeCarriesIt() {
+        var result = GeneratorHarness.Run(
+            Rules("        rules.Ensure(x.Start < x.End, code: \"date_order\");"),
+            ("ValidationModules_CodeNamespace", "myapp"));
+
+        Assert.Contains("\"myapp.date_order\"", string.Concat(result.Sources.Values));
+    }
+
+    [Fact]
+    public void WithACodeNamespace_TheBuiltInVocabularyIsUntouched() {
+        // required has to stay required in every assembly. The fixed vocabulary is what lets a
+        // client switch on a code without knowing which engine produced the error, so a namespace
+        // reaches only the codes this assembly invented.
+        var result = GeneratorHarness.Run(
+            Rules("        rules.Require(x.Guest);"),
+            ("ValidationModules_CodeNamespace", "myapp"));
+
+        Assert.DoesNotContain("myapp.", string.Concat(result.Sources.Values));
+    }
+
+    [Fact]
+    public void WithACodeNamespace_AnAttributeCodeOverrideCarriesIt() {
+        // The other front end. An authored Code on a constraint attribute is as much this
+        // assembly's invention as an Ensure's.
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed record Booking {
+                [Required(Code = "guest_missing")]
+                public string? Guest { get; init; }
+            }
+            """,
+            ("ValidationModules_CodeNamespace", "myapp"));
+
+        Assert.Contains("\"myapp.guest_missing\"", string.Concat(result.Sources.Values));
+    }
+
+    [Fact]
+    public void WithoutACodeNamespace_NothingIsPrefixed() {
+        var result = GeneratorHarness.Run(Rules("        rules.Ensure(x.Start < x.End);"));
+
+        Assert.Contains("\"start_less_than_end\"", string.Concat(result.Sources.Values));
+    }
+
     // VM0075 - an Ensure whose condition touches no property and names no field.
 
     [Fact]

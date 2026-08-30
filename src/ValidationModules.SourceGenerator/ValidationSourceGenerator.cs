@@ -45,12 +45,13 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             provider.GlobalOptions.TryGetValue("build_property.ValidationModules_PatternPolicy", out var patternPolicy);
             provider.GlobalOptions.TryGetValue("build_property.ValidationModules_FailFast", out var failFast);
             provider.GlobalOptions.TryGetValue("build_property.ValidationModules_CaptureValues", out var captureValues);
+            provider.GlobalOptions.TryGetValue(Impl.CodeNaming.BuildProperty, out var codeNamespace);
             provider.GlobalOptions.TryGetValue(Impl.Emitters.GeneratedCodeStyle.BuildProperty, out var codeStyle);
             provider.GlobalOptions.TryGetValue("build_property.PublishAot", out var publishAot);
             provider.GlobalOptions.TryGetValue("build_property.IsAotCompatible", out var aotCompatible);
 
             return new GeneratorOptions(registration, naming, dataAnnotations, patternPolicy, failFast,
-                IsTrue(publishAot) || IsTrue(aotCompatible), codeStyle, captureValues);
+                IsTrue(publishAot) || IsTrue(aotCompatible), codeStyle, captureValues, codeNamespace);
         });
 
         // Probed once. An IncrementalValueProvider<bool> so downstream stages invalidate only when
@@ -264,7 +265,8 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             }
         }
 
-        var rulesFrontEnd = new RulesFrontEnd(options.FieldNamer, declaredTargets.Contains);
+        var rulesFrontEnd = new RulesFrontEnd(
+            options.FieldNamer, declaredTargets.Contains, options.CodeNamespace);
         var plain = new List<INamedTypeSymbol>();
         var subtypes = InvertBaseChains(candidates);
 
@@ -363,7 +365,8 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         Func<INamedTypeSymbol, IReadOnlyList<(INamedTypeSymbol Type, int Depth)>> subtypesOf) {
 
         var frontEnd = new AttributeFrontEnd(
-            compilation, options.CompileDataAnnotations, options.FieldNamer, options.ResolvedPatternPolicy);
+            compilation, options.CompileDataAnnotations, options.FieldNamer, options.ResolvedPatternPolicy,
+            options.CodeNamespace);
 
         var model = frontEnd.Build(
             target,
@@ -503,7 +506,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
     private sealed record GeneratorOptions(
         string? Registration, string? Naming, string? DataAnnotations, string? PatternPolicySetting,
         string? FailFastSetting, bool IsAotFacing, string? CodeStyleSetting = null,
-        string? CaptureValuesSetting = null) {
+        string? CaptureValuesSetting = null, string? CodeNamespace = null) {
 
         /// <summary>
         /// Whether report sites pass the failing member as <c>ValidationError.Value</c>. On by
