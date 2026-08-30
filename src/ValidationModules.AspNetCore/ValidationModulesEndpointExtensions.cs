@@ -34,13 +34,19 @@ public static class ValidationModulesEndpointExtensions {
     /// </remarks>
     /// <typeparam name="T">The argument type to validate.</typeparam>
     /// <param name="builder">The endpoint being built.</param>
+    /// <param name="statusCode">
+    /// The status a failure on this endpoint answers with, overriding
+    /// <see cref="ValidationProblemOptions.StatusCode"/> for this endpoint alone. The body's
+    /// <c>type</c> member follows it, so a 422 links the definition of 422. Null - the default -
+    /// keeps the application-wide options.
+    /// </param>
     /// <exception cref="InvalidOperationException">
     /// The handler has no parameter that could hold a <typeparamref name="T"/>.
     /// </exception>
-    public static RouteHandlerBuilder Validate<T>(this RouteHandlerBuilder builder) where T : class {
+    public static RouteHandlerBuilder Validate<T>(this RouteHandlerBuilder builder, int? statusCode = null) {
         ArgumentNullException.ThrowIfNull(builder);
 
-        builder.AddEndpointFilterFactory(ValidationEndpointFilterFactory.For<T>(strict: true));
+        builder.AddEndpointFilterFactory(ValidationEndpointFilterFactory.For<T>(strict: true, statusCode));
 
         return builder;
     }
@@ -65,10 +71,13 @@ public static class ValidationModulesEndpointExtensions {
     /// </remarks>
     /// <typeparam name="T">The argument type to validate.</typeparam>
     /// <param name="builder">The group being built.</param>
-    public static RouteGroupBuilder Validate<T>(this RouteGroupBuilder builder) where T : class {
+    /// <param name="statusCode">
+    /// The status a failure in this group answers with. See the single-endpoint overload.
+    /// </param>
+    public static RouteGroupBuilder Validate<T>(this RouteGroupBuilder builder, int? statusCode = null) {
         ArgumentNullException.ThrowIfNull(builder);
 
-        builder.AddEndpointFilterFactory(ValidationEndpointFilterFactory.For<T>(strict: false));
+        builder.AddEndpointFilterFactory(ValidationEndpointFilterFactory.For<T>(strict: false, statusCode));
 
         return builder;
     }

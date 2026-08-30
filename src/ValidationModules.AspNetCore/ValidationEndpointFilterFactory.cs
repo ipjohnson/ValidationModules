@@ -46,8 +46,9 @@ internal static class ValidationEndpointFilterFactory {
     /// </remarks>
     /// <typeparam name="T">The argument type to validate.</typeparam>
     /// <param name="strict">Whether a handler without a <typeparamref name="T"/> is an error.</param>
+    /// <param name="statusCode">The per-endpoint status override, or null for the options'.</param>
     internal static Func<EndpointFilterFactoryContext, EndpointFilterDelegate, EndpointFilterDelegate> For<T>(
-        bool strict) where T : class {
+        bool strict, int? statusCode = null) {
 
         return (context, next) => {
             ArgumentNullException.ThrowIfNull(context);
@@ -66,7 +67,7 @@ internal static class ValidationEndpointFilterFactory {
             }
 
             var options = context.ApplicationServices.GetRequiredService<IOptions<ValidationProblemOptions>>();
-            var filter = new ValidationEndpointFilter<T>(options);
+            var filter = new ValidationEndpointFilter<T>(options, statusCode);
 
             return invocation => filter.InvokeAsync(invocation, next);
         };
@@ -80,15 +81,19 @@ internal static class ValidationEndpointFilterFactory {
     /// subtype obviously qualifies. A parameter declared as a base type or interface qualifies too,
     /// because the value arriving at run time may still be a <c>T</c> and the filter's <c>is T</c>
     /// would match it - rejecting that case would turn a working endpoint into a startup failure,
-    /// which is a worse trade than missing a rare mistake.
+    /// which is a worse trade than missing a rare mistake. Nullable wrappers are unwrapped on both
+    /// sides: a handler taking <c>Coupon?</c> receives a boxed <c>Coupon</c> at run time, which
+    /// <c>IsAssignableFrom</c> alone cannot see.
     /// </remarks>
     private static bool CanReceive<T>(MethodInfo handler) {
+        var target = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
         var parameters = handler.GetParameters();
 
         for (var i = 0; i < parameters.Length; i++) {
-            var declared = parameters[i].ParameterType;
+            var declared = Nullable.GetUnderlyingType(parameters[i].ParameterType)
+                ?? parameters[i].ParameterType;
 
-            if (typeof(T).IsAssignableFrom(declared) || declared.IsAssignableFrom(typeof(T))) {
+            if (target.IsAssignableFrom(declared) || declared.IsAssignableFrom(target)) {
                 return true;
             }
         }

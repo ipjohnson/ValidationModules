@@ -9,11 +9,19 @@ namespace ValidationModules.AspNetCore;
 /// </remarks>
 public sealed class ValidationProblemOptions {
 
+    private string? _type;
+
     /// <summary>The <c>title</c> member. Deliberately the same text ASP.NET Core uses.</summary>
     public string Title { get; set; } = "One or more validation errors occurred.";
 
-    /// <summary>The <c>type</c> member.</summary>
-    public string Type { get; set; } = "https://tools.ietf.org/html/rfc9110#section-15.5.1";
+    /// <summary>
+    /// The <c>type</c> member. Unless set explicitly, it follows <see cref="StatusCode"/> to the
+    /// matching RFC 9110 section - a 422 body must not point at the definition of 400.
+    /// </summary>
+    public string Type {
+        get => _type ?? TypeFor(StatusCode);
+        set => _type = value;
+    }
 
     /// <summary>The status code. 400 unless a caller has a reason.</summary>
     public int StatusCode { get; set; } = 400;
@@ -82,13 +90,61 @@ public sealed class ValidationProblemOptions {
             return this;
         }
 
-        return new ValidationProblemOptions {
-            Title = Title,
-            Type = Type,
-            StatusCode = StatusCode,
-            IncludeCodes = IncludeCodes,
-            IncludeNonErrors = IncludeNonErrors,
-            MessageFormatter = formatter,
-        };
+        var copy = Copy();
+        copy.MessageFormatter = formatter;
+        return copy;
     }
+
+    /// <summary>
+    /// These options with <see cref="StatusCode"/> replaced - the per-endpoint override
+    /// <c>Validate&lt;T&gt;(statusCode: …)</c> rides on. A <see cref="Type"/> that was never set
+    /// explicitly keeps following the new status; one that was set stays, because an explicit
+    /// value is the author's decision whatever the status.
+    /// </summary>
+    internal ValidationProblemOptions WithStatusCode(int statusCode) {
+        if (statusCode == StatusCode) {
+            return this;
+        }
+
+        var copy = Copy();
+        copy.StatusCode = statusCode;
+        return copy;
+    }
+
+    /// <summary>
+    /// A member-for-member copy. The <c>_type</c> backing field is carried rather than the
+    /// <see cref="Type"/> property, so a derived type link survives the copy instead of freezing
+    /// into an explicit value.
+    /// </summary>
+    private ValidationProblemOptions Copy() => new() {
+        Title = Title,
+        _type = _type,
+        StatusCode = StatusCode,
+        IncludeCodes = IncludeCodes,
+        IncludeNonErrors = IncludeNonErrors,
+        MessageFormatter = MessageFormatter,
+    };
+
+    /// <summary>
+    /// The RFC 9110 section for a client-error status, the same table ASP.NET Core's
+    /// <c>ProblemDetailsDefaults</c> keeps. A status outside it maps to <c>about:blank</c>, which
+    /// RFC 9457 defines as "the problem is the status code" - never a link that contradicts it.
+    /// </summary>
+    private static string TypeFor(int statusCode) => statusCode switch {
+        400 => "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+        401 => "https://tools.ietf.org/html/rfc9110#section-15.5.2",
+        403 => "https://tools.ietf.org/html/rfc9110#section-15.5.4",
+        404 => "https://tools.ietf.org/html/rfc9110#section-15.5.5",
+        405 => "https://tools.ietf.org/html/rfc9110#section-15.5.6",
+        406 => "https://tools.ietf.org/html/rfc9110#section-15.5.7",
+        408 => "https://tools.ietf.org/html/rfc9110#section-15.5.9",
+        409 => "https://tools.ietf.org/html/rfc9110#section-15.5.10",
+        412 => "https://tools.ietf.org/html/rfc9110#section-15.5.13",
+        413 => "https://tools.ietf.org/html/rfc9110#section-15.5.14",
+        415 => "https://tools.ietf.org/html/rfc9110#section-15.5.16",
+        422 => "https://tools.ietf.org/html/rfc9110#section-15.5.21",
+        426 => "https://tools.ietf.org/html/rfc9110#section-15.5.22",
+        500 => "https://tools.ietf.org/html/rfc9110#section-15.6.1",
+        _ => "about:blank",
+    };
 }

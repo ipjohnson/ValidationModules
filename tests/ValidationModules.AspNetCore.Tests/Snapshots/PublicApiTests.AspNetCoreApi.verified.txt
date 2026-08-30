@@ -2,10 +2,8 @@ namespace Microsoft.AspNetCore.Builder
 {
     public static class ValidationModulesEndpointExtensions
     {
-        public static Microsoft.AspNetCore.Builder.RouteHandlerBuilder Validate<T>(this Microsoft.AspNetCore.Builder.RouteHandlerBuilder builder)
-            where T :  class { }
-        public static Microsoft.AspNetCore.Routing.RouteGroupBuilder Validate<T>(this Microsoft.AspNetCore.Routing.RouteGroupBuilder builder)
-            where T :  class { }
+        public static Microsoft.AspNetCore.Builder.RouteHandlerBuilder Validate<T>(this Microsoft.AspNetCore.Builder.RouteHandlerBuilder builder, int? statusCode = default) { }
+        public static Microsoft.AspNetCore.Routing.RouteGroupBuilder Validate<T>(this Microsoft.AspNetCore.Routing.RouteGroupBuilder builder, int? statusCode = default) { }
     }
 }
 namespace Microsoft.Extensions.DependencyInjection

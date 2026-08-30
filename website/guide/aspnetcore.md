@@ -118,17 +118,36 @@ Turn it off if a strict schema rejects unknown members:
 builder.Services.AddValidationProblemDetails(options => options.IncludeCodes = false);
 ```
 
-The same call adjusts the rest of the response:
+The same call adjusts the rest of the response. The options type is `ValidationProblemOptions`,
+and what you configure here is **application-wide** - every endpoint filter and the exception
+handler read the same instance:
 
 | Option | Default |
 |---|---|
 | `Title` | `One or more validation errors occurred.`, the text ASP.NET Core itself uses |
-| `Type` | the RFC 9110 §15.5.1 URI |
+| `Type` | follows `StatusCode` to the matching RFC 9110 section; set it to pin your own URI |
 | `StatusCode` | `400` |
 | `IncludeCodes` | `true` |
 | `IncludeNonErrors` | `false`, since warnings did not reject the request |
+| `MessageFormatter` | `null`; a registered [language pack](/guide/messages) fills it in per request |
 
-## Failures thrown further in
+## Per-endpoint status
+
+One endpoint can answer failures with a different status while the rest of the application keeps
+the default. `Validate<T>()` takes the override directly:
+
+```csharp
+app.MapPost("/orders", (CreateOrder order) => Results.Ok())
+   .Validate<CreateOrder>();                       // 400, the application-wide default
+
+app.MapPost("/orders/strict", (CreateOrder order) => Results.Ok())
+   .Validate<CreateOrder>(statusCode: 422);        // 422 on this endpoint alone
+```
+
+The body's `type` member follows the status - the 422 response links RFC 9110's definition of
+422, not 400's - so the document stays consistent with itself. An explicitly configured `Type`
+wins over the derived link, on every endpoint, because an explicit URI is an API contract rather
+than a default. The group overload takes the same parameter.
 
 The filter covers what a handler was handed. A service that validates deeper in, such as
 `ValidateAndThrow` inside a domain method, is covered by an exception handler that produces the same
@@ -201,7 +220,12 @@ HTTP in both environments.
 ## What this package does not do
 
 - **MVC controllers and model binding.** The filter is a minimal API endpoint filter. A controller
-  can call the validator directly, or map a result with `ValidationProblem.ToResult(result)`.
+  can call the validator directly and map a result with
+  `ValidationProblem.ToResult(result, options)` - the second parameter is a
+  `ValidationProblemOptions`, which is what makes the manual path answer with the same shape,
+  status and codes the filter produces. `ToDictionary`, `ToCodeDictionary` and
+  `ToProblemDetails` take the same pair for anything that wants the pieces rather than the
+  `IResult`.
 - **Automatic discovery.** There is no "validate every parameter that has a validator" mode, for the
   reason at the top of this page.
 - **OpenAPI schema.** The constraints are not currently projected into a generated document.

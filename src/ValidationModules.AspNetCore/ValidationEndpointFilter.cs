@@ -38,8 +38,9 @@ namespace ValidationModules.AspNetCore;
 /// </para>
 /// </remarks>
 /// <typeparam name="T">The type to validate.</typeparam>
-internal sealed class ValidationEndpointFilter<T> : IEndpointFilter where T : class {
+internal sealed class ValidationEndpointFilter<T> : IEndpointFilter {
     private readonly ValidationProblemOptions _options;
+    private readonly int? _statusCode;
 
     /// <summary>
     /// Creates the filter with options resolved from the container.
@@ -52,10 +53,11 @@ internal sealed class ValidationEndpointFilter<T> : IEndpointFilter where T : cl
     /// <see cref="ValidationEndpointFilterFactory"/> calls this directly, so the accessibility can
     /// now say what it means.
     /// </remarks>
-    internal ValidationEndpointFilter(IOptions<ValidationProblemOptions> options) {
+    internal ValidationEndpointFilter(IOptions<ValidationProblemOptions> options, int? statusCode = null) {
         ArgumentNullException.ThrowIfNull(options);
 
         _options = options.Value;
+        _statusCode = statusCode;
     }
 
     /// <inheritdoc/>
@@ -63,26 +65,39 @@ internal sealed class ValidationEndpointFilter<T> : IEndpointFilter where T : cl
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(next);
 
-        if (Argument(context) is not { } value) {
+        if (!TryFindArgument(context, out var value)) {
             return await next(context).ConfigureAwait(false);
         }
 
         var result = await ValidateAsync(context.HttpContext, value).ConfigureAwait(false);
 
-        return result.IsValid
-            ? await next(context).ConfigureAwait(false)
-            : ValidationProblem.ToResult(
-                result, _options.WithFormatterFrom(context.HttpContext.RequestServices));
+        if (result.IsValid) {
+            return await next(context).ConfigureAwait(false);
+        }
+
+        // Status first, formatter second: both copy on write, and the formatter fill-in is the
+        // one that must see the final state.
+        var options = _statusCode is { } status ? _options.WithStatusCode(status) : _options;
+
+        return ValidationProblem.ToResult(
+            result, options.WithFormatterFrom(context.HttpContext.RequestServices));
     }
 
-    private static T? Argument(EndpointFilterInvocationContext context) {
+    /// <summary>
+    /// Finds the first <typeparamref name="T"/> among the arguments. A try-pattern rather than a
+    /// nullable return, because <typeparamref name="T"/> may be a struct now that the generator's
+    /// own reach includes them - and a struct has no null to stand for "not found".
+    /// </summary>
+    private static bool TryFindArgument(EndpointFilterInvocationContext context, out T value) {
         for (var i = 0; i < context.Arguments.Count; i++) {
             if (context.Arguments[i] is T match) {
-                return match;
+                value = match;
+                return true;
             }
         }
 
-        return null;
+        value = default!;
+        return false;
     }
 
     /// <summary>
