@@ -20,7 +20,7 @@ error. Using the constants rather than the literals is what stops that drifting 
 | `array_bounds` | `ValidationCodes.ArrayBounds` | `[ItemCount]`, `.Count(…)` |
 | `multiple_of` | `ValidationCodes.MultipleOf` | `[MultipleOf]`, `.MultipleOf(…)` |
 | `unique_items` | `ValidationCodes.UniqueItems` | `[UniqueItems]`, `.Unique(…)` |
-| `predicate` | `ValidationCodes.Predicate` | `rules.Ensure(…)` |
+| `predicate` | `ValidationCodes.Predicate` | an `Ensure` with nothing derivable in its condition |
 | `email` | `ValidationCodes.Email` | DataAnnotations `[EmailAddress]` |
 | `phone` | `ValidationCodes.Phone` | DataAnnotations `[Phone]` |
 | `url` | `ValidationCodes.Url` | DataAnnotations `[Url]` |
@@ -82,19 +82,43 @@ public string? Name { get; init; }
 rules.Ensure(x.Discount <= x.Price * 0.5m, code: "discount_too_large");
 ```
 
-That promotes one rule into your contract deliberately, which is the intended way to let a client
-tell two rules on one field apart. Two `Ensure`s on one field otherwise both report `predicate`,
-distinguished by their messages.
+That pins the code against a later change to the condition, which is the reason to pass one.
 
-## Why `Ensure` does not derive its code
+## Why `Ensure` derives its code {#why-ensure-derives-its-code}
 
-Slugging or hashing the predicate would read better and was rejected: message and code have opposite
-churn requirements.
+An `Ensure` reports a code derived from the same render its message comes from, so
+`x.Start < x.End` reports `start_less_than_end`. Without it every predicate in an application shared
+one key, and a translation catalogue keyed by code could not tell two of them apart.
 
-The message is human-facing and *should* track the rule, which is why `Ensure`'s message is the
-predicate itself, rendered. The code is a wire contract. Derive it from the expression and widening a
-bound from `30` to `35` becomes a breaking change for every client switching on it, and reordering
-does the same if the code carries an ordinal.
+**The code moves when the rule moves, and that is the point.** Widening `<` to `<=` changes what the
+user is told and what a client should do about it. A key that survived the edit would be asserting
+that nothing happened, and a translation carried across it would be quietly wrong. This is the model
+gettext has used for decades: the message identifier *is* the source string, so rewording the source
+invalidates the translation by construction.
+
+**A rename does not move it.** The code derives from the render, and the render puts members under
+their wire names, so a property renamed in C# behind a pinned `[JsonPropertyName]` moves neither the
+message nor the code. Rename one that is not pinned and `ValidationError.Field` has already moved,
+so nothing breaks that was not broken already.
+
+Operator spellings are the `System.Linq.Expressions.ExpressionType` names in snake_case:
+
+| C# | Fragment | C# | Fragment |
+|---|---|---|---|
+| `<` | `less_than` | `==` | `equal` |
+| `<=` | `less_than_or_equal` | `!=` | `not_equal` |
+| `>` | `greater_than` | `&&` | `and` |
+| `>=` | `greater_than_or_equal` | `\|\|` | `or` |
+| `!` | `not` | method call | its name, snake_cased |
+
+Spelled out rather than abbreviated because the abbreviated dialects disagree with each other: OData
+spells `<=` as `le` where MongoDB and Django spell it `lte`. There was no short convention to adopt,
+and the spelled-out form is what both `ExpressionType` and FluentValidation's comparison validators
+already use. The table is a wire contract, so respelling it later would churn every derived code in
+every consuming application at once.
+
+[VM0092](/reference/diagnostics#vm0092) states the derived code at each rule, since it is the one
+part of a rules class you cannot read off the source.
 
 ## Severity
 

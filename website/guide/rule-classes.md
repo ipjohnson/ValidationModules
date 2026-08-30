@@ -202,9 +202,14 @@ so no runtime value can reach it. Locals appear under their own names, as in `to
 which makes local naming part of your user-facing text.
 
 The rule anchors to the first member access off the subject. A condition that reads none needs
-`field:`, or it is [VM0075](/reference/diagnostics#vm0075). The code defaults to `predicate` and
-never derives from the expression. The message should track the rule, while the code is a wire
-contract that widening a bound must not break.
+`field:`, or it is [VM0075](/reference/diagnostics#vm0075).
+
+**The code is derived from the same render**, so `x.Start < x.End` reports
+`start_less_than_end` and two `Ensure`s on one field are told apart by a client as well as by a
+reader. [VM0092](/reference/diagnostics#vm0092) states the derived code at the rule, since it is the
+one part of a rules class you cannot read off the source. Pass `code:` to pin one rule against a
+later change to its condition. [Error codes](/reference/codes#why-ensure-derives-its-code) has the
+reasoning and the operator spellings.
 
 ## The reporter tier {#reporter}
 

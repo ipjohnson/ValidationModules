@@ -74,7 +74,7 @@ Fixed, and a wire contract. A client switching on `error.Code` depends on these 
 | `[Pattern]` | `pattern` | `ValidationCodes.Pattern` |
 | `[AllowedValues]` | `enum` | `ValidationCodes.Enum` |
 | `[ItemCount]` | `array_bounds` | `ValidationCodes.ArrayBounds` |
-| `rules.Ensure(…)` | `predicate` | `ValidationCodes.Predicate` |
+| `rules.Ensure(…)` | derived, as `start_less_than_end` | *(none; pass `code:` to pin one)* |
 | *(binding failure)* | `invalid` | `ValidationCodes.Invalid` |
 
 Use the constants rather than the literals. Generated validators and hand-written ones both emit
