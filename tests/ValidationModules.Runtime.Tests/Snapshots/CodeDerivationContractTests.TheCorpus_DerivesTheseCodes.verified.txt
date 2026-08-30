@@ -1,0 +1,131 @@
+Code derivation contract 1
+
+-- comparison
+x => x.Start < x.End
+  -> start_less_than_end
+x => x.Start <= x.End
+  -> start_less_than_or_equal_end
+x => x.Start > x.End
+  -> start_greater_than_end
+x => x.Start >= x.End
+  -> start_greater_than_or_equal_end
+x => x.Status == x.Wanted
+  -> status_equal_wanted
+x => x.Status != x.Wanted
+  -> status_not_equal_wanted
+x => x.Age >= 18
+  -> age_greater_than_or_equal_18
+x => x.Ratio <= 0.5
+  -> ratio_less_than_or_equal_0_5
+
+-- logical
+x => x.Paid && x.Shipped
+  -> paid_and_shipped
+x => x.Paid || x.Waived
+  -> paid_or_waived
+x => !x.Cancelled
+  -> not_cancelled
+x => !(x.Paid && x.Shipped)
+  -> not_group_paid_and_shipped
+x => !x.Paid && x.Shipped
+  -> not_paid_and_shipped
+x => x.Paid && (x.Shipped || x.Waived)
+  -> paid_and_group_shipped_or_waived
+
+-- arithmetic
+x => x.Total * 2 > x.Limit
+  -> total_times_2_greater_than_limit
+x => x.Total - x.Paid > 0
+  -> total_minus_paid_greater_than_0
+x => x.Total + x.Tax <= x.Limit
+  -> total_plus_tax_less_than_or_equal_limit
+x => x.Total / x.Count > 1
+  -> total_divided_by_count_greater_than_1
+x => x.Total % 5 == 0
+  -> total_modulo_5_equal_0
+
+-- null
+x => x.Name != null
+  -> name_not_equal_null
+x => x.Name == null
+  -> name_equal_null
+x => x.Name is null
+  -> name_is_null
+x => x.Name is not null
+  -> name_is_not_null
+x => string.IsNullOrEmpty(x.Name)
+  -> string_is_null_or_empty_name
+x => !string.IsNullOrEmpty(x.Name)
+  -> not_string_is_null_or_empty_name
+x => string.IsNullOrWhiteSpace(x.Name)
+  -> string_is_null_or_white_space_name
+x => !string.IsNullOrWhiteSpace(x.Name)
+  -> not_string_is_null_or_white_space_name
+
+-- emptiness
+x => x.Items.Count > 0
+  -> items_count_greater_than_0
+x => x.Items.Count == 0
+  -> items_count_equal_0
+x => x.Items.Length > 0
+  -> items_length_greater_than_0
+x => x.Items.Any()
+  -> items_any
+x => !x.Items.Any()
+  -> not_items_any
+
+-- member path
+x => x.Home.PostalCode != null
+  -> home_postal_code_not_equal_null
+x => x.Home?.PostalCode != null
+  -> home_postal_code_not_equal_null
+x => x.Name.Length > 3
+  -> name_length_greater_than_3
+x => x.HTTPStatus == 200
+  -> http_status_equal_200
+x => x.CustomsCode != null
+  -> customs_code_not_equal_null
+
+-- literal
+x => x.Status == "active"
+  -> status_equal_active
+x => x.Status == "pending"
+  -> status_equal_pending
+x => x.Email.Contains("@")
+  -> email_contains_at
+x => x.Email.Contains(".")
+  -> email_contains_dot
+x => x.Sku.StartsWith("AB-")
+  -> sku_starts_with_ab_dash
+x => x.Name == "two words"
+  -> name_equal_two_words
+
+-- lambda
+x => x.Lines.Sum(l => l.Price) > 0
+  -> lines_sum_price_greater_than_0
+x => x.Lines.Sum(line => line.Price) > 0
+  -> lines_sum_price_greater_than_0
+x => x.Lines.All(l => l.Qty > 0)
+  -> lines_all_qty_greater_than_0
+x => x.Lines.Any(l => l.Sku == null)
+  -> lines_any_sku_equal_null
+
+-- call
+x => Patterns.Sku().IsMatch(x.Sku)
+  -> patterns_sku_is_match_sku
+x => x.Start.AddDays(x.Nights) <= x.End
+  -> start_add_days_nights_less_than_or_equal_end
+x => x.Name.Trim().Length > 0
+  -> name_trim_length_greater_than_0
+
+-- pattern
+x => x.Age is >= 0 and <= 30
+  -> age_is_greater_than_or_equal_0_and_less_than_or_equal_30
+x => x.Status is Status.Active or Status.Pending
+  -> status_is_status_active_or_status_pending
+
+-- local
+x => total <= x.CreditLimit
+  -> total_less_than_or_equal_credit_limit
+x => runningTotal <= x.CreditLimit
+  -> running_total_less_than_or_equal_credit_limit

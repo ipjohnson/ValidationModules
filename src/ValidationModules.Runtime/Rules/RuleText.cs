@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 
 namespace ValidationModules.Rules;
@@ -27,6 +28,37 @@ namespace ValidationModules.Rules;
 /// </para>
 /// </remarks>
 internal static class RuleText {
+
+    /// <summary>
+    /// The version of <see cref="CodeOfPredicate"/>'s output. Every code it derives is a wire
+    /// contract, so this moves only in a major release.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>What this pins.</b> Not an API shape but a mapping: every predicate a consumer has
+    /// written, to the code their clients switch on and their translators key by. Respelling one
+    /// operator, recognising one more idiom, or changing how a literal is encoded moves codes for
+    /// rules nobody edited - churn with no semantic reason, which is the one kind the derivation's
+    /// own argument does not justify.
+    /// </para>
+    /// <para>
+    /// <b>How it is enforced.</b> A corpus of predicates is rendered to codes and checksummed
+    /// against <see cref="CodeDerivationChecksum"/>. Accepting the snapshot is deliberately not
+    /// enough to move a code: the constant lives here, in product source, so changing the mechanics
+    /// requires an edit a reviewer sees next to this comment.
+    /// </para>
+    /// <para>
+    /// <b>Before 1.0.0 this is free to move.</b> No release has shipped a derived code, so the
+    /// corpus can be re-pinned as often as the mechanics improve. After 1.0.0 it cannot.
+    /// </para>
+    /// </remarks>
+    public const int CodeDerivationContract = 1;
+
+    /// <summary>
+    /// The pinned corpus's checksum under <see cref="CodeDerivationContract"/>. Changing this
+    /// without bumping the contract is the mistake the pairing exists to catch.
+    /// </summary>
+    public const string CodeDerivationChecksum = "518407fef50e32e2";
 
     /// <summary>
     /// The property name a selector reads - <c>"x =&gt; x.Age"</c> gives <c>"Age"</c>, and
@@ -190,6 +222,14 @@ internal static class RuleText {
         var end = rendered[rendered.Length - 1] == '.' ? rendered.Length - 1 : rendered.Length;
         var index = 0;
 
+        // Lambda parameters are noise twice over: they say nothing about the rule, and renaming
+        // one would move the code with no semantic change at all.
+        var lambdaParameters = new List<string>();
+
+        // Whether a '(' here opens a call rather than a group. Only a group carries meaning, and
+        // only a group needs marking, because dropping it loses precedence.
+        var afterValue = false;
+
         while (index < end) {
             var character = rendered[index];
 
@@ -200,12 +240,61 @@ internal static class RuleText {
                 // The contents without the quotes. A compared literal is part of what the rule
                 // means, so changing it is a rule change and moves the code with it.
                 var length = index - start - 2;
-                AppendWords(builder, length > 0 ? rendered.Substring(start + 1, length) : string.Empty);
+                AppendLiteral(builder, length > 0 ? rendered.Substring(start + 1, length) : string.Empty);
+                afterValue = true;
+                continue;
+            }
+
+            if (character == '(') {
+                if (afterValue) {
+                    // A call's own parentheses: the name before them already said what happens.
+                    index++;
+                    afterValue = false;
+                    continue;
+                }
+
+                if (ReadLambdaHead(rendered, ref index, lambdaParameters)) {
+                    afterValue = false;
+                    continue;
+                }
+
+                // Grouping. Unmarked, '!(a && b)' and '!a && b' would derive one code for two
+                // different rules, which is the collision the whole derivation exists to remove.
+                AppendSegment(builder, "group");
+                index++;
+                afterValue = false;
+                continue;
+            }
+
+            if (character == ')') {
+                index++;
+                afterValue = true;
                 continue;
             }
 
             if (IsIdentifierStart(character)) {
-                AppendWords(builder, ReadIdentifier(rendered, ref index)!);
+                var identifier = ReadIdentifier(rendered, ref index)!;
+
+                if (IsLambdaArrowAhead(rendered, index)) {
+                    // "l => …": the parameter and its arrow are both structure.
+                    lambdaParameters.Add(identifier);
+                    SkipLambdaArrow(rendered, ref index);
+                    afterValue = false;
+                    continue;
+                }
+
+                if (lambdaParameters.Contains(identifier)) {
+                    // "l.Price" is "price". The receiver names an element, not a rule.
+                    if (index < rendered.Length && rendered[index] == '.') {
+                        index++;
+                    }
+
+                    afterValue = true;
+                    continue;
+                }
+
+                AppendWords(builder, identifier);
+                afterValue = true;
                 continue;
             }
 
@@ -217,6 +306,7 @@ internal static class RuleText {
                 }
 
                 AppendWords(builder, rendered.Substring(start, index - start));
+                afterValue = true;
                 continue;
             }
 
@@ -224,15 +314,139 @@ internal static class RuleText {
 
             if (word is not null) {
                 AppendSegment(builder, word);
+                afterValue = false;
                 continue;
             }
 
-            // Whitespace, parentheses, commas, and the dots inside a member path. All of them are
-            // structure rather than meaning, and the underscore between segments carries it.
+            // Whitespace, commas, and the dots inside a member path. Structure rather than
+            // meaning, and the underscore between segments carries it.
             index++;
         }
 
         return builder.Length == 0 ? null : builder.ToString();
+    }
+
+    /// <summary>Whether a lambda arrow follows, skipping spaces.</summary>
+    private static bool IsLambdaArrowAhead(string text, int index) {
+        while (index < text.Length && text[index] == ' ') {
+            index++;
+        }
+
+        return index + 1 < text.Length && text[index] == '=' && text[index + 1] == '>';
+    }
+
+    private static void SkipLambdaArrow(string text, ref int index) {
+        while (index < text.Length && text[index] == ' ') {
+            index++;
+        }
+
+        index += 2;
+    }
+
+    /// <summary>
+    /// Reads <c>(a, b) =&gt;</c> at a grouping parenthesis, recording the parameters and leaving
+    /// the index after the arrow. Restores the index and returns false when it is a real group.
+    /// </summary>
+    private static bool ReadLambdaHead(string text, ref int index, List<string> parameters) {
+        var start = index;
+        var scan = index + 1;
+        var names = new List<string>();
+
+        while (scan < text.Length && text[scan] != ')') {
+            if (text[scan] == ' ' || text[scan] == ',') {
+                scan++;
+                continue;
+            }
+
+            var name = ReadIdentifier(text, ref scan);
+
+            if (name is null) {
+                index = start;
+                return false;
+            }
+
+            names.Add(name);
+        }
+
+        if (scan >= text.Length || !IsLambdaArrowAhead(text, scan + 1)) {
+            index = start;
+            return false;
+        }
+
+        // "(Line l) => …" names a type then a parameter; the parameter is the last identifier,
+        // the same reading BodyOf takes of a lambda head.
+        if (names.Count > 0) {
+            parameters.Add(names[names.Count - 1]);
+        }
+
+        index = scan + 1;
+        SkipLambdaArrow(text, ref index);
+        return true;
+    }
+
+    /// <summary>
+    /// Appends a string literal's contents. Punctuation is named rather than dropped, because
+    /// <c>Contains("@")</c> and <c>Contains(".")</c> are different rules.
+    /// </summary>
+    private static void AppendLiteral(StringBuilder builder, string text) {
+        var start = 0;
+
+        for (var index = 0; index < text.Length; index++) {
+            var character = text[index];
+
+            if (char.IsLetterOrDigit(character)) {
+                continue;
+            }
+
+            AppendWords(builder, text.Substring(start, index - start));
+            start = index + 1;
+
+            if (!char.IsWhiteSpace(character)) {
+                AppendSegment(builder, PunctuationWord(character));
+            }
+        }
+
+        AppendWords(builder, text.Substring(start));
+    }
+
+    /// <remarks>
+    /// The named set is the punctuation that turns up in validated data. Anything else takes its
+    /// code point, which reads badly and collides with nothing - the property that matters.
+    /// </remarks>
+    private static string PunctuationWord(char character) {
+        switch (character) {
+            case '@': return "at";
+            case '.': return "dot";
+            case '-': return "dash";
+            case '_': return "underscore";
+            case '/': return "slash";
+            case '\\': return "backslash";
+            case ':': return "colon";
+            case ';': return "semicolon";
+            case ',': return "comma";
+            case '+': return "plus";
+            case '*': return "star";
+            case '#': return "hash";
+            case '%': return "percent";
+            case '&': return "amp";
+            case '?': return "question";
+            case '!': return "bang";
+            case '=': return "equals";
+            case '|': return "pipe";
+            case '^': return "caret";
+            case '~': return "tilde";
+            case '$': return "dollar";
+            case '\'': case '"': return "quote";
+            case '(': return "lparen";
+            case ')': return "rparen";
+            case '[': return "lbracket";
+            case ']': return "rbracket";
+            case '{': return "lbrace";
+            case '}': return "rbrace";
+            case '<': return "lt";
+            case '>': return "gt";
+            default: return "cp" + ((int)character).ToString("x", System.Globalization.CultureInfo.InvariantCulture);
+        }
     }
 
     /// <summary>
