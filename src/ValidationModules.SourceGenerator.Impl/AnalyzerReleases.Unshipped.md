@@ -56,6 +56,7 @@ VM0089 | ValidationModules.Usage | Error | A rule declaration sits inside a loop
 VM0090 | ValidationModules.Usage | Error | Require on a non-nullable value type can never fail.
 VM0091 | ValidationModules.Usage | Error | A facet validated with As declares no rules in this compilation.
 VM0092 | ValidationModules.Usage | Info | An Ensure derived its code from its condition; the message states the code.
+VM0093 | ValidationModules.Usage | Warning | A rule value unwraps a nullable member with .Value; the rule takes the nullable directly.
 VM0100 | ValidationModules.Usage | Error | A language pack file cannot be read.
 VM0101 | ValidationModules.Usage | Warning | A language pack names an unknown shape key.
 VM0102 | ValidationModules.Usage | Error | A language pack template hole exceeds the shape's arguments.

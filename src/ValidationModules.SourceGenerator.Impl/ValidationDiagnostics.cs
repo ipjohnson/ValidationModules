@@ -553,6 +553,23 @@ public static class ValidationDiagnostics {
         "This rule reports code '{0}', derived from '{1}'. Pass code: to pin it against a change " +
         "to the condition", DiagnosticSeverity.Info);
 
+    /// <summary>
+    /// A rule value written as <c>x.Member.Value</c>. The builder's parameters are already
+    /// nullable, so the unwrap is never needed, and it costs twice: type inference reads the
+    /// unwrapped type against unsuffixed bound literals (an opaque CS1503), and the derived field
+    /// path keeps the <c>.Value</c> hop, so the wire path and the composed message name
+    /// <c>value</c> rather than the member.
+    /// </summary>
+    /// <remarks>
+    /// Warning rather than error, because the reader also corrects it - the rule compiles against
+    /// the member itself, path and all - and failing a build the correction just fixed would be
+    /// spite. The diagnostic still fires so the source stops disagreeing with what is generated.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor NullableValueUnwrapped = Descriptor(
+        "VM0093", "Drop .Value; the rule takes the nullable directly",
+        "'{0}.Value' unwraps a nullable member. The rule takes the nullable directly, and the " +
+        "field path is derived from the member - write '{0}', and suffix any bound literals to " +
+        "the member's type", DiagnosticSeverity.Warning);
 
     // Language packs. The block starts at VM0100 so the pack suite reads
     // as its own family; the point of compiling packs is that these fire at the build they affect.
