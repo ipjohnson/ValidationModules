@@ -58,7 +58,7 @@ internal static class RuleText {
     /// The pinned corpus's checksum under <see cref="CodeDerivationContract"/>. Changing this
     /// without bumping the contract is the mistake the pairing exists to catch.
     /// </summary>
-    public const string CodeDerivationChecksum = "6a6d7f7399daad37";
+    public const string CodeDerivationChecksum = "6f8d03d0c8bf49dc";
 
     /// <summary>
     /// The property name a selector reads - <c>"x =&gt; x.Age"</c> gives <c>"Age"</c>, and
@@ -317,6 +317,14 @@ internal static class RuleText {
 
                 AppendWords(builder, rendered.Substring(start, index - start));
                 afterValue = true;
+                continue;
+            }
+
+            if (character == '!' && afterValue && (index + 1 >= end || rendered[index + 1] != '=')) {
+                // The null-forgiving operator, not a negation. It asserts something about what the
+                // compiler knows rather than about the value, so it is not part of the rule - and
+                // reading it as "not" made x.Name!.Length and x.Name.Length two different rules.
+                index++;
                 continue;
             }
 

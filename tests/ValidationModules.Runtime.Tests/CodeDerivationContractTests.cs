@@ -104,6 +104,9 @@ public class CodeDerivationContractTests {
         ("pattern", "x => x.Age is >= 0 and <= 30"),
         ("pattern", "x => x.Status is Status.Active or Status.Pending"),
 
+        ("null-forgiving", "x => x.Name!.Length > 3"),
+        ("null-forgiving", "x => x.Home!.PostalCode != null"),
+
         ("local", "x => total <= x.CreditLimit"),
         ("local", "x => runningTotal <= x.CreditLimit"),
     ];
@@ -178,6 +181,10 @@ public class CodeDerivationContractTests {
     /// different thing being asserted.
     /// </para>
     /// <para>
+    /// A null-forgiving <c>!</c> tells the compiler what the author knows; it asserts nothing about
+    /// the value, so <c>x.Name!.Length</c> and <c>x.Name.Length</c> are one rule.
+    /// </para>
+    /// <para>
     /// <c>Sum(l =&gt; l.Price)</c> and <c>Sum(line =&gt; line.Price)</c> are the same rule under two
     /// parameter names. Sharing a code here is the fix rather than the defect: a code that moved
     /// when the parameter was renamed would be churn with no semantic change behind it.
@@ -188,6 +195,7 @@ public class CodeDerivationContractTests {
         "name_is_not_null",
         "home_postal_code_is_not_null",
         "items_is_not_empty",
+        "name_length_greater_than_3",
         "lines_sum_price_greater_than_0",
     ];
 

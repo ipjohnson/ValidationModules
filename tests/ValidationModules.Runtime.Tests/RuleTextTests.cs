@@ -209,6 +209,89 @@ public class RuleTextTests {
             RuleText.CodeOfPredicate("x => x.Email.Contains(\".\")", Name));
     }
 
+    [Theory]
+    [InlineData("@", "at")]
+    [InlineData(".", "dot")]
+    [InlineData("-", "dash")]
+    [InlineData("_", "underscore")]
+    [InlineData("/", "slash")]
+    [InlineData(":", "colon")]
+    [InlineData(";", "semicolon")]
+    [InlineData(",", "comma")]
+    [InlineData("+", "plus")]
+    [InlineData("*", "star")]
+    [InlineData("#", "hash")]
+    [InlineData("%", "percent")]
+    [InlineData("&", "amp")]
+    [InlineData("?", "question")]
+    [InlineData("!", "bang")]
+    [InlineData("=", "equals")]
+    [InlineData("|", "pipe")]
+    [InlineData("^", "caret")]
+    [InlineData("~", "tilde")]
+    [InlineData("$", "dollar")]
+    [InlineData("'", "quote")]
+    [InlineData("(", "lparen")]
+    [InlineData(")", "rparen")]
+    [InlineData("[", "lbracket")]
+    [InlineData("]", "rbracket")]
+    [InlineData("{", "lbrace")]
+    [InlineData("}", "rbrace")]
+    [InlineData("<", "lt")]
+    [InlineData(">", "gt")]
+    [InlineData("\u00a7", "cpa7")]
+    public void CodeOfPredicate_NamesPunctuationInsideALiteral(string literal, string expected) {
+        // Every one of these is a wire contract. Dropping punctuation collided Contains("@") with
+        // Contains("."), so each character has to reach the code as something.
+        Assert.Equal(
+            "sku_contains_" + expected,
+            RuleText.CodeOfPredicate($"x => x.Sku.Contains(\"{literal}\")", Name));
+    }
+
+    [Fact]
+    public void CodeOfPredicate_NamesABackslashInALiteral() {
+        // Separate from the theory because the escape has to survive being read as source. The
+        // text carries both characters of the escape, so both are named.
+        Assert.Equal(
+            "path_contains_backslash_backslash",
+            RuleText.CodeOfPredicate("x => x.Path.Contains(\"\\\\\")", Name));
+    }
+
+    [Fact]
+    public void CodeOfPredicate_IgnoresTheNullForgivingOperator() {
+        // "!" after a value tells the compiler what the author knows. Reading it as a negation
+        // made x.Name!.Length and x.Name.Length two rules, and claimed a "not" that is not there.
+        Assert.Equal(
+            RuleText.CodeOfPredicate("x => x.Name.Length > 3", Name),
+            RuleText.CodeOfPredicate("x => x.Name!.Length > 3", Name));
+
+        // The prefix form still negates.
+        Assert.Equal("not_cancelled", RuleText.CodeOfPredicate("x => !x.Cancelled", Name));
+    }
+
+    [Fact]
+    public void CodeOfPredicate_ReadsATypedLambdaHead() {
+        // "(Line l) => …" names a type then a parameter; the parameter is the last identifier, and
+        // neither belongs in the code.
+        Assert.Equal(
+            RuleText.CodeOfPredicate("x => x.Lines.Any(l => l.Sku == null)", Name),
+            RuleText.CodeOfPredicate("x => x.Lines.Any((Line l) => l.Sku == null)", Name));
+    }
+
+    [Fact]
+    public void CodeOfPredicate_DoesNotMistakeAParenthesisInsideALiteralForTheEndOfAnIdiom() {
+        // MatchingParenthesis skips literals, so the argument is not cut short at that ')' and the
+        // idiom still closes on the real one.
+        //
+        // Punctuation inside an idiom's argument is dropped rather than named, unlike a literal
+        // anywhere else: the argument is read as a path, which is what an argument to a null check
+        // is in every case worth optimising for. Two arguments differing only in the punctuation of
+        // an embedded literal would share a code, which is accepted rather than unnoticed.
+        Assert.Equal(
+            "name_is_null_or_empty",
+            RuleText.CodeOfPredicate("x => string.IsNullOrEmpty(x.Name + \")\")", Name));
+    }
+
     [Fact]
     public void CodeOfPredicate_WithNothingDerivable_IsNull() {
         // The caller keeps the generic code rather than emitting an empty one.

@@ -132,6 +132,12 @@ x => x.Age is >= 0 and <= 30
 x => x.Status is Status.Active or Status.Pending
   -> status_is_status_active_or_status_pending
 
+-- null-forgiving
+x => x.Name!.Length > 3
+  -> name_length_greater_than_3
+x => x.Home!.PostalCode != null
+  -> home_postal_code_is_not_null
+
 -- local
 x => total <= x.CreditLimit
   -> total_less_than_or_equal_credit_limit
