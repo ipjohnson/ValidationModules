@@ -61,6 +61,21 @@ public class RulesClassTests {
     }
 
     [Fact]
+    public void ADerivedCode_TranslatesOneRuleWithoutTouchingTheOthers() {
+        // What deriving a code is for. Every Ensure used to report "predicate", so a catalogue
+        // keyed by code could not translate one predicate without translating all of them.
+        var french = new ValidationMessageMap()
+            .Map("start_less_than_end",
+                static (in ValidationError _) => "la date de début doit précéder la date de fin.");
+
+        var derived = Assert.Single(Validator.Validate(Valid() with { End = new DateOnly(2025, 1, 1) }).Errors);
+        var other = Assert.Single(Validator.Validate(Valid() with { Nights = 20, Notes = null }).Errors);
+
+        Assert.Equal("la date de début doit précéder la date de fin.", derived.ToMessage(french));
+        Assert.Equal(other.Message, other.ToMessage(french));
+    }
+
+    [Fact]
     public void Validate_OnAnEnsureWithANamedCode_UsesIt() {
         var result = Validator.Validate(Valid() with { Nights = 20, Notes = null });
 
