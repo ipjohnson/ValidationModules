@@ -6,7 +6,7 @@
         <Nullable>enable</Nullable>
         <IsPackable>True</IsPackable>
         <PackageId>ValidationModules.AspNetCore</PackageId>
-        <Description>ASP.NET Core integration for ValidationModules: an endpoint filter that validates minimal API arguments before the handler runs, an RFC 9457 ProblemDetails mapping for ValidationResult, and an exception handler for ValidationException. No reflection, Native AOT safe.</Description>
+        <Description>ASP.NET Core integration for ValidationModules: an endpoint filter that validates minimal API arguments before the handler runs, an RFC 9457 ProblemDetails mapping for ValidationResult, and an exception handler for ValidationException. No per-request reflection, Native AOT safe.</Description>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
         <RootNamespace>ValidationModules.AspNetCore</RootNamespace>
 

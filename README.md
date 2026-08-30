@@ -180,7 +180,8 @@ Release candidate for 1.0.0. Built so far:
 | 4 | `Impl` packaging for framework authors | **done** |
 | 5 | Hardened integration | substantially done |
 | 6 | FluentValidation adapter and conformance suite | not started |
-| — | ASP.NET Core integration | **done** |
+| — | ASP.NET Core integration — minimal APIs | **done** |
+| — | ASP.NET Core integration — MVC, Blazor, options validation | not started |
 
 Also built since the plan was written: the rules-class front end
 (`IValidationRulesFor<T>` — redesigned 2026-08-29 to the read-never-run transcription model,

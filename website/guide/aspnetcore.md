@@ -27,16 +27,34 @@ app.MapPost("/orders", (CreateOrder order) => Results.Ok(new { accepted = true }
   "title": "One or more validation errors occurred.",
   "status": 400,
   "errors": {
+    "": ["a bulk order must list its lines."],
     "reference": ["reference is required."],
     "shipTo.postcode": ["postcode is required."],
     "lines[1].sku": ["sku is required."]
   },
   "validationCodes": {
+    "": ["bulk_needs_lines"],
     "reference": ["required"],
     "shipTo.postcode": ["required"],
     "lines[1].sku": ["required"]
   }
 }
+```
+
+The empty key is the object itself. A failure reported against the value rather than one of its
+members — a rule comparing two fields, a `ReportHere` in a rules class — has no field name to key on,
+so it lands under `""` in both dictionaries. MVC does the same with model-level errors, and a client
+that indexes `errors` by field name should expect it.
+
+To cover every route in a group rather than one endpoint at a time, the same call takes a
+`RouteGroupBuilder`. It attaches to the routes in the group that can receive a `T` and leaves the
+rest alone:
+
+```csharp
+var orders = app.MapGroup("/orders").Validate<CreateOrder>();
+
+orders.MapPost("/", (CreateOrder order) => Results.Ok());
+orders.MapPost("/draft", (CreateOrder order) => Results.Accepted());
 ```
 
 ## Why the type is named rather than inferred
@@ -56,12 +74,18 @@ handler's business and changes whenever a parameter is added, so the filter scan
 Chain it when a handler has more than one thing worth checking:
 
 ```csharp
-app.MapPost("/orders", (CreateOrder order, Coupon coupon) => Results.Ok())
+app.MapPost("/orders", (CreateOrder order, [AsParameters] CouponQuery coupon) => Results.Ok())
    .Validate<CreateOrder>()
-   .Validate<Coupon>();
+   .Validate<CouponQuery>();
 ```
 
-Filters run in the order they were added, so the first failure answers and the second never runs.
+Filters run in the order they were added, so the first failure answers and the second never runs —
+a body invalid in both ways takes two round trips to discover.
+
+Note that only one parameter can be inferred from the body. Two plain complex parameters is not a
+chaining limitation but a minimal-API one: it fails to bind at all, with *"Failure to infer one or
+more parameters"*. The second validated type has to come from somewhere else — `[AsParameters]`, the
+route, the query string, or a service.
 
 ## Business rules run too
 
@@ -114,11 +138,29 @@ builder.Services.AddValidationProblemDetails();
 
 var app = builder.Build();
 
-app.UseExceptionHandler(_ => { });
+app.UseExceptionHandler();
+app.UseStatusCodePages();
 ```
 
 Both paths share one mapping deliberately. A service whose validation failures are shaped one way
 when caught early and another way when thrown late is a service whose clients need two parsers.
+
+Those two pipeline calls are worth a sentence each, because leaving either out is a real failure and
+neither announces itself.
+
+`UseExceptionHandler()` needs something to render the exceptions this package's handler *declines* —
+a malformed body, a null dereference, anything that is not a `ValidationException`.
+`AddValidationProblemDetails()` registers ASP.NET Core's own problem-details service for exactly that,
+which is what lets the no-argument spelling work. Reaching instead for `app.UseExceptionHandler(_ => { })`
+compiles, starts, and is wrong: the empty lambda becomes a branch pipeline that returns 404, the
+middleware reports *that* as a failure, and every non-validation fault — including a request body
+that simply never parsed — comes back as a 500 whose message is about a 404, with the real exception
+buried underneath.
+
+`UseStatusCodePages()` covers the responses ASP.NET Core produces *without* throwing.
+`RouteHandlerOptions.ThrowOnBadRequest` defaults to `IsDevelopment()`, so an unparseable body raises
+an exception in Development and, outside it, is simply a 400 with no content at all. The second call
+gives that empty 400 a body, so a client sees the same shape in both environments.
 
 ## Native AOT
 
@@ -135,6 +177,24 @@ JIT the reflection fallback hides it completely.
 The response is now written through this package's own serialiser metadata, which also makes it
 independent of however you have configured JSON. RFC 9457 fixes these member names, so there is
 nothing there a naming policy should be reshaping.
+
+That covers the problem body. **Your own request and response types are still yours to declare** — a
+published AOT app has no reflection to fall back on, so without a context for them the first request
+fails while deserialising, before validation is ever reached. Declare them and chain the context in
+rather than replacing the resolver, so this package's metadata stays reachable:
+
+```csharp
+[JsonSerializable(typeof(CreateOrder))]
+[JsonSerializable(typeof(AcceptedOrder))]
+internal sealed partial class AppJsonContext : JsonSerializerContext;
+
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.TypeInfoResolverChain.Insert(0, AppJsonContext.Default));
+```
+
+`integ-tests/ApiDemo` in the repository is a working example of this whole page — the wiring above,
+the two failure paths, and the context — with `integ-tests/ApiDemo.Tests` asserting the responses
+over real HTTP in both environments.
 
 ## What this package does not do
 

@@ -14,8 +14,8 @@ namespace ValidationModules;
 /// <para>
 /// Registered closed, per validated type, by the generator - never as an open generic, which
 /// would route construction through MS.DI's reflection-based activation. It is also directly
-/// constructible, which is how a request filter resolves its validators once at handler
-/// construction instead of per request.
+/// constructible, so a caller that already holds its validators can compose them without a
+/// container at all.
 /// </para>
 /// </remarks>
 /// <typeparam name="T">The type being validated.</typeparam>
