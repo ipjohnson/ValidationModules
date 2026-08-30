@@ -114,8 +114,32 @@ Operator spellings are the `System.Linq.Expressions.ExpressionType` names in sna
 Spelled out rather than abbreviated because the abbreviated dialects disagree with each other: OData
 spells `<=` as `le` where MongoDB and Django spell it `lte`. There was no short convention to adopt,
 and the spelled-out form is what both `ExpressionType` and FluentValidation's comparison validators
-already use. The table is a wire contract, so respelling it later would churn every derived code in
-every consuming application at once.
+already use.
+
+Common idioms are named for what they assert rather than for the tokens that spell them, which puts
+the subject first:
+
+| Condition | Code |
+|---|---|
+| `string.IsNullOrEmpty(x.Name)` | `name_is_null_or_empty` |
+| `!string.IsNullOrWhiteSpace(x.Name)` | `name_is_not_null_or_blank` |
+| `x.Name == null`, `x.Name is null` | `name_is_null` |
+| `x.Name != null`, `x.Name is not null` | `name_is_not_null` |
+| `x.Items.Count == 0`, `x.Items.Length == 0` | `items_is_empty` |
+| `x.Items.Count > 0` | `items_is_not_empty` |
+
+Two spellings of one assertion share a code on purpose. `== null` and `is null` say the same thing,
+so a client and a translator should see the same key for both. The emptiness idioms fire only when
+the comparison is the whole rule: `x.Items.Count > 0 && x.Paid` is a count being used rather than an
+emptiness test, and keeps `items_count_greater_than_0_and_paid`.
+
+::: warning Every code here is pinned
+The spellings and the idiom table are a wire contract. Respelling one operator or recognising one
+more idiom moves the codes of rules nobody edited, which is churn with no semantic reason behind it.
+`RuleText.CodeDerivationContract` and a corpus checksum in product source enforce that: accepting
+the test snapshot is deliberately not enough to move a code, because the constant has to be edited
+too. It moves only in a major release.
+:::
 
 [VM0092](/reference/diagnostics#vm0092) states the derived code at each rule, since it is the one
 part of a rules class you cannot read off the source.
