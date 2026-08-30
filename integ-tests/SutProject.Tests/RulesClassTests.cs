@@ -51,13 +51,28 @@ public class RulesClassTests {
     }
 
     [Fact]
-    public void Validate_RendersAnEnsureAsItsOwnMessage() {
+    public void Validate_RendersAnEnsureAsItsOwnMessageAndCode() {
         var result = Validator.Validate(Valid() with { End = new DateOnly(2025, 1, 1) });
 
         var error = Assert.Single(result.Errors);
         Assert.Equal("start", error.Field);
-        Assert.Equal(ValidationCodes.Predicate, error.Code);
+        Assert.Equal("start_less_than_end", error.Code);
         Assert.Equal("start < end.", error.Message);
+    }
+
+    [Fact]
+    public void ADerivedCode_TranslatesOneRuleWithoutTouchingTheOthers() {
+        // What deriving a code is for. Every Ensure used to report "predicate", so a catalogue
+        // keyed by code could not translate one predicate without translating all of them.
+        var french = new ValidationMessageMap()
+            .Map("start_less_than_end",
+                static (in ValidationError _) => "la date de début doit précéder la date de fin.");
+
+        var derived = Assert.Single(Validator.Validate(Valid() with { End = new DateOnly(2025, 1, 1) }).Errors);
+        var other = Assert.Single(Validator.Validate(Valid() with { Nights = 20, Notes = null }).Errors);
+
+        Assert.Equal("la date de début doit précéder la date de fin.", derived.ToMessage(french));
+        Assert.Equal(other.Message, other.ToMessage(french));
     }
 
     [Fact]
@@ -109,7 +124,7 @@ public class RulesClassTests {
                 ("guest", ValidationCodes.Required),
                 ("nights", ValidationCodes.Range),
                 ("guests", ValidationCodes.Range),
-                ("start", ValidationCodes.Predicate),
+                ("start", "start_less_than_end"),
             ],
             Validator.Validate(new Reservation()).Errors.Select(error => (error.Field, error.Code)));
 

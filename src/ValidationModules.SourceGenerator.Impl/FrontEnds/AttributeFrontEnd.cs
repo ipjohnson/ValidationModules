@@ -21,6 +21,9 @@ public sealed class AttributeFrontEnd {
     private readonly Func<string, string> _fieldNamer;
     private readonly PatternPolicy _patternPolicy;
 
+    /// <summary>The assembly's code namespace, applied to authored codes on the way out.</summary>
+    private readonly string? _codeNamespace;
+
     /// <summary>
     /// Suppresses reporting while constraints are read from a declaration this type does not own.
     /// </summary>
@@ -55,11 +58,13 @@ public sealed class AttributeFrontEnd {
         Compilation compilation,
         bool compileDataAnnotations,
         Func<string, string> fieldNamer,
-        PatternPolicy patternPolicy) {
+        PatternPolicy patternPolicy,
+        string? codeNamespace = null) {
         _compilation = compilation;
         _compileDataAnnotations = compileDataAnnotations;
         _fieldNamer = fieldNamer;
         _patternPolicy = patternPolicy;
+        _codeNamespace = codeNamespace;
     }
 
     public IReadOnlyList<Diagnostic> Diagnostics => _diagnostics;
@@ -1134,6 +1139,19 @@ public sealed class AttributeFrontEnd {
                 Report(
                     outcome.Diagnostic, member, attributeClass.Name, member.Name,
                     outcome.Detail ?? ValidationDiagnostics.CustomValidationEnforceTail);
+            }
+        }
+
+        // The one place every authored code this front end reads leaves by, whichever attribute
+        // shape supplied it. The built-in vocabulary is not here: an unset Code means the emitter
+        // writes a ValidationCodes constant, which is never namespaced.
+        if (!string.IsNullOrWhiteSpace(_codeNamespace)) {
+            for (var index = 0; index < constraints.Count; index++) {
+                if (constraints[index].Code is { } authored) {
+                    constraints[index] = constraints[index] with {
+                        Code = CodeNaming.Apply(_codeNamespace, authored),
+                    };
+                }
             }
         }
 

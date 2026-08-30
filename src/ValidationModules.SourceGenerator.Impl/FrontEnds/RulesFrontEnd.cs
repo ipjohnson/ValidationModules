@@ -51,10 +51,17 @@ public sealed class RulesFrontEnd {
 
     private readonly List<FragmentContainer> _containers = new();
 
-    public RulesFrontEnd(Func<string, string> fieldNamer, Func<INamedTypeSymbol, bool>? rulesTarget = null) {
+    public RulesFrontEnd(
+        Func<string, string> fieldNamer,
+        Func<INamedTypeSymbol, bool>? rulesTarget = null,
+        string? codeNamespace = null) {
         _fieldNamer = fieldNamer;
         _rulesTarget = rulesTarget;
+        _codeNamespace = codeNamespace;
     }
+
+    /// <summary>The assembly's code namespace, applied to what an Ensure authors or derives.</summary>
+    private readonly string? _codeNamespace;
 
     public IReadOnlyList<Diagnostic> Diagnostics => _diagnostics;
 
@@ -116,7 +123,7 @@ public sealed class RulesFrontEnd {
                 writer.ReadExpressionStatement(arrow.Expression, depth: 0, report: arrow.Expression);
             }
 
-            if (_diagnostics.Count > before) {
+            if (FailedSince(before)) {
                 continue;
             }
 
@@ -137,6 +144,25 @@ public sealed class RulesFrontEnd {
 
     private void Report(DiagnosticDescriptor descriptor, SyntaxNode node, params object?[] args) =>
         _diagnostics.Add(Diagnostic.Create(descriptor, node.GetLocation(), args));
+
+    /// <summary>
+    /// Whether anything reported since <paramref name="before"/> leaves the body unusable, which
+    /// is what makes the caller drop it rather than emit a validator built from a partial read.
+    /// </summary>
+    /// <remarks>
+    /// Severity rather than a count, because not every diagnostic from a body is a refusal.
+    /// VM0092 states the code a rule derived and the rule is emitted regardless; counting it would
+    /// silently drop the whole rules class for saying something true about it.
+    /// </remarks>
+    private bool FailedSince(int before) {
+        for (var index = before; index < _diagnostics.Count; index++) {
+            if (_diagnostics[index].Severity == DiagnosticSeverity.Error) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// Resolves the wire name of one property: <c>[JsonPropertyName]</c> first, then
@@ -263,7 +289,7 @@ public sealed class RulesFrontEnd {
         method.BodyLines.AddRange(writer.Lines);
         method.Fields.AddRange(writer.Fields);
 
-        return _diagnostics.Count > before ? null : method;
+        return FailedSince(before) ? null : method;
     }
 
     private static int IndexOf(IMethodSymbol definition, IParameterSymbol constructedParameter) {
@@ -1438,9 +1464,22 @@ public sealed class RulesFrontEnd {
                 var field = explicitField ?? _writer._owner.WireNameOf(anchor!);
                 var message = Literal(arguments, "message")
                     ?? RuleText.RenderPredicate($"{subject} => {text}", _writer._owner._fieldNamer);
-                var code = Literal(arguments, "code") is { } custom
-                    ? Quote(custom)
-                    : $"{Codes}.Predicate";
+
+                // Derived from the condition rather than from `message`, so an author rewording
+                // their own text does not move the wire code. The rule is the condition.
+                var owner = _writer._owner;
+                var derived = CodeNaming.Apply(
+                    owner._codeNamespace, RuleText.CodeOfPredicate($"{subject} => {text}", owner._fieldNamer));
+                var authored = CodeNaming.Apply(owner._codeNamespace, Literal(arguments, "code"));
+                var code = authored is not null
+                    ? Quote(authored)
+                    : derived is null ? $"{Codes}.Predicate" : Quote(derived);
+
+                // A derived code is the one part of a rules class that cannot be read off the
+                // source, so it is stated at the site that owns it.
+                if (authored is null && derived is not null) {
+                    owner.Report(ValidationDiagnostics.EnsureCodeDerived, call, derived, message);
+                }
                 var severity = SeverityOf(arguments) is { } member ? $", {SeverityEnum}.{member}" : string.Empty;
 
                 // Never null-guarded: the condition may read fields other than its anchor, so null

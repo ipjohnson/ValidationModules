@@ -73,6 +73,7 @@ silently does not is worse than one you know is missing.
 | [VM0089](#vm0089) | Error | a rule declaration sits inside a loop, lambda, or local function |
 | [VM0090](#vm0090) | Error | `Require` on a non-nullable value type can never fail |
 | [VM0091](#vm0091) | Error | a facet validated with `As` declares no rules in this compilation |
+| [VM0092](#vm0092) | Info | the code an `Ensure` derived from its condition |
 
 ---
 
@@ -800,6 +801,21 @@ failure this library refuses everywhere else. Declare the facet's rules in a rul
 it, as `AuditRules : IValidationRulesFor<IAudited>`. That is the sound pairing, since an interface's
 *attribute* constraints already reach every implementer through constraint inheritance, and an `As`
 on top of those would report every facet error twice.
+
+### VM0092 {#vm0092}
+
+**Info**: *`This rule reports code 'start_less_than_end', derived from 'start < end.'. Pass code: to pin it against a change to the condition`*
+
+An `Ensure` without an explicit `code:`, stating what it derived.
+
+Info because there is nothing to fix. Deriving a code is the designed behaviour rather than a
+fallback, so a warning would imply the author erred by not passing `code:`. The diagnostic exists
+because a derived code is the one part of a rules class you cannot read off the source, and it is
+worth seeing where the rule is written. Silent when `code:` was passed, since the code is then in
+the source already.
+
+[Error codes](/reference/codes#why-ensure-derives-its-code) has the derivation and the operator
+spellings.
 
 ### VM0079 {#vm0079}
 

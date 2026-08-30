@@ -523,6 +523,22 @@ public static class ValidationDiagnostics {
         "it, so this would check nothing. Give the facet constraint attributes or a rules class",
         DiagnosticSeverity.Error);
 
+    /// <summary>
+    /// The code an <c>Ensure</c> derived, stated where the rule was written.
+    /// </summary>
+    /// <remarks>
+    /// Info because there is nothing to fix. The diagnostic exists so the key is visible at the
+    /// site that owns it - the same reason VM0063 states the compiled DataAnnotations check at its
+    /// declaration - and because a derived code is the one part of a rules class you cannot read
+    /// off the source. A warning would imply the author erred by not passing <c>code:</c>, and
+    /// deriving one is the designed behaviour rather than a fallback. Not reported when the author
+    /// passed <c>code:</c>, since then the code is already in the source.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor EnsureCodeDerived = Descriptor(
+        "VM0092", "Ensure derives its code from its condition",
+        "This rule reports code '{0}', derived from '{1}'. Pass code: to pin it against a change " +
+        "to the condition", DiagnosticSeverity.Info);
+
     // Language packs. The block starts at VM0100 so the pack suite reads
     // as its own family; the point of compiling packs is that these fire at the build they affect.
 

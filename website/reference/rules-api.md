@@ -210,10 +210,10 @@ parameter stripped, member accesses wire-named, a period appended: `start < end.
 under their own names, so `var total = …; rules.Ensure(total <= x.CreditLimit);` reads
 `total <= creditLimit.`
 
-The rule anchors to the first property the condition reads; a condition that reads none needs
-`field:`, or it is [VM0075](/reference/diagnostics#vm0075). The code defaults to `predicate` and
-does not derive from the expression. See
-[Error codes](/reference/codes#why-ensure-does-not-derive-its-code).
+The rule anchors to the first property the condition reads. A condition that reads none needs
+`field:`, or it is [VM0075](/reference/diagnostics#vm0075). The code derives from the same render,
+so `x.Start < x.End` reports `start_less_than_end`, and `code:` pins it. See
+[Error codes](/reference/codes#why-ensure-derives-its-code).
 
 ## `rules.Context`: the reporter tier
 

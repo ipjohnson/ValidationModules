@@ -129,6 +129,32 @@ Governs one vocabulary; native constraints are unaffected.
 
 See [DataAnnotations](/guide/data-annotations).
 
+## `ValidationModules_CodeNamespace` {#validationmodules-codenamespace}
+
+Prefixes the error codes this assembly invents. Unset by default.
+
+```xml
+<PropertyGroup>
+    <ValidationModules_CodeNamespace>myapp</ValidationModules_CodeNamespace>
+</PropertyGroup>
+```
+
+An `Ensure` then reports `myapp.start_less_than_end`, and a `[Required(Code = "guest_missing")]`
+reports `myapp.guest_missing`. The separator is a dot, which survives being a JSON key and a URL
+fragment untouched.
+
+::: warning The built-in vocabulary is never prefixed
+`required` stays `required`, and so does every other code in
+[the fixed vocabulary](/reference/codes). That vocabulary is what lets a client switch on a code
+without knowing which engine produced the error, and namespacing it would defeat the point of
+having one. What collides when two assemblies merge is the codes people invent, which is exactly
+what this covers.
+:::
+
+Opt-in because switching it on changes every code the assembly emits, which is a wire-contract
+change for anything reading them. It is a once-per-assembly decision, cheapest before you have
+consumers.
+
 ## `ValidationModules_PatternPolicy`
 
 Whether an inline `[Pattern("…")]` is acceptable.

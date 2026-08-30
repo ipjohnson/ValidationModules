@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using Microsoft.CodeAnalysis;
 using Xunit;
 
@@ -41,6 +43,14 @@ public class RulesClassDiagnosticsTests {
         }
         """;
 
+    /// <summary>
+    /// What a body was refused for. VM0092 is advisory - it states the code an <c>Ensure</c>
+    /// derived, and the rule is emitted either way - so it is not a complaint about the body and
+    /// asserting its absence would be asserting the wrong thing.
+    /// </summary>
+    private static IEnumerable<Diagnostic> Refusals(GeneratorHarness.Result result) =>
+        result.Diagnostics.Where(diagnostic => diagnostic.Severity >= DiagnosticSeverity.Warning);
+
     // What used to be rejected wholesale now transcribes: computation is the feature.
 
     [Theory]
@@ -53,7 +63,7 @@ public class RulesClassDiagnosticsTests {
     public void OrdinaryStatements_Transcribe(string statement) {
         var result = GeneratorHarness.Run(Rules($"        {statement}"));
 
-        Assert.Empty(result.Diagnostics);
+        Assert.Empty(Refusals(result));
         Assert.Empty(result.CompilationErrors);
     }
 
@@ -71,7 +81,7 @@ public class RulesClassDiagnosticsTests {
                     }
             """));
 
-        Assert.Empty(result.Diagnostics);
+        Assert.Empty(Refusals(result));
         Assert.Empty(result.CompilationErrors);
     }
 
@@ -126,7 +136,7 @@ public class RulesClassDiagnosticsTests {
                     rules.Ensure(x.Nights <= 7 || x.Notes != null, code: "long_stay_needs_notes");
             """));
 
-        Assert.Empty(result.Diagnostics);
+        Assert.Empty(Refusals(result));
         Assert.Empty(result.CompilationErrors);
     }
 
@@ -147,6 +157,96 @@ public class RulesClassDiagnosticsTests {
         var result = GeneratorHarness.Run(Rules("        rules.Require(x.Guest);"));
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0071");
+    }
+
+    // VM0092 - the code an Ensure derived, stated where the rule was written.
+
+    [Fact]
+    public void EnsureWithoutACode_IsVM0092NamingTheDerivedCode() {
+        var result = GeneratorHarness.Run(Rules("        rules.Ensure(x.Start < x.End);"));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0092");
+
+        Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
+        Assert.Contains("start_less_than_end", diagnostic.GetMessage());
+    }
+
+    [Fact]
+    public void EnsureWithAnExplicitCode_IsSilent() {
+        // The code is already in the source, so stating it back says nothing.
+        var result = GeneratorHarness.Run(
+            Rules("        rules.Ensure(x.Start < x.End, code: \"date_order\");"));
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0092");
+    }
+
+    [Fact]
+    public void EnsureIsStillEmittedAlongsideVM0092() {
+        // The gate that drops a rules class counts refusals, not every diagnostic. An advisory one
+        // used to take the whole class down with it.
+        var result = GeneratorHarness.Run(Rules("        rules.Ensure(x.Start < x.End);"));
+
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains("start_less_than_end", string.Concat(result.Sources.Values));
+    }
+
+    // ValidationModules_CodeNamespace - opt-in, and only over the codes this assembly owns.
+
+    [Fact]
+    public void WithACodeNamespace_TheDerivedCodeCarriesIt() {
+        var result = GeneratorHarness.Run(
+            Rules("        rules.Ensure(x.Start < x.End);"),
+            ("ValidationModules_CodeNamespace", "myapp"));
+
+        Assert.Contains("myapp.start_less_than_end", string.Concat(result.Sources.Values));
+    }
+
+    [Fact]
+    public void WithACodeNamespace_AnAuthoredCodeCarriesIt() {
+        var result = GeneratorHarness.Run(
+            Rules("        rules.Ensure(x.Start < x.End, code: \"date_order\");"),
+            ("ValidationModules_CodeNamespace", "myapp"));
+
+        Assert.Contains("\"myapp.date_order\"", string.Concat(result.Sources.Values));
+    }
+
+    [Fact]
+    public void WithACodeNamespace_TheBuiltInVocabularyIsUntouched() {
+        // required has to stay required in every assembly. The fixed vocabulary is what lets a
+        // client switch on a code without knowing which engine produced the error, so a namespace
+        // reaches only the codes this assembly invented.
+        var result = GeneratorHarness.Run(
+            Rules("        rules.Require(x.Guest);"),
+            ("ValidationModules_CodeNamespace", "myapp"));
+
+        Assert.DoesNotContain("myapp.", string.Concat(result.Sources.Values));
+    }
+
+    [Fact]
+    public void WithACodeNamespace_AnAttributeCodeOverrideCarriesIt() {
+        // The other front end. An authored Code on a constraint attribute is as much this
+        // assembly's invention as an Ensure's.
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed record Booking {
+                [Required(Code = "guest_missing")]
+                public string? Guest { get; init; }
+            }
+            """,
+            ("ValidationModules_CodeNamespace", "myapp"));
+
+        Assert.Contains("\"myapp.guest_missing\"", string.Concat(result.Sources.Values));
+    }
+
+    [Fact]
+    public void WithoutACodeNamespace_NothingIsPrefixed() {
+        var result = GeneratorHarness.Run(Rules("        rules.Ensure(x.Start < x.End);"));
+
+        Assert.Contains("\"start_less_than_end\"", string.Concat(result.Sources.Values));
     }
 
     // VM0075 - an Ensure whose condition touches no property and names no field.
