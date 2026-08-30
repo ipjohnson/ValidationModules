@@ -431,7 +431,8 @@ app.MapPost("/throwing", (CreateOrder order, IValidatorFor<CreateOrder> validato
     return Results.Ok(new Accepted(true));
 });
 
-app.UseExceptionHandler(_ => { });
+app.UseExceptionHandler();
+app.UseStatusCodePages();
 
 app.Run();
 
