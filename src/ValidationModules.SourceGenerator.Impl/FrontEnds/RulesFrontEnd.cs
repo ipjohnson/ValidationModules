@@ -116,7 +116,7 @@ public sealed class RulesFrontEnd {
                 writer.ReadExpressionStatement(arrow.Expression, depth: 0, report: arrow.Expression);
             }
 
-            if (_diagnostics.Count > before) {
+            if (FailedSince(before)) {
                 continue;
             }
 
@@ -137,6 +137,25 @@ public sealed class RulesFrontEnd {
 
     private void Report(DiagnosticDescriptor descriptor, SyntaxNode node, params object?[] args) =>
         _diagnostics.Add(Diagnostic.Create(descriptor, node.GetLocation(), args));
+
+    /// <summary>
+    /// Whether anything reported since <paramref name="before"/> leaves the body unusable, which
+    /// is what makes the caller drop it rather than emit a validator built from a partial read.
+    /// </summary>
+    /// <remarks>
+    /// Severity rather than a count, because not every diagnostic from a body is a refusal.
+    /// VM0092 states the code a rule derived and the rule is emitted regardless; counting it would
+    /// silently drop the whole rules class for saying something true about it.
+    /// </remarks>
+    private bool FailedSince(int before) {
+        for (var index = before; index < _diagnostics.Count; index++) {
+            if (_diagnostics[index].Severity == DiagnosticSeverity.Error) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// Resolves the wire name of one property: <c>[JsonPropertyName]</c> first, then
@@ -263,7 +282,7 @@ public sealed class RulesFrontEnd {
         method.BodyLines.AddRange(writer.Lines);
         method.Fields.AddRange(writer.Fields);
 
-        return _diagnostics.Count > before ? null : method;
+        return FailedSince(before) ? null : method;
     }
 
     private static int IndexOf(IMethodSymbol definition, IParameterSymbol constructedParameter) {
@@ -1442,9 +1461,16 @@ public sealed class RulesFrontEnd {
                 // Derived from the condition rather than from `message`, so an author rewording
                 // their own text does not move the wire code. The rule is the condition.
                 var derived = RuleText.CodeOfPredicate($"{subject} => {text}", _writer._owner._fieldNamer);
-                var code = Literal(arguments, "code") is { } custom
-                    ? Quote(custom)
+                var authored = Literal(arguments, "code");
+                var code = authored is not null
+                    ? Quote(authored)
                     : derived is null ? $"{Codes}.Predicate" : Quote(derived);
+
+                // A derived code is the one part of a rules class that cannot be read off the
+                // source, so it is stated at the site that owns it.
+                if (authored is null && derived is not null) {
+                    _writer._owner.Report(ValidationDiagnostics.EnsureCodeDerived, call, derived, message);
+                }
                 var severity = SeverityOf(arguments) is { } member ? $", {SeverityEnum}.{member}" : string.Empty;
 
                 // Never null-guarded: the condition may read fields other than its anchor, so null

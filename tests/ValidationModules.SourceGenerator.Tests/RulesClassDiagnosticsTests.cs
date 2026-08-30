@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using Microsoft.CodeAnalysis;
 using Xunit;
 
@@ -41,6 +43,14 @@ public class RulesClassDiagnosticsTests {
         }
         """;
 
+    /// <summary>
+    /// What a body was refused for. VM0092 is advisory - it states the code an <c>Ensure</c>
+    /// derived, and the rule is emitted either way - so it is not a complaint about the body and
+    /// asserting its absence would be asserting the wrong thing.
+    /// </summary>
+    private static IEnumerable<Diagnostic> Refusals(GeneratorHarness.Result result) =>
+        result.Diagnostics.Where(diagnostic => diagnostic.Severity >= DiagnosticSeverity.Warning);
+
     // What used to be rejected wholesale now transcribes: computation is the feature.
 
     [Theory]
@@ -53,7 +63,7 @@ public class RulesClassDiagnosticsTests {
     public void OrdinaryStatements_Transcribe(string statement) {
         var result = GeneratorHarness.Run(Rules($"        {statement}"));
 
-        Assert.Empty(result.Diagnostics);
+        Assert.Empty(Refusals(result));
         Assert.Empty(result.CompilationErrors);
     }
 
@@ -71,7 +81,7 @@ public class RulesClassDiagnosticsTests {
                     }
             """));
 
-        Assert.Empty(result.Diagnostics);
+        Assert.Empty(Refusals(result));
         Assert.Empty(result.CompilationErrors);
     }
 
@@ -126,7 +136,7 @@ public class RulesClassDiagnosticsTests {
                     rules.Ensure(x.Nights <= 7 || x.Notes != null, code: "long_stay_needs_notes");
             """));
 
-        Assert.Empty(result.Diagnostics);
+        Assert.Empty(Refusals(result));
         Assert.Empty(result.CompilationErrors);
     }
 
@@ -147,6 +157,37 @@ public class RulesClassDiagnosticsTests {
         var result = GeneratorHarness.Run(Rules("        rules.Require(x.Guest);"));
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0071");
+    }
+
+    // VM0092 - the code an Ensure derived, stated where the rule was written.
+
+    [Fact]
+    public void EnsureWithoutACode_IsVM0092NamingTheDerivedCode() {
+        var result = GeneratorHarness.Run(Rules("        rules.Ensure(x.Start < x.End);"));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0092");
+
+        Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
+        Assert.Contains("start_less_than_end", diagnostic.GetMessage());
+    }
+
+    [Fact]
+    public void EnsureWithAnExplicitCode_IsSilent() {
+        // The code is already in the source, so stating it back says nothing.
+        var result = GeneratorHarness.Run(
+            Rules("        rules.Ensure(x.Start < x.End, code: \"date_order\");"));
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0092");
+    }
+
+    [Fact]
+    public void EnsureIsStillEmittedAlongsideVM0092() {
+        // The gate that drops a rules class counts refusals, not every diagnostic. An advisory one
+        // used to take the whole class down with it.
+        var result = GeneratorHarness.Run(Rules("        rules.Ensure(x.Start < x.End);"));
+
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains("start_less_than_end", string.Concat(result.Sources.Values));
     }
 
     // VM0075 - an Ensure whose condition touches no property and names no field.
