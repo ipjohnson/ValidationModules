@@ -106,7 +106,10 @@ public string? Notes { get; init; }
 public string? Token { get; init; }
 ```
 
-Constructors: `()` and `(int min, int max)`. Strings only,
+Constructors: `()` and `(int min, int max)`. The lowercase `min:`/`max:` are the constructor's
+parameters; the capitalized `Min`/`Max` are properties on the parameterless form. They do not
+mix: `[StringLength(min: 12)]` is CS7036, because the two-parameter constructor requires both -
+write `[StringLength(Min = 12)]`. Strings only,
 [VM0001](/reference/diagnostics#vm0001). Inverted bounds are
 [VM0008](/reference/diagnostics#vm0008).
 
@@ -180,6 +183,109 @@ reference form, so put them on your `[GeneratedRegex]`. `RegexOptions.Compiled` 
 
 See [Patterns and regex](/guide/patterns) for which form to use.
 
+## `[EmailAddress]`
+
+| Member | Type | Default |
+|---|---|---|
+| `Code` | `string?` | `"email"` |
+| `Message` | `string?` | *composed* |
+
+```csharp
+[Required, EmailAddress]
+public string? Email { get; init; }
+```
+
+The first of five format validators carried under `System.ComponentModel.DataAnnotations`' exact
+names and semantics, so migrating a model is swapping a using directive. The check is the BCL's
+own: exactly one `@`, neither first nor last, and no line breaks. `a@b` passes, because RFC 5322
+permits a dotless domain. A stricter grammar is a `[Pattern]`.
+
+Strings only, which is [VM0001](/reference/diagnostics#vm0001) otherwise. Like every format
+validator, null passes; presence is `[Required]`'s question.
+
+## `[Phone]`
+
+| Member | Type | Default |
+|---|---|---|
+| `Code` | `string?` | `"phone"` |
+| `Message` | `string?` | *composed* |
+
+```csharp
+[Phone]
+public string? Contact { get; init; }
+```
+
+After stripping every `+`, trailing whitespace, and a trailing extension (`ext.`, `ext` or `x`
+followed by digits), the value must contain at least one digit and nothing but digits, whitespace
+and `- . ( )`. Strings only.
+
+## `[Url]`
+
+| Member | Type | Default |
+|---|---|---|
+| `Code` | `string?` | `"url"` |
+| `Message` | `string?` | *composed* |
+
+```csharp
+[Url]
+public string? Homepage { get; init; }
+
+[Url]
+public Uri? Docs { get; init; }
+```
+
+On a string: it must start with `http://`, `https://` or `ftp://`, case-insensitively, and
+nothing past the prefix is checked. On a `System.Uri` member: absolute, with one of those three
+schemes. Any other member type is [VM0001](/reference/diagnostics#vm0001).
+
+## `[CreditCard]`
+
+| Member | Type | Default |
+|---|---|---|
+| `Code` | `string?` | `"credit_card"` |
+| `Message` | `string?` | *composed* |
+
+```csharp
+[CreditCard]
+public string? CardNumber { get; init; }
+```
+
+The digits - dashes and spaces skipped - must pass the Luhn mod-10 checksum. Strings only.
+
+## `[Base64String]`
+
+| Member | Type | Default |
+|---|---|---|
+| `Code` | `string?` | `"base64"` |
+| `Message` | `string?` | *composed* |
+
+```csharp
+[Base64String]
+public string? Signature { get; init; }
+```
+
+Well-formed Base64 as `Convert.FromBase64String` reads it, whitespace included. Strings only.
+`Base64String` rather than `Base64`, matching the BCL: a name that is almost the DataAnnotations
+name would be a trap.
+
+## `[FileExtensions]`
+
+| Member | Type | Default |
+|---|---|---|
+| `Extensions` | `string?` | `"png,jpg,jpeg,gif"` |
+| `Code` | `string?` | `"file_extension"` |
+| `Message` | `string?` | *composed* |
+
+```csharp
+[FileExtensions(Extensions = "pdf,docx")]
+public string? Attachment { get; init; }
+```
+
+The file name's extension must be one of the set, compared case-insensitively. Plural, matching
+the BCL's own slightly awkward name, and normalized exactly as the BCL normalizes it - spaces and
+dots removed, lowercased, split on commas - so its quirks survive: `tar.gz` reads as `.targz`.
+Strings only.
+
 ## `[AllowedValues]`
 
 | Member | Type | Default |
@@ -197,6 +303,43 @@ public string? Status { get; init; }
 Constructor is `params object[]`. The permitted set is echoed in the message, because an enum's
 members are
 a schema fact, published in your OpenAPI document anyway.
+
+## `[DeniedValues]`
+
+| Member | Type | Default |
+|---|---|---|
+| `Values` | `object[]` | *(none)* |
+| `Code` | `string?` | `"enum"` |
+| `Message` | `string?` | *composed* |
+
+```csharp
+[DeniedValues("admin", "root", "system")]
+public string? Username { get; init; }
+```
+
+`[AllowedValues]` negated: the value must be none of the set. It compiles as the same membership
+check with the direction flipped and emits the same `enum` code - which is also how the
+DataAnnotations bridge reads the BCL pair - so override `Code` when a client needs to tell the
+two apart.
+
+## `[EnumDefined]`
+
+| Member | Type | Default |
+|---|---|---|
+| `Code` | `string?` | `"enum"` |
+| `Message` | `string?` | *composed* |
+
+```csharp
+[EnumDefined]
+public PetKind Kind { get; init; }
+```
+
+The enum member must be one of its type's declared values - the guard against
+`(PetKind)42` arriving through a permissive deserializer. The members are read at build time, so
+the check is a comparison rather than `Enum.IsDefined`: no boxing, no reflection, nothing for the
+trimmer to keep. On a `[Flags]` enum the check becomes a mask test, because `Read | Write` is a
+legitimate value that equals no single member. Enums only, which is
+[VM0027](/reference/diagnostics#vm0027) otherwise.
 
 ## `[ItemCount]`
 
@@ -300,7 +443,10 @@ checks everything it inherits, so running both would report the base's failures 
 `Runtime` resolves through the provider on the validation pass, which means it **composes**: a
 separately registered `IValidatorFor<Card>` runs alongside the generated one, where `CompileTime`
 consults no container and so cannot. It needs `Add<Assembly>Validators()` to have been called, and
-there is no fallback. A missing provider throws rather than quietly checking less.
+there is no fallback. A missing provider throws rather than quietly checking less. The machinery
+behind the mode is public: the registration maps each validated type to an `IDynamicValidator`
+adapter in a `DynamicValidatorRegistry`, and the generated descent resolves through
+`DynamicValidation` - one lookup per descent, never per rule.
 
 ::: warning Never inferred
 Dispatching automatically over whatever subtypes the generator happened to see would make coverage
@@ -325,6 +471,19 @@ No members. Emits a validator for a type that carries no constraints of its own,
 public sealed record Address { … }
 ```
 
+## `[PerValidationInstance]`
+
+No members, and not a constraint: it marks a [custom constraint
+attribute](/guide/custom-constraints) implementing `IConstraintFor<T>`, telling the emitter to
+construct the attribute at every check instead of hoisting one shared instance into a static
+field. For an attribute that keeps per-pass state; the construction cost is
+[VM0084](/reference/diagnostics#vm0084), paid where it was asked for.
+
+The base class for authoring your own attribute-shaped constraints is
+`CustomConstraintAttribute` (the static-check shape) or `ValidationConstraintAttribute` plus
+`IConstraintFor<T>` (the instance shape); both are the [custom
+constraints](/guide/custom-constraints) guide's subject.
+
 ## Attributes read from elsewhere
 
 ### `System.Text.Json.Serialization.JsonPropertyName`
@@ -343,9 +502,10 @@ public string? Name { get; init; }      // errors report "pet_name"
 
 ### `System.ComponentModel.DataAnnotations.*`
 
-The whole constraint vocabulary is read as a second front end. See
-[DataAnnotations](/guide/data-annotations) for the mapping and for what is deliberately not
-compiled.
+The whole constraint vocabulary is read as a second front end, and every DataAnnotations
+validation attribute has a native equivalent - under the same name where the concept is the same
+- so a model file needs exactly one using. See [DataAnnotations](/guide/data-annotations) for the
+mapping and for what is deliberately not compiled.
 
 ## Interfaces
 

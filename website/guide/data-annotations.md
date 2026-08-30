@@ -23,6 +23,14 @@ public class Customer {
 That produces the same `CustomerValidator` a native-attribute model would, with the same codes,
 messages and field paths. The origin of a rule stops mattering the moment it is read.
 
+The relationship is a policy, not a coincidence: **every DataAnnotations validation attribute has
+a native equivalent, under the same name where the concept is the same.** Migrating a model is
+swapping `using System.ComponentModel.DataAnnotations;` for `using ValidationModules.Constraints;`
+- the attribute lines stay as they are. The [four deliberate divergences](#where-the-names-differ)
+are documented below, each with its reason. When the BCL adds a new *validation* attribute, the
+native vocabulary matches it under its own name; DataAnnotations' display and metadata attributes
+(`[Display]`, `[DataType]`, `[DisplayFormat]`) are not validation and stay out.
+
 **No `ValidationAttribute` is ever constructed and no `IsValid` is ever called.** The arguments are
 read out of metadata at build time and compiled, which is what keeps this free of the reflection
 `Validator.TryValidateObject` would otherwise do.
@@ -55,6 +63,23 @@ the member's own type decides which constraint each becomes. A member that is ne
 An exclusive bound reads "must be greater than" or "must be less than" rather than
 claiming "between".
 
+## Where the names differ {#where-the-names-differ}
+
+Four DataAnnotations attributes map to a native attribute under a different name. All four stay
+different on purpose - each is a genuinely different mechanism rather than a renamed one, and two
+names for one concept would be worse than one name that needs a sentence:
+
+| DataAnnotations | Native | Why it differs |
+|---|---|---|
+| `[RegularExpression("…")]` | [`[Pattern]`](/reference/attributes#pattern) | the native form also takes a `[GeneratedRegex]` member reference, which is what keeps a published AOT binary free of the regex compiler - a shape the BCL attribute has nowhere to put |
+| `[MinLength]` / `[MaxLength]` / `[Length]` | [`[StringLength]`](/reference/attributes#stringlength) or [`[ItemCount]`](/reference/attributes#itemcount) | the BCL overloads one name across strings and collections and decides by member type; the native vocabulary names the two constraints for what they check |
+| `[CustomValidation(typeof(T), "M")]` | [`[CustomConstraint]`](/guide/custom-constraints) | a different mechanism: the BCL form names a method resolved by string, the native form is an attribute class whose check compiles like a built-in |
+| `[EnumDataType(typeof(E))]` | [`[EnumDefined]`](/reference/attributes#enumdefined) | the BCL form checks that a loosely-typed value *parses* as the enum, a runtime string conversion this library will not compile ([VM0068](/reference/diagnostics#vm0068)); the native form checks a properly-typed member holds a declared value |
+
+Everything else - `[Required]`, `[StringLength]`, `[Range]`, `[AllowedValues]`,
+`[DeniedValues]`, `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]`,
+`[FileExtensions]` - carries the BCL's exact name in both vocabularies.
+
 ### Messages {#messages}
 
 `ErrorMessage` is honoured everywhere, with DataAnnotations' own placeholder dialect resolved at
@@ -83,7 +108,9 @@ than the inconsistency.
 ## The format validators
 
 `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]` and `[FileExtensions]`
-compile to the BCL's own checks, reproduced exactly. No attribute is constructed, nothing allocates
+compile to the BCL's own checks, reproduced exactly. The native vocabulary carries all six under
+the same names, compiling to the identical emitted check, so a model using them migrates by
+swapping its using directive like any other. No attribute is constructed, nothing allocates
 on the pass, and the answer is the one `Validator.TryValidateObject` gives:
 
 | Attribute | The compiled check |
@@ -163,11 +190,12 @@ rewrite. [VM0081](/reference/diagnostics#vm0081) warns there, and only there.
 
 Silence would be dangerous here in a way it is not for native attributes: an attribute this
 generator skipped would still *look* enforced, because you have every reason to think
-`TryValidateObject` would have honoured it. One attribute remains uncompiled, and it says so.
+`TryValidateObject` would have honoured it. Two attributes remain uncompiled, and each says so.
 
 | Attribute | Diagnostic | Why |
 |---|---|---|
 | `[Compare]` | [VM0061](/reference/diagnostics#vm0061) | compares two members |
+| `[EnumDataType]` | [VM0068](/reference/diagnostics#vm0068) | checks a runtime string conversion; type the member as the enum and use [`[EnumDefined]`](/reference/attributes#enumdefined) |
 
 `[Compare]` has no per-property form. Move it to a [rule class](/guide/rule-classes), which is the
 declaration form that *can* express a rule spanning two properties:
@@ -198,15 +226,17 @@ The switch governs one vocabulary. A type carrying both keeps its native constra
 
 ## Mixing the two vocabularies
 
-You can, but you will need to disambiguate:
+Because the native vocabulary is a superset, a model file never *needs* both namespaces - which
+matters, because importing both makes the shared names ambiguous:
 
 ```csharp
 using System.ComponentModel.DataAnnotations;
 using ValidationModules.Constraints;   // error CS0104: 'Required' is an ambiguous reference
 ```
 
-Five names collide: `Required`, `StringLength`, `Range`, `AllowedValues`, and the length family.
-Alias one of them, or qualify:
+The names match on purpose: shared names only hurt a file that imports both, and complete
+coverage is what makes that unnecessary. A file that genuinely wants both - one legacy property
+mid-migration, say - qualifies the colliding attribute:
 
 ```csharp
 [System.ComponentModel.DataAnnotations.Required]

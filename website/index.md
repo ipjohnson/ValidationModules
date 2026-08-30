@@ -200,6 +200,34 @@ rebuilds its rule graph on every request. That costs about 11 KB per resolve, wh
 time it takes is dominated by garbage collection and moves too much between runs to quote more
 precisely.
 
+## Everything documented
+
+The guides, in reading order:
+
+[Getting started](/guide/getting-started) ·
+[Constraints](/guide/constraints) ·
+[Custom constraints](/guide/custom-constraints) ·
+[Rule classes](/guide/rule-classes) ·
+[Nesting and collections](/guide/nesting) ·
+[Patterns and regex](/guide/patterns) ·
+[DataAnnotations](/guide/data-annotations) ·
+[The error model](/guide/errors) ·
+[Messages and translation](/guide/messages) ·
+[Async validation](/guide/async) ·
+[Registration and DI](/guide/registration) ·
+[ASP.NET Core](/guide/aspnetcore) ·
+[Trimming and AOT](/guide/aot) ·
+[Testing](/guide/testing) ·
+[Troubleshooting](/guide/troubleshooting)
+
+And the reference, for looking things up:
+
+[Attributes](/reference/attributes) ·
+[Error codes](/reference/codes) ·
+[The rules API](/reference/rules-api) ·
+[MSBuild properties](/reference/msbuild) ·
+[Diagnostics](/reference/diagnostics)
+
 </div>
 
 <style>

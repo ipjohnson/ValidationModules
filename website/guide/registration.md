@@ -41,6 +41,13 @@ and there is deliberately no cross-assembly scanning. Two assemblies both emitti
 `AddValidationModules()` on `IServiceCollection` would be CS0121 at the composition root.
 `AddMyAppValidators()` and `AddMyLibValidators()` compose without ceremony.
 
+The source is the **assembly name**, not the root namespace, made into a legal identifier: dots
+are removed, any other character that is not a letter, digit or underscore becomes an underscore,
+a segment that starts with a digit gains a leading underscore, and casing is untouched. So
+`MyApp.Contracts` gets `AddMyAppContractsValidators()`, and a kebab-case `app2-signupapi` gets
+`Addapp2_signupapiValidators()`. The name is computed at build time and exists in no package;
+when in doubt, read it out of `obj/…/generated/…/GeneratedValidatorRegistration.g.cs`.
+
 **Not idempotent.** Calling it twice registers every validator twice, and a runner merges every
 registered validator for a type, so each error would be reported twice. `Add` rather than `TryAdd`
 is deliberate: registering a second validator for one type is how a hand-written rule composes with

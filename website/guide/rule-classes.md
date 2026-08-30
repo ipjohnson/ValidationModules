@@ -156,6 +156,27 @@ Members that only make sense for particular value types are extension methods co
 chain's type argument. That is how `Length` is offered on a string anchor and not on an `int`, and
 it is why the compiler catches the mistake instead of a runtime check.
 
+A nullable member is passed as itself, and its bound literals are written in the member's type:
+
+<!-- verify -->
+```csharp
+public sealed record Vehicle {
+    public decimal? BatteryKwh { get; init; }
+}
+
+public sealed class VehicleRules : IValidationRulesFor<Vehicle> {
+    public static void Describe(ValidationRules<Vehicle> rules, Vehicle x) {
+        rules.Range(x.BatteryKwh, 10m, 300m);   // null passes; Require is the presence check
+    }
+}
+```
+
+Every rule parameter is already nullable, so `x.BatteryKwh.Value` is never needed - writing it is
+[VM0093](/reference/diagnostics#vm0093), and the reader compiles the rule against the member
+itself. The `m` suffixes are load-bearing too: the bounds and the value must infer one `TValue`,
+and an unsuffixed `10` is an `int`, which against a `decimal?` member fails to compile. See
+[the rules API](/reference/rules-api#the-vocabulary) for the inference rule.
+
 ::: tip `Pattern` takes a method group
 `rules.Pattern(x.Sku, PetPatterns.Sku)` takes the accessor for a `[GeneratedRegex]` partial method,
 never an inline string. There is no inline form to leak the regex engine into an AOT publish.
@@ -183,8 +204,10 @@ rules.Context.Report(nameof(x.AccountNumber), "checksum",   // → "accountNumbe
     $"{nameof(x.AccountNumber)} failed its checksum");
 ```
 
-`nameof(Pet.Name)`, through the type rather than the subject, stays ordinary C# and yields the CLR
-name. That is the escape hatch.
+`field: nameof(x.AccountNumber)` follows the same rule: it names a member, so the error takes
+that member's wire name, and one property cannot reach a client under two casings depending on
+which spelling reported it. `nameof(Pet.Name)`, through the type rather than the subject, stays
+ordinary C# and yields the CLR name. That is the escape hatch.
 
 ## `Ensure` {#ensure}
 

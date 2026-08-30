@@ -51,7 +51,11 @@ validation. Registering a different `IValidationFieldNamer` in DI does **not** r
 validator's errors. It affects only names computed at run time, from `IValidatableObject` results
 and DataAnnotations member names.
 
-If you use both, set this property and the registered namer to the same policy.
+If you use both, set this property and the registered namer to the same policy. The built-in
+policies are `CamelCaseFieldNamer`, `PascalCaseFieldNamer` and `SnakeCaseFieldNamer` in
+`ValidationModules.Naming`, each a `FieldNamer` - the base that also owns how path segments and
+indices join. The generated registration TryAdds the namer matching this property, so a namer you
+register first wins.
 :::
 
 `SnakeCase` handles acronyms: `HTTPStatusLine` becomes `http_status_line`.
