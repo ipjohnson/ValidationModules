@@ -15,7 +15,7 @@ deleted on 2026-08-30 because they had drifted from the code. Use these instead:
 |---|---|
 | What is the public API? | `tests/ValidationModules.Runtime.Tests/Snapshots/PublicApiTests.RuntimeApi.verified.txt` |
 | How does a consumer use this? | `website/` (VitePress site) |
-| What diagnostics exist? | `src/ValidationModules.SourceGenerator.Impl/AnalyzerReleases.Shipped.md` |
+| What diagnostics exist? | `src/ValidationModules.SourceGenerator.Impl/AnalyzerReleases.Unshipped.md` until 1.0.0 ships, `AnalyzerReleases.Shipped.md` after |
 | Why is this line here? | `git log -S '<the line>'` |
 
 Do not recreate the deleted documents. Record decisions in code comments, tests, or the website.
@@ -169,6 +169,17 @@ These are gated deliberately. Do not route around them: `git push`, `git merge`,
 Follows the `ipjohnson-org` pattern: `secrets.GITHUB_TOKEN` with `permissions: packages: write`
 rather than a personal access token, an explicit `--source` on `dotnet nuget push`,
 `actions/setup-dotnet@v4`, and Release configuration throughout when packing with `--no-build`.
+
+**A stable release moves the analyzer release tracking, and nothing automates it.** Before running
+the release workflow with a stable version, move every row from
+`AnalyzerReleases.Unshipped.md` into `AnalyzerReleases.Shipped.md` under a `## Release <version>`
+heading, leaving the unshipped file with its comment header and an empty table. Commit that with
+the release.
+
+This is the step that arms every protection the VM#### ids rely on. While the shipped file is
+empty, an id can be renumbered or retired for free, which is how the whole catalogue was renumbered
+before 1.0.0. Once the ids are recorded there, `EveryShippedId_IsStillDeclared` and Roslyn's RS2003
+both fail on a retired one, and CI escalates the warning to an error.
 
 ## Related working directories
 
