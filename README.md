@@ -1,12 +1,13 @@
-<!-- Absolute URLs so the logo resolves when this file is packed into the NuGet package. It is sized
-     to the H1 text so default baseline alignment sits it level with the name; NuGet's sanitizer
-     strips an align attribute anyway. -->
-# <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ipjohnson/ValidationModules/main/assets/logo-dark.svg"><img src="https://raw.githubusercontent.com/ipjohnson/ValidationModules/main/assets/logo.svg" alt="" width="32" height="32"></picture> ValidationModules
+<!-- This file is packed into every NuGet package, and nuget.org renders CommonMark only: raw HTML
+     is escaped into visible text and relative paths resolve to nothing. So the header mark is a
+     plain markdown image whose file carries its own size and background (assets/logo-readme.svg),
+     and every link is an absolute URL. -->
+# ![ValidationModules](https://raw.githubusercontent.com/ipjohnson/ValidationModules/main/assets/logo-readme.svg) ValidationModules
 
 [![NuGet](https://img.shields.io/nuget/v/ValidationModules.Runtime.svg)](https://www.nuget.org/packages/ValidationModules.Runtime/)
 [![build](https://github.com/ipjohnson/ValidationModules/actions/workflows/build-package.yaml/badge.svg)](https://github.com/ipjohnson/ValidationModules/actions/workflows/build-package.yaml)
 [![coverage](https://raw.githubusercontent.com/ipjohnson/ValidationModules/badges/coverage.svg)](https://github.com/ipjohnson/ValidationModules/actions/workflows/build-package.yaml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE.txt)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/ipjohnson/ValidationModules/blob/main/LICENSE.txt)
 
 Compile-time validation for .NET. You declare constraints as attributes on a model, and a source
 generator writes the validator into your assembly during the build.
