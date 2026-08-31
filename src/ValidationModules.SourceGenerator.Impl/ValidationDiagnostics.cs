@@ -600,4 +600,47 @@ public static class ValidationDiagnostics {
     public static readonly DiagnosticDescriptor LanguagePackCoverage = Descriptor(
         "VM0105", "Language pack coverage",
         "'{0}' covers {1} of {2} shapes; missing: {3}", DiagnosticSeverity.Info);
+
+    /// <summary>
+    /// A nested descent whose target could never carry a generated validator: a constructed
+    /// generic like <c>List&lt;Section&gt;</c>, an array, a nullable element - anything that is not
+    /// a plain declared named type.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Distinct from VM0007, which is about a plain type that merely has no rules yet. This target
+    /// can never have rules: validators are named <c>&lt;Type&gt;Validator</c> over non-generic
+    /// declared types, so the descent would call a validator that cannot exist. Before this
+    /// diagnostic, the front end passed the constructed generic name through to the emitter, which
+    /// threw - and an unhandled generator exception surfaces as a CS8785 warning, so a model-only
+    /// class library said "Build succeeded" having generated nothing at all.
+    /// </para>
+    /// <para>
+    /// Warning rather than error for VM0007's reason: the descent is dropped, so nothing runs that
+    /// should not, and the message names the remodelling the documentation already recommends.
+    /// </para>
+    /// </remarks>
+    public static readonly DiagnosticDescriptor NestedTargetCannotHaveValidator = Descriptor(
+        "VM0106", "[ValidateNested] target can never have a validator",
+        "'{0}' is not a type a validator can be generated for, so [ValidateNested] on '{1}' is " +
+        "dropped; model the inner collection as a property of a type that declares its own rules",
+        DiagnosticSeverity.Warning);
+
+    /// <summary>
+    /// The backstop for the class of failure VM0106 fixes one instance of: any unhandled exception
+    /// in an emit stage.
+    /// </summary>
+    /// <remarks>
+    /// Roslyn converts a generator exception into a CS8785 <b>warning</b> and drops every source
+    /// the stage would have added. In an executable that is a loud CS0246 on the missing
+    /// <c>Add…Validators()</c>; in a class library holding only models, nothing references a
+    /// generated symbol, so the build succeeds with zero validators and every model silently
+    /// validates nothing. Reporting the exception as an error is what makes a generator defect
+    /// fail the build instead of shipping as an assembly that validates nothing.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor GeneratorFailed = Descriptor(
+        "VM0107", "The validator generator failed",
+        "Emitting {0} threw {1}: {2}. The build is failed so the missing generated source cannot " +
+        "ship silently; please report this",
+        DiagnosticSeverity.Error);
 }

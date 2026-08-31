@@ -63,3 +63,5 @@ VM0102 | ValidationModules.Usage | Error | A language pack template hole exceeds
 VM0103 | ValidationModules.Usage | Error | A language pack repeats a key.
 VM0104 | ValidationModules.Usage | Warning | A language pack's file name and culture disagree.
 VM0105 | ValidationModules.Usage | Info | Language pack coverage.
+VM0106 | ValidationModules.Usage | Warning | A [ValidateNested] target can never have a generated validator; the descent is dropped.
+VM0107 | ValidationModules.Usage | Error | An emit stage threw an unhandled exception; the build fails rather than succeeding with generated source missing.

@@ -205,25 +205,61 @@ public sealed class AttributeFrontEnd {
                 continue;
             }
 
+            if (validateNested) {
+                var target = DescentTargetOf(property);
+
+                // Dropped rather than emitted, in both arms, because emitting either descent calls
+                // a validator that does not exist and fails the consumer's build inside generated
+                // code - or, for a constructed generic, throws inside the emitter. A descent a
+                // rules class declared keeps its machinery: the region's transcribed text owns
+                // that walk and still names it.
+                if (target is not INamedTypeSymbol { IsGenericType: false } named) {
+                    // A type-parameter target only occurs inside a generic validated type, which
+                    // VM0079 refuses wholesale below; a second diagnostic there would be noise.
+                    if (target.TypeKind != TypeKind.TypeParameter) {
+                        Report(
+                            ValidationDiagnostics.NestedTargetCannotHaveValidator, property,
+                            target.ToDisplayString(), property.Name);
+                    }
+
+                    if (!declaredNesting) {
+                        validateNested = false;
+                    }
+                } else if (named.DeclaringSyntaxReferences.Length > 0 && !ProducesAValidator(named)) {
+                    // Anything not declared in this compilation is left alone - it may carry a
+                    // validator generated in its own assembly, which is invisible from here.
+                    Report(ValidationDiagnostics.NestedTypeHasNoRules, property, named.Name, property.Name);
+
+                    if (!declaredNesting) {
+                        validateNested = false;
+                    }
+                }
+            }
+
+            // Re-checked after the descent verdict: a property whose only ask was a dropped
+            // descent contributes nothing, but the type keeps its validator - sawAnything is
+            // already true, and an empty validator that validates nothing is what the dropped
+            // descent's warning promises.
+            if (constraints.Count == 0 && !validateNested) {
+                _quiet = enclosingQuiet;
+                continue;
+            }
+
             var (polymorphism, stated) = validateNested
                 ? NestedPolymorphism(member.Sources)
                 : (PolymorphismMode.DeclaredOnly, false);
 
-            if (validateNested) {
-                ReportRulelessNestedTarget(property);
-
-                var target = NestedTargetOf(property);
-
-                if (target is not null && !CanHaveSubtypes(target)) {
+            if (validateNested && DescentTargetOf(property) is INamedTypeSymbol surviving) {
+                if (!CanHaveSubtypes(surviving)) {
                     if (polymorphism == PolymorphismMode.Runtime) {
                         Report(
                             ValidationDiagnostics.RuntimePolymorphismOnClosedType, property,
-                            target.Name, target.IsValueType ? "a value type" : "sealed");
+                            surviving.Name, surviving.IsValueType ? "a value type" : "sealed");
                     }
-                } else if (!stated && target is not null) {
+                } else if (!stated) {
                     Report(
                         ValidationDiagnostics.UnsealedNestedTargetHasNoMode, property,
-                        target.Name, property.Name);
+                        surviving.Name, property.Name);
                 }
             }
 
@@ -290,40 +326,22 @@ public sealed class AttributeFrontEnd {
     }
 
     /// <summary>
-    /// Reports <c>[ValidateNested]</c> pointing at a type with nothing to check.
-    /// </summary>
-    /// <remarks>
-    /// The target is whatever the descent will actually reach: a dictionary's value type, a
-    /// collection's element type, or the property's own type. Anything not declared in this
-    /// compilation is left alone - it may carry a validator generated in its own assembly, which is
-    /// invisible from here.
-    /// </remarks>
-    /// <summary>
     /// What a descent into <paramref name="property"/> actually reaches: a dictionary's value type,
-    /// a collection's element type, or the property's own type.
+    /// a collection's element type, or the property's own type with <c>Nullable&lt;T&gt;</c>
+    /// unwrapped - the exact type <see cref="BuildProperty"/> names a validator for.
     /// </summary>
-    private static INamedTypeSymbol? NestedTargetOf(IPropertySymbol property) {
-        var target =
-            TypeFacts.DictionaryTypesOf(property.Type) is { } entry ? entry.Value
-            : TypeFacts.ElementTypeOf(property.Type) ?? property.Type;
-
-        return target as INamedTypeSymbol;
-    }
-
-    private void ReportRulelessNestedTarget(IPropertySymbol property) {
-        var target =
-            TypeFacts.DictionaryTypesOf(property.Type) is { } entry ? entry.Value
-            : TypeFacts.ElementTypeOf(property.Type) ?? property.Type;
-
-        if (target is not INamedTypeSymbol named || named.DeclaringSyntaxReferences.Length == 0) {
-            return;
+    private static ITypeSymbol DescentTargetOf(IPropertySymbol property) {
+        if (TypeFacts.DictionaryTypesOf(property.Type) is { } entry) {
+            return entry.Value;
         }
 
-        if (ProducesAValidator(named)) {
-            return;
+        if (TypeFacts.ElementTypeOf(property.Type) is { } element) {
+            return element;
         }
 
-        Report(ValidationDiagnostics.NestedTypeHasNoRules, property, named.Name, property.Name);
+        return TypeFacts.IsNullableValueType(property.Type)
+            ? ((INamedTypeSymbol)property.Type).TypeArguments[0]
+            : property.Type;
     }
 
     /// <summary>

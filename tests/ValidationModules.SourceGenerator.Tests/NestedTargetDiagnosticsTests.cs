@@ -155,6 +155,115 @@ public class NestedTargetDiagnosticsTests {
     }
 
     [Fact]
+    public void NestedTargetWithNoRules_DropsTheDescentAndBuildsClean() {
+        // The half VM0007 used to leave broken: the warning promised "descends into it and
+        // validates nothing", but the emitter still wrote a call to AuthorValidator, which was
+        // never generated - CS0400 inside generated code. The descent is dropped now, so the
+        // behaviour matches the warning's own text.
+        var result = GeneratorHarness.Run(Model("""
+            public record Author {
+                public string? Name { get; init; }
+            }
+
+            public record Recipe {
+                [Required] public string? Title { get; init; }
+                [ValidateNested] public Author? Author { get; init; }
+            }
+            """));
+
+        Assert.Single(result.Diagnostics, d => d.Id == "VM0007");
+        Assert.Empty(result.CompilationErrors);
+
+        var validator = result.Sources["Sample.RecipeValidator.g.cs"];
+
+        Assert.DoesNotContain("AuthorValidator", validator);
+        Assert.Contains("Title", validator);
+    }
+
+    [Fact]
+    public void TypeWhoseOnlyAskWasADroppedDescent_StillGetsAnEmptyValidator() {
+        // IValidatorFor<Pet> must still resolve: the warning says the descent validates nothing,
+        // not that the type stops being validatable.
+        var result = GeneratorHarness.Run(Model("""
+            public record Toy {
+                public string? Name { get; init; }
+            }
+
+            public record Pet {
+                [ValidateNested] public Toy? Favourite { get; init; }
+            }
+            """));
+
+        Assert.Single(result.Diagnostics, d => d.Id == "VM0007");
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains("Sample.PetValidator.g.cs", result.Sources.Keys);
+    }
+
+    [Fact]
+    public void ListOfLists_IsVM0106AndBuildsClean() {
+        // The element of List<List<Section>> is List<Section>: a constructed generic, which can
+        // never have a generated validator. Before VM0106 the name reached EmitterOutput.TypeRef,
+        // which threw, and the whole generator contributed nothing - reported only as a CS8785
+        // warning, so a model-only class library said "Build succeeded" with zero validators.
+        var result = GeneratorHarness.Run(Model("""
+            public record Section {
+                [Required] public string? Name { get; init; }
+            }
+
+            public record Document {
+                [Required] public string? Title { get; init; }
+                [ValidateNested] public List<List<Section>> Sections { get; init; } = new();
+            }
+            """));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0106");
+
+        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Contains("List", diagnostic.GetMessage());
+        Assert.Contains("Sections", diagnostic.GetMessage());
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0107");
+        Assert.Empty(result.CompilationErrors);
+
+        // Every other validator in the compilation is intact.
+        Assert.Contains("Sample.SectionValidator.g.cs", result.Sources.Keys);
+        Assert.Contains("Title", result.Sources["Sample.DocumentValidator.g.cs"]);
+    }
+
+    [Fact]
+    public void ArrayOfArrays_IsVM0106AndBuildsClean() {
+        var result = GeneratorHarness.Run(Model("""
+            public record Section {
+                [Required] public string? Name { get; init; }
+            }
+
+            public record Document {
+                [ValidateNested] public Section[][] Sections { get; init; } = System.Array.Empty<Section[]>();
+            }
+            """));
+
+        Assert.Single(result.Diagnostics, d => d.Id == "VM0106");
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    [Fact]
+    public void NullableValueTypeElement_IsVM0106AndBuildsClean() {
+        // The element of List<Money?> is Nullable<Money>, and the descent names its validator
+        // without unwrapping - VM0106's remodelling advice applies the same way.
+        var result = GeneratorHarness.Run(Model("""
+            public record struct Money {
+                [Required] public string? Currency { get; init; }
+            }
+
+            public record Invoice {
+                [ValidateNested] public List<Money?> Lines { get; init; } = new();
+            }
+            """));
+
+        Assert.Single(result.Diagnostics, d => d.Id == "VM0106");
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    [Fact]
     public void NestedTargetFromAnotherAssembly_IsSilent() {
         // string is the stand-in for any type this compilation does not declare: it may carry a
         // validator generated in its own assembly, which is invisible from here. A false negative

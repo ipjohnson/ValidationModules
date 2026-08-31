@@ -219,6 +219,11 @@ public class KeywordIdentifierTests {
             """);
 
         Assert.Empty(result.CompilationErrors);
+
+        // Asserted as present, not only as compiling: the '@' in the namespace's display string
+        // used to crash AddSource on the hint name, which killed every output of the generator -
+        // and a compilation with no generated source at all passed the emptiness check above.
+        Assert.Contains("object.Models.PayloadValidator.g.cs", result.Sources.Keys);
     }
 
     /// <summary>
@@ -242,6 +247,8 @@ public class KeywordIdentifierTests {
             """);
 
         Assert.Empty(result.CompilationErrors);
+        Assert.Contains("object.Models.PayloadValidator.g.cs", result.Sources.Keys);
+        Assert.Contains("object.Models.AddressValidator.g.cs", result.Sources.Keys);
     }
 
     /// <summary>
