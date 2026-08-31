@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFrameworks>$(LibraryTargetFrameworks)</TargetFrameworks>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPackable>True</IsPackable>
+        <PackageId>ValidationModules.Options</PackageId>
+        <Description>Options validation for ValidationModules: AddValidatedOptions&lt;T&gt;() wires the generated validators into IValidateOptions&lt;T&gt; and ValidateOnStart(), so a host with a bad appsettings.json refuses to start instead of running misconfigured. No reflection, Native AOT safe.</Description>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <RootNamespace>ValidationModules.Options</RootNamespace>
+
+        <!-- Same bar as the runtime, and for the same reason. -->
+        <IsAotCompatible>true</IsAotCompatible>
+        <WarningsAsErrors>$(WarningsAsErrors);IL2026;IL2055;IL2067;IL2072;IL2075;IL2087;IL3050</WarningsAsErrors>
+    </PropertyGroup>
+
+    <!--
+        Microsoft.Extensions.Options is where ValidateOnStart and IStartupValidator live from 8.0
+        on - the host package merely type-forwards - so this is the whole dependency and a plain
+        console app can use it without referencing hosting.
+    -->
+    <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+        <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2"/>
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+        <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.0"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\ValidationModules.Runtime\ValidationModules.Runtime.csproj"/>
+    </ItemGroup>
+
+</Project>

@@ -104,11 +104,13 @@ Every registered pack feeds one merged table per requested culture, and the rule
 3. **The shape key beats the code within a layer.** A `string_length.at_most` entry outranks a
    `string_length` entry from the same pack; a later pack that rewrites the whole code takes all
    of its shapes.
-4. **A pack entry beats the error's own text.** An attribute's `Message = "…"` is the finished
-   string the error carries, and it is what renders when no pack entry matches - which is why a
-   custom message shows in English and a translated template takes over in a culture a pack
-   covers. Give the rule its own `Code` and word that code per culture if the custom text should
-   translate too; leave the code default and the pack's template applies.
+4. **A custom `Message` beats every pack entry.** An attribute's `Message = "…"` and an
+   `Ensure`'s explicit `message:` are the application's own words, and no pack replaces them -
+   whatever keys the pack carries for that code. Give the rule its own `Code` and word that code
+   per culture if the custom text should translate; a hand-written validator's
+   `Report(field, code, message)` works exactly that way, since its finished string is still
+   replaceable by a bare code-level entry. To pin a hand-written message the way an attribute's
+   `Message` is pinned, report it through `ReportAuthored`.
 
 ## Outside ASP.NET Core
 
@@ -179,7 +181,10 @@ formatter always wins. The `validationCodes` extension is deliberately untouched
 formatter. It is the stable vocabulary, and rendering is what it must not depend on.
 
 For a team with a translation pipeline, a resx- or `IStringLocalizer`-backed formatter is a small
-`ValidationMessageFormatter` subclass; the map is the direct form, not the only one.
+`ValidationMessageFormatter` subclass; the map is the direct form, not the only one. One naming
+note: `ValidationMessageFormatter` is an abstract class, and the only abstraction here you
+implement against that is not `I`-prefixed - there is no `IValidationMessageFormatter` to find,
+unlike `IValidatorFor`, `IValidationRulesFor` and `IValidationLanguagePack`.
 
 ## Or let the client translate
 

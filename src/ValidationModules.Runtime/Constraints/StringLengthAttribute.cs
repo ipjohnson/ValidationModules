@@ -17,11 +17,20 @@ public sealed class StringLengthAttribute : ValidationConstraintAttribute {
     public StringLengthAttribute() { }
 
     /// <summary>
-    /// Bounds set positionally.
+    /// Bounds set positionally or by name; either may be omitted for a single-bound constraint.
     /// </summary>
-    /// <param name="min">Shortest permitted length, inclusive.</param>
-    /// <param name="max">Longest permitted length, inclusive.</param>
-    public StringLengthAttribute(int min, int max) {
+    /// <remarks>
+    /// The defaults are the unbounded sentinels the property form uses, so
+    /// <c>[StringLength(min: 12)]</c> and <c>[StringLength(Min = 12)]</c> read identically.
+    /// Before the defaults, the one-bound named call was CS7036 and the property form was the
+    /// only way to give one bound - a papercut two models hit in consecutive trials. Note the
+    /// vocabulary difference from DataAnnotations: positionally, the first bound here is
+    /// <paramref name="min"/>, where <c>System.ComponentModel.DataAnnotations.StringLength(50)</c>
+    /// is a maximum - prefer the named form when giving one bound.
+    /// </remarks>
+    /// <param name="min">Shortest permitted length, inclusive. Zero means unbounded below.</param>
+    /// <param name="max">Longest permitted length, inclusive. Defaults to unbounded.</param>
+    public StringLengthAttribute(int min = 0, int max = int.MaxValue) {
         Min = min;
         Max = max;
     }

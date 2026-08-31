@@ -25,6 +25,11 @@ namespace Microsoft.Extensions.DependencyInjection
 
             global::Microsoft.Extensions.DependencyInjection.ValidationModulesServiceCollectionExtensions.AddValidationRunner<global::Sample.Broadcast>(services);
 
+            // Element-wise validation for collection bodies - List<T> and T[] - so a batch
+            // endpoint's .Validate<List<T>>() resolves a validator that walks the elements
+            // with indexed paths. Closed per type, for the AOT reason above.
+            global::Microsoft.Extensions.DependencyInjection.ValidationModulesServiceCollectionExtensions.AddCollectionValidatorsFor<global::Sample.Broadcast>(services);
+
             // TryAdd, so a namer the consumer registered first survives. The policy here is
             // the one the literals above were emitted with, so the engines that resolve a
             // namer at run time agree with the generated code by default.

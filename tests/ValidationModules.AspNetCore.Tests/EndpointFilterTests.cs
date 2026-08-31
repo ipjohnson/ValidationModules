@@ -38,9 +38,6 @@ public class EndpointFilterTests {
                         .Validate<CreateOrder>();
 
                     endpoints.MapPost("/orders/unvalidated", (CreateOrder order) => Results.Ok(new { accepted = true }));
-
-                    endpoints.MapPost("/coupons", (Coupon coupon) => Results.Ok(new { accepted = true }))
-                        .Validate<Coupon>();
                 });
             });
         });
@@ -164,8 +161,10 @@ public class EndpointFilterTests {
     public async Task WarningsDoNotFailARequest() {
         // IsValid is false only for Error severity, and a request that was not rejected must not
         // be told it was.
-        using var client = Server(services =>
-            services.AddSingleton<IValidatorFor<Coupon>, WarnOnlyCouponValidator>());
+        using var client = Endpoints(
+            endpoints => endpoints.MapPost("/coupons", (Coupon coupon) => Results.Ok(new { accepted = true }))
+                .Validate<Coupon>(),
+            services => services.AddSingleton<IValidatorFor<Coupon>, WarnOnlyCouponValidator>());
 
         var response = await client.PostAsJsonAsync("/coupons", new Coupon { Code = "SAVE" }, Ct);
 
@@ -186,6 +185,117 @@ public class EndpointFilterTests {
         Assert.NotNull(problem);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(["reference is already taken."], problem.Errors["reference"]);
+    }
+
+    [Fact]
+    public async Task AnUnregisteredType_FailsWhenTheEndpointIsBuilt() {
+        // .Validate<T>() naming a type nothing validates used to compile clean and then answer
+        // every request - valid bodies included - with a 500 from the filter's own throw. The
+        // check now runs beside CanReceive, when the endpoint is built.
+        using var client = Endpoints(endpoints =>
+            endpoints.MapPost("/coupons", (Coupon coupon) => Results.Ok()).Validate<Coupon>());
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => client.PostAsJsonAsync("/coupons", new Coupon(), Ct));
+
+        Assert.Contains("no validator is registered", error.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(Coupon), error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AListBody_ValidatesEachElementWithIndexedPaths() {
+        // The most ordinary batch shape there is: a JSON array body. The generated registration
+        // registers a CollectionValidatorFor per validated type, so Validate<List<T>> resolves.
+        using var client = Endpoints(endpoints =>
+            endpoints.MapPost("/orders/batch", (List<CreateOrder> orders) => Results.Ok(new { count = orders.Count }))
+                .Validate<List<CreateOrder>>());
+
+        var response = await client.PostAsJsonAsync("/orders/batch", new[] {
+            Valid(),
+            new CreateOrder { Reference = null, Quantity = 9999 },
+        }, Ct);
+
+        var problem = await response.Content.ReadFromJsonAsync<Problem>(Json, Ct);
+
+        Assert.NotNull(problem);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(["reference is required."], problem.Errors["[1].reference"]);
+        Assert.Contains("[1].quantity", problem.Errors.Keys);
+        Assert.DoesNotContain(problem.Errors.Keys, key => key.StartsWith("[0]", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AValidListBody_ReachesTheHandler() {
+        using var client = Endpoints(endpoints =>
+            endpoints.MapPost("/orders/batch", (List<CreateOrder> orders) => Results.Ok(new { count = orders.Count }))
+                .Validate<List<CreateOrder>>());
+
+        var response = await client.PostAsJsonAsync("/orders/batch", new[] { Valid(), Valid() }, Ct);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AnArrayBody_ValidatesLikeAList() {
+        using var client = Endpoints(endpoints =>
+            endpoints.MapPost("/orders/batch", (CreateOrder[] orders) => Results.Ok(new { count = orders.Length }))
+                .Validate<CreateOrder[]>());
+
+        var response = await client.PostAsJsonAsync("/orders/batch", new[] {
+            new CreateOrder { Reference = null, Quantity = 1 },
+        }, Ct);
+
+        var problem = await response.Content.ReadFromJsonAsync<Problem>(Json, Ct);
+
+        Assert.NotNull(problem);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(["reference is required."], problem.Errors["[0].reference"]);
+    }
+
+    [Fact]
+    public async Task PathModeFull_RendersEveryPathSegment() {
+        // Three descents deep - list element, shipTo, location - is where Bounded starts eliding
+        // the middle. Full is the documented answer for a client that keys on complete paths, and
+        // ValidationPathMode.Full was previously unreachable from the web path.
+        static void Batch(IEndpointRouteBuilder endpoints) =>
+            endpoints.MapPost("/orders/batch", (List<CreateOrder> orders) => Results.Ok())
+                .Validate<List<CreateOrder>>();
+
+        var deep = new[] {
+            Valid(),
+            Valid() with { ShipTo = new Address { Postcode = "AB1", Location = new GeoPoint() } },
+        };
+
+        using var bounded = Endpoints(Batch);
+        using var full = Endpoints(Batch, services =>
+            services.AddValidationProblemDetails(options => options.PathMode = ValidationPathMode.Full));
+
+        var boundedProblem = await (await bounded.PostAsJsonAsync("/orders/batch", deep, Ct))
+            .Content.ReadFromJsonAsync<Problem>(Json, Ct);
+        var fullProblem = await (await full.PostAsJsonAsync("/orders/batch", deep, Ct))
+            .Content.ReadFromJsonAsync<Problem>(Json, Ct);
+
+        Assert.NotNull(boundedProblem);
+        Assert.NotNull(fullProblem);
+        Assert.Contains("[1]...location.latitude", boundedProblem.Errors.Keys);
+        Assert.Contains("[1].shipTo.location.latitude", fullProblem.Errors.Keys);
+    }
+
+    [Fact]
+    public async Task AListBody_RunsElementBusinessRulesThroughTheRunner() {
+        // The list's runner gates and merges exactly as a scalar's does: structural first, then
+        // the element type's async rules per element, with indexed paths.
+        using var client = Endpoints(
+            endpoints => endpoints.MapPost("/orders/batch", (List<CreateOrder> orders) => Results.Ok())
+                .Validate<List<CreateOrder>>(),
+            services => services.AddScoped<IAsyncValidatorFor<CreateOrder>, RejectingBusinessRule>());
+
+        var response = await client.PostAsJsonAsync("/orders/batch", new[] { Valid() }, Ct);
+        var problem = await response.Content.ReadFromJsonAsync<Problem>(Json, Ct);
+
+        Assert.NotNull(problem);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(["reference is already taken."], problem.Errors["[0].reference"]);
     }
 
     [Fact]
@@ -270,12 +380,14 @@ public class EndpointFilterTests {
     /// Builds a server over a caller-supplied route table, for the cases that are about wiring
     /// rather than about a response.
     /// </summary>
-    private static HttpClient Endpoints(Action<IEndpointRouteBuilder> routes) {
+    private static HttpClient Endpoints(
+        Action<IEndpointRouteBuilder> routes, Action<IServiceCollection>? configure = null) {
         var builder = new HostBuilder().ConfigureWebHost(web => {
             web.UseTestServer();
             web.ConfigureServices(services => {
                 services.AddRouting();
                 services.AddValidationModulesAspNetCoreTestsValidators();
+                configure?.Invoke(services);
             });
             web.Configure(app => {
                 app.UseRouting();
@@ -333,6 +445,14 @@ public sealed record CreateOrder {
 public sealed record Address {
     [Required]
     public string? Postcode { get; init; }
+
+    [ValidateNested]
+    public GeoPoint? Location { get; init; }
+}
+
+public sealed record GeoPoint {
+    [Required]
+    public string? Latitude { get; init; }
 }
 
 public sealed record OrderLine {

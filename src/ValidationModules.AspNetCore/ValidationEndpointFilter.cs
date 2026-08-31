@@ -118,20 +118,22 @@ internal sealed class ValidationEndpointFilter<T> : IEndpointFilter {
     /// throws rather than passing the request through as valid.
     /// </para>
     /// </remarks>
-    private static async ValueTask<ValidationResult> ValidateAsync(HttpContext http, T value) {
+    private async ValueTask<ValidationResult> ValidateAsync(HttpContext http, T value) {
         var services = http.RequestServices;
 
         if (services.GetService<ValidationRunner<T>>() is { } runner) {
-            return await runner.ValidateAsync(value, http.RequestAborted).ConfigureAwait(false);
+            return await runner.ValidateAsync(value, _options.PathMode, http.RequestAborted).ConfigureAwait(false);
         }
 
         if (services.GetService<IValidatorFor<T>>() is { } validator) {
-            return validator.Validate(value);
+            return validator.Validate(value, _options.PathMode);
         }
 
         throw new InvalidOperationException(
             $"No validator is registered for {typeof(T)}. Call the generated " +
-            "Add<Assembly>Validators() at startup, or register an IValidatorFor<T> by hand. " +
-            "Validating nothing and reporting success would be worse than this exception.");
+            "Add<Assembly>Validators() at startup, or register an IValidatorFor<T> by hand. A " +
+            "collection body validates element-wise when declared as List<T> or T[] of a " +
+            "validated type. Validating nothing and reporting success would be worse than this " +
+            "exception.");
     }
 }

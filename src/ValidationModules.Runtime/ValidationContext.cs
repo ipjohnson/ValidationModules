@@ -165,7 +165,7 @@ public readonly struct ValidationContext : IValidationContextReporter {
         string code,
         string message,
         ValidationSeverity severity = ValidationSeverity.Error) {
-        var error = new ValidationError(BuildPath(field), code, message) { Severity = severity };
+        var error = new ValidationError(BuildPath(Normalized(field)), code, message) { Severity = severity };
 
         return _collector.AddDirect(in error);
     }
@@ -186,7 +186,74 @@ public readonly struct ValidationContext : IValidationContextReporter {
         object? value,
         ValidationMessageInfo messageInfo,
         ValidationSeverity severity = ValidationSeverity.Error) {
-        var error = new ValidationError(BuildPath(field), code, value, messageInfo) { Severity = severity };
+        var error = new ValidationError(BuildPath(Normalized(field)), code, value, messageInfo) { Severity = severity };
+
+        return _collector.AddDirect(in error);
+    }
+
+    /// <summary>Characters that mark a field as already shaped for the wire.</summary>
+    private static readonly char[] FieldShaping = { '.', '[' };
+
+    /// <summary>
+    /// A bare CLR-looking identifier, run through the pass's field namer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The generator rewrites <c>nameof</c> in a rules class to the wire name at build time, but a
+    /// hand-written <see cref="IValidatorFor{T}"/> or <see cref="IAsyncValidatorFor{T}"/> is plain
+    /// runtime code it never sees - so <c>Report(nameof(value.DeviceId), …)</c> put
+    /// <c>DeviceId</c> beside the generated <c>deviceId</c> in one result list, and a client
+    /// keying off <c>errors["deviceId"]</c> silently missed the hand-written failure. Normalizing
+    /// here is the only mechanism the runtime path has.
+    /// </para>
+    /// <para>
+    /// Anything carrying a separator or an index - <c>steps[0]</c>, <c>owner.name</c> - was shaped
+    /// deliberately and passes through verbatim. So does everything when the pass carries no
+    /// services or no registered namer: there is no policy to consult, and guessing one would
+    /// break a project whose wire names are the CLR names.
+    /// </para>
+    /// <para>
+    /// Resolved per report rather than cached, because caching would put a field on the collector
+    /// and grow every pass - clean ones included - while this path only ever runs on a failure.
+    /// </para>
+    /// </remarks>
+    private string Normalized(string field) {
+        if (field.Length == 0 || field.IndexOfAny(FieldShaping) >= 0) {
+            return field;
+        }
+
+        return _collector.Services?.GetService(typeof(Naming.IValidationFieldNamer))
+            is Naming.IValidationFieldNamer namer
+            ? namer.ToFieldName(field)
+            : field;
+    }
+
+    /// <summary>
+    /// Records a failure whose message is the application's own text, which no
+    /// <see cref="ValidationMessageFormatter"/> replaces.
+    /// </summary>
+    /// <remarks>
+    /// This is what generated code calls for a constraint carrying <c>Message = …</c> and for an
+    /// <c>Ensure</c> with an explicit <c>message:</c>. Before it, those went through
+    /// <see cref="Report(string,string,string,ValidationSeverity)"/> as ordinary finished strings,
+    /// and a language pack with a bare key for the code silently replaced the author's words -
+    /// while a pack without one left them alone, so the same attribute behaved differently per
+    /// code. Translating text reported this way means not reporting it this way: give the rule its
+    /// own code and word that code per culture instead.
+    /// </remarks>
+    /// <param name="field">The field name, appended to the current path.</param>
+    /// <param name="code">A stable machine-readable code.</param>
+    /// <param name="message">The application's own message text.</param>
+    /// <param name="severity">Defaults to <see cref="ValidationSeverity.Error"/>.</param>
+    public ValidationFlow ReportAuthored(
+        string field,
+        string code,
+        string message,
+        ValidationSeverity severity = ValidationSeverity.Error) {
+        var error = new ValidationError(BuildPath(Normalized(field)), code, message) {
+            Severity = severity,
+            MessageIsAuthored = true,
+        };
 
         return _collector.AddDirect(in error);
     }

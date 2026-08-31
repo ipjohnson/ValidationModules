@@ -149,9 +149,10 @@ dictionary keyed by user input the way you would treat logging that input.
 
 ## Collections of collections
 
-`[ValidateNested]` descends one level per property. A `List<List<Toy>>` validates the outer list's
-elements as `List<Toy>`, which has no validator, so nothing happens. Model the inner list as a
-property of a type instead:
+`[ValidateNested]` descends one level per property, and the element of a `List<List<Toy>>` is
+`List<Toy>` - a constructed generic, which can never have a generated validator. The build warns
+[VM0106](/reference/diagnostics#vm0106) and drops the descent. Model the inner list as a property
+of a type instead:
 
 ```csharp
 public sealed record Shelf {
@@ -208,6 +209,15 @@ var collector = new ValidationErrorCollector(ValidationPathMode.Full);
 validator.ValidateInto(collector, manifest);
 ```
 
+The runner and the plain extension take the same choice as an argument -
+`runner.Validate(value, ValidationPathMode.Full)`, `validator.Validate(value,
+ValidationPathMode.Full)` - and on the web path it is one option away, read by every endpoint
+filter:
+
+```csharp
+builder.Services.AddValidationProblemDetails(options => options.PathMode = ValidationPathMode.Full);
+```
+
 | mode | `body.order.lines[3].address.postalCode` |
 |---|---|
 | `Bounded` (default) | `body...address.postalCode` |
@@ -256,9 +266,11 @@ mutable type to reproduce. If you genuinely model a deep tree, leave the recursi
 
 ## Types with no rules of their own
 
-`[ValidateNested]` on a type that declares no constraints validates nothing, because no validator
-was generated for it. That is [VM0007](/reference/diagnostics#vm0007), which is declared but is one
-of the three diagnostics that are **never reported**, so the situation is currently silent.
+`[ValidateNested]` on a type that declares no constraints validates nothing: no validator was
+generated for the target, so the descent is dropped rather than emitted. The build warns
+[VM0007](/reference/diagnostics#vm0007) at the property, so the silence is stated rather than
+discovered. Only types this compilation declares are judged this way - a type from a referenced
+assembly may carry a validator generated over there, so its descent is kept.
 
 If the nested type gets its rules from a [rule class](/guide/rule-classes), or you want it walked
 for the sake of *its* nested properties, mark it:

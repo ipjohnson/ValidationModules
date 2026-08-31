@@ -1675,7 +1675,9 @@ public sealed class ValidatorEmitter {
             text = text.Replace("{0}", property.DisplayName ?? property.PropertyName);
         }
 
-        return $"ctx.Report({field}, {code}, {QuoteString(text)}{severity})";
+        // ReportAuthored rather than Report: the author's text must survive a language pack whose
+        // table happens to carry a bare key for this code.
+        return $"ctx.ReportAuthored({field}, {code}, {QuoteString(text)}{severity})";
     }
 
     /// <summary>

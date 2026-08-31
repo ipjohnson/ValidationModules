@@ -2,12 +2,23 @@ namespace Microsoft.Extensions.DependencyInjection
 {
     public static class ValidationModulesServiceCollectionExtensions
     {
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddCollectionValidatorsFor<TElement>(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
         public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValidationModules(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.Collections.Generic.IReadOnlyList<ValidationModules.ValidatorRegistration> registrations) { }
         public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValidationRunner<T>(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
     }
 }
 namespace ValidationModules
 {
+    public sealed class CollectionAsyncValidatorFor<TElement> : ValidationModules.IAsyncValidatorFor<System.Collections.Generic.IReadOnlyList<TElement>>
+    {
+        public CollectionAsyncValidatorFor(System.Collections.Generic.IEnumerable<ValidationModules.IAsyncValidatorFor<TElement>> element) { }
+        public System.Threading.Tasks.ValueTask ValidateAsync(ValidationModules.ValidationContext context, System.Collections.Generic.IReadOnlyList<TElement> value, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class CollectionValidatorFor<TElement> : ValidationModules.IValidatorFor<System.Collections.Generic.IReadOnlyList<TElement>>
+    {
+        public CollectionValidatorFor(System.Collections.Generic.IEnumerable<ValidationModules.IValidatorFor<TElement>> element) { }
+        public ValidationModules.ValidationFlow Validate(ref ValidationModules.ValidationContext context, System.Collections.Generic.IReadOnlyList<TElement> value) { }
+    }
     public static class ConstraintChecks
     {
         public static bool AllUnique<T>(System.Collections.Generic.IEnumerable<T> items) { }
@@ -92,6 +103,7 @@ namespace ValidationModules
     {
         public static ValidationModules.PropertyRules<T, TValue> AllowedValues<T, TValue>(this ValidationModules.PropertyRules<T, TValue> rules, params TValue[] allowed) { }
         public static ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Count<T, TElement>(this ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> rules, int min = 0, int max = 2147483647) { }
+        public static ValidationModules.PropertyRules<T, string?> Each<T>(this ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<string>?> rules) { }
         public static ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Each<T, TElement>(this ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> rules)
             where TElement :  class { }
         public static ValidationModules.PropertyRules<T, string?> Length<T>(this ValidationModules.PropertyRules<T, string?> rules, int min = 0, int max = 2147483647) { }
@@ -119,7 +131,7 @@ namespace ValidationModules
     public delegate ValidationModules.ValidationFlow RuleAction<in T>(ref ValidationModules.ValidationContext context, T value);
     public static class RuntimeContract
     {
-        public const int Version = 10;
+        public const int Version = 11;
     }
     public static class ValidationCodes
     {
@@ -153,6 +165,7 @@ namespace ValidationModules
         public ValidationModules.ValidationContext PushKey(string segment, string key) { }
         public ValidationModules.ValidationFlow Report(string field, string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
         public ValidationModules.ValidationFlow Report(string field, string code, object? value, ValidationModules.ValidationMessageInfo messageInfo, ValidationModules.ValidationSeverity severity = 0) { }
+        public ValidationModules.ValidationFlow ReportAuthored(string field, string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
         public ValidationModules.ValidationFlow ReportHere(string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
     }
     public static class ValidationContextExtensions
@@ -205,6 +218,7 @@ namespace ValidationModules
         public string Field { get; init; }
         public string Message { get; }
         public ValidationModules.ValidationMessageInfo? MessageInfo { get; init; }
+        public bool MessageIsAuthored { get; init; }
         public ValidationModules.ValidationSeverity Severity { get; init; }
         public object? Value { get; init; }
         public void Deconstruct(out string field, out string code, out string message) { }
@@ -336,6 +350,7 @@ namespace ValidationModules
         public ValidationModules.ValidationRules<T> Apply(ValidationModules.RuleAction<T> rule) { }
         public ValidationModules.ValidationRules<T> As<TFacet>(TFacet value) { }
         public ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Count<TElement>(System.Collections.Generic.IReadOnlyList<TElement>? value, int min = 0, int max = 2147483647, string? field = null) { }
+        public ValidationModules.PropertyRules<T, string?> Each(System.Collections.Generic.IReadOnlyList<string>? value, string? field = null) { }
         public ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Each<TElement>(System.Collections.Generic.IReadOnlyList<TElement>? value, string? field = null)
             where TElement :  class { }
         public ValidationModules.ValidationRules<T> Ensure(bool condition, string? field = null, string? code = null, string? message = null, ValidationModules.ValidationSeverity severity = 0) { }
@@ -372,7 +387,9 @@ namespace ValidationModules
     {
         public ValidationRunner(System.Collections.Generic.IEnumerable<ValidationModules.IValidatorFor<T>> structural, System.Collections.Generic.IEnumerable<ValidationModules.IAsyncValidatorFor<T>> business, System.IServiceProvider? services = null) { }
         public ValidationModules.ValidationResult Validate(T value) { }
+        public ValidationModules.ValidationResult Validate(T value, ValidationModules.ValidationPathMode pathMode) { }
         public System.Threading.Tasks.ValueTask<ValidationModules.ValidationResult> ValidateAsync(T value, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<ValidationModules.ValidationResult> ValidateAsync(T value, ValidationModules.ValidationPathMode pathMode, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public enum ValidationSeverity
     {
@@ -389,6 +406,7 @@ namespace ValidationModules
     {
         public static bool IsValid<T>(this ValidationModules.IValidatorFor<T> validator, T value) { }
         public static ValidationModules.ValidationResult Validate<T>(this ValidationModules.IValidatorFor<T> validator, T value) { }
+        public static ValidationModules.ValidationResult Validate<T>(this ValidationModules.IValidatorFor<T> validator, T value, ValidationModules.ValidationPathMode pathMode) { }
         public static void ValidateAndThrow<T>(this ValidationModules.IValidatorFor<T> validator, T value) { }
         public static ValidationModules.ValidationResult ValidateFirst<T>(this ValidationModules.IValidatorFor<T> validator, T value) { }
         public static void ValidateInto<T>(this ValidationModules.IValidatorFor<T> validator, ValidationModules.ValidationErrorCollector collector, T value) { }
@@ -447,7 +465,7 @@ namespace ValidationModules.Constraints
     public sealed class ItemCountAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
     {
         public ItemCountAttribute() { }
-        public ItemCountAttribute(int min, int max) { }
+        public ItemCountAttribute(int min = 0, int max = 2147483647) { }
         public int Max { get; init; }
         public int Min { get; init; }
     }
@@ -504,7 +522,7 @@ namespace ValidationModules.Constraints
     public sealed class StringLengthAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
     {
         public StringLengthAttribute() { }
-        public StringLengthAttribute(int min, int max) { }
+        public StringLengthAttribute(int min = 0, int max = 2147483647) { }
         public int Max { get; init; }
         public int Min { get; init; }
     }

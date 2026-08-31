@@ -189,6 +189,19 @@ public sealed class RegistrationEmitter {
                 services));
         }
 
+        BlankLine(add);
+        add.AddLineComment(
+            "Element-wise validation for collection bodies - List<T> and T[] - so a batch\n" +
+            "endpoint's .Validate<List<T>>() resolves a validator that walks the elements\n" +
+            "with indexed paths. Closed per type, for the AOT reason above.");
+
+        foreach (var model in models) {
+            add.AddIndentedStatement(InvokeGeneric(
+                RunnerExtensions, "AddCollectionValidatorsFor",
+                new[] { TypeRef(model.QualifiedTypeName) },
+                services));
+        }
+
         if (languagePacks.Count > 0) {
             BlankLine(add);
             add.AddLineComment(
@@ -288,13 +301,11 @@ public sealed class RegistrationEmitter {
     }
 
     /// <summary>
-    /// The sanitized assembly name as a single identifier: "My.App" names AddMyAppValidators.
+    /// The sanitized assembly name as a single identifier: "My.App" names AddMyAppValidators, and
+    /// a kebab-case "app2-signupapi" names AddApp2SignupapiValidators. See
+    /// <see cref="RegistrationNaming"/>.
     /// </summary>
-    /// <remarks>
-    /// The namespace is already sanitized to valid identifier characters, so only the separators
-    /// need removing. Never empty - an assembly with no usable name resolves to "Generated".
-    /// </remarks>
-    private static string Identifier(string ns) => ns.Replace(".", string.Empty);
+    private static string Identifier(string ns) => RegistrationNaming.Identifier(ns);
 
     private static string NamerFor(string? fieldNamer) => EmitterOutput.NamerFor(fieldNamer);
 

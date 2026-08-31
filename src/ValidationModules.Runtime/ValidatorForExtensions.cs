@@ -16,10 +16,20 @@ public static class ValidatorForExtensions {
     /// </summary>
     /// <param name="validator">The validator to run.</param>
     /// <param name="value">The value to validate.</param>
-    public static ValidationResult Validate<T>(this IValidatorFor<T> validator, T value) {
+    public static ValidationResult Validate<T>(this IValidatorFor<T> validator, T value) =>
+        Validate(validator, value, ValidationPathMode.Bounded);
+
+    /// <summary>
+    /// Runs the validator with the given path rendering.
+    /// </summary>
+    /// <param name="validator">The validator to run.</param>
+    /// <param name="value">The value to validate.</param>
+    /// <param name="pathMode">How error paths render. See <see cref="ValidationPathMode"/>.</param>
+    public static ValidationResult Validate<T>(
+        this IValidatorFor<T> validator, T value, ValidationPathMode pathMode) {
         ArgumentNullException.ThrowIfNull(validator);
 
-        var collector = new ValidationErrorCollector();
+        var collector = new ValidationErrorCollector(pathMode);
         var path = ArrayPool<PathSegment>.Shared.Rent(ValidationErrorCollector.DefaultDepthLimit);
 
         try {
@@ -43,16 +53,16 @@ public static class ValidatorForExtensions {
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Between <see cref="Validate{T}"/>, which evaluates everything, and
+    /// Between <see cref="Validate{T}(IValidatorFor{T}, T)"/>, which evaluates everything, and
     /// <see cref="IsValid{T}"/>, which evaluates nothing beyond the first failure but cannot say
     /// what failed. This skips the same work <see cref="IsValid{T}"/> skips - remaining
     /// constraints, nested descents, collection elements - and still reports the one error it
     /// found, which is what a caller wanting a single message per request needs.
     /// </para>
     /// <para>
-    /// The result is not a prefix of what <see cref="Validate{T}"/> would have returned in any
-    /// sense stronger than its first element: rules after the first failure never ran, so nothing
-    /// is known about them.
+    /// The result is not a prefix of what <see cref="Validate{T}(IValidatorFor{T}, T)"/> would
+    /// have returned in any sense stronger than its first element: rules after the first failure
+    /// never ran, so nothing is known about them.
     /// </para>
     /// </remarks>
     /// <param name="validator">The validator to run.</param>

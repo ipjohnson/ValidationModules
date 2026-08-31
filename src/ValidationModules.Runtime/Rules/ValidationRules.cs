@@ -192,6 +192,18 @@ public sealed class ValidationRules<T> {
         where TElement : class => throw Inert();
 
     /// <summary>
+    /// Anchors each string element of a collection, so the rules that follow apply per element
+    /// with indexed paths - <c>rules.Each(x.Steps).Length(5, 500)</c> reports at <c>steps[0]</c>.
+    /// </summary>
+    /// <remarks>
+    /// A collection of objects descends into the element type's generated validator; a string has
+    /// none, so its elements take their rules inline. Null elements are skipped, exactly as a
+    /// null element of a nested collection is.
+    /// </remarks>
+    public PropertyRules<T, string?> Each(IReadOnlyList<string>? value, string? field = null) =>
+        throw Inert();
+
+    /// <summary>
     /// Declares a rule the vocabulary cannot say: a cross-field comparison, arithmetic over locals,
     /// anything with no schema meaning.
     /// </summary>

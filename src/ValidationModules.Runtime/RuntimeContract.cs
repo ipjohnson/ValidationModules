@@ -111,10 +111,17 @@ public static class RuntimeContract {
     // keys arrive with them: ValidationMessageTemplates.KeyOf/TemplatesByKey/KnownKeys, and the
     // renderer's override-template entry points. Additive, as the rule below requires.
 
+    // 10 -> 11: authored messages and collection bodies. The emitter writes
+    // ctx.ReportAuthored(...) for a constraint carrying Message = … and for an Ensure's explicit
+    // message:, so the author's text survives a language pack with a bare key for the code; and
+    // the registration extension calls AddCollectionValidatorsFor<T> per validated type, which
+    // registers CollectionValidatorFor<T>/CollectionAsyncValidatorFor<T> for List<T> and T[].
+    // None of it exists in a contract-10 runtime. Additive, as the rule below requires.
+
     /// <summary>
     /// The contract this runtime implements. Compared against
     /// <c>EmitterContract.RequiredRuntimeContract</c> by the generator, and against
     /// <c>$(ValidationModulesRuntimeContract)</c> by build tasks driving the emitter.
     /// </summary>
-    public const int Version = 10;
+    public const int Version = 11;
 }

@@ -9,6 +9,6 @@
         if they drift.
     -->
     <PropertyGroup>
-        <ValidationModulesRuntimeContract>10</ValidationModulesRuntimeContract>
+        <ValidationModulesRuntimeContract>11</ValidationModulesRuntimeContract>
     </PropertyGroup>
 </Project>

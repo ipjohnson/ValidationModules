@@ -139,3 +139,16 @@ public sealed record Allocation {
     [Range(0.5, 9.99)]
     public decimal Fractional { get; init; }
 }
+
+/// <summary>
+/// The single-bound constructor forms. [StringLength(min: 12)] was CS7036 in two consecutive
+/// trials - the two-argument constructor had no defaults, so the property-setter form was the
+/// only one-bound spelling.
+/// </summary>
+public sealed record Passphrase {
+    [StringLength(min: 12)]
+    public string? Value { get; init; }
+
+    [ItemCount(max: 2)]
+    public List<string> Hints { get; init; } = [];
+}

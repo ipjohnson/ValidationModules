@@ -65,8 +65,15 @@ public sealed class ValidationRunner<T> {
     /// Runs the structural validators only. Allocation-free when the value is clean.
     /// </summary>
     /// <param name="value">The value to validate.</param>
-    public ValidationResult Validate(T value) {
-        var collector = new ValidationErrorCollector(_services);
+    public ValidationResult Validate(T value) => Validate(value, ValidationPathMode.Bounded);
+
+    /// <summary>
+    /// Runs the structural validators with the given path rendering.
+    /// </summary>
+    /// <param name="value">The value to validate.</param>
+    /// <param name="pathMode">How error paths render. See <see cref="ValidationPathMode"/>.</param>
+    public ValidationResult Validate(T value, ValidationPathMode pathMode) {
+        var collector = new ValidationErrorCollector(_services, pathMode);
         var path = ArrayPool<PathSegment>.Shared.Rent(ValidationErrorCollector.DefaultDepthLimit);
 
         try {
@@ -95,11 +102,23 @@ public sealed class ValidationRunner<T> {
     /// </remarks>
     /// <param name="value">The value to validate.</param>
     /// <param name="cancellationToken">Cancels any I/O the business rules perform.</param>
+    public ValueTask<ValidationResult> ValidateAsync(
+        T value,
+        CancellationToken cancellationToken = default) =>
+        ValidateAsync(value, ValidationPathMode.Bounded, cancellationToken);
+
+    /// <summary>
+    /// The same pass with the given path rendering.
+    /// </summary>
+    /// <param name="value">The value to validate.</param>
+    /// <param name="pathMode">How error paths render. See <see cref="ValidationPathMode"/>.</param>
+    /// <param name="cancellationToken">Cancels any I/O the business rules perform.</param>
     public async ValueTask<ValidationResult> ValidateAsync(
         T value,
+        ValidationPathMode pathMode,
         CancellationToken cancellationToken = default) {
 
-        var collector = new ValidationErrorCollector(_services);
+        var collector = new ValidationErrorCollector(_services, pathMode);
         var path = ArrayPool<PathSegment>.Shared.Rent(ValidationErrorCollector.DefaultDepthLimit);
 
         try {

@@ -102,4 +102,49 @@ public static class ValidationModulesServiceCollectionExtensions {
         return services;
     }
 
+    /// <summary>
+    /// Registers element-wise validation for collections of <typeparamref name="TElement"/>:
+    /// <c>List&lt;TElement&gt;</c> and <c>TElement[]</c>, each with a validator, an async adapter
+    /// and a runner.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is what makes <c>.Validate&lt;List&lt;TElement&gt;&gt;()</c> on a batch endpoint work:
+    /// a closed generic type has no generated validator of its own, so the list's validator is
+    /// <see cref="CollectionValidatorFor{TElement}"/> over the element type's registered set. The
+    /// generated <c>Add…Validators()</c> calls this once per validated type; the two service
+    /// shapes are the ones a minimal API body parameter is ordinarily declared as.
+    /// </para>
+    /// <para>
+    /// The validators register with Add rather than TryAdd for the reason the generated
+    /// registration does: a hand-written <c>IValidatorFor&lt;List&lt;TElement&gt;&gt;</c> - a batch
+    /// size cap, say - composes with the element walk under the runner instead of replacing it.
+    /// The same non-idempotency note applies: calling this twice registers everything twice.
+    /// </para>
+    /// <para>
+    /// Every closed type is named here, which is what keeps the path alive under Native AOT - the
+    /// same reasoning as <see cref="AddValidationRunner{T}"/>.
+    /// </para>
+    /// </remarks>
+    public static IServiceCollection AddCollectionValidatorsFor<TElement>(this IServiceCollection services) {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddSingleton<IValidatorFor<List<TElement>>>(static provider =>
+            new CollectionValidatorFor<TElement>(provider.GetServices<IValidatorFor<TElement>>()));
+        services.AddSingleton<IValidatorFor<TElement[]>>(static provider =>
+            new CollectionValidatorFor<TElement>(provider.GetServices<IValidatorFor<TElement>>()));
+
+        // Scoped, because the element rules they wrap are - an async validator is hand-written and
+        // free to take a DbContext.
+        services.AddScoped<IAsyncValidatorFor<List<TElement>>>(static provider =>
+            new CollectionAsyncValidatorFor<TElement>(provider.GetServices<IAsyncValidatorFor<TElement>>()));
+        services.AddScoped<IAsyncValidatorFor<TElement[]>>(static provider =>
+            new CollectionAsyncValidatorFor<TElement>(provider.GetServices<IAsyncValidatorFor<TElement>>()));
+
+        services.AddValidationRunner<List<TElement>>();
+        services.AddValidationRunner<TElement[]>();
+
+        return services;
+    }
+
 }

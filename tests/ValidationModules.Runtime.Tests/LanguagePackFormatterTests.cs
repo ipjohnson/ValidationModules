@@ -92,4 +92,34 @@ public class LanguagePackFormatterTests {
         Assert.Equal("name is required.", Under("fr", empty, error));
         Assert.Equal("name is required.", Under("de", packed, error));
     }
+
+    [Fact]
+    public void AnAuthoredMessage_BeatsABareCodeKey() {
+        // The rule the rc1015 trial showed nobody could see: whether a custom Message survived
+        // used to turn on whether the pack happened to carry a bare key for the code. Authored
+        // text now returns before any table lookup.
+        var formatter = new LanguagePackFormatter([
+            new Pack("fr", E("required", "{field} est requis.")),
+        ]);
+
+        var authored = new ValidationError("name", ValidationCodes.Required, "pick a handle") {
+            MessageIsAuthored = true,
+        };
+
+        Assert.Equal("pick a handle", Under("fr", formatter, authored));
+    }
+
+    [Fact]
+    public void AFinishedStringThatIsNotAuthored_StillTranslates() {
+        // The escape hatch stays: a hand-written Report(field, code, message) with the rule's own
+        // code is the documented route for wording custom text per culture, and it goes through
+        // the bare code key exactly as before.
+        var formatter = new LanguagePackFormatter([
+            new Pack("fr", E("device_unknown", "{field} est inconnu.")),
+        ]);
+
+        var error = new ValidationError("deviceId", "device_unknown", "device is not registered.");
+
+        Assert.Equal("deviceId est inconnu.", Under("fr", formatter, error));
+    }
 }

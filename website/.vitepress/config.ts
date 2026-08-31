@@ -82,6 +82,7 @@ export default defineConfig({
             { text: 'Messages and translation', link: '/guide/messages' },
             { text: 'Registration and DI', link: '/guide/registration' },
             { text: 'ASP.NET Core', link: '/guide/aspnetcore' },
+            { text: 'Options validation', link: '/guide/options' },
             { text: 'Async and business rules', link: '/guide/async' },
           ],
         },

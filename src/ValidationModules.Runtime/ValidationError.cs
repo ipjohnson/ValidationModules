@@ -104,6 +104,21 @@ public readonly record struct ValidationError {
     public ValidationMessageInfo? MessageInfo { get; init; }
 
     /// <summary>
+    /// Whether <see cref="Message"/> is the application's own text - a constraint's
+    /// <c>Message = …</c>, an <c>Ensure</c>'s explicit <c>message:</c> - rather than text this
+    /// library composed.
+    /// </summary>
+    /// <remarks>
+    /// This is what <see cref="LanguagePackFormatter"/> reads to keep an authored message intact:
+    /// before it, an override survived or died according to whether the active pack happened to
+    /// carry a bare key for that code, which is a rule nobody can see. A finished-string error
+    /// that is <i>not</i> authored - a hand-written <c>Report(field, code, message)</c> - still
+    /// translates through a bare code-level pack key, which is the documented route for wording a
+    /// custom code per culture.
+    /// </remarks>
+    public bool MessageIsAuthored { get; init; }
+
+    /// <summary>
     /// The human-readable message: the stored text when this is a finished-string error, otherwise
     /// the default render - template holes filled, arguments formatted invariantly,
     /// <see cref="Value"/> never included.

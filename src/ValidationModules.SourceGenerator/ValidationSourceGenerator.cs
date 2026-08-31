@@ -101,7 +101,18 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             .Collect()
             .Combine(context.CompilationProvider)
             .Combine(options)
-            .Select(static (input, _) => BuildModels(input.Left.Left, input.Left.Right, input.Right));
+            .Select(static (input, _) => {
+                // The coarse backstop under the per-target catches inside BuildModels. An exception
+                // that escapes a Select surfaces as a CS8785 warning and the build succeeds with no
+                // generated source at all - in a model-only class library nothing references a
+                // generated symbol, so every validator silently disappears. VM0107 is an error, so
+                // the same defect fails the build instead.
+                try {
+                    return BuildModels(input.Left.Left, input.Left.Right, input.Right);
+                } catch (Exception exception) {
+                    return ImmutableArray.Create(FailureResult("the validation model set", exception));
+                }
+            });
 
         // The settings the validator stage needs, projected together so the stage caches on
         // the tuple rather than re-running on unrelated option edits. Naming rides along for the
@@ -136,11 +147,18 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
                 }
 
                 if (result.Model is { } model) {
-                    production.AddSource(
-                        HintNameFor(model),
-                        new ValidatorEmitter().Emit(
-                            model, dispatchesDynamically, emitFailFast, nesting, codeStyle, naming,
-                            captureValues));
+                    // Per model, so one model that cannot be emitted fails the build with VM0107
+                    // naming it, while every other validator in the compilation is still generated.
+                    try {
+                        production.AddSource(
+                            HintNameFor(model),
+                            new ValidatorEmitter().Emit(
+                                model, dispatchesDynamically, emitFailFast, nesting, codeStyle, naming,
+                                captureValues));
+                    } catch (Exception exception) {
+                        ReportEmitFailure(
+                            production, $"the validator for '{model.QualifiedTypeName}'", exception);
+                    }
                 }
 
                 if (result.Predicates is { } predicates) {
@@ -155,15 +173,20 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
                 var ((files, ns), settings) = input;
 
                 for (var i = 0; i < files.Length; i++) {
-                    var outcome = LanguagePackReader.Read(files[i], i);
+                    try {
+                        var outcome = LanguagePackReader.Read(files[i], i);
 
-                    foreach (var diagnostic in outcome.Diagnostics) {
-                        production.ReportDiagnostic(diagnostic);
-                    }
+                        foreach (var diagnostic in outcome.Diagnostics) {
+                            production.ReportDiagnostic(diagnostic);
+                        }
 
-                    if (outcome.Model is { } pack) {
-                        production.AddSource(
-                            pack.HintName, new LanguagePackEmitter().Emit(pack, ns, settings.CodeStyle));
+                        if (outcome.Model is { } pack) {
+                            production.AddSource(
+                                pack.HintName, new LanguagePackEmitter().Emit(pack, ns, settings.CodeStyle));
+                        }
+                    } catch (Exception exception) {
+                        ReportEmitFailure(
+                            production, $"the language pack '{files[i].Path}'", exception);
                     }
                 }
             });
@@ -210,10 +233,14 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             var withAdapters = ordered.Any(model =>
                 model.Properties.Any(property => property.Polymorphism == PolymorphismMode.Runtime));
 
-            if (new RegistrationEmitter().Emit(
-                    ordered, mode, ns, generatorOptions.Naming, withAdapters,
-                    generatorOptions.CodeStyle, languagePacks) is { } source) {
-                production.AddSource("GeneratedValidatorRegistration.g.cs", source);
+            try {
+                if (new RegistrationEmitter().Emit(
+                        ordered, mode, ns, generatorOptions.Naming, withAdapters,
+                        generatorOptions.CodeStyle, languagePacks) is { } source) {
+                    production.AddSource("GeneratedValidatorRegistration.g.cs", source);
+                }
+            } catch (Exception exception) {
+                ReportEmitFailure(production, "the validator registration", exception);
             }
         });
     }
@@ -232,7 +259,16 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
     private static string HintNameFor(ValidatedTypeModel model) =>
         model.Namespace.Length == 0
             ? $"{model.ValidatorName}.g.cs"
-            : $"{model.Namespace}.{model.ValidatorName}.g.cs";
+            : HintSafe($"{model.Namespace}.{model.ValidatorName}.g.cs");
+
+    /// <summary>
+    /// A keyword namespace's display string carries its escape - <c>@object.Models</c> - and
+    /// <c>AddSource</c> refuses the <c>@</c>. The escape matters in code, not in a file name.
+    /// Before this, an assembly with a model in a keyword namespace crashed the generator on the
+    /// hint name and, per the CS8785 conversion VM0107 now closes, built green with no validators
+    /// generated at all.
+    /// </summary>
+    private static string HintSafe(string hintName) => hintName.Replace("@", string.Empty);
 
     /// <summary>
     /// Reads every candidate, folds each rules class into its target's model, and emits one model per
@@ -308,22 +344,32 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         // one container of Describe overloads, and one hint name.
         foreach (var companion in declarations
                      .GroupBy(static declaration => declaration.RulesClass, SymbolEqualityComparer.Default)) {
-            results.Add(new ModelResult(
-                null,
-                ImmutableArray<Diagnostic>.Empty,
-                new RegionEmitter().EmitRegion(companion.ToList(), options.CodeStyle),
-                $"{QualifiedName((INamedTypeSymbol)companion.Key!)}_Rules.g.cs"));
+            var rulesClass = (INamedTypeSymbol)companion.Key!;
+
+            try {
+                results.Add(new ModelResult(
+                    null,
+                    ImmutableArray<Diagnostic>.Empty,
+                    new RegionEmitter().EmitRegion(companion.ToList(), options.CodeStyle),
+                    HintSafe($"{QualifiedName(rulesClass)}_Rules.g.cs")));
+            } catch (Exception exception) {
+                results.Add(FailureResult($"the region for '{QualifiedName(rulesClass)}'", exception));
+            }
         }
 
         // Fragment containers are shared across every rules class that called into them, so they
         // are emitted once per pass, after every candidate has been read.
         foreach (var container in rulesFrontEnd.FragmentContainers) {
-            if (new RegionEmitter().EmitFragments(container, options.CodeStyle) is { } fragments) {
-                var hint = container.Namespace.Length == 0
-                    ? $"{container.Name}.g.cs"
-                    : $"{container.Namespace}.{container.Name}.g.cs";
+            try {
+                if (new RegionEmitter().EmitFragments(container, options.CodeStyle) is { } fragments) {
+                    var hint = container.Namespace.Length == 0
+                        ? $"{container.Name}.g.cs"
+                        : HintSafe($"{container.Namespace}.{container.Name}.g.cs");
 
-                results.Add(new ModelResult(null, ImmutableArray<Diagnostic>.Empty, fragments, hint));
+                    results.Add(new ModelResult(null, ImmutableArray<Diagnostic>.Empty, fragments, hint));
+                }
+            } catch (Exception exception) {
+                results.Add(FailureResult($"the fragments of '{container.Name}'", exception));
             }
         }
 
@@ -337,16 +383,26 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             byTarget.TryGetValue(candidate, out var declared);
             byTarget.Remove(candidate);
 
-            if (Build(candidate, declared, compilation, options, HasRulesClass, SubtypesOf) is { } result) {
-                results.Add(result);
+            try {
+                if (Build(candidate, declared, compilation, options, HasRulesClass, SubtypesOf) is { } result) {
+                    results.Add(result);
+                }
+            } catch (Exception exception) {
+                results.Add(FailureResult($"the model for '{QualifiedName(candidate)}'", exception));
             }
         }
 
         // Whatever is left targets a type this compilation does not declare - the case the feature
         // exists for. Its model has no attributes to merge with, only the rules class's own.
         foreach (var pair in byTarget) {
-            if (Build((INamedTypeSymbol)pair.Key, pair.Value, compilation, options, HasRulesClass, SubtypesOf) is { } result) {
-                results.Add(result);
+            var target = (INamedTypeSymbol)pair.Key;
+
+            try {
+                if (Build(target, pair.Value, compilation, options, HasRulesClass, SubtypesOf) is { } result) {
+                    results.Add(result);
+                }
+            } catch (Exception exception) {
+                results.Add(FailureResult($"the model for '{QualifiedName(target)}'", exception));
             }
         }
 
@@ -472,6 +528,28 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         ImmutableArray<Diagnostic> Diagnostics,
         string? Predicates,
         string? PredicateHintName);
+
+    /// <summary>
+    /// An unhandled exception in a stage, reported as VM0107 at Error severity.
+    /// </summary>
+    /// <remarks>
+    /// Roslyn's own answer to a generator throw is a CS8785 <b>warning</b> with every source the
+    /// stage would have added dropped - so a model-only class library, where nothing references a
+    /// generated symbol, says "Build succeeded" with zero validators generated. An error is the
+    /// difference between a generator defect failing the build and shipping as an assembly whose
+    /// every model silently validates nothing.
+    /// </remarks>
+    private static void ReportEmitFailure(
+        SourceProductionContext production, string what, Exception exception) =>
+        production.ReportDiagnostic(FailureDiagnostic(what, exception));
+
+    private static ModelResult FailureResult(string what, Exception exception) =>
+        new(null, ImmutableArray.Create(FailureDiagnostic(what, exception)), null, null);
+
+    private static Diagnostic FailureDiagnostic(string what, Exception exception) =>
+        Diagnostic.Create(
+            ValidationDiagnostics.GeneratorFailed, Location.None,
+            what, exception.GetType().Name, exception.Message);
 
     private static string SanitizeNamespace(string? assemblyName) {
         if (string.IsNullOrEmpty(assemblyName)) {

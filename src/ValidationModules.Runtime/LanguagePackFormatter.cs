@@ -70,6 +70,16 @@ public sealed class LanguagePackFormatter : ValidationMessageFormatter {
 
     /// <inheritdoc />
     public override string Format(in ValidationError error) {
+        // An authored message - a constraint's Message = …, an Ensure's explicit message: - is
+        // the application's own text and always wins. Before this, the override survived or died
+        // according to whether the active pack happened to carry a bare key for that code: the
+        // shipped de pack has a bare `required` and no bare `string_length`, so [Required]'s
+        // override was replaced and [StringLength]'s kept, same class, same culture. Translating
+        // custom text is the code's job: give the rule its own code and word it per culture.
+        if (error.MessageIsAuthored) {
+            return error.Message;
+        }
+
         if (_packs.Length == 0) {
             return error.Message;
         }

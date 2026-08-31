@@ -106,11 +106,12 @@ public string? Notes { get; init; }
 public string? Token { get; init; }
 ```
 
-Constructors: `()` and `(int min, int max)`. The lowercase `min:`/`max:` are the constructor's
-parameters; the capitalized `Min`/`Max` are properties on the parameterless form. They do not
-mix: `[StringLength(min: 12)]` is CS7036, because the two-parameter constructor requires both -
-write `[StringLength(Min = 12)]`. Strings only,
-[VM0001](/reference/diagnostics#vm0001). Inverted bounds are
+Constructors: `()` and `(int min = 0, int max = int.MaxValue)`. Both parameters default to the
+unbounded sentinels, so either may be omitted: `[StringLength(min: 12)]` and
+`[StringLength(Min = 12)]` read identically, and `[StringLength(max: 40)]` gives one upper bound.
+Positionally the first argument is `min` - note the vocabulary difference from DataAnnotations,
+whose single-argument `StringLength(50)` is a maximum - so prefer the named form when giving one
+bound. Strings only, [VM0001](/reference/diagnostics#vm0001). Inverted bounds are
 [VM0008](/reference/diagnostics#vm0008).
 
 Length is `string.Length`, in UTF-16 code units rather than grapheme clusters.
@@ -137,6 +138,12 @@ public double Ratio { get; init; }
 
 [Range(Min = 1)]
 public int Quantity { get; init; }
+
+[Range("0.01", "10000.00")]
+public decimal Price { get; init; }
+
+[Range(Min = "2020-01-01")]
+public DateOnly Effective { get; init; }
 ```
 
 Numeric and date-like types only, which is [VM0003](/reference/diagnostics#vm0003) otherwise.
