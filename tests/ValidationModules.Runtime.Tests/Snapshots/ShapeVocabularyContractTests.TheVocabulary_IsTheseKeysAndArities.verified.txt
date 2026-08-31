@@ -1,0 +1,36 @@
+Shape vocabulary: 34 keys
+
+array_bounds.at_least  1
+array_bounds.at_least_singular  1
+array_bounds.at_most  1
+array_bounds.at_most_singular  1
+array_bounds.between  2
+array_bounds.between_singular  2
+base64  0
+credit_card  0
+custom  0
+email  0
+enum  1
+enum.denied  1
+enum.flags  1
+file_extension  1
+multiple_of  1
+pattern  0
+phone  0
+range.at_least  1
+range.at_least_and_less  2
+range.at_most  1
+range.between  2
+range.greater_and_at_most  2
+range.greater_and_less  2
+range.greater_than  1
+range.less_than  1
+required  0
+string_length.at_least  1
+string_length.at_least_singular  1
+string_length.at_most  1
+string_length.at_most_singular  1
+string_length.between  2
+string_length.between_singular  2
+unique_items  0
+url  0

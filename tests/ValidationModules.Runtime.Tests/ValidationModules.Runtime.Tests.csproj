@@ -8,8 +8,12 @@
         <RootNamespace>ValidationModules.Runtime.Tests</RootNamespace>
     </PropertyGroup>
 
+    <!-- Options is referenced only so its public surface can be pinned here alongside the others.
+         It ships a referenceable assembly, so a signature change is a binary break for a consumer
+         that upgrades the package without recompiling against it. -->
     <ItemGroup>
         <ProjectReference Include="..\..\src\ValidationModules.Runtime\ValidationModules.Runtime.csproj"/>
+        <ProjectReference Include="..\..\src\ValidationModules.Options\ValidationModules.Options.csproj"/>
     </ItemGroup>
 
     <ItemGroup>

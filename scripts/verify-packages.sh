@@ -57,6 +57,31 @@ expect "${IMPL_FILES}" "src/ValidationModules.SourceGenerator.Impl/" \
 reject "${IMPL_FILES}" "ValidationSourceGenerator.cs" \
     "the [Generator] entry point is packed into Impl"
 
+# Impl ships sources rather than an assembly, so its contract is the file set, not a public API
+# surface. Nothing else notices a file the packaging glob stops matching: the solution still builds,
+# because the projects here reference each other directly, and only a framework author compiling
+# the package in discovers the gap - as a compile error that reads like their own mistake.
+MISSING_SOURCES=""
+while IFS= read -r source; do
+    case "${IMPL_FILES}" in
+        *"src/ValidationModules.SourceGenerator.Impl/${source}"*) ;;
+        *) MISSING_SOURCES="${MISSING_SOURCES}  ${source}"$'\n' ;;
+    esac
+done < <(cd "${REPO_ROOT}/src/ValidationModules.SourceGenerator.Impl" && \
+    find . -name '*.cs' -not -path './obj/*' -not -path './bin/*' | sed 's|^\./||' | sort)
+
+if [ -n "${MISSING_SOURCES}" ]; then
+    echo "FAILED: Impl compiles these sources but does not pack them:"
+    printf '%s' "${MISSING_SOURCES}"
+    exit 1
+fi
+
+# RuleText is compiled in from the runtime project and packed by a hand-written entry rather than by
+# the glob above, so it is the one source the completeness check cannot see and the one most likely
+# to be missed when either project moves a file.
+expect "${IMPL_FILES}" "src/ValidationModules.SourceGenerator.Impl/FrontEnds/RuleText.cs" \
+    "RuleText.cs is compiled into Impl but not packed, so a framework author gets CS0246 on it"
+
 # The ASP.NET Core integration is an ordinary library and must ship as one, on both TFMs. Checked
 # rather than assumed because it is the only package carrying a FrameworkReference, and getting
 # that wrong yields a package that restores cleanly and then cannot resolve a type.
