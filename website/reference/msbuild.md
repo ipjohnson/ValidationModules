@@ -219,13 +219,16 @@ Worth enabling in a repository where the emitted code is part of what you review
 ## The assembly name
 
 Not a property you set, but it names the registration method: `AddMyAppValidators()` is derived from
-`AssemblyName`, sanitized, because an assembly name is not necessarily a valid identifier.
+`AssemblyName`, because an assembly name is not necessarily a valid identifier. The name splits on
+dots and on any character that is not a letter or digit, each segment is PascalCased, and the
+segments join with nothing between them.
 
 | `AssemblyName` | Registration method |
 |---|---|
 | `MyApp` | `AddMyAppValidators()` |
 | `My.App` | `AddMyAppValidators()` |
-| `My-App` | `AddMy_AppValidators()` |
+| `My-App` | `AddMyAppValidators()` |
+| `app2-signupapi` | `AddApp2SignupapiValidators()` |
 | `7Eleven` | `Add_7ElevenValidators()` |
 | *(empty)* | `Generated` |
 
