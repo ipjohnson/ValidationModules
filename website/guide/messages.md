@@ -181,7 +181,10 @@ formatter always wins. The `validationCodes` extension is deliberately untouched
 formatter. It is the stable vocabulary, and rendering is what it must not depend on.
 
 For a team with a translation pipeline, a resx- or `IStringLocalizer`-backed formatter is a small
-`ValidationMessageFormatter` subclass; the map is the direct form, not the only one.
+`ValidationMessageFormatter` subclass; the map is the direct form, not the only one. One naming
+note: `ValidationMessageFormatter` is an abstract class, and the only abstraction here you
+implement against that is not `I`-prefixed - there is no `IValidationMessageFormatter` to find,
+unlike `IValidatorFor`, `IValidationRulesFor` and `IValidationLanguagePack`.
 
 ## Or let the client translate
 

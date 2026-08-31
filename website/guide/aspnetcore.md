@@ -139,6 +139,30 @@ which also gives the batch somewhere to carry its own rules. A hand-written
 `IValidatorFor<List<CreateOrder>>` - a batch size cap, say - composes with the element walk rather
 than replacing it, like every other validator registration.
 
+## Enums in the body
+
+The examples above bind strings and numbers, so this is worth one section: System.Text.Json's
+default for an enum body field is **numbers only**. A client sending the name meets the
+serializer, not the validator:
+
+```csharp
+public sealed record CreateTicket {
+    [EnumDefined]
+    public TicketPriority Priority { get; init; }   // {"priority": "urgent"} is a 400 before validation runs
+}
+```
+
+Opt into names with the converter, application-wide:
+
+```csharp
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+```
+
+The division of labour is exact: `JsonStringEnumConverter` decides what parses, and
+`[EnumDefined]` judges what arrived - a raw number outside the declared members deserializes fine
+under either configuration, and rejecting it is the validator's job.
+
 ## The codes, and why they are there
 
 RFC 9457's `errors` object maps a field to human-readable strings. That is the wrong thing for a

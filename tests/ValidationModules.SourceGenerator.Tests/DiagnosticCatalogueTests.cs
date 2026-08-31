@@ -93,6 +93,36 @@ public class DiagnosticCatalogueTests {
     }
 
     [Fact]
+    public void DocumentationClaimsOfNeverReported_MatchTheRecordedSet() {
+        // The class of bug this pins: guide/nesting.md said VM0007 was "never reported" while
+        // guide/troubleshooting.md documented it firing - and the report site existed all along.
+        // NeverReported above is the authority, so a doc paragraph may make that claim only about
+        // an id recorded there. With the set empty, the claim is banned outright.
+        var claim = new System.Text.RegularExpressions.Regex(
+            @"never\s+(reported|fires)|not\s+reported|nothing\s+in\s+the\s+product\s+reports",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var id = new System.Text.RegularExpressions.Regex(@"VM\d{4}");
+        var offending = new List<string>();
+
+        foreach (var file in Directory.EnumerateFiles(
+                     Path.Combine(RepositoryRoot(), "website"), "*.md", SearchOption.AllDirectories)) {
+            foreach (var paragraph in File.ReadAllText(file).Split("\n\n")) {
+                if (!claim.IsMatch(paragraph)) {
+                    continue;
+                }
+
+                foreach (System.Text.RegularExpressions.Match match in id.Matches(paragraph)) {
+                    if (!NeverReported.Contains(match.Value)) {
+                        offending.Add($"{Path.GetFileName(file)}: claims {match.Value} is never reported");
+                    }
+                }
+            }
+        }
+
+        Assert.Empty(offending);
+    }
+
+    [Fact]
     public void EveryDescriptor_SharesTheOneCategory() {
         // An .editorconfig severity override is written per category as often as per id, so a stray
         // category silently escapes a consumer's blanket rule.

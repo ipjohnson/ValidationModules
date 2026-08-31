@@ -49,6 +49,13 @@ public sealed class PetUniquenessValidator : IAsyncValidatorFor<Pet> {
 
 Scoped rather than singleton, because unlike generated validators these take dependencies.
 
+The field is spelled for you. When the pass runs through a container - a `ValidationRunner<T>`,
+the [endpoint filter](/guide/aspnetcore) - a bare CLR-looking identifier goes through the
+registered field namer, so `context.Report(nameof(value.Sku), …)` and a generated constraint on
+the same property agree on one wire name; `nameof` is as safe here as it is in a rules class. A
+field carrying a `.` or a `[` was shaped deliberately and passes verbatim, and so does everything
+in a pass with no services, where there is no naming policy to consult.
+
 ## One context, both sides
 
 The sync side takes `ref ValidationContext`; the async side takes it **by value**. It has to:
