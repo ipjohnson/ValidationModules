@@ -463,7 +463,7 @@ namespace ValidationModules.Constraints
     public sealed class ItemCountAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
     {
         public ItemCountAttribute() { }
-        public ItemCountAttribute(int min, int max) { }
+        public ItemCountAttribute(int min = 0, int max = 2147483647) { }
         public int Max { get; init; }
         public int Min { get; init; }
     }
@@ -520,7 +520,7 @@ namespace ValidationModules.Constraints
     public sealed class StringLengthAttribute : ValidationModules.Constraints.ValidationConstraintAttribute
     {
         public StringLengthAttribute() { }
-        public StringLengthAttribute(int min, int max) { }
+        public StringLengthAttribute(int min = 0, int max = 2147483647) { }
         public int Max { get; init; }
         public int Min { get; init; }
     }

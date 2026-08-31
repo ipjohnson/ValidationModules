@@ -15,11 +15,15 @@ public sealed class ItemCountAttribute : ValidationConstraintAttribute {
     public ItemCountAttribute() { }
 
     /// <summary>
-    /// Bounds set positionally.
+    /// Bounds set positionally or by name; either may be omitted for a single-bound constraint.
     /// </summary>
-    /// <param name="min">Fewest permitted elements, inclusive.</param>
-    /// <param name="max">Most permitted elements, inclusive.</param>
-    public ItemCountAttribute(int min, int max) {
+    /// <remarks>
+    /// The defaults are the unbounded sentinels the property form uses, so
+    /// <c>[ItemCount(min: 1)]</c> and <c>[ItemCount(Min = 1)]</c> read identically.
+    /// </remarks>
+    /// <param name="min">Fewest permitted elements, inclusive. Zero means unbounded below.</param>
+    /// <param name="max">Most permitted elements, inclusive. Defaults to unbounded.</param>
+    public ItemCountAttribute(int min = 0, int max = int.MaxValue) {
         Min = min;
         Max = max;
     }

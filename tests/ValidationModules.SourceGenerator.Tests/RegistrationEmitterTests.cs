@@ -184,16 +184,20 @@ public class RegistrationEmitterTests {
     }
 
     [Theory]
-    [InlineData("My-App", "AddMy_AppValidators")]
+    [InlineData("My-App", "AddMyAppValidators")]
+    [InlineData("app2-signupapi", "AddApp2SignupapiValidators")]
     [InlineData("7Eleven", "Add_7ElevenValidators")]
     [InlineData("My..App", "AddMyAppValidators")]
     [InlineData("My.App", "AddMyAppValidators")]
+    [InlineData("my_lib", "AddMyLibValidators")]
     public void AssemblyNameThatIsNotAnIdentifier_IsSanitizedIntoTheMethodName(
         string assemblyName, string expected) {
 
         // "My-App" once emitted `namespace My-App;` and broke the consumer's build in generated
         // code; the same sanitization now has to survive being spliced into a method name, where
-        // a dot is illegal as well.
+        // a dot is illegal as well. Segments PascalCase on the way in - app2-signupapi used to
+        // name the method Addapp2_signupapiValidators, an ugly public identifier whose casing was
+        // decided before 1.0.0 froze it.
         var source = GeneratorHarness.Run(TwoTypes, assemblyName)
             .Sources["GeneratedValidatorRegistration.g.cs"];
 

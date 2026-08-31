@@ -1431,13 +1431,18 @@ public sealed class RulesFrontEnd {
             }
 
             /// <summary>The Add{X}Validators identifier for an assembly name, mirroring the
-            /// registration emitter: namespace-sanitized, dots removed.</summary>
+            /// registration emitter: namespace-sanitized, then through the shared
+            /// <see cref="RegistrationNaming"/> so the message names the method that exists.</summary>
             private static string ModuleIdentifier(string assemblyName) {
                 var builder = new System.Text.StringBuilder(assemblyName.Length);
 
                 foreach (var part in assemblyName.Split('.')) {
                     if (part.Length == 0) {
                         continue;
+                    }
+
+                    if (builder.Length > 0) {
+                        builder.Append('.');
                     }
 
                     if (!char.IsLetter(part[0]) && part[0] != '_') {
@@ -1449,7 +1454,7 @@ public sealed class RulesFrontEnd {
                     }
                 }
 
-                return builder.Length == 0 ? "Generated" : builder.ToString();
+                return builder.Length == 0 ? "Generated" : RegistrationNaming.Identifier(builder.ToString());
             }
 
             private bool ReadDescent(
