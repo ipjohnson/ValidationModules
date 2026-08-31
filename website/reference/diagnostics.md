@@ -72,6 +72,7 @@ code that does not compile.
 | [VM0093](#vm0093) | Warning | a rule value unwraps a nullable member with `.Value` |
 | [VM0106](#vm0106) | Warning | a `[ValidateNested]` target can never have a validator |
 | [VM0107](#vm0107) | Error | an emit stage threw; the build fails instead of succeeding with source missing |
+| [VM0108](#vm0108) | Warning | `.Validate<T>()` names a type with no validator in this compilation |
 
 ---
 
@@ -925,3 +926,21 @@ build failure naming what was being emitted.
 
 There is nothing to fix in your code; the message exists to be pasted into an issue. Every other
 validator in the compilation is still generated.
+
+### VM0108 {#vm0108}
+
+**Warning**: *`'Coupon' declares no constraints, no [GenerateValidator] and no rules class in this compilation, so no validator is generated for it and .Validate<Coupon>() will fail when the endpoint is built. Add constraints or [GenerateValidator] - or, if its rules arrive from another assembly, ignore this and the startup check will agree`*
+
+```csharp
+app.MapPost("/coupons", (Coupon c) => Results.Ok())
+   .Validate<Coupon>();   // VM0108 when Coupon declares no rules here
+```
+
+The build-time version of the [endpoint filter's startup check](/guide/aspnetcore): the same
+verdict, delivered where the call was written instead of when the endpoint is built. A
+`List<T>` or `T[]` argument is judged by its element, since a collection body validates
+element-wise.
+
+A **warning** for the cross-assembly reason [VM0007](#vm0007) set: the type may get its validator
+from a rules class in another assembly, which this compilation cannot see. The startup check
+remains the authority; this is the earlier, cheaper signal.

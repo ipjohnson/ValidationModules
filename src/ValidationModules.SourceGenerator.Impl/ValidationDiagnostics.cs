@@ -644,4 +644,22 @@ public static class ValidationDiagnostics {
         "Emitting {0} threw {1}: {2}. The build is failed so the missing generated source cannot " +
         "ship silently; please report this",
         DiagnosticSeverity.Error);
+
+    /// <summary>
+    /// <c>.Validate&lt;T&gt;()</c> naming a type this compilation declares and generates no
+    /// validator for.
+    /// </summary>
+    /// <remarks>
+    /// The build-time version of the endpoint filter factory's startup check, reported where the
+    /// call was written. Warning rather than error for VM0007's cross-assembly reason: a rules
+    /// class in another assembly may target even a local type, so the startup check stays the
+    /// authority and this is the earlier, cheaper signal.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor ValidateTargetHasNoValidator = Descriptor(
+        "VM0108", "Validate<T>() names a type with no validator",
+        "'{0}' declares no constraints, no [GenerateValidator] and no rules class in this " +
+        "compilation, so no validator is generated for it and .Validate<{1}>() will fail when " +
+        "the endpoint is built. Add constraints or [GenerateValidator] - or, if its rules arrive " +
+        "from another assembly, ignore this and the startup check will agree",
+        DiagnosticSeverity.Warning);
 }
