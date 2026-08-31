@@ -18,7 +18,7 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "${FEED}" "${WORK}"' EXIT
 
 echo "Packing ${VERSION}"
-for project in Runtime AspNetCore SourceGenerator SourceGenerator.Impl Messages; do
+for project in Runtime AspNetCore Options SourceGenerator SourceGenerator.Impl Messages; do
     dotnet pack "${REPO_ROOT}/src/ValidationModules.${project}/ValidationModules.${project}.csproj" \
         --configuration Release --output "${FEED}" --nologo \
         "/p:PackageVersion=${VERSION}" > /dev/null
@@ -72,6 +72,17 @@ expect "${ASPNETCORE_FILES}" "lib/net10.0/ValidationModules.AspNetCore.dll" \
 reject "${ASPNETCORE_FILES}" "analyzers/dotnet/cs" \
     "the ASP.NET Core package ships an analyzer"
 
+# The Options package is an ordinary two-TFM library like the ASP.NET Core one, with the same
+# no-analyzer rule.
+OPTIONS_FILES="$(unzip -l "${FEED}/ValidationModules.Options.${VERSION}.nupkg")"
+
+expect "${OPTIONS_FILES}" "lib/net8.0/ValidationModules.Options.dll" \
+    "the Options assembly is missing from lib/net8.0"
+expect "${OPTIONS_FILES}" "lib/net10.0/ValidationModules.Options.dll" \
+    "the Options assembly is missing from lib/net10.0"
+reject "${OPTIONS_FILES}" "analyzers/dotnet/cs" \
+    "the Options package ships an analyzer"
+
 # The Messages package is data plus props and nothing else: the JSON compiles at the consumer's
 # build, so a lib/ here would mean the soft-publish shape regressed into an assembly.
 MESSAGES_FILES="$(unzip -l "${FEED}/ValidationModules.Messages.${VERSION}.nupkg")"
@@ -117,6 +128,7 @@ cat > "${WORK}/Consumer.csproj" <<EOF
     <PackageReference Include="ValidationModules.Runtime" Version="${VERSION}"/>
     <PackageReference Include="ValidationModules.SourceGenerator" Version="${VERSION}" PrivateAssets="all"/>
     <PackageReference Include="ValidationModules.Messages" Version="${VERSION}"/>
+    <PackageReference Include="ValidationModules.Options" Version="${VERSION}"/>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1"/>
   </ItemGroup>
 </Project>
@@ -162,6 +174,25 @@ var required = new PetValidator().Validate(new Pet()).Errors.First(e => e.Code =
 
 if (required.ToMessage(formatter) != "name est obligatoire.") {
     Console.Error.WriteLine($"FAILED: French pack did not render; got '{required.ToMessage(formatter)}'");
+    Environment.Exit(1);
+}
+
+// The Options package from the feed: the bridge resolves the generated validator and renders a
+// failure as `field [code] message`.
+var optionsCollection = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+
+Microsoft.Extensions.DependencyInjection.ConsumerValidationExtensions.AddConsumerValidators(optionsCollection);
+Microsoft.Extensions.DependencyInjection.ValidationModulesOptionsExtensions.AddValidatedOptions<Pet>(optionsCollection);
+
+using var optionsProvider = Microsoft.Extensions.DependencyInjection.ServiceCollectionContainerBuilderExtensions
+    .BuildServiceProvider(optionsCollection);
+
+var bridge = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+    .GetRequiredService<Microsoft.Extensions.Options.IValidateOptions<Pet>>(optionsProvider);
+var verdict = bridge.Validate(Microsoft.Extensions.Options.Options.DefaultName, new Pet());
+
+if (!verdict.Failed || verdict.FailureMessage?.Contains("name [required]") != true) {
+    Console.Error.WriteLine($"FAILED: options bridge did not report; got '{verdict.FailureMessage}'");
     Environment.Exit(1);
 }
 

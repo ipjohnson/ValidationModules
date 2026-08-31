@@ -163,6 +163,7 @@ shape and the reasoning.
 | `ValidationModules.Runtime` | `lib/` | application code |
 | `ValidationModules.SourceGenerator` | `analyzers/dotnet/cs` | application code, with `PrivateAssets=all` |
 | `ValidationModules.AspNetCore` | `lib/` | web applications |
+| `ValidationModules.Options` | `lib/` | hosts validating configuration at startup |
 | `ValidationModules.Messages` | `messages/` and `build/` | applications wanting non-English messages |
 | `ValidationModules.SourceGenerator.Impl` | source-only | framework authors |
 

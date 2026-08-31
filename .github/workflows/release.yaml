@@ -100,6 +100,7 @@ jobs:
           for project in \
             src/ValidationModules.Runtime/ValidationModules.Runtime.csproj \
             src/ValidationModules.AspNetCore/ValidationModules.AspNetCore.csproj \
+            src/ValidationModules.Options/ValidationModules.Options.csproj \
             src/ValidationModules.SourceGenerator/ValidationModules.SourceGenerator.csproj \
             src/ValidationModules.SourceGenerator.Impl/ValidationModules.SourceGenerator.Impl.csproj \
             src/ValidationModules.Messages/ValidationModules.Messages.csproj; do

@@ -31,6 +31,7 @@ PROJECTS=(
     "tests/ValidationModules.SourceGenerator.Tests/ValidationModules.SourceGenerator.Tests.csproj"
     "integ-tests/SutProject.Tests/SutProject.Tests.csproj"
     "integ-tests/SutProject.DependencyModules.Tests/SutProject.DependencyModules.Tests.csproj"
+    "integ-tests/OptionsDemo.Tests/OptionsDemo.Tests.csproj"
 )
 
 TEST_LOG="${RAW}/test-output.log"

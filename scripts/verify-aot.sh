@@ -138,6 +138,22 @@ Expect(readingFields == "label:required, ratio:range", $"generated runner: {read
 var readingValidator = generatedScope.ServiceProvider.GetRequiredService<IValidatorFor<Reading>>();
 Expect(readingValidator.Validate(new Reading { Label = "ok", Ratio = 1 }).IsValid, "generated validator");
 
+// The collection registrations the same generated call makes: a List<T> body resolves a runner
+// whose validator walks the elements with indexed paths. Every type here is a closed generic
+// named inside AddCollectionValidatorsFor<T>, which is the claim this probe exists to prove -
+// the IEnumerable resolution behind it is the same Array.CreateInstance hazard the runner's
+// registration already documents.
+var batchRunner = generatedScope.ServiceProvider.GetRequiredService<ValidationRunner<List<Reading>>>();
+var batchResult = batchRunner.Validate([
+    new Reading { Label = "ok", Ratio = 1 },
+    new Reading { Label = null, Ratio = 1 },
+]);
+var batchFields = string.Join(", ", batchResult.Errors.Select(e => $"{e.Field}:{e.Code}"));
+Expect(batchFields == "[1].label:required", $"collection runner: {batchFields}");
+
+var arrayValidator = generatedScope.ServiceProvider.GetRequiredService<IValidatorFor<Reading[]>>();
+Expect(!arrayValidator.Validate(new[] { new Reading { Label = null, Ratio = 1 } }).IsValid, "array validator");
+
 Console.WriteLine("Native AOT publish verified: paths, async merge, zero-allocation clean pass,");
 Console.WriteLine("and the generated registration for a type with no async rule.");
 
