@@ -130,7 +130,7 @@ namespace ValidationModules
     public delegate ValidationModules.ValidationFlow RuleAction<in T>(ref ValidationModules.ValidationContext context, T value);
     public static class RuntimeContract
     {
-        public const int Version = 10;
+        public const int Version = 11;
     }
     public static class ValidationCodes
     {
@@ -164,6 +164,7 @@ namespace ValidationModules
         public ValidationModules.ValidationContext PushKey(string segment, string key) { }
         public ValidationModules.ValidationFlow Report(string field, string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
         public ValidationModules.ValidationFlow Report(string field, string code, object? value, ValidationModules.ValidationMessageInfo messageInfo, ValidationModules.ValidationSeverity severity = 0) { }
+        public ValidationModules.ValidationFlow ReportAuthored(string field, string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
         public ValidationModules.ValidationFlow ReportHere(string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
     }
     public static class ValidationContextExtensions
@@ -216,6 +217,7 @@ namespace ValidationModules
         public string Field { get; init; }
         public string Message { get; }
         public ValidationModules.ValidationMessageInfo? MessageInfo { get; init; }
+        public bool MessageIsAuthored { get; init; }
         public ValidationModules.ValidationSeverity Severity { get; init; }
         public object? Value { get; init; }
         public void Deconstruct(out string field, out string code, out string message) { }

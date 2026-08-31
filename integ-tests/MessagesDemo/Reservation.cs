@@ -36,3 +36,18 @@ public sealed class ReservationRules : IValidationRulesFor<Reservation> {
         rules.Ensure(x.End >= x.Start, code: "date_order", field: "end");
     }
 }
+
+/// <summary>
+/// Custom <c>Message</c> on both codes the rc1015 trial split on: the shipped <c>de</c> pack has
+/// a bare <c>required</c> key and only <c>string_length.*</c> shape keys, so the override used to
+/// die under <c>[Required]</c> and survive under <c>[StringLength]</c> - same class, same
+/// culture, opposite behaviour.
+/// </summary>
+public sealed record Signup {
+
+    [Required(Message = "pick a handle")]
+    public string? Handle { get; init; }
+
+    [StringLength(min: 3, max: 120, Message = "keep notes between 3 and 120 characters")]
+    public string? Notes { get; init; }
+}

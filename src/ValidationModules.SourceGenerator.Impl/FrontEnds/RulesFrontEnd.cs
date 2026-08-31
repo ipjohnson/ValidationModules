@@ -1521,7 +1521,8 @@ public sealed class RulesFrontEnd {
                 }
 
                 var field = explicitField ?? _writer._owner.WireNameOf(anchor!);
-                var message = Literal(arguments, "message")
+                var explicitMessage = Literal(arguments, "message");
+                var message = explicitMessage
                     ?? RuleText.RenderPredicate($"{subject} => {text}", _writer._owner._fieldNamer);
 
                 // Derived from the condition rather than from `message`, so an author rewording
@@ -1542,9 +1543,13 @@ public sealed class RulesFrontEnd {
                 var severity = SeverityOf(arguments) is { } member ? $", {SeverityEnum}.{member}" : string.Empty;
 
                 // Never null-guarded: the condition may read fields other than its anchor, so null
-                // there is the author's, same as the attribute-region predicate.
+                // there is the author's, same as the attribute-region predicate. An explicit
+                // message: is the author's text and reports as authored, so no language pack
+                // replaces it; the derived wording belongs to the library and stays replaceable.
+                var report = explicitMessage is null ? "Report" : "ReportAuthored";
+
                 _writer.Line(_depth,
-                    $"if (!({_writer.Rewrite(condition)}) && ctx.Report({Quote(field)}, {code}, {Quote(message)}{severity}).ShouldStop) {{");
+                    $"if (!({_writer.Rewrite(condition)}) && ctx.{report}({Quote(field)}, {code}, {Quote(message)}{severity}).ShouldStop) {{");
                 _writer.Line(_depth + 1, $"return {Flow}.Stop;");
                 _writer.Line(_depth, "}");
 

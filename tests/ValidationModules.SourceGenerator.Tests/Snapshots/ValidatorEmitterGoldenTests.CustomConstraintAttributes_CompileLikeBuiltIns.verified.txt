@@ -60,7 +60,7 @@ public sealed partial class ProductValidator : global::ValidationModules.IValida
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (!missingSku && (value.Sku is not null && !global::Sample.SkuAttribute.IsValid(value.Sku)) && ctx.Report("sku", global::ValidationModules.ValidationCodes.Custom, "sku must start with SKU-").ShouldStop)
+        if (!missingSku && (value.Sku is not null && !global::Sample.SkuAttribute.IsValid(value.Sku)) && ctx.ReportAuthored("sku", global::ValidationModules.ValidationCodes.Custom, "sku must start with SKU-").ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
