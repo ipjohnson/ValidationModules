@@ -1231,16 +1231,39 @@ public sealed class RulesFrontEnd {
 
             public bool ReadCall(InvocationExpressionSyntax call, SyntaxNode report) {
                 if (_writer._model.GetSymbolInfo(call).Symbol is not IMethodSymbol method) {
-                    // Beside the generic VM0070, name the frequent cause: a .Value unwrap makes
-                    // TValue infer the unwrapped type, unsuffixed bound literals then fail
-                    // resolution (CS1503), and the call never binds. The arguments still bind on
-                    // their own, so the unwrap is visible even though the invocation is not.
+                    // Beside the generic VM0070, name the frequent cause: a .Value unwrap on an
+                    // argument. The arguments still bind on their own, so the unwrap is visible
+                    // even though the invocation is not.
+                    var unwrapReported = false;
+
                     foreach (var argument in call.ArgumentList.Arguments) {
                         if (_writer.NullableUnwrapReceiver(argument.Expression) is { } unwrapped &&
                             _writer.PathOf(unwrapped) is not null) {
                             _writer._owner.Report(ValidationDiagnostics.NullableValueUnwrapped,
                                 argument.Expression, unwrapped.ToString());
+                            unwrapReported = true;
                         }
+                    }
+
+                    // Require's object? catch-all binds the non-nullable spelling, so VM0090
+                    // normally arrives through the bound path. This covers what still cannot
+                    // bind - RequireAllowingEmpty is string-only, and exotic value shapes exist -
+                    // so the answer is VM0090 there too, and alone: the unresolvable call is
+                    // downstream of the same mistake. Not when the argument was a .Value unwrap -
+                    // there the fix is dropping the unwrap, which VM0093 above already said.
+                    if (!unwrapReported &&
+                        call.Expression is MemberAccessExpressionSyntax {
+                            Name.Identifier.Text: "Require" or "RequireAllowingEmpty",
+                        } &&
+                        call.ArgumentList.Arguments.Count > 0 &&
+                        call.ArgumentList.Arguments[0].NameColon is null &&
+                        call.ArgumentList.Arguments[0].Expression is { } required &&
+                        _writer._model.GetTypeInfo(required).Type is { IsValueType: true } requiredType &&
+                        requiredType.OriginalDefinition.SpecialType != SpecialType.System_Nullable_T &&
+                        _writer.PathOf(required) is not null) {
+                        _writer._owner.Report(
+                            ValidationDiagnostics.RequireCannotFail, call, required.ToString());
+                        return false;
                     }
 
                     _writer._owner.Report(ValidationDiagnostics.NotTranscribable, call,

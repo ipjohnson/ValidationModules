@@ -118,19 +118,18 @@ through the subject, names a *member*, so it takes that member's wire name (`acc
 exactly as `nameof` does everywhere else in a rules class. Anything that is not a member path is
 [VM0071](/reference/diagnostics#vm0071) unless `field:` is given.
 
-A nullable member is passed as itself - every rule parameter is already nullable:
+A nullable member is passed as itself - every rule takes the nullable directly:
 
 ```csharp
 public decimal? BatteryKwh { get; init; }
 
-rules.Range(x.BatteryKwh, 10m, 300m);          // field "batteryKwh"; null passes, [Required] is
-                                               // the presence check
-rules.Range(x.BatteryKwh.Value, 10m, 300m);    // VM0093: drop .Value
+rules.Range(x.BatteryKwh, 10, 300);          // field "batteryKwh"; null passes, [Required] is
+                                             // the presence check
+rules.Range(x.BatteryKwh.Value, 10, 300);    // VM0093: drop .Value
 ```
 
 Writing `.Value` is never needed and is [VM0093](/reference/diagnostics#vm0093): the reader
-corrects the rule to the member itself, but the unwrap also skews type inference - see the next
-section's note on bound literals - so the source should say what is meant.
+corrects the rule to the member itself, so the source should say what is meant.
 
 ## Anchored chaining
 
@@ -172,13 +171,15 @@ so codes, messages and check shapes match exactly.
 
 `Range<TValue>` is constrained `where TValue : struct, IComparable<TValue>, IFormattable`, which
 is what makes it work for `DateOnly` and `decimal` where the
-[`[Range]` string overload does not](/reference/diagnostics#vm0065).
+[`[Range]` string overload does not](/reference/diagnostics#vm0065). Each range method is an
+overload pair, `TValue value` beside `TValue? value`, so inference reads the member's own type
+whether or not it is nullable: `rules.Range(x.Latitude, -90, 90)` on a `double` infers `double`
+and the int literals convert. The compiler picks the right overload per call site; you never
+name `TValue`.
 
-**Suffix bound literals to the member's type.** `TValue` must infer to one type from the value
-*and* the bounds together, and an unsuffixed `10` is an `int` - so
-`rules.Range(x.BatteryKwh, 10, 300)` on a `decimal?` member pits `decimal` against `int` and the
-call does not compile. Write the bounds in the member's own type - `10m` and `300m` for a
-`decimal`, `-90.0` for a `double` - and inference has one answer.
+One literal rule remains, and it is C#'s rather than this API's: a `decimal` member needs
+`decimal` fractional bounds (`0.5m`, not `0.5`), because C# has no implicit conversion from
+`double` to `decimal`. Integer literals convert everywhere and need no suffix.
 
 `RangeAtLeast` and `RangeAtMost` are separate methods rather than an optional bound on `Range`. A
 nullable bound parameter costs the type inference that lets `Range(x.Age, 0, 120)` be written

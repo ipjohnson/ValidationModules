@@ -62,6 +62,21 @@ public sealed class ValidationRules<T> {
         where TValue : struct => throw Inert();
 
     /// <summary>
+    /// The catch-all that makes <c>Require</c> on a non-nullable value type bind, so VM0090 can
+    /// be the only error on the line.
+    /// </summary>
+    /// <remarks>
+    /// A non-nullable value type fits none of the overloads above - and cannot be given one of
+    /// its own, because the reference-type overload's <c>TValue?</c> is annotation-only, so a
+    /// <c>TValue value</c> twin collides with it as CS0111. Without this, the call failed as a
+    /// CS0452 blaming that reference overload. Typed arguments never land here: identity beats
+    /// the boxing conversion everywhere an overload above applies, which is also why this is
+    /// hidden from completion - it exists to be diagnosed, not called.
+    /// </remarks>
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    public PropertyRules<T, object?> Require(object? value, string? field = null) => throw Inert();
+
+    /// <summary>
     /// Declares a string's length bounds. A null value is <see cref="Require(string?, string?)"/>'s
     /// business.
     /// </summary>
@@ -69,14 +84,45 @@ public sealed class ValidationRules<T> {
         string? value, int min = 0, int max = int.MaxValue, string? field = null) => throw Inert();
 
     /// <summary>Declares an inclusive range.</summary>
+    /// <remarks>
+    /// <para>
+    /// Each range method is a pair: a <c>TValue value</c> overload and a <c>TValue? value</c>
+    /// overload. The pair is what makes inference read the member rather than the bound
+    /// literals alone. C# infers nothing from a non-nullable argument to a <c>TValue?</c>
+    /// parameter, so with only the nullable form <c>rules.Range(x.Latitude, -90, 90)</c> fixed
+    /// <c>TValue</c> to <c>int</c> from the literals and failed as CS1503 blaming the value.
+    /// With the pair, a non-nullable member contributes its type through this overload and the
+    /// literals convert to it; a nullable member takes the nullable overload, whose
+    /// nullable-to-nullable inference is exact. Resolution never ambiguates: when both bind,
+    /// the identity conversion on the value beats the lifted one, and for a nullable argument
+    /// this overload's inferred <c>TValue</c> is <c>Nullable&lt;T&gt;</c>, which the
+    /// <c>struct</c> constraint rejects.
+    /// </para>
+    /// <para>
+    /// Both overloads return the nullable anchor, so a chain reads the same whichever bound.
+    /// </para>
+    /// </remarks>
+    public PropertyRules<T, TValue?> Range<TValue>(TValue value, TValue min, TValue max, string? field = null)
+        where TValue : struct, IComparable<TValue>, IFormattable => throw Inert();
+
+    /// <summary>Declares an inclusive range over a nullable member. Null passes; presence is
+    /// <c>Require</c>'s question.</summary>
     public PropertyRules<T, TValue?> Range<TValue>(TValue? value, TValue min, TValue max, string? field = null)
         where TValue : struct, IComparable<TValue>, IFormattable => throw Inert();
 
     /// <summary>Declares an inclusive lower bound and no upper one - <c>[Range(Min = 1)]</c>.</summary>
+    public PropertyRules<T, TValue?> RangeAtLeast<TValue>(TValue value, TValue min, string? field = null)
+        where TValue : struct, IComparable<TValue>, IFormattable => throw Inert();
+
+    /// <summary>The nullable-member form. See <c>Range</c> on why each range method is a pair.</summary>
     public PropertyRules<T, TValue?> RangeAtLeast<TValue>(TValue? value, TValue min, string? field = null)
         where TValue : struct, IComparable<TValue>, IFormattable => throw Inert();
 
     /// <summary>Declares an inclusive upper bound and no lower one - <c>[Range(Max = 99)]</c>.</summary>
+    public PropertyRules<T, TValue?> RangeAtMost<TValue>(TValue value, TValue max, string? field = null)
+        where TValue : struct, IComparable<TValue>, IFormattable => throw Inert();
+
+    /// <summary>The nullable-member form. See <c>Range</c> on why each range method is a pair.</summary>
     public PropertyRules<T, TValue?> RangeAtMost<TValue>(TValue? value, TValue max, string? field = null)
         where TValue : struct, IComparable<TValue>, IFormattable => throw Inert();
 

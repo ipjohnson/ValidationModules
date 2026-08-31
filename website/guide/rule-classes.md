@@ -156,26 +156,28 @@ Members that only make sense for particular value types are extension methods co
 chain's type argument. That is how `Length` is offered on a string anchor and not on an `int`, and
 it is why the compiler catches the mistake instead of a runtime check.
 
-A nullable member is passed as itself, and its bound literals are written in the member's type:
+A nullable member is passed as itself, and plain literal bounds convert to the member's type:
 
 <!-- verify -->
 ```csharp
 public sealed record Vehicle {
+    public double Latitude { get; init; }
     public decimal? BatteryKwh { get; init; }
 }
 
 public sealed class VehicleRules : IValidationRulesFor<Vehicle> {
     public static void Describe(ValidationRules<Vehicle> rules, Vehicle x) {
-        rules.Range(x.BatteryKwh, 10m, 300m);   // null passes; Require is the presence check
+        rules.Range(x.Latitude, -90, 90);      // infers double from the member
+        rules.Range(x.BatteryKwh, 10, 300);    // null passes; Require is the presence check
     }
 }
 ```
 
-Every rule parameter is already nullable, so `x.BatteryKwh.Value` is never needed - writing it is
+Every rule takes the nullable directly, so `x.BatteryKwh.Value` is never needed - writing it is
 [VM0093](/reference/diagnostics#vm0093), and the reader compiles the rule against the member
-itself. The `m` suffixes are load-bearing too: the bounds and the value must infer one `TValue`,
-and an unsuffixed `10` is an `int`, which against a `decimal?` member fails to compile. See
-[the rules API](/reference/rules-api#the-vocabulary) for the inference rule.
+itself. The one literal rule is C#'s own: fractional bounds on a `decimal` member need the `m`
+suffix (`0.5m`), because `double` does not convert implicitly to `decimal`. See
+[the rules API](/reference/rules-api#the-vocabulary) for the overload pair behind this.
 
 ::: tip `Pattern` takes a method group
 `rules.Pattern(x.Sku, PetPatterns.Sku)` takes the accessor for a `[GeneratedRegex]` partial method,
