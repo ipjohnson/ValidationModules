@@ -131,7 +131,9 @@ internal sealed class ValidationEndpointFilter<T> : IEndpointFilter {
 
         throw new InvalidOperationException(
             $"No validator is registered for {typeof(T)}. Call the generated " +
-            "Add<Assembly>Validators() at startup, or register an IValidatorFor<T> by hand. " +
-            "Validating nothing and reporting success would be worse than this exception.");
+            "Add<Assembly>Validators() at startup, or register an IValidatorFor<T> by hand. A " +
+            "collection body validates element-wise when declared as List<T> or T[] of a " +
+            "validated type. Validating nothing and reporting success would be worse than this " +
+            "exception.");
     }
 }

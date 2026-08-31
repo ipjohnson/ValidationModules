@@ -2,12 +2,23 @@ namespace Microsoft.Extensions.DependencyInjection
 {
     public static class ValidationModulesServiceCollectionExtensions
     {
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddCollectionValidatorsFor<TElement>(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
         public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValidationModules(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.Collections.Generic.IReadOnlyList<ValidationModules.ValidatorRegistration> registrations) { }
         public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValidationRunner<T>(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
     }
 }
 namespace ValidationModules
 {
+    public sealed class CollectionAsyncValidatorFor<TElement> : ValidationModules.IAsyncValidatorFor<System.Collections.Generic.IReadOnlyList<TElement>>
+    {
+        public CollectionAsyncValidatorFor(System.Collections.Generic.IEnumerable<ValidationModules.IAsyncValidatorFor<TElement>> element) { }
+        public System.Threading.Tasks.ValueTask ValidateAsync(ValidationModules.ValidationContext context, System.Collections.Generic.IReadOnlyList<TElement> value, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class CollectionValidatorFor<TElement> : ValidationModules.IValidatorFor<System.Collections.Generic.IReadOnlyList<TElement>>
+    {
+        public CollectionValidatorFor(System.Collections.Generic.IEnumerable<ValidationModules.IValidatorFor<TElement>> element) { }
+        public ValidationModules.ValidationFlow Validate(ref ValidationModules.ValidationContext context, System.Collections.Generic.IReadOnlyList<TElement> value) { }
+    }
     public static class ConstraintChecks
     {
         public static bool AllUnique<T>(System.Collections.Generic.IEnumerable<T> items) { }

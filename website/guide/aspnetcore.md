@@ -99,8 +99,45 @@ builder.Services.AddScoped<IAsyncValidatorFor<CreateOrder>, ReferenceIsUnique>()
 Structural constraints still run first, and the async rules only run if they found nothing, so a
 uniqueness check never reaches the database for a field that was null.
 
-If nothing at all is registered for `T`, the filter **throws** rather than letting the request
-through. Validating nothing and reporting success is the one outcome worse than an exception.
+If nothing at all is registered for `T`, the endpoint **fails when it is built** - which minimal
+APIs do on the first request to any route - rather than letting requests through. Validating
+nothing and reporting success is the one outcome worse than an exception, and discovering the
+mistake on the endpoint's own traffic is worse than any smoke test catching it.
+
+## Array bodies
+
+A batch endpoint takes a JSON array, and a JSON array binds to a `List<T>` or a `T[]`. Both
+validate element-wise, with the element's position in the path:
+
+```csharp
+app.MapPost("/orders/batch", (List<CreateOrder> orders) => Results.Ok(new { accepted = orders.Count }))
+   .Validate<List<CreateOrder>>();
+```
+
+```json
+{
+  "status": 400,
+  "errors": {
+    "[1].reference": ["reference is required."],
+    "[1].quantity": ["quantity must be between 1 and 500."]
+  }
+}
+```
+
+No validator is generated for `List<CreateOrder>` itself - closed generic types never get one.
+What `Add<Assembly>Validators()` registers instead is a `CollectionValidatorFor<CreateOrder>`,
+which walks the list and runs the element type's validators per element, and a
+`CollectionAsyncValidatorFor<CreateOrder>` doing the same for the element's
+[business rules](/guide/async). Both come with a runner, so structural constraints still gate the
+async pass, batch-wide. A null element is skipped, exactly as a null element of a
+`[ValidateNested]` collection property is.
+
+The two registered shapes are `List<T>` and `T[]`, because those are what a body parameter is
+ordinarily declared as. A parameter declared as another collection shape needs a hand-registered
+`IValidatorFor<>` - or, usually better, a wrapper type with a `[ValidateNested]` list property,
+which also gives the batch somewhere to carry its own rules. A hand-written
+`IValidatorFor<List<CreateOrder>>` - a batch size cap, say - composes with the element walk rather
+than replacing it, like every other validator registration.
 
 ## The codes, and why they are there
 

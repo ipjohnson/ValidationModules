@@ -189,6 +189,19 @@ public sealed class RegistrationEmitter {
                 services));
         }
 
+        BlankLine(add);
+        add.AddLineComment(
+            "Element-wise validation for collection bodies - List<T> and T[] - so a batch\n" +
+            "endpoint's .Validate<List<T>>() resolves a validator that walks the elements\n" +
+            "with indexed paths. Closed per type, for the AOT reason above.");
+
+        foreach (var model in models) {
+            add.AddIndentedStatement(InvokeGeneric(
+                RunnerExtensions, "AddCollectionValidatorsFor",
+                new[] { TypeRef(model.QualifiedTypeName) },
+                services));
+        }
+
         if (languagePacks.Count > 0) {
             BlankLine(add);
             add.AddLineComment(

@@ -66,11 +66,50 @@ internal static class ValidationEndpointFilterFactory {
                 return next;
             }
 
+            EnsureValidatorRegistered<T>(context.ApplicationServices, context.MethodInfo);
+
             var options = context.ApplicationServices.GetRequiredService<IOptions<ValidationProblemOptions>>();
             var filter = new ValidationEndpointFilter<T>(options, statusCode);
 
             return invocation => filter.InvokeAsync(invocation, next);
         };
+    }
+
+    /// <summary>
+    /// Fails endpoint building when nothing is registered to validate a <typeparamref name="T"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The same wiring mistake the filter's own throw reports, discovered at <c>app.Run()</c>
+    /// instead of on the first request: <c>.Validate&lt;T&gt;()</c> naming an unregistered type
+    /// compiled clean and then answered every request - valid bodies included - with a 500.
+    /// </para>
+    /// <para>
+    /// A presence check rather than a resolve, because the runner is scoped and this holds the
+    /// root provider. Fires for the group overload too: its leniency is for handlers that take no
+    /// <typeparamref name="T"/>, not for a type nothing can validate - every handler this filter
+    /// does attach to would fail. A container that does not implement
+    /// <see cref="IServiceProviderIsService"/> cannot be asked, so the request-time throw stays as
+    /// the backstop.
+    /// </para>
+    /// </remarks>
+    private static void EnsureValidatorRegistered<T>(IServiceProvider services, MethodInfo handler) {
+        if (services.GetService<IServiceProviderIsService>() is not { } registered) {
+            return;
+        }
+
+        if (registered.IsService(typeof(ValidationRunner<T>)) ||
+            registered.IsService(typeof(IValidatorFor<T>))) {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"Validate<{typeof(T)}>() is attached to a handler ({Describe(handler)}) " +
+            $"but no validator is registered for {typeof(T)}. Call the generated " +
+            "Add<Assembly>Validators() at startup, or register an IValidatorFor<> by hand. A " +
+            "collection body validates element-wise when declared as List<T> or T[] of a " +
+            "validated type; other collection shapes need a hand-written validator. Failing here " +
+            "beats answering every request with a 500.");
     }
 
     /// <summary>
