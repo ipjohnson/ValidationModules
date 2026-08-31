@@ -70,26 +70,53 @@ public class DiagnosticCatalogueTests {
     }
 
     [Fact]
-    public void EveryDescriptor_AppearsInTheUnshippedReleaseFile() {
+    public void EveryDescriptor_AppearsInAReleaseFile() {
         // RS2008's requirement, checked here too because the analyzer only runs on the generator
         // project and a drifted file is invisible until someone tries to ship a release.
-        var released = File.ReadAllText(ReleaseFile());
+        //
+        // Both files, not just the unshipped one: a release moves entries from unshipped to
+        // shipped, and a descriptor is released either way.
+        var released = ReleasedIds();
 
         Assert.All(Declared, descriptor => Assert.Contains(descriptor.Id, released));
     }
 
     [Fact]
-    public void ReleaseFile_DeclaresNothingThatDoesNotExist() {
+    public void ReleaseFiles_DeclareNothingThatDoesNotExist() {
         var declaredIds = Declared.Select(descriptor => descriptor.Id).ToHashSet(StringComparer.Ordinal);
 
-        var orphans = System.Text.RegularExpressions.Regex
-            .Matches(File.ReadAllText(ReleaseFile()), @"^VM\d{4}",
-                System.Text.RegularExpressions.RegexOptions.Multiline)
-            .Select(match => match.Value)
+        var orphans = ReleasedIds()
             .Where(id => !declaredIds.Contains(id))
+            .OrderBy(id => id, StringComparer.Ordinal)
             .ToList();
 
         Assert.Empty(orphans);
+    }
+
+    [Fact]
+    public void EveryShippedId_IsStillDeclared() {
+        // RS2004's job, which this repository has to do itself: RS2000 and RS2008 sit in NoWarn on
+        // both generator projects, for the DM#### rules that arrive with DependencyModules' source
+        // import, so Roslyn's release tracking is not the guard here.
+        //
+        // An id in the shipped file is a published promise. A consumer's .editorconfig addresses it
+        // and their build log records it, so retiring one is a breaking change and reusing one for
+        // a different rule is worse: their suppression goes on working, silently, against something
+        // else. Renumbering the catalogue was free exactly once, before anything shipped stable.
+        //
+        // Vacuous until the first stable release records ids here, and load-bearing from then on.
+        var declaredIds = Declared.Select(descriptor => descriptor.Id).ToHashSet(StringComparer.Ordinal);
+
+        var retired = IdsIn(ShippedReleaseFile())
+            .Where(id => !declaredIds.Contains(id))
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.True(retired.Count == 0,
+            "These ids were shipped in a stable release and no longer exist in the catalogue. " +
+            "An id is a published promise: retiring one breaks a consumer's suppression and reusing " +
+            "one silently repoints it. Restore them, or accept a major version." +
+            Environment.NewLine + "  " + string.Join(Environment.NewLine + "  ", retired));
     }
 
     [Fact]
@@ -207,8 +234,25 @@ public class DiagnosticCatalogueTests {
         return ids;
     }
 
-    private static string ReleaseFile() => Path.Combine(RepositoryRoot(), "src",
+    private static string UnshippedReleaseFile() => Path.Combine(RepositoryRoot(), "src",
         "ValidationModules.SourceGenerator.Impl", "AnalyzerReleases.Unshipped.md");
+
+    private static string ShippedReleaseFile() => Path.Combine(RepositoryRoot(), "src",
+        "ValidationModules.SourceGenerator.Impl", "AnalyzerReleases.Shipped.md");
+
+    private static HashSet<string> ReleasedIds() {
+        var ids = IdsIn(UnshippedReleaseFile());
+        ids.UnionWith(IdsIn(ShippedReleaseFile()));
+
+        return ids;
+    }
+
+    private static HashSet<string> IdsIn(string file) =>
+        System.Text.RegularExpressions.Regex
+            .Matches(File.ReadAllText(file), @"^VM\d{4}",
+                System.Text.RegularExpressions.RegexOptions.Multiline)
+            .Select(match => match.Value)
+            .ToHashSet(StringComparer.Ordinal);
 
     private static string RepositoryRoot() {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
