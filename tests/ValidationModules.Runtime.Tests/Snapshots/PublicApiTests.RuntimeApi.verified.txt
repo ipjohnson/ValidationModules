@@ -385,7 +385,9 @@ namespace ValidationModules
     {
         public ValidationRunner(System.Collections.Generic.IEnumerable<ValidationModules.IValidatorFor<T>> structural, System.Collections.Generic.IEnumerable<ValidationModules.IAsyncValidatorFor<T>> business, System.IServiceProvider? services = null) { }
         public ValidationModules.ValidationResult Validate(T value) { }
+        public ValidationModules.ValidationResult Validate(T value, ValidationModules.ValidationPathMode pathMode) { }
         public System.Threading.Tasks.ValueTask<ValidationModules.ValidationResult> ValidateAsync(T value, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<ValidationModules.ValidationResult> ValidateAsync(T value, ValidationModules.ValidationPathMode pathMode, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public enum ValidationSeverity
     {
@@ -402,6 +404,7 @@ namespace ValidationModules
     {
         public static bool IsValid<T>(this ValidationModules.IValidatorFor<T> validator, T value) { }
         public static ValidationModules.ValidationResult Validate<T>(this ValidationModules.IValidatorFor<T> validator, T value) { }
+        public static ValidationModules.ValidationResult Validate<T>(this ValidationModules.IValidatorFor<T> validator, T value, ValidationModules.ValidationPathMode pathMode) { }
         public static void ValidateAndThrow<T>(this ValidationModules.IValidatorFor<T> validator, T value) { }
         public static ValidationModules.ValidationResult ValidateFirst<T>(this ValidationModules.IValidatorFor<T> validator, T value) { }
         public static void ValidateInto<T>(this ValidationModules.IValidatorFor<T> validator, ValidationModules.ValidationErrorCollector collector, T value) { }

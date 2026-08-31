@@ -253,6 +253,35 @@ public class EndpointFilterTests {
     }
 
     [Fact]
+    public async Task PathModeFull_RendersEveryPathSegment() {
+        // Three descents deep - list element, shipTo, location - is where Bounded starts eliding
+        // the middle. Full is the documented answer for a client that keys on complete paths, and
+        // ValidationPathMode.Full was previously unreachable from the web path.
+        static void Batch(IEndpointRouteBuilder endpoints) =>
+            endpoints.MapPost("/orders/batch", (List<CreateOrder> orders) => Results.Ok())
+                .Validate<List<CreateOrder>>();
+
+        var deep = new[] {
+            Valid(),
+            Valid() with { ShipTo = new Address { Postcode = "AB1", Location = new GeoPoint() } },
+        };
+
+        using var bounded = Endpoints(Batch);
+        using var full = Endpoints(Batch, services =>
+            services.AddValidationProblemDetails(options => options.PathMode = ValidationPathMode.Full));
+
+        var boundedProblem = await (await bounded.PostAsJsonAsync("/orders/batch", deep, Ct))
+            .Content.ReadFromJsonAsync<Problem>(Json, Ct);
+        var fullProblem = await (await full.PostAsJsonAsync("/orders/batch", deep, Ct))
+            .Content.ReadFromJsonAsync<Problem>(Json, Ct);
+
+        Assert.NotNull(boundedProblem);
+        Assert.NotNull(fullProblem);
+        Assert.Contains("[1]...location.latitude", boundedProblem.Errors.Keys);
+        Assert.Contains("[1].shipTo.location.latitude", fullProblem.Errors.Keys);
+    }
+
+    [Fact]
     public async Task AListBody_RunsElementBusinessRulesThroughTheRunner() {
         // The list's runner gates and merges exactly as a scalar's does: structural first, then
         // the element type's async rules per element, with indexed paths.
@@ -416,6 +445,14 @@ public sealed record CreateOrder {
 public sealed record Address {
     [Required]
     public string? Postcode { get; init; }
+
+    [ValidateNested]
+    public GeoPoint? Location { get; init; }
+}
+
+public sealed record GeoPoint {
+    [Required]
+    public string? Latitude { get; init; }
 }
 
 public sealed record OrderLine {

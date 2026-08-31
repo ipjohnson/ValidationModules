@@ -79,6 +79,19 @@ public sealed class ValidationProblemOptions {
     public ValidationMessageFormatter? MessageFormatter { get; set; }
 
     /// <summary>
+    /// How error paths render: <see cref="ValidationPathMode.Bounded"/> - the default - prints the
+    /// outermost segment and the immediate parent, so a deep failure reads
+    /// <c>body...address.postalCode</c>; <see cref="ValidationPathMode.Full"/> prints every
+    /// segment.
+    /// </summary>
+    /// <remarks>
+    /// Bounded is a deliberate trade with a measured allocation story behind it, and it never
+    /// lies - both retained segments keep their own index or key. Set <c>Full</c> when clients
+    /// key on complete paths, or when a deep shape loses an ancestor's index the caller needs.
+    /// </remarks>
+    public ValidationPathMode PathMode { get; set; } = ValidationPathMode.Bounded;
+
+    /// <summary>
     /// These options with the container's <see cref="ValidationMessageFormatter"/> filled in,
     /// when none was set explicitly - which is what makes a registered language pack localize
     /// problem details with no options code at all. An explicit formatter always wins, and
@@ -123,6 +136,7 @@ public sealed class ValidationProblemOptions {
         IncludeCodes = IncludeCodes,
         IncludeNonErrors = IncludeNonErrors,
         MessageFormatter = MessageFormatter,
+        PathMode = PathMode,
     };
 
     /// <summary>

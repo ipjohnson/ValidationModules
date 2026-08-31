@@ -16,10 +16,20 @@ public static class ValidatorForExtensions {
     /// </summary>
     /// <param name="validator">The validator to run.</param>
     /// <param name="value">The value to validate.</param>
-    public static ValidationResult Validate<T>(this IValidatorFor<T> validator, T value) {
+    public static ValidationResult Validate<T>(this IValidatorFor<T> validator, T value) =>
+        Validate(validator, value, ValidationPathMode.Bounded);
+
+    /// <summary>
+    /// Runs the validator with the given path rendering.
+    /// </summary>
+    /// <param name="validator">The validator to run.</param>
+    /// <param name="value">The value to validate.</param>
+    /// <param name="pathMode">How error paths render. See <see cref="ValidationPathMode"/>.</param>
+    public static ValidationResult Validate<T>(
+        this IValidatorFor<T> validator, T value, ValidationPathMode pathMode) {
         ArgumentNullException.ThrowIfNull(validator);
 
-        var collector = new ValidationErrorCollector();
+        var collector = new ValidationErrorCollector(pathMode);
         var path = ArrayPool<PathSegment>.Shared.Rent(ValidationErrorCollector.DefaultDepthLimit);
 
         try {

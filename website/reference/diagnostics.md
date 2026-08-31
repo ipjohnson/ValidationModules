@@ -14,12 +14,6 @@ dotnet_analyzer_diagnostic.category-ValidationModules.Usage.severity = suggestio
 Prefer silencing one id over the category. Several are errors because the alternative is generated
 code that does not compile.
 
-::: warning One of these never fires
-[VM0007](#vm0007) is declared and released, and nothing in the product reports it. It is documented
-here as declared and marked **not reported**, because a rule you expect to catch a mistake and which
-silently does not is worse than one you know is missing.
-:::
-
 ## Summary
 
 | ID | Severity | |
@@ -29,7 +23,7 @@ silently does not is worse than one you know is missing.
 | [VM0003](#vm0003) | Error | `[Range]` on a type with no ordering |
 | [VM0004](#vm0004) | Warning | `[Required]` on a non-nullable value type |
 | [VM0006](#vm0006) | Error | a pattern that is not a valid regex |
-| [VM0007](#vm0007) | Warning | `[ValidateNested]` target has no rules (**not reported**) |
+| [VM0007](#vm0007) | Warning | `[ValidateNested]` target has no rules |
 | [VM0008](#vm0008) | Error | lower bound exceeds upper bound |
 | [VM0009](#vm0009) | Error | constrained property has no accessible getter |
 | [VM0010](#vm0010) | Info | a DataAnnotations constraint is ignored by ValidationModules |
@@ -76,6 +70,8 @@ silently does not is worse than one you know is missing.
 | [VM0091](#vm0091) | Error | a facet validated with `As` declares no rules in this compilation |
 | [VM0092](#vm0092) | Info | the code an `Ensure` derived from its condition |
 | [VM0093](#vm0093) | Warning | a rule value unwraps a nullable member with `.Value` |
+| [VM0106](#vm0106) | Warning | a `[ValidateNested]` target can never have a validator |
+| [VM0107](#vm0107) | Error | an emit stage threw; the build fails instead of succeeding with source missing |
 
 ---
 
@@ -141,11 +137,12 @@ parser already says.
 
 ### VM0007 {#vm0007}
 
-**Warning**: *`'Address' declares no constraints and no [GenerateValidator], so [ValidateNested] on 'Home' validates nothing`*
+**Warning**: *`'Address' declares no constraints and no [GenerateValidator], so [ValidateNested] on 'Home' validates nothing and the descent is dropped`*
 
-The descent finds nothing: no validator exists for the nested type, so the property is walked and
-not one thing is checked. A model that reads as validated and validates nothing is the failure this
-library exists to make impossible, which is why a silent skip is not good enough.
+No validator exists for the nested type, so there is nothing for the descent to call and it is
+dropped from the generated validator. A model that reads as validated and validates nothing is the
+failure this library exists to make impossible, which is why the silence is stated here rather
+than discovered.
 
 **Warning rather than error**, unlike its neighbours. The result is a rule that does not run rather
 than one that runs where it should not, and writing `[ValidateNested]` before the nested type's own
@@ -887,3 +884,38 @@ every other constraint still reported, which reads exactly like validation worki
 diagnostic existed the generator emitted a *non-generic* validator referencing `T`, so the build
 failed with several CS0246 inside a generated file and nothing pointing at the cause.
 :::
+
+### VM0106 {#vm0106}
+
+**Warning**: *`'System.Collections.Generic.List<Section>' is not a type a validator can be generated for, so [ValidateNested] on 'Sections' is dropped; model the inner collection as a property of a type that declares its own rules`*
+
+The descent's target can never carry a generated validator: a constructed generic like the
+`List<Section>` element of a `List<List<Section>>`, an array element like `Section[]`, or a
+nullable element like `Money?`. Validators are named `<Type>Validator` over plain declared types,
+so there is no class this descent could call, and the descent is dropped.
+
+```csharp
+public sealed record Document {
+    [ValidateNested] // VM0106
+    public List<List<Section>> Sections { get; init; } = [];
+}
+```
+
+The fix is the remodelling [nesting](/guide/nesting#collections-of-collections) recommends: give
+the inner collection a type of its own, and nest that.
+
+Distinct from [VM0007](#vm0007), which is about a plain type that merely has no rules *yet*. This
+target could never have any.
+
+### VM0107 {#vm0107}
+
+**Error**: *`Emitting the validator for 'Sample.Batch' threw ArgumentException: …. The build is failed so the missing generated source cannot ship silently; please report this`*
+
+An emit stage threw an unhandled exception. Roslyn's own answer to that is a `CS8785` *warning*
+with every source the stage would have added dropped - and in a class library holding only models,
+nothing references a generated symbol, so the build succeeds with zero validators and every model
+silently validates nothing. This diagnostic is the backstop that turns any such defect into a
+build failure naming what was being emitted.
+
+There is nothing to fix in your code; the message exists to be pasted into an issue. Every other
+validator in the compilation is still generated.

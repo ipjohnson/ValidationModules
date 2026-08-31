@@ -57,7 +57,7 @@ public static class ValidationDiagnostics {
     public static readonly DiagnosticDescriptor NestedTypeHasNoRules = Descriptor(
         "VM0007", "[ValidateNested] target has no rules",
         "'{0}' declares no constraints and no [GenerateValidator], so [ValidateNested] on '{1}' " +
-        "descends into it and validates nothing",
+        "validates nothing and the descent is dropped",
         DiagnosticSeverity.Warning);
 
     public static readonly DiagnosticDescriptor MinExceedsMax = Descriptor(

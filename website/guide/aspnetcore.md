@@ -167,6 +167,7 @@ handler read the same instance:
 | `IncludeCodes` | `true` |
 | `IncludeNonErrors` | `false`, since warnings did not reject the request |
 | `MessageFormatter` | `null`; a registered [language pack](/guide/messages) fills it in per request |
+| `PathMode` | `Bounded`; set `ValidationPathMode.Full` to render every path segment instead of eliding the middle of a deep path - see [asking for the whole path](/guide/nesting#asking-for-the-whole-path) |
 
 ## Per-endpoint status
 

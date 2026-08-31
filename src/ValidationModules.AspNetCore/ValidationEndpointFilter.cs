@@ -118,15 +118,15 @@ internal sealed class ValidationEndpointFilter<T> : IEndpointFilter {
     /// throws rather than passing the request through as valid.
     /// </para>
     /// </remarks>
-    private static async ValueTask<ValidationResult> ValidateAsync(HttpContext http, T value) {
+    private async ValueTask<ValidationResult> ValidateAsync(HttpContext http, T value) {
         var services = http.RequestServices;
 
         if (services.GetService<ValidationRunner<T>>() is { } runner) {
-            return await runner.ValidateAsync(value, http.RequestAborted).ConfigureAwait(false);
+            return await runner.ValidateAsync(value, _options.PathMode, http.RequestAborted).ConfigureAwait(false);
         }
 
         if (services.GetService<IValidatorFor<T>>() is { } validator) {
-            return validator.Validate(value);
+            return validator.Validate(value, _options.PathMode);
         }
 
         throw new InvalidOperationException(
