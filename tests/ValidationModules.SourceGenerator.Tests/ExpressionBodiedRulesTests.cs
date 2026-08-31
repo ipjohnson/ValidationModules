@@ -89,7 +89,7 @@ public class ExpressionBodiedRulesTests {
     /// expression itself.
     /// </summary>
     [Fact]
-    public void ArrowFormThatLeaksTheBuilder_IsStillVM0087() {
+    public void ArrowFormThatLeaksTheBuilder_IsStillVM3002() {
         var result = GeneratorHarness.Run($$"""
             using ValidationModules;
 
@@ -107,6 +107,6 @@ public class ExpressionBodiedRulesTests {
             """);
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "CS8785");
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM0087");
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM3002");
     }
 }

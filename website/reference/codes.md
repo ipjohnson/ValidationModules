@@ -141,7 +141,7 @@ the test snapshot is deliberately not enough to move a code, because the constan
 too. It moves only in a major release.
 :::
 
-[VM0092](/reference/diagnostics#vm0092) states the derived code at each rule, since it is the one
+[VM3103](/reference/diagnostics#vm3103) states the derived code at each rule, since it is the one
 part of a rules class you cannot read off the source.
 
 ## Severity

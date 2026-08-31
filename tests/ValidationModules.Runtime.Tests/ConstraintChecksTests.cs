@@ -140,7 +140,7 @@ public class ConstraintChecksTests {
     }
 
     /// <summary>
-    /// The case VM0025 warns about, pinned so the warning's claim stays true: a class with no
+    /// The case VM1202 warns about, pinned so the warning's claim stays true: a class with no
     /// equality of its own compares by reference, and two equal-looking elements both pass.
     /// </summary>
     [Fact]

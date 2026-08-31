@@ -17,7 +17,7 @@ namespace ValidationModules.Constraints;
 /// Elements are compared with <c>EqualityComparer&lt;T&gt;.Default</c>: value equality for records,
 /// primitives and anything implementing <see cref="System.IEquatable{T}"/>, and reference equality
 /// for a class that overrides none of it. That last case passes for the wrong reason, so the
-/// generator reports VM0025 rather than letting it through quietly.
+/// generator reports VM1202 rather than letting it through quietly.
 /// </para>
 /// </remarks>
 /// <example>

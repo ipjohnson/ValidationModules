@@ -40,7 +40,7 @@ public static class MemberWalk {
     /// </param>
     /// <param name="Hidden">
     /// A base declaration this one displaced, when that declaration carried constraints that are
-    /// now dropped. Drives VM0030; null in every other case.
+    /// now dropped. Drives VM1009; null in every other case.
     /// </param>
     public readonly record struct Member(
         IPropertySymbol Property,
@@ -98,7 +98,7 @@ public static class MemberWalk {
                 // the error in generated code.
                 //
                 // The type's own members are exempt: an inaccessible one there is a mistake worth
-                // VM0009, and dropping it silently is what VM0009 exists to prevent.
+                // VM1007, and dropping it silently is what VM1007 exists to prevent.
                 var own = SymbolEqualityComparer.Default.Equals(declaring, type);
 
                 if (!own && !IsReadableFrom(property, type, compilation)) {
@@ -120,7 +120,7 @@ public static class MemberWalk {
                     } else if (carriesConstraints(displaced)) {
                         // Two separate properties that share a name. Most-derived wins entirely,
                         // never merged: two [StringLength] bounds on one field is ambiguous and
-                        // would report twice. Remembered rather than discarded so VM0030 can say
+                        // would report twice. Remembered rather than discarded so VM1009 can say
                         // what was dropped.
                         hidden[property.Name] = displaced;
                     }

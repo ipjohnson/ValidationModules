@@ -8,7 +8,7 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// <remarks>
 /// The bound is parsed against the member's own type at generation time and emitted as a
 /// constructor call, which is what <c>RangeAttribute</c>'s documentation has always promised. A
-/// bound that does not parse is VM0065 at the declaration, rather than a comparison between a
+/// bound that does not parse is VM1103 at the declaration, rather than a comparison between a
 /// <c>DateOnly</c> and a <c>string</c> inside a generated file.
 /// </remarks>
 public class RangeStringBoundsTests {
@@ -98,18 +98,18 @@ public class RangeStringBoundsTests {
     [InlineData("[Range(\"abc\", \"def\")] public decimal Price { get; init; }")]
     [InlineData("[Range(\"2000-01-01\", \"2100-01-01\")] public int Age { get; init; }")]
     [InlineData("[Range(\"25:00:00\", \"26:00:00\")] public TimeOnly OpensAt { get; init; }")]
-    public void BoundsThatDoNotParse_AreVM0065(string member) {
+    public void BoundsThatDoNotParse_AreVM1103(string member) {
         var result = GeneratorHarness.Run(Model(member));
 
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0065");
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1103");
     }
 
     [Fact]
-    public void VM0065_NamesTheMemberAndTheTypeItWouldNotParseAs() {
+    public void VM1103_NamesTheMemberAndTheTypeItWouldNotParseAs() {
         var result = GeneratorHarness.Run(Model(
             "[Range(\"not-a-date\", \"2100-01-01\")] public DateOnly Born { get; init; }"));
 
-        var message = Assert.Single(result.Diagnostics, d => d.Id == "VM0065").GetMessage();
+        var message = Assert.Single(result.Diagnostics, d => d.Id == "VM1103").GetMessage();
 
         Assert.Contains("Born", message);
         Assert.Contains("DateOnly", message);
@@ -117,7 +117,7 @@ public class RangeStringBoundsTests {
 
     [Fact]
     public void BoundsThatDoNotParse_DropTheConstraintRatherThanEmitBrokenCode() {
-        // The build fails on VM0065 alone, not also on a comparison the compiler cannot make.
+        // The build fails on VM1103 alone, not also on a comparison the compiler cannot make.
         var result = GeneratorHarness.Run(Model("""
             [Required]
             public string? Name { get; init; }
@@ -126,19 +126,19 @@ public class RangeStringBoundsTests {
             public DateOnly Born { get; init; }
             """));
 
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0065");
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1103");
         Assert.Empty(result.CompilationErrors);
         Assert.Contains("global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\", value: value.Name)", result.Sources["Sample.PetValidator.g.cs"]);
     }
 
     [Fact]
-    public void StringBoundsOnAStringMember_AreVM0003AndNotAlsoVM0065() {
+    public void StringBoundsOnAStringMember_AreVM1003AndNotAlsoVM1103() {
         // [Range] on a string is unordered, and saying so twice would be worse than saying it once.
         var result = GeneratorHarness.Run(Model(
             "[Range(\"a\", \"z\")] public string? Grade { get; init; }"));
 
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0003");
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0065");
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1003");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1103");
     }
 
     [Fact]

@@ -111,10 +111,10 @@ public class NativeFormatConstraintTests {
 
     /// <summary>
     /// The applicability rule travels with the kind, not the namespace: a native format attribute
-    /// on a non-string member is the same VM0001 the bridged one reports.
+    /// on a non-string member is the same VM1001 the bridged one reports.
     /// </summary>
     [Fact]
-    public void NativeFormatAttribute_OnANonString_IsVM0001() {
+    public void NativeFormatAttribute_OnANonString_IsVM1001() {
         var result = GeneratorHarness.Run("""
             using ValidationModules.Constraints;
 
@@ -125,7 +125,7 @@ public class NativeFormatConstraintTests {
             }
             """);
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0001");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1001");
         Assert.Contains("[EmailAddress]", diagnostic.GetMessage());
     }
 

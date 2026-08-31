@@ -16,7 +16,7 @@ namespace ValidationModules.Constraints;
 /// AOT-clean. What it costs is size: constructing a <see cref="Regex"/> from a pattern string
 /// roots the regex parser and interpreter, which measures at <b>+1.16 MB</b> on a published AOT
 /// binary against +16 KB for the same pattern through <c>[GeneratedRegex]</c>. A project that is
-/// AOT-facing therefore rejects this form by default - see VM0017.
+/// AOT-facing therefore rejects this form by default - see VM1301.
 /// </para>
 /// <para>
 /// <b>The reference form</b> - <c>[Pattern(typeof(PetPatterns), nameof(PetPatterns.Sku))]</c> -

@@ -20,7 +20,7 @@ namespace ValidationModules.SourceGenerator.Impl.FrontEnds;
 /// </para>
 /// <para>
 /// <b>Two invariants, everything else relaxes.</b> The builder flows only where this reader can
-/// follow (VM0087), and transcribed code must compile at the emission site (VM0088). The region is
+/// follow (VM3002), and transcribed code must compile at the emission site (VM3004). The region is
 /// emitted into a companion file carrying the rules class's own using directives - the
 /// <c>PredicateEmitter</c> move, extended - so what has to be rewritten is small: <c>nameof</c>
 /// through the subject parameter becomes the wire path, bare references to the rules class's own
@@ -151,7 +151,7 @@ public sealed class RulesFrontEnd {
     /// </summary>
     /// <remarks>
     /// Severity rather than a count, because not every diagnostic from a body is a refusal.
-    /// VM0092 states the code a rule derived and the rule is emitted regardless; counting it would
+    /// VM3103 states the code a rule derived and the rule is emitted regardless; counting it would
     /// silently drop the whole rules class for saying something true about it.
     /// </remarks>
     private bool FailedSince(int before) {
@@ -413,7 +413,7 @@ public sealed class RulesFrontEnd {
         /// <summary>
         /// Whether anything in this compilation declares rules for a facet: the attribute on the
         /// facet itself, constraint attributes on its properties, or a rules class targeting it.
-        /// An As over a facet with none would be a silent no-op, which is VM0091 instead.
+        /// An As over a facet with none would be a silent no-op, which is VM3105 instead.
         /// </summary>
         private bool FacetHasRules(INamedTypeSymbol facet) {
             if (facet.GetAttributes().Any(attribute =>
@@ -1067,7 +1067,7 @@ public sealed class RulesFrontEnd {
         /// The receiver of a trailing <c>Nullable&lt;T&gt;.Value</c> unwrap, or null when the
         /// expression is not one. The unwrap is never needed - every rule parameter is already
         /// nullable - and it is never harmless: it skews literal-type inference and puts
-        /// <c>.value</c> on the wire path. See VM0093.
+        /// <c>.value</c> on the wire path. See VM3104.
         /// </summary>
         private ExpressionSyntax? NullableUnwrapReceiver(ExpressionSyntax expression) =>
             expression is MemberAccessExpressionSyntax { Name.Identifier.Text: "Value" } member &&
@@ -1238,7 +1238,7 @@ public sealed class RulesFrontEnd {
 
             public bool ReadCall(InvocationExpressionSyntax call, SyntaxNode report) {
                 if (_writer._model.GetSymbolInfo(call).Symbol is not IMethodSymbol method) {
-                    // Beside the generic VM0070, name the frequent cause: a .Value unwrap on an
+                    // Beside the generic VM3001, name the frequent cause: a .Value unwrap on an
                     // argument. The arguments still bind on their own, so the unwrap is visible
                     // even though the invocation is not.
                     var unwrapReported = false;
@@ -1252,12 +1252,12 @@ public sealed class RulesFrontEnd {
                         }
                     }
 
-                    // Require's object? catch-all binds the non-nullable spelling, so VM0090
+                    // Require's object? catch-all binds the non-nullable spelling, so VM3101
                     // normally arrives through the bound path. This covers what still cannot
                     // bind - RequireAllowingEmpty is string-only, and exotic value shapes exist -
-                    // so the answer is VM0090 there too, and alone: the unresolvable call is
+                    // so the answer is VM3101 there too, and alone: the unresolvable call is
                     // downstream of the same mistake. Not when the argument was a .Value unwrap -
-                    // there the fix is dropping the unwrap, which VM0093 above already said.
+                    // there the fix is dropping the unwrap, which VM3104 above already said.
                     if (!unwrapReported &&
                         call.Expression is MemberAccessExpressionSyntax {
                             Name.Identifier.Text: "Require" or "RequireAllowingEmpty",

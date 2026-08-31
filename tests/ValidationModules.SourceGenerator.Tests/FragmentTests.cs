@@ -149,7 +149,7 @@ public class FragmentTests {
     }
 
     [Fact]
-    public void AFragmentCycle_IsVM0086() {
+    public void AFragmentCycle_IsVM3006() {
         var result = Run(
             "        Left.Declare(rules, x);",
             """
@@ -165,11 +165,11 @@ public class FragmentTests {
 
             """);
 
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM0086");
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM3006");
     }
 
     [Fact]
-    public void ACrossAssemblyFragment_IsVM0085WithTheSourcePackageFix() {
+    public void ACrossAssemblyFragment_IsVM3005WithTheSourcePackageFix() {
         var shared = GeneratorHarness.CompileToReference("""
             using ValidationModules;
 
@@ -202,14 +202,14 @@ public class FragmentTests {
             OutputKind.DynamicallyLinkedLibrary,
             new[] { shared });
 
-        var reported = Assert.Single(result.Diagnostics, d => d.Id == "VM0085");
+        var reported = Assert.Single(result.Diagnostics, d => d.Id == "VM3005");
 
         Assert.Contains("SharedRules.Standard", reported.GetMessage());
         Assert.Contains("source", reported.GetMessage());
     }
 
     [Fact]
-    public void AnExplicitInterfaceImplementation_IsVM0088RatherThanAnErrorInGeneratedCode() {
+    public void AnExplicitInterfaceImplementation_IsVM3004RatherThanAnErrorInGeneratedCode() {
         var result = GeneratorHarness.Run("""
             using ValidationModules;
 
@@ -237,7 +237,7 @@ public class FragmentTests {
             }
             """);
 
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM0088" && d.GetMessage().Contains("explicitly"));
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM3004" && d.GetMessage().Contains("explicitly"));
     }
 
     [Fact]
@@ -249,7 +249,7 @@ public class FragmentTests {
                     AuditRules.Standard(rules, other);
             """);
 
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM0087");
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM3002");
     }
 
     [Fact]

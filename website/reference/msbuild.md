@@ -123,7 +123,7 @@ Whether `System.ComponentModel.DataAnnotations` attributes are compiled.
 | Value | Effect |
 |---|---|
 | *(unset)* | compiled |
-| `Ignore` | skipped, and each skipped constraint reports [VM0010](/reference/diagnostics#vm0010) |
+| `Ignore` | skipped, and each skipped constraint reports [VM2001](/reference/diagnostics#vm2001) |
 
 The comparison is case-insensitive, and any value other than `Ignore` means "compile". Turning it
 off cannot silently unvalidate a model. A type whose only rules were DataAnnotations gets no
@@ -167,8 +167,8 @@ Whether an inline `[Pattern("…")]` is acceptable.
 |---|---|
 | *(unset)* | `Error` if the project is AOT-facing, `Allow` otherwise |
 | `Allow` | inline patterns accepted silently |
-| `Warn` | [VM0017](/reference/diagnostics#vm0017) as a warning, constraint still emitted |
-| `Error` | VM0017 as an error, constraint dropped |
+| `Warn` | [VM1301](/reference/diagnostics#vm1301) as a warning, constraint still emitted |
+| `Error` | VM1301 as an error, constraint dropped |
 
 "AOT-facing" means `PublishAot` **or** `IsAotCompatible` is `true`. Both, deliberately:
 `PublishAot` is only ever true in the executable, so a class library holding your models would never
@@ -219,25 +219,31 @@ Worth enabling in a repository where the emitted code is part of what you review
 ## The assembly name
 
 Not a property you set, but it names the registration method: `AddMyAppValidators()` is derived from
-`AssemblyName`, sanitized, because an assembly name is not necessarily a valid identifier.
+`AssemblyName`, because an assembly name is not necessarily a valid identifier. The name splits on
+dots and on any character that is not a letter or digit, each segment is PascalCased, and the
+segments join with nothing between them.
 
 | `AssemblyName` | Registration method |
 |---|---|
 | `MyApp` | `AddMyAppValidators()` |
 | `My.App` | `AddMyAppValidators()` |
-| `My-App` | `AddMy_AppValidators()` |
+| `My-App` | `AddMyAppValidators()` |
+| `app2-signupapi` | `AddApp2SignupapiValidators()` |
 | `7Eleven` | `Add_7ElevenValidators()` |
 | *(empty)* | `Generated` |
 
 ## Diagnostic severity
 
-Not MSBuild, but `.editorconfig`. Every diagnostic is in category `ValidationModules.Usage`:
+Not MSBuild, but `.editorconfig`. Silence one by id:
 
 ```ini
 [*.cs]
-dotnet_diagnostic.VM0004.severity = none
-dotnet_analyzer_diagnostic.category-ValidationModules.Usage.severity = suggestion
+dotnet_diagnostic.VM1201.severity = none
 ```
 
-Prefer silencing one id over the whole category. Several diagnostics are errors because the
-alternative is generated code that does not compile.
+`<NoWarn>$(NoWarn);VM1201</NoWarn>` and `#pragma warning disable VM1201` work as well.
+
+The category-wide `dotnet_analyzer_diagnostic.category-ValidationModules.Usage.severity` does
+**not** reach these, even though they all carry that category:
+[the reference explains why](/reference/diagnostics#diagnostics). Several diagnostics are errors
+because the alternative is generated code that does not compile.

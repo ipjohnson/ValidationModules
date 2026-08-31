@@ -162,7 +162,7 @@ var result = GeneratorHarness.Run("""
     }
     """);
 
-Assert.Single(result.Diagnostics, d => d.Id == "VM0001");
+Assert.Single(result.Diagnostics, d => d.Id == "VM1001");
 ```
 
 Assert both halves: that it fires on the bad input, *and* that it stays silent on the good one. A

@@ -13,9 +13,16 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION="${1:-0.1.0-local}"
-FEED="$(mktemp -d)"
-WORK="$(mktemp -d)"
-trap 'rm -rf "${FEED}" "${WORK}"' EXIT
+# Resolved with pwd -P, not left as mktemp returns them. On macOS $TMPDIR is under /var, which is a
+# symlink to /private/var, and the compiler resolves a source file's path while .editorconfig
+# discovery keeps the unresolved one - so no section ever matches and every rule in the file is
+# ignored, compiler diagnostics included. That cost an afternoon here; it is not VM-specific.
+FEED="$(cd "$(mktemp -d)" && pwd -P)"
+WORK="$(cd "$(mktemp -d)" && pwd -P)"
+# Its own directory rather than a subfolder of WORK: the consumer project's default **/*.cs glob
+# would otherwise compile this project's sources into it.
+KNOBS="$(cd "$(mktemp -d)" && pwd -P)"
+trap 'rm -rf "${FEED}" "${WORK}" "${KNOBS}"' EXIT
 
 echo "Packing ${VERSION}"
 for project in Runtime AspNetCore Options SourceGenerator SourceGenerator.Impl Messages; do
@@ -56,6 +63,53 @@ expect "${IMPL_FILES}" "src/ValidationModules.SourceGenerator.Impl/" \
 # a second generator alongside ours and every validator is emitted twice.
 reject "${IMPL_FILES}" "ValidationSourceGenerator.cs" \
     "the [Generator] entry point is packed into Impl"
+
+# Impl ships sources rather than an assembly, so its contract is the file set, not a public API
+# surface. Nothing else notices a file the packaging glob stops matching: the solution still builds,
+# because the projects here reference each other directly, and only a framework author compiling
+# the package in discovers the gap - as a compile error that reads like their own mistake.
+MISSING_SOURCES=""
+while IFS= read -r source; do
+    case "${IMPL_FILES}" in
+        *"src/ValidationModules.SourceGenerator.Impl/${source}"*) ;;
+        *) MISSING_SOURCES="${MISSING_SOURCES}  ${source}"$'\n' ;;
+    esac
+done < <(cd "${REPO_ROOT}/src/ValidationModules.SourceGenerator.Impl" && \
+    find . -name '*.cs' -not -path './obj/*' -not -path './bin/*' | sed 's|^\./||' | sort)
+
+if [ -n "${MISSING_SOURCES}" ]; then
+    echo "FAILED: Impl compiles these sources but does not pack them:"
+    printf '%s' "${MISSING_SOURCES}"
+    exit 1
+fi
+
+# RuleText is compiled in from the runtime project and packed by a hand-written entry rather than by
+# the glob above, so it is the one source the completeness check cannot see and the one most likely
+# to be missed when either project moves a file.
+expect "${IMPL_FILES}" "src/ValidationModules.SourceGenerator.Impl/FrontEnds/RuleText.cs" \
+    "RuleText.cs is compiled into Impl but not packed, so a framework author gets CS0246 on it"
+
+# Every property the reference documents has to be declared CompilerVisibleProperty in the shipped
+# targets, or MSBuild never forwards it and the knob silently takes its default in a real project.
+# Read out of the nupkg rather than the source tree, because the packed copy is the one that runs.
+GENERATOR_TARGETS="$(unzip -p "${FEED}/ValidationModules.SourceGenerator.${VERSION}.nupkg" \
+    'build/ValidationModules.SourceGenerator.targets')"
+
+while IFS= read -r property; do
+    expect "${GENERATOR_TARGETS}" "CompilerVisibleProperty Include=\"${property}\"" \
+        "${property} is documented but not CompilerVisibleProperty, so setting it does nothing"
+done < <(sed -n 's/^## `\(ValidationModules_[A-Za-z]*\)`.*/\1/p' "${REPO_ROOT}/website/reference/msbuild.md")
+
+# The Impl targets are a copy of the same list, and a knob added to one and not the other reaches
+# our own generator and not a framework author's.
+IMPL_TARGETS="$(unzip -p "${FEED}/ValidationModules.SourceGenerator.Impl.${VERSION}.nupkg" \
+    'build/ValidationModules.SourceGenerator.Impl.targets')"
+
+if [ "$(printf '%s' "${GENERATOR_TARGETS}" | grep -c CompilerVisibleProperty)" \
+     != "$(printf '%s' "${IMPL_TARGETS}" | grep -c CompilerVisibleProperty)" ]; then
+    echo "FAILED: the generator and Impl targets declare different property sets"
+    exit 1
+fi
 
 # The ASP.NET Core integration is an ordinary library and must ship as one, on both TFMs. Checked
 # rather than assumed because it is the only package carrying a FrameworkReference, and getting
@@ -220,3 +274,154 @@ namespace Sample {
 PROGRAM
 
 dotnet run --project "${WORK}/Consumer.csproj" -c Release --nologo
+
+# ---------------------------------------------------------------------------------------------
+# The build knobs, and .editorconfig severity, through the package.
+#
+# Nothing else here reaches either. Every in-repo consumer references the generator as a
+# ProjectReference with OutputItemType="Analyzer", which does not import a referenced project's
+# build/*.targets, and the generator tests hand the harness `build_property.X` keys directly. Both
+# prove the generator reads a key that MSBuild was never asked to produce, so deleting a
+# CompilerVisibleProperty line left the whole suite green while every documented knob silently took
+# its default in a real project.
+#
+# The project above deliberately keeps the defaults, so this is a second one rather than settings
+# added to it.
+echo "Checking the build knobs and .editorconfig severity"
+
+cat > "${KNOBS}/nuget.config" <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <clear/>
+    <add key="local" value="${FEED}"/>
+    <add key="nuget" value="https://api.nuget.org/v3/index.json"/>
+  </packageSources>
+</configuration>
+EOF
+
+cat > "${KNOBS}/Knobs.csproj" <<EOF
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
+    <RestorePackagesPath>${KNOBS}/packages</RestorePackagesPath>
+    <DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
+
+    <!-- Four knobs whose effects are visible at run time and cannot be confused with each other. -->
+    <ValidationModules_FieldNaming>SnakeCase</ValidationModules_FieldNaming>
+    <ValidationModules_CodeNamespace>myapp</ValidationModules_CodeNamespace>
+    <ValidationModules_DataAnnotations>Ignore</ValidationModules_DataAnnotations>
+    <ValidationModules_CaptureValues>Disabled</ValidationModules_CaptureValues>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ValidationModules.Runtime" Version="${VERSION}"/>
+    <PackageReference Include="ValidationModules.SourceGenerator" Version="${VERSION}" PrivateAssets="all"/>
+  </ItemGroup>
+</Project>
+EOF
+
+cat > "${KNOBS}/Program.cs" <<'PROGRAM'
+using ValidationModules;
+using ValidationModules.Constraints;
+using Knobs;
+using DataAnnotations = System.ComponentModel.DataAnnotations;
+
+var errors = new AccountValidator().Validate(new Account()).Errors;
+var fields = string.Join("; ", errors.Select(e => $"{e.Field}:{e.Code}"));
+
+void Fail(string message) {
+    Console.Error.WriteLine($"FAILED: {message}");
+    Console.Error.WriteLine($"  errors were: {fields}");
+    Environment.Exit(1);
+}
+
+// ValidationModules_FieldNaming=SnakeCase. The default camelCase would say postalCode.
+if (!errors.Any(e => e.Field == "postal_code")) {
+    Fail("FieldNaming=SnakeCase did not reach the generator");
+}
+
+// ValidationModules_CodeNamespace=myapp prefixes the codes this assembly invents...
+if (!errors.Any(e => e.Code == "myapp.guest_missing")) {
+    Fail("CodeNamespace=myapp did not reach the generator");
+}
+
+// ...and never the fixed vocabulary, which is what lets a client switch on a code.
+if (!errors.Any(e => e.Field == "postal_code" && e.Code == "required")) {
+    Fail("CodeNamespace prefixed a built-in code");
+}
+
+// ValidationModules_DataAnnotations=Ignore. The constraint is skipped rather than compiled.
+if (errors.Any(e => e.Field == "ignored")) {
+    Fail("DataAnnotations=Ignore did not reach the generator");
+}
+
+// ValidationModules_CaptureValues=Disabled. The emitter passes nothing, so no error carries one.
+if (errors.Any(e => e.Value is not null)) {
+    Fail("CaptureValues=Disabled did not reach the generator");
+}
+
+Console.WriteLine("Build knobs verified");
+
+namespace Knobs {
+    public sealed record Account {
+        [Required] public string? PostalCode { get; init; }
+        [Required(Code = "guest_missing")] public string? Guest { get; init; }
+        [DataAnnotations.Required] public string? Ignored { get; init; }
+
+        // Reports VM1201, which the .editorconfig check below suppresses.
+        [Required] public int Age { get; init; }
+    }
+}
+PROGRAM
+
+# Without an .editorconfig the diagnostic must appear, or the second half proves nothing.
+KNOBS_BUILD="$(dotnet build "${KNOBS}/Knobs.csproj" -c Release --nologo --no-incremental 2>&1)" || {
+    printf '%s\n' "${KNOBS_BUILD}"
+    echo "FAILED: the knobs project does not build"
+    exit 1
+}
+expect "${KNOBS_BUILD}" "VM1201" \
+    "VM1201 was not reported, so the .editorconfig check below would pass vacuously"
+
+# The reference tells consumers to silence a diagnostic with exactly this line. Nothing had ever
+# established that a generator-reported VM#### honours analyzer config at all.
+cat > "${KNOBS}/.editorconfig" <<'EOF'
+root = true
+
+[*.cs]
+dotnet_diagnostic.VM1201.severity = none
+EOF
+
+KNOBS_SUPPRESSED="$(dotnet build "${KNOBS}/Knobs.csproj" -c Release --nologo --no-incremental 2>&1)" || {
+    printf '%s\n' "${KNOBS_SUPPRESSED}"
+    echo "FAILED: the knobs project does not build with an .editorconfig"
+    exit 1
+}
+reject "${KNOBS_SUPPRESSED}" "VM1201" \
+    "dotnet_diagnostic.VM1201.severity = none did not suppress it, and the reference says it does"
+
+# The bulk form does not reach a generator-reported diagnostic. dotnet_analyzer_diagnostic.* is
+# applied by the analyzer driver, and 60 of the 61 descriptors are reported by the generator rather
+# than by an analyzer - VM5003 is the only one from ValidateCallAnalyzer. The reference used to
+# offer the category line as the way to reach the whole set, which silently reached almost none of
+# it. Pinned in the direction it actually behaves, so that a Roslyn release closing the gap shows up
+# here as a failure to go and delete a caveat from the documentation.
+cat > "${KNOBS}/.editorconfig" <<'EOF'
+root = true
+
+[*.cs]
+dotnet_analyzer_diagnostic.category-ValidationModules.Usage.severity = none
+EOF
+
+KNOBS_CATEGORY="$(dotnet build "${KNOBS}/Knobs.csproj" -c Release --nologo --no-incremental 2>&1)" || {
+    printf '%s\n' "${KNOBS_CATEGORY}"
+    echo "FAILED: the knobs project does not build with a category .editorconfig"
+    exit 1
+}
+expect "${KNOBS_CATEGORY}" "VM1201" \
+    "the category rule now reaches generator diagnostics; drop the caveat in reference/diagnostics.md"
+
+rm "${KNOBS}/.editorconfig"
+
+dotnet run --project "${KNOBS}/Knobs.csproj" -c Release --nologo --no-build

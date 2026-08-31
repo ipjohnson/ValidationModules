@@ -18,8 +18,8 @@ public static class DataAnnotationsConstraintReader {
     /// <param name="Diagnostic">A diagnostic to report beside it, when there is news.</param>
     /// <param name="Detail">
     /// The third format argument the diagnostic's message wants, when it wants one - the member's
-    /// type for VM0064, the exact compiled semantics for VM0063. The front end falls back to the
-    /// VM0060 enforce tail when this is null, which is the argument every other reader diagnostic
+    /// type for VM2005, the exact compiled semantics for VM2004. The front end falls back to the
+    /// VM2002 enforce tail when this is null, which is the argument every other reader diagnostic
     /// ignores.
     /// </param>
     public readonly record struct Outcome(
@@ -45,7 +45,7 @@ public static class DataAnnotationsConstraintReader {
     /// <summary>
     /// Whether the attribute reads as a constraint here - including the format validators, which
     /// compile like any other constraint and so count wherever "is this enforced" is the question:
-    /// VM0010 under Ignore, and VM0051 on a record parameter.
+    /// VM2001 under Ignore, and VM1008 on a record parameter.
     /// </summary>
     public static bool IsConstraint(string attributeName) =>
         Array.IndexOf(Constraints, attributeName) >= 0 ||
@@ -78,7 +78,7 @@ public static class DataAnnotationsConstraintReader {
             }
 
             // Both apply to strings and to collections in DataAnnotations, so the member's type
-            // decides which constraint this becomes. A member that is neither is VM0064.
+            // decides which constraint this becomes. A member that is neither is VM2005.
             case "MinLengthAttribute":
                 return Sized(attribute, memberType, First(attribute) ?? "0", int.MaxValue.ToString());
 
@@ -153,7 +153,7 @@ public static class DataAnnotationsConstraintReader {
                 return CustomValidation(attribute, memberType);
 
             // The format validators compile to the BCL's own checks - semantics in
-            // ConstraintChecks, parity pinned by its tests. Each carries VM0063 (Info) stating
+            // ConstraintChecks, parity pinned by its tests. Each carries VM2004 (Info) stating
             // exactly what was emitted, because the checks are looser than the attribute names
             // suggest and an author who wants more should hear it where they typed the attribute.
             case "EmailAddressAttribute":
@@ -223,8 +223,8 @@ public static class DataAnnotationsConstraintReader {
 
     /// <summary>
     /// A format validator's outcome: the constraint, and - only when the member's type can carry
-    /// it - the VM0063 Info stating the compiled semantics. On any other type the constraint
-    /// still flows, so the applicability check drops it with VM0001 and the Info does not talk
+    /// it - the VM2004 Info stating the compiled semantics. On any other type the constraint
+    /// still flows, so the applicability check drops it with VM1001 and the Info does not talk
     /// over the error.
     /// </summary>
     private static Outcome Format(
@@ -253,7 +253,7 @@ public static class DataAnnotationsConstraintReader {
 
     /// <summary>
     /// Resolves <c>[CustomValidation(typeof(T), "Method")]</c> to the static method the emitter
-    /// will call directly, or to VM0080 with the reason it cannot.
+    /// will call directly, or to VM2008 with the reason it cannot.
     /// </summary>
     /// <remarks>
     /// The accepted signatures are DataAnnotations' own - public static, returning

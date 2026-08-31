@@ -7,8 +7,8 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// <c>IConstraintFor&lt;T&gt;</c>: the instance shape of a custom constraint. The claims under test
 /// are the feature: one instance hoisted into a static field and called directly, the interface
 /// only in the way when the class left a member to it, <c>[PerValidationInstance]</c> trading the
-/// field for a per-check construction that VM0084 prices, and every wrong shape caught at build
-/// time as VM0083.
+/// field for a per-check construction that VM1603 prices, and every wrong shape caught at build
+/// time as VM1602.
 /// </summary>
 public class ConstraintInterfaceTests {
 
@@ -201,7 +201,7 @@ public class ConstraintInterfaceTests {
             "new global::Sample.StampAttribute().Validate(ref ctx, value.Code, \"code\")", emitted);
         Assert.Contains("!new global::Sample.StampAttribute().IsValid(value.Code)", emitted);
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0084");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1603");
 
         Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
         Assert.Empty(result.CompilationErrors);
@@ -247,7 +247,7 @@ public class ConstraintInterfaceTests {
     public void InterfaceConstraint_WinsOverAValidationAttributeBase() {
         // One class, both worlds: under MVC and TryValidateObject it is a ValidationAttribute;
         // here the interface takes precedence and nothing goes through the bridge - no context,
-        // no box, no VM0060.
+        // no box, no VM2002.
         var result = GeneratorHarness.Run("""
             using System;
             using System.ComponentModel.DataAnnotations;
@@ -357,19 +357,19 @@ public class ConstraintInterfaceTests {
     }
 
     [Fact]
-    public void InterfaceConstraint_OnARecordParameter_IsVM0051LikeAnyConstraint() {
+    public void InterfaceConstraint_OnARecordParameter_IsVM1008LikeAnyConstraint() {
         var result = GeneratorHarness.Run(SkuCheckAttribute + """
 
             public record Product([SkuCheck] string? Code);
             """);
 
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0051");
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1008");
     }
 
-    // VM0083 — every wrong shape is a build error naming the fix.
+    // VM1602 — every wrong shape is a build error naming the fix.
 
     [Fact]
-    public void InterfaceConstraint_NoInstantiationFitsTheMember_IsVM0083() {
+    public void InterfaceConstraint_NoInstantiationFitsTheMember_IsVM1602() {
         var result = GeneratorHarness.Run("""
             using System;
             using ValidationModules;
@@ -386,7 +386,7 @@ public class ConstraintInterfaceTests {
             }
             """);
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0083");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1602");
 
         Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
         Assert.Contains("none of those accepts", diagnostic.GetMessage());
@@ -394,7 +394,7 @@ public class ConstraintInterfaceTests {
     }
 
     [Fact]
-    public void InterfaceConstraint_AmbiguousInstantiations_IsVM0083() {
+    public void InterfaceConstraint_AmbiguousInstantiations_IsVM1602() {
         // string is both an object and an IComparable, and implements neither instantiation
         // exactly - refusing beats picking one and silently running the other author's intent.
         var result = GeneratorHarness.Run("""
@@ -415,14 +415,14 @@ public class ConstraintInterfaceTests {
             }
             """);
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0083");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1602");
 
         Assert.Contains("more than one implemented instantiation", diagnostic.GetMessage());
         Assert.Contains("implement IConstraintFor<string>", diagnostic.GetMessage());
     }
 
     [Fact]
-    public void InterfaceConstraint_MixedWithTheStaticShape_IsVM0083() {
+    public void InterfaceConstraint_MixedWithTheStaticShape_IsVM1602() {
         var result = GeneratorHarness.Run("""
             using System;
             using ValidationModules;
@@ -442,11 +442,11 @@ public class ConstraintInterfaceTests {
 
         Assert.Contains(
             "pick one",
-            Assert.Single(result.Diagnostics, d => d.Id == "VM0083").GetMessage());
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1602").GetMessage());
     }
 
     [Fact]
-    public void InterfaceConstraint_AGenericAttributeClass_IsVM0083() {
+    public void InterfaceConstraint_AGenericAttributeClass_IsVM1602() {
         var result = GeneratorHarness.Run("""
             using System;
             using ValidationModules;
@@ -465,6 +465,6 @@ public class ConstraintInterfaceTests {
 
         Assert.Contains(
             "generic attribute class",
-            Assert.Single(result.Diagnostics, d => d.Id == "VM0083").GetMessage());
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1602").GetMessage());
     }
 }

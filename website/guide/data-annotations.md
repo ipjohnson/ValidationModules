@@ -57,7 +57,7 @@ This is on by default. Set `ValidationModules_DataAnnotations` to `Ignore` to tu
 
 `[MinLength]`, `[MaxLength]` and `[Length]` apply to strings *and* collections in DataAnnotations, so
 the member's own type decides which constraint each becomes. A member that is neither is
-[VM0064](/reference/diagnostics#vm0064).
+[VM2005](/reference/diagnostics#vm2005).
 
 `MinimumIsExclusive` and `MaximumIsExclusive` on `[Range]` are honoured, and the message says so.
 An exclusive bound reads "must be greater than" or "must be less than" rather than
@@ -74,7 +74,7 @@ names for one concept would be worse than one name that needs a sentence:
 | `[RegularExpression("…")]` | [`[Pattern]`](/reference/attributes#pattern) | the native form also takes a `[GeneratedRegex]` member reference, which is what keeps a published AOT binary free of the regex compiler - a shape the BCL attribute has nowhere to put |
 | `[MinLength]` / `[MaxLength]` / `[Length]` | [`[StringLength]`](/reference/attributes#stringlength) or [`[ItemCount]`](/reference/attributes#itemcount) | the BCL overloads one name across strings and collections and decides by member type; the native vocabulary names the two constraints for what they check |
 | `[CustomValidation(typeof(T), "M")]` | [`[CustomConstraint]`](/guide/custom-constraints) | a different mechanism: the BCL form names a method resolved by string, the native form is an attribute class whose check compiles like a built-in |
-| `[EnumDataType(typeof(E))]` | [`[EnumDefined]`](/reference/attributes#enumdefined) | the BCL form checks that a loosely-typed value *parses* as the enum, a runtime string conversion this library will not compile ([VM0068](/reference/diagnostics#vm0068)); the native form checks a properly-typed member holds a declared value |
+| `[EnumDataType(typeof(E))]` | [`[EnumDefined]`](/reference/attributes#enumdefined) | the BCL form checks that a loosely-typed value *parses* as the enum, a runtime string conversion this library will not compile ([VM2007](/reference/diagnostics#vm2007)); the native form checks a properly-typed member holds a declared value |
 
 Everything else - `[Required]`, `[StringLength]`, `[Range]`, `[AllowedValues]`,
 `[DeniedValues]`, `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]`,
@@ -130,7 +130,7 @@ migrating from `TryValidateObject`, MVC model validation, or .NET 10's `AddValid
 exactly the checks it had.
 
 Because the semantics are worth knowing, each use reports
-[VM0063](/reference/diagnostics#vm0063), an **Info** rather than a warning, stating the compiled
+[VM2004](/reference/diagnostics#vm2004), an **Info** rather than a warning, stating the compiled
 check verbatim at the property that declared it. For something stricter, declare a
 [`[Pattern]`](/guide/patterns) whose behaviour is written in your own source; the diagnostic says
 so too.
@@ -152,13 +152,13 @@ make that happen:
   compile-time-constant arguments, so `new EvenNumberAttribute(2) { ErrorMessage = "…" }` lands in
   the generated file as exactly that. It is invoked through `GetValidationResult`, the same call
   `Validator.TryValidateObject` makes, minus the discovery. Each use reports
-  [VM0060](/reference/diagnostics#vm0060) as an Info carrying the cost model.
+  [VM2002](/reference/diagnostics#vm2002) as an Info carrying the cost model.
 - **`[CustomValidation(typeof(T), "Method")]`** is resolved at build time and emitted as a direct
   static call, where DataAnnotations resolves the method by name reflectively on every validation. A
-  target that cannot be called is [VM0080](/reference/diagnostics#vm0080) at build time, not a
+  target that cannot be called is [VM2008](/reference/diagnostics#vm2008) at build time, not a
   rule that silently never runs.
 - **`IValidatableObject.Validate`** runs last, and only when every other rule passed, which
-  reproduces `TryValidateObject`'s sequencing. [VM0067](/reference/diagnostics#vm0067) says so at
+  reproduces `TryValidateObject`'s sequencing. [VM2006](/reference/diagnostics#vm2006) says so at
   the type.
 
 Failures report under the [`custom`](/reference/codes) code, with the rule's own message. Member
@@ -184,7 +184,7 @@ public sealed class CustomerRules : IValidationRulesFor<Customer> {
 Resource-based messages on *mapped* attributes are compiled, as [Messages](#messages) above
 describes. The reflective resolution DataAnnotations performs survives only inside invoked custom
 attributes, where the attribute's own `FormatErrorMessage` runs user code this library will not
-rewrite. [VM0081](/reference/diagnostics#vm0081) warns there, and only there.
+rewrite. [VM2009](/reference/diagnostics#vm2009) warns there, and only there.
 
 ## What is not compiled, and says so
 
@@ -194,8 +194,8 @@ generator skipped would still *look* enforced, because you have every reason to 
 
 | Attribute | Diagnostic | Why |
 |---|---|---|
-| `[Compare]` | [VM0061](/reference/diagnostics#vm0061) | compares two members |
-| `[EnumDataType]` | [VM0068](/reference/diagnostics#vm0068) | checks a runtime string conversion; type the member as the enum and use [`[EnumDefined]`](/reference/attributes#enumdefined) |
+| `[Compare]` | [VM2003](/reference/diagnostics#vm2003) | compares two members |
+| `[EnumDataType]` | [VM2007](/reference/diagnostics#vm2007) | checks a runtime string conversion; type the member as the enum and use [`[EnumDefined]`](/reference/attributes#enumdefined) |
 
 `[Compare]` has no per-property form. Move it to a [rule class](/guide/rule-classes), which is the
 declaration form that *can* express a rule spanning two properties:
@@ -218,7 +218,7 @@ Or into an [`IAsyncValidatorFor<T>`](/guide/async) if the rule needs I/O.
 </PropertyGroup>
 ```
 
-Every skipped constraint is then [VM0010](/reference/diagnostics#vm0010), once per constraint, so
+Every skipped constraint is then [VM2001](/reference/diagnostics#vm2001), once per constraint, so
 turning it off does not silently unvalidate a model. A type whose only rules were DataAnnotations
 gets no validator at all.
 

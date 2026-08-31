@@ -149,7 +149,7 @@ public sealed record ItemCountOnly {
 /// </summary>
 /// <remarks>
 /// The reference form throughout, rather than <c>[Pattern("...")]</c>. Partly because this project
-/// publishes AOT and the inline form is a VM0017 there, but mostly because it is the form an
+/// publishes AOT and the inline form is a VM1301 there, but mostly because it is the form an
 /// AOT-facing consumer writes - benchmarking the other one would price a shape the library steers
 /// people away from.
 /// </remarks>

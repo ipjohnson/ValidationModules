@@ -2,112 +2,217 @@
 
 Every diagnostic this generator reports, why it exists, and what to do about it.
 
-All of them are in category `ValidationModules.Usage`, so a blanket `.editorconfig` rule reaches the
-whole set:
+Tune one from `.editorconfig`, by id:
 
 ```ini
 [*.cs]
-dotnet_diagnostic.VM0004.severity = none
-dotnet_analyzer_diagnostic.category-ValidationModules.Usage.severity = suggestion
+dotnet_diagnostic.VM1201.severity = none
 ```
 
-Prefer silencing one id over the category. Several are errors because the alternative is generated
-code that does not compile.
+`NoWarn` in the csproj and `#pragma warning disable VM1201` around a declaration both work too.
+
+::: warning The category-wide rule does not reach these
+All of them are in category `ValidationModules.Usage`, but
+`dotnet_analyzer_diagnostic.category-ValidationModules.Usage.severity` silently reaches only
+[VM5003](#vm5003). Bulk analyzer configuration is applied by the analyzer driver, and every other
+diagnostic here is reported by the source generator rather than by an analyzer, so the rule never
+sees it. VM5003 comes from `ValidateCallAnalyzer`, which is a real analyzer, and is the one
+exception.
+
+Silence them by id. `verify-packages.sh` pins this behaviour in the direction it actually works, so
+if a future Roslyn closes the gap this warning is what gets deleted.
+:::
+
+Several are errors because the alternative is generated code that does not compile.
+
+## Renumbered at 1.0.0
+
+Every id changed before 1.0.0. The thousand digit is now the front end that raises the diagnostic
+and the hundred digit is the category within it, so an id says where a diagnostic comes from
+instead of only when it was added.
+
+| Band | | |
+|---|---|---|
+| `VM1xxx` | constraint declarations | a constraint on a member that cannot carry it, arguments that do not resolve, checks that cannot fail, patterns under the AOT policy, `When`/`Unless`, nesting, custom constraint shapes |
+| `VM2xxx` | the DataAnnotations bridge | one entry per attribute this library compiles, invokes, or refuses |
+| `VM3xxx` | rules classes | what the reader cannot follow, and rule semantics |
+| `VM4xxx` | language packs | one entry per way a pack can be wrong |
+| `VM5xxx` | toolchain | the runtime contract, the emit backstop, the `.Validate<T>()` analyzer |
+
+**A stale `.editorconfig` line is inert, never misdirected.** The old ids ran `VM0001`-`VM0108` and
+the new ones start at `VM1001`, so the two ranges do not overlap. A
+`dotnet_diagnostic.VM0004.severity` line left behind now names an id that does not exist and
+suppresses nothing, rather than silently addressing a different rule.
+
+Nothing had shipped stable when this happened, which is the only reason it could. The table is
+here for anyone tracking a pre-release.
+
+| Old | New | |
+|---|---|---|
+| `VM0001` | [`VM1001`](#vm1001) | a string constraint on a non-string |
+| `VM0002` | [`VM1002`](#vm1002) | `[ItemCount]` on a non-collection |
+| `VM0003` | [`VM1003`](#vm1003) | `[Range]` on a type with no ordering |
+| `VM0004` | [`VM1201`](#vm1201) | `[Required]` on a non-nullable value type |
+| `VM0006` | [`VM1106`](#vm1106) | a pattern that is not a valid regex |
+| `VM0007` | [`VM1501`](#vm1501) | `[ValidateNested]` target has no rules |
+| `VM0008` | [`VM1101`](#vm1101) | lower bound exceeds upper bound |
+| `VM0009` | [`VM1007`](#vm1007) | constrained property has no accessible getter |
+| `VM0010` | [`VM2001`](#vm2001) | a DataAnnotations constraint is ignored by ValidationModules |
+| `VM0016` | [`VM1302`](#vm1302) | `RegexOptions.Compiled` is not meaningful |
+| `VM0017` | [`VM1301`](#vm1301) | an inline pattern roots the regex engine |
+| `VM0018` | [`VM1107`](#vm1107) | referenced regex member is unusable |
+| `VM0021` | [`VM1004`](#vm1004) | `[MultipleOf]` on a type with no arithmetic |
+| `VM0022` | [`VM1104`](#vm1104) | a `[MultipleOf]` divisor that is zero or negative |
+| `VM0023` | [`VM1105`](#vm1105) | a `[MultipleOf]` divisor that does not parse as the member's type |
+| `VM0024` | [`VM1005`](#vm1005) | `[UniqueItems]` on a non-collection |
+| `VM0025` | [`VM1202`](#vm1202) | `[UniqueItems]` over elements with no equality of their own |
+| `VM0026` | [`VM1102`](#vm1102) | `[Range]` declares neither bound |
+| `VM0027` | [`VM1006`](#vm1006) | `[EnumDefined]` was applied to a member whose type is not an enum |
+| `VM0028` | [`VM1401`](#vm1401) | a `When`/`Unless` naming a member the type does not declare |
+| `VM0029` | [`VM1402`](#vm1402) | a `When`/`Unless` naming something that is not a predicate |
+| `VM0030` | [`VM1009`](#vm1009) | a derived property hides a base declaration's constraints |
+| `VM0031` | [`VM1503`](#vm1503) | a `[ValidateNested]` target is not sealed and declares no mode |
+| `VM0032` | [`VM1504`](#vm1504) | `Polymorphism.Runtime` on a type that can have no subtypes |
+| `VM0033` | [`VM1403`](#vm1403) | a constraint setting both `When` and `Unless` |
+| `VM0040` | [`VM5001`](#vm5001) | `ValidationModules.Runtime` is too old |
+| `VM0051` | [`VM1008`](#vm1008) | constraint on a record parameter without `property:` |
+| `VM0060` | [`VM2002`](#vm2002) | a custom `ValidationAttribute` is constructed once and invoked |
+| `VM0061` | [`VM2003`](#vm2003) | a cross-field DataAnnotations attribute is not compiled |
+| `VM0063` | [`VM2004`](#vm2004) | a format DataAnnotations attribute is compiled with its BCL semantics |
+| `VM0064` | [`VM2005`](#vm2005) | a length constraint on neither a string nor a collection |
+| `VM0065` | [`VM1103`](#vm1103) | `[Range]` bounds do not parse as the member's type |
+| `VM0067` | [`VM2006`](#vm2006) | `IValidatableObject` runs after every other rule passes |
+| `VM0068` | [`VM2007`](#vm2007) | `[EnumDataType]` checks a runtime string conversion and is not compiled |
+| `VM0070` | [`VM3001`](#vm3001) | a statement in `Describe` is not transcribable |
+| `VM0071` | [`VM3007`](#vm3007) | a rule's value argument is not a member path on the subject |
+| `VM0075` | [`VM3102`](#vm3102) | an `Ensure` has no inferable field and no `field:` |
+| `VM0079` | [`VM1010`](#vm1010) | a generic type cannot have a generated validator |
+| `VM0080` | [`VM2008`](#vm2008) | a `[CustomValidation]` target cannot be called |
+| `VM0081` | [`VM2009`](#vm2009) | resource-based `ErrorMessage` resolves reflectively |
+| `VM0082` | [`VM1601`](#vm1601) | a custom constraint attribute's `IsValid` is missing or the wrong shape |
+| `VM0083` | [`VM1602`](#vm1602) | an `IConstraintFor<T>` attribute does not fit the member, or mixes shapes |
+| `VM0084` | [`VM1603`](#vm1603) | a `[PerValidationInstance]` constraint constructs an instance at every check |
+| `VM0085` | [`VM3005`](#vm3005) | a fragment is compiled IL from a referenced assembly |
+| `VM0086` | [`VM3006`](#vm3006) | a fragment call chain returns to where it started |
+| `VM0087` | [`VM3002`](#vm3002) | the rules builder flows where the generator cannot follow |
+| `VM0088` | [`VM3004`](#vm3004) | transcribed code references a member the companion file cannot reach |
+| `VM0089` | [`VM3003`](#vm3003) | a rule declaration sits inside a loop, lambda, or local function |
+| `VM0090` | [`VM3101`](#vm3101) | `Require` on a non-nullable value type can never fail |
+| `VM0091` | [`VM3105`](#vm3105) | a facet validated with `As` declares no rules in this compilation |
+| `VM0092` | [`VM3103`](#vm3103) | the code an `Ensure` derived from its condition |
+| `VM0093` | [`VM3104`](#vm3104) | a rule value unwraps a nullable member with `.Value` |
+| `VM0100` | [`VM4001`](#vm4001) | a language pack cannot be read |
+| `VM0101` | [`VM4002`](#vm4002) | a language pack names an unknown shape key |
+| `VM0102` | [`VM4003`](#vm4003) | a template hole exceeds the shape's arguments |
+| `VM0103` | [`VM4004`](#vm4004) | a language pack repeats a key |
+| `VM0104` | [`VM4005`](#vm4005) | a pack's file name and its `culture` disagree |
+| `VM0105` | [`VM4006`](#vm4006) | language pack coverage |
+| `VM0106` | [`VM1502`](#vm1502) | a `[ValidateNested]` target can never have a validator |
+| `VM0107` | [`VM5002`](#vm5002) | an emit stage threw; the build fails instead of succeeding with source missing |
+| `VM0108` | [`VM5003`](#vm5003) | `.Validate<T>()` names a type with no validator in this compilation |
 
 ## Summary
 
 | ID | Severity | |
 |---|---|---|
-| [VM0001](#vm0001) | Error | a string constraint on a non-string |
-| [VM0002](#vm0002) | Error | `[ItemCount]` on a non-collection |
-| [VM0003](#vm0003) | Error | `[Range]` on a type with no ordering |
-| [VM0004](#vm0004) | Warning | `[Required]` on a non-nullable value type |
-| [VM0006](#vm0006) | Error | a pattern that is not a valid regex |
-| [VM0007](#vm0007) | Warning | `[ValidateNested]` target has no rules |
-| [VM0008](#vm0008) | Error | lower bound exceeds upper bound |
-| [VM0009](#vm0009) | Error | constrained property has no accessible getter |
-| [VM0010](#vm0010) | Info | a DataAnnotations constraint is ignored by ValidationModules |
-| [VM0016](#vm0016) | Warning | `RegexOptions.Compiled` is not meaningful |
-| [VM0021](#vm0021) | Error | `[MultipleOf]` on a type with no arithmetic |
-| [VM0022](#vm0022) | Error | a `[MultipleOf]` divisor that is zero or negative |
-| [VM0023](#vm0023) | Error | a `[MultipleOf]` divisor that does not parse as the member's type |
-| [VM0024](#vm0024) | Error | `[UniqueItems]` on a non-collection |
-| [VM0025](#vm0025) | Warning | `[UniqueItems]` over elements with no equality of their own |
-| [VM0026](#vm0026) | Warning | `[Range]` declares neither bound |
-| [VM0027](#vm0027) | Error | `[EnumDefined]` was applied to a member whose type is not an enum. |
-| [VM0028](#vm0028) | Error | a `When`/`Unless` naming a member the type does not declare |
-| [VM0029](#vm0029) | Error | a `When`/`Unless` naming something that is not a predicate |
-| [VM0030](#vm0030) | Warning | a derived property hides a base declaration's constraints |
-| [VM0031](#vm0031) | Warning | a `[ValidateNested]` target is not sealed and declares no mode |
-| [VM0032](#vm0032) | Error | `Polymorphism.Runtime` on a type that can have no subtypes |
-| [VM0033](#vm0033) | Error | a constraint setting both `When` and `Unless` |
-| [VM0017](#vm0017) | *policy* | an inline pattern roots the regex engine |
-| [VM0018](#vm0018) | Error | referenced regex member is unusable |
-| [VM0040](#vm0040) | Error | `ValidationModules.Runtime` is too old |
-| [VM0051](#vm0051) | Warning | constraint on a record parameter without `property:` |
-| [VM0060](#vm0060) | Info¹ | a custom `ValidationAttribute` is constructed once and invoked |
-| [VM0061](#vm0061) | Warning | a cross-field DataAnnotations attribute is not compiled |
-| [VM0063](#vm0063) | Info | a format DataAnnotations attribute is compiled with its BCL semantics |
-| [VM0064](#vm0064) | Error | a length constraint on neither a string nor a collection |
-| [VM0065](#vm0065) | Error | `[Range]` bounds do not parse as the member's type |
-| [VM0067](#vm0067) | Info¹ | `IValidatableObject` runs after every other rule passes |
-| [VM0068](#vm0068) | Warning | `[EnumDataType]` checks a runtime string conversion and is not compiled |
-| [VM0070](#vm0070) | Error | a statement in `Describe` is not transcribable |
-| [VM0071](#vm0071) | Error | a rule's value argument is not a member path on the subject |
-| [VM0075](#vm0075) | Error | an `Ensure` has no inferable field and no `field:` |
-| [VM0079](#vm0079) | Error | a generic type cannot have a generated validator |
-| [VM0080](#vm0080) | Error | a `[CustomValidation]` target cannot be called |
-| [VM0081](#vm0081) | Warning | resource-based `ErrorMessage` resolves reflectively |
-| [VM0082](#vm0082) | Error | a custom constraint attribute's `IsValid` is missing or the wrong shape |
-| [VM0083](#vm0083) | Error | an `IConstraintFor<T>` attribute does not fit the member, or mixes shapes |
-| [VM0084](#vm0084) | Info | a `[PerValidationInstance]` constraint constructs an instance at every check |
-| [VM0085](#vm0085) | Error | a fragment is compiled IL from a referenced assembly |
-| [VM0086](#vm0086) | Error | a fragment call chain returns to where it started |
-| [VM0087](#vm0087) | Error | the rules builder flows where the generator cannot follow |
-| [VM0088](#vm0088) | Error | transcribed code references a member the companion file cannot reach |
-| [VM0089](#vm0089) | Error | a rule declaration sits inside a loop, lambda, or local function |
-| [VM0090](#vm0090) | Error | `Require` on a non-nullable value type can never fail |
-| [VM0091](#vm0091) | Error | a facet validated with `As` declares no rules in this compilation |
-| [VM0092](#vm0092) | Info | the code an `Ensure` derived from its condition |
-| [VM0093](#vm0093) | Warning | a rule value unwraps a nullable member with `.Value` |
-| [VM0106](#vm0106) | Warning | a `[ValidateNested]` target can never have a validator |
-| [VM0107](#vm0107) | Error | an emit stage threw; the build fails instead of succeeding with source missing |
-| [VM0108](#vm0108) | Warning | `.Validate<T>()` names a type with no validator in this compilation |
+| [VM1001](#vm1001) | Error | a string constraint on a non-string |
+| [VM1002](#vm1002) | Error | `[ItemCount]` on a non-collection |
+| [VM1003](#vm1003) | Error | `[Range]` on a type with no ordering |
+| [VM1004](#vm1004) | Error | `[MultipleOf]` on a type with no arithmetic |
+| [VM1005](#vm1005) | Error | `[UniqueItems]` on a non-collection |
+| [VM1006](#vm1006) | Error | `[EnumDefined]` was applied to a member whose type is not an enum |
+| [VM1007](#vm1007) | Error | constrained property has no accessible getter |
+| [VM1008](#vm1008) | Warning | constraint on a record parameter without `property:` |
+| [VM1009](#vm1009) | Warning | a derived property hides a base declaration's constraints |
+| [VM1010](#vm1010) | Error | a generic type cannot have a generated validator |
+| [VM1101](#vm1101) | Error | lower bound exceeds upper bound |
+| [VM1102](#vm1102) | Warning | `[Range]` declares neither bound |
+| [VM1103](#vm1103) | Error | `[Range]` bounds do not parse as the member's type |
+| [VM1104](#vm1104) | Error | a `[MultipleOf]` divisor that is zero or negative |
+| [VM1105](#vm1105) | Error | a `[MultipleOf]` divisor that does not parse as the member's type |
+| [VM1106](#vm1106) | Error | a pattern that is not a valid regex |
+| [VM1107](#vm1107) | Error | referenced regex member is unusable |
+| [VM1201](#vm1201) | Warning | `[Required]` on a non-nullable value type |
+| [VM1202](#vm1202) | Warning | `[UniqueItems]` over elements with no equality of their own |
+| [VM1301](#vm1301) | *policy* | an inline pattern roots the regex engine |
+| [VM1302](#vm1302) | Warning | `RegexOptions.Compiled` is not meaningful |
+| [VM1401](#vm1401) | Error | a `When`/`Unless` naming a member the type does not declare |
+| [VM1402](#vm1402) | Error | a `When`/`Unless` naming something that is not a predicate |
+| [VM1403](#vm1403) | Error | a constraint setting both `When` and `Unless` |
+| [VM1501](#vm1501) | Warning | `[ValidateNested]` target has no rules |
+| [VM1502](#vm1502) | Warning | a `[ValidateNested]` target can never have a validator |
+| [VM1503](#vm1503) | Warning | a `[ValidateNested]` target is not sealed and declares no mode |
+| [VM1504](#vm1504) | Error | `Polymorphism.Runtime` on a type that can have no subtypes |
+| [VM1601](#vm1601) | Error | a custom constraint attribute's `IsValid` is missing or the wrong shape |
+| [VM1602](#vm1602) | Error | an `IConstraintFor<T>` attribute does not fit the member, or mixes shapes |
+| [VM1603](#vm1603) | Info | a `[PerValidationInstance]` constraint constructs an instance at every check |
+| [VM2001](#vm2001) | Info | a DataAnnotations constraint is ignored by ValidationModules |
+| [VM2002](#vm2002) | Info¹ | a custom `ValidationAttribute` is constructed once and invoked |
+| [VM2003](#vm2003) | Warning | a cross-field DataAnnotations attribute is not compiled |
+| [VM2004](#vm2004) | Info | a format DataAnnotations attribute is compiled with its BCL semantics |
+| [VM2005](#vm2005) | Error | a length constraint on neither a string nor a collection |
+| [VM2006](#vm2006) | Info¹ | `IValidatableObject` runs after every other rule passes |
+| [VM2007](#vm2007) | Warning | `[EnumDataType]` checks a runtime string conversion and is not compiled |
+| [VM2008](#vm2008) | Error | a `[CustomValidation]` target cannot be called |
+| [VM2009](#vm2009) | Warning | resource-based `ErrorMessage` resolves reflectively |
+| [VM3001](#vm3001) | Error | a statement in `Describe` is not transcribable |
+| [VM3002](#vm3002) | Error | the rules builder flows where the generator cannot follow |
+| [VM3003](#vm3003) | Error | a rule declaration sits inside a loop, lambda, or local function |
+| [VM3004](#vm3004) | Error | transcribed code references a member the companion file cannot reach |
+| [VM3005](#vm3005) | Error | a fragment is compiled IL from a referenced assembly |
+| [VM3006](#vm3006) | Error | a fragment call chain returns to where it started |
+| [VM3007](#vm3007) | Error | a rule's value argument is not a member path on the subject |
+| [VM3101](#vm3101) | Error | `Require` on a non-nullable value type can never fail |
+| [VM3102](#vm3102) | Error | an `Ensure` has no inferable field and no `field:` |
+| [VM3103](#vm3103) | Info | the code an `Ensure` derived from its condition |
+| [VM3104](#vm3104) | Warning | a rule value unwraps a nullable member with `.Value` |
+| [VM3105](#vm3105) | Error | a facet validated with `As` declares no rules in this compilation |
+| [VM4001](#vm4001) | Error | a language pack cannot be read |
+| [VM4002](#vm4002) | Warning | a language pack names an unknown shape key |
+| [VM4003](#vm4003) | Error | a template hole exceeds the shape's arguments |
+| [VM4004](#vm4004) | Error | a language pack repeats a key |
+| [VM4005](#vm4005) | Warning | a pack's file name and its `culture` disagree |
+| [VM4006](#vm4006) | Info | language pack coverage |
+| [VM5001](#vm5001) | Error | `ValidationModules.Runtime` is too old |
+| [VM5002](#vm5002) | Error | an emit stage threw; the build fails instead of succeeding with source missing |
+| [VM5003](#vm5003) | Warning | `.Validate<T>()` names a type with no validator in this compilation |
 
 ---
 
-## Constraint diagnostics
+## Constraint declarations
 
-### VM0001 {#vm0001}
+Raised by the attribute front end, over the constraints declared on a type's members.
+
+### VM1001 {#vm1001}
 
 **Error**: *`'[StringLength]' applies to strings; 'Age' is 'int'`*
 
 A string constraint, `[StringLength]` or `[Pattern]`, on a member that is not a `string`.
 
 ```csharp
-[StringLength(1, 10)] // VM0001
+[StringLength(1, 10)] // VM1001
 public int Age { get; init; }
 
-[Pattern("^a$")] // VM0001
+[Pattern("^a$")] // VM1001
 public int Age { get; init; }
 ```
 
 You probably wanted `[Range]` for a number, or `[ItemCount]` for a collection.
 
-### VM0002 {#vm0002}
+### VM1002 {#vm1002}
 
 **Error**: *`[ItemCount] applies to collections; 'Name' is 'string'`*
 
 ```csharp
-[ItemCount(1, 10)] // VM0002
+[ItemCount(1, 10)] // VM1002
 public string? Name { get; init; }
 ```
 
 A `string` is deliberately **not** a collection here, even though it implements `IEnumerable<char>`.
-Taking that reading would turn a length constraint into a per-character walk, so this is VM0002 and
+Taking that reading would turn a length constraint into a per-character walk, so this is VM1002 and
 `[StringLength]` is what you wanted.
 
-### VM0003 {#vm0003}
+### VM1003 {#vm1003}
 
 **Error**: *`[Range] applies to numeric and date types; 'Name' is 'string'`*
 
@@ -115,140 +220,7 @@ Taking that reading would turn a length constraint into a per-character walk, so
 floating-point, `decimal`, `DateTime`, `DateTimeOffset`, `DateOnly`, `TimeOnly` and `TimeSpan` all
 qualify, as do their nullable forms.
 
-### VM0004 {#vm0004}
-
-**Warning**: *`'Age' is a non-nullable value type, so it is always present and [Required] can never fail`*
-
-```csharp
-[Required] // VM0004
-public int Age { get; init; }
-```
-
-A warning rather than an error: the declaration is harmless, just inert. Making it an error would
-break a build over a no-op.
-
-Use `int?` if the value is genuinely optional, or `[Range]` if what you meant was "not zero".
-
-### VM0006 {#vm0006}
-
-**Error**: *`The pattern on 'Sku' is not a valid regular expression: …`*
-
-The message is the regex engine's own. Re-describing it would produce something worse than what the
-parser already says.
-
-### VM0007 {#vm0007}
-
-**Warning**: *`'Address' declares no constraints and no [GenerateValidator], so [ValidateNested] on 'Home' validates nothing and the descent is dropped`*
-
-No validator exists for the nested type, so there is nothing for the descent to call and it is
-dropped from the generated validator. A model that reads as validated and validates nothing is the
-failure this library exists to make impossible, which is why the silence is stated here rather
-than discovered.
-
-**Warning rather than error**, unlike its neighbours. The result is a rule that does not run rather
-than one that runs where it should not, and writing `[ValidateNested]` before the nested type's own
-constraints is an ordinary order to work in.
-
-It stays quiet when the target's rules come from a [rule class](/guide/rule-classes), when the
-target carries `[GenerateValidator]`, when the target itself carries `[ValidateNested]` and so gets
-a validator that descends further, and when the target comes from another assembly, which may carry
-a validator generated over there that this compilation cannot see.
-
-Mark the nested type `[GenerateValidator]` when its rules arrive from a
-[rule class](/guide/rule-classes) rather than from its own attributes.
-
-### VM0008 {#vm0008}
-
-**Error**: *`The bounds on 'Name' are inverted, so the constraint can never be satisfied`*
-
-```csharp
-[StringLength(10, 1)] // VM0008
-public string? Name { get; init; }
-```
-
-Applies to `[StringLength]` and `[ItemCount]`. Equal bounds are fine, since `[StringLength(2, 2)]`
-is an exact length.
-
-### VM0009 {#vm0009}
-
-**Error**: *`'Name' has no accessible getter, so its constraints cannot be evaluated`*
-
-```csharp
-[Required] // VM0009
-public string? Name { set { } }
-
-[Required] // VM0009
-public string? Name { private get; set; }
-```
-
-`internal` is fine, because the generated validator lands in the same assembly.
-
-The unreadable property is dropped rather than emitted anyway, so the build fails on VM0009 alone
-and not also on generated code that will not compile. Every other constraint on the type still
-applies.
-
-### VM0016 {#vm0016}
-
-**Warning**: *`Patterns compile through [GeneratedRegex]; RegexOptions.Compiled on 'Sku' is ignored`*
-
-```csharp
-[Pattern("^a$", Options = RegexOptions.Compiled)] // VM0016
-```
-
-`RegexOptions.Compiled` emits IL through `Reflection.Emit`, which is the habit this library exists to
-remove, and it does nothing here regardless. Other `RegexOptions` values are honoured.
-
-### VM0017 {#vm0017}
-
-**Severity depends on policy**: *`The pattern on 'Sku' is built from a string at run time, which roots the regex parser and interpreter …`*
-
-An inline `[Pattern("…")]` in an AOT-facing project. Constructing a `Regex` from a string means the
-parser and interpreter must be in the binary, which is about 450 KB, once.
-
-```csharp
-[Pattern("^[A-Z]{3}$")] // VM0017 under AOT
-public string? Sku { get; init; }
-```
-
-Declare it with `[GeneratedRegex]` and point at it:
-
-```csharp
-public static partial class PetPatterns {
-    [GeneratedRegex("^[A-Z]{3}$")]
-    public static partial Regex Sku();
-}
-
-[Pattern(typeof(PetPatterns), nameof(PetPatterns.Sku))]
-public string? Sku { get; init; }
-```
-
-| `ValidationModules_PatternPolicy` | Effect |
-|---|---|
-| *(unset)* | `Error` if `PublishAot` or `IsAotCompatible`, else `Allow` |
-| `Allow` | silent |
-| `Warn` | warning, constraint still emitted |
-| `Error` | error, constraint dropped |
-
-Under `Error` the constraint is dropped and the rest of the type is still emitted, so the build fails
-with one useful diagnostic rather than two. [Patterns and regex](/guide/patterns) has the detail.
-
-### VM0018 {#vm0018}
-
-**Error**: *`'PetPatterns.Sku' is not static, so the pattern on 'Sku' cannot be emitted`*
-
-The referenced member must exist, be static, take no parameters if it is a method, return `Regex`,
-and be visible to the generated validator. The message names which of those failed:
-
-| Reason |
-|---|
-| `does not exist` |
-| `is not static` |
-| `takes parameters` |
-| `does not return Regex` / `is not a Regex` |
-| `is not accessible` |
-| `is not a method, property or field` |
-
-### VM0021 {#vm0021}
+### VM1004 {#vm1004}
 
 **Error**: *`[MultipleOf] applies to integral, decimal and floating-point types; 'Name' is 'string'`*
 
@@ -256,81 +228,19 @@ The check is arithmetic, so the member's type has to support it. Every integral 
 `double` and `float` qualify, as do their nullable forms. Dates do not: `multipleOf` has no meaning
 for them in OpenAPI either.
 
-### VM0022 {#vm0022}
-
-**Error**: *`The divisor on 'Quantity' is '0'; it must be greater than zero`*
-
-```csharp
-[MultipleOf(0)] // VM0022
-public int Quantity { get; init; }
-```
-
-An error rather than a dropped rule, because of where the alternative fails. `value % 0` is CS0020
-for an integral member and a `DivideByZeroException` for a decimal one. Leaving it to the emitter
-puts the failure inside a generated file, which is the one place an error must not land. A negative divisor is caught here too; OpenAPI requires `multipleOf` to be positive, and
-`% -5` answers the same question as `% 5` while reading as if it did not.
-
-### VM0023 {#vm0023}
-
-**Error**: *`The divisor on 'Quantity' does not parse as 'int'`*
-
-The divisor is parsed at build time against the member's own type. This fires when it has no form
-that type can be checked against, such as a string that is not a number or a fractional divisor on
-an integral member:
-
-```csharp
-[MultipleOf("2.5")] // VM0023: 'Quantity' is int
-public int Quantity { get; init; }
-```
-
-Dropping the fraction silently would emit `value % 2`, which is a different rule.
-
-### VM0024 {#vm0024}
+### VM1005 {#vm1005}
 
 **Error**: *`[UniqueItems] applies to collections; 'Name' is 'string'`*
 
 `string` is deliberately not a collection here, as it is not for `[ItemCount]`. Treating one as a
 collection would turn this into a check for repeated characters.
 
-### VM0025 {#vm0025}
-
-**Warning**: *`'Sample.Tag' does not override Equals, so [UniqueItems] on 'Tags' compares elements by reference and two elements with equal contents both pass`*
-
-```csharp
-public class Tag { public string? Value { get; init; } }
-
-public sealed record Order {
-    [UniqueItems] // VM0025
-    public List<Tag> Tags { get; init; } = [];
-}
-```
-
-Uniqueness runs through `EqualityComparer<T>.Default`. For a class that overrides nothing that is
-reference equality, so two elements with identical contents are both "unique" and the rule passes
-for the wrong reason. That is worse than one that fails, because nothing says so.
-
-Make it a `record`, override `Equals`, or implement `IEquatable<T>`; any of the three silences this
-and makes the check mean what it reads as. Structs do not warn: `ValueType.Equals` compares fields,
-which is slow but correct.
-
-### VM0026 {#vm0026}
-
-**Warning**: *`[Range] on 'Age' sets neither Min nor Max, so it can never fail`*
-
-```csharp
-[Range] // VM0026
-public int Age { get; init; }
-```
-
-A warning rather than an error, for VM0004's reason: the declaration is inert rather than wrong.
-Set `Min`, `Max`, or both.
-
-### VM0027 {#vm0027}
+### VM1006 {#vm1006}
 
 **Error**: *`[EnumDefined] applies to enum types; 'Quantity' is 'int'`*
 
 ```csharp
-[EnumDefined] // VM0027
+[EnumDefined] // VM1006
 public int Quantity { get; init; }
 ```
 
@@ -341,120 +251,30 @@ is no value it could accept.
 Nullable enums are fine. A `PaymentMethod?` is checked when it has a value and passes when it does
 not.
 
-### VM0028 {#vm0028}
+### VM1007 {#vm1007}
 
-**Error**: *`'PolicyNumber' names 'IsAuto', which 'Claim' does not declare`*
-
-```csharp
-[Required(When = nameof(IsAuto))] // VM0028 if Claim has no IsAuto
-public string? PolicyNumber { get; init; }
-```
-
-A condition names a member of the type being validated. Resolution walks the base chain, so a
-predicate declared on a shared base works from every type that inherits it. That is also why a
-condition on an *inherited* constraint resolves against the derived type rather than the one that
-declared it.
-
-### VM0029 {#vm0029}
-
-**Error**: *`'Claim.IsAuto' cannot be used as a condition`*
-
-Three shapes are accepted, and they are the three that cannot capture anything:
+**Error**: *`'Name' has no accessible getter, so its constraints cannot be evaluated`*
 
 ```csharp
-public bool IsAuto { get; init; }                    // a bool property
-public bool IsAuto() => …;                           // a parameterless bool method
-public static bool IsAuto(Claim value) => …;         // a static bool method taking the model
+[Required] // VM1007
+public string? Name { set { } }
+
+[Required] // VM1007
+public string? Name { private get; set; }
 ```
 
-The three shapes cannot capture anything, so self-containment holds here by construction rather
-than by analysis. There is no `WhenType`, so shared logic is reached through a one-line forwarder
-on the model.
+`internal` is fine, because the generated validator lands in the same assembly.
 
-### VM0030 {#vm0030}
+The unreadable property is dropped rather than emitted anyway, so the build fails on VM1007 alone
+and not also on generated code that will not compile. Every other constraint on the type still
+applies.
 
-**Warning**: *`'Name' hides 'Base.Name', so the 2 constraint(s) declared there no longer apply`*
-
-```csharp
-public class Base {
-    [Required]
-    [StringLength(1, 10)]
-    public virtual string? Name { get; set; }
-}
-
-public class Derived : Base {
-    [StringLength(1, 200)]
-    public new string? Name { get; set; } // VM0030
-}
-```
-
-Constraints are inherited, and the most-derived declaration of a property supplies **all** of that
-property's constraints rather than some of them, because two `[StringLength]` bounds on one field
-would be ambiguous and would report twice. So `new` silently drops what the base said, and this says
-so.
-
-An `override` is one property with two declarations rather than two properties, so it does not fire:
-`ValidationConstraintAttribute` is `Inherited = true` and those declarations accumulate.
-
-### VM0031 {#vm0031}
-
-**Warning**: *`'Address' is not sealed, so a value of a more derived type may reach 'Home'`*
-
-```csharp
-public record Address { … }        // not sealed
-
-public sealed record Person {
-    [ValidateNested] // VM0031
-    public Address? Home { get; init; }
-}
-```
-
-A descent dispatches on the declared type, so a subtype's own rules are not reached unless you ask
-for them. Say what should happen: seal the target, or pass a
-[`Polymorphism`](./attributes#polymorphism) mode.
-
-This fires widely on existing code, because `public record Address` without `sealed` is the common
-idiom. That is intended: sealing is the default posture, not a workaround.
-
-::: tip Why it keys on sealed rather than on subtypes
-Deliberately a local fact about the type, never "are any subtypes visible from here". A diagnostic
-keyed on visibility would appear when a hierarchy sat in one assembly and vanish when a type moved
-to a package, reintroducing the layout-dependence that explicit modes exist to prevent.
-:::
-
-### VM0032 {#vm0032}
-
-**Error**: *`'Address' is sealed, so its runtime type can never differ from its declared type`*
-
-```csharp
-[ValidateNested(Polymorphism.Runtime)] // VM0032
-public Address? Home { get; init; }    // where Address is sealed
-```
-
-`Runtime` buys a container lookup for an answer the declared type already had. Use `DeclaredOnly`.
-
-### VM0033 {#vm0033}
-
-**Error**: *`'Required' on 'PolicyNumber' sets both When and Unless, which is ambiguous`*
-
-Write two constraints, or one negated condition.
-
-### VM0040 {#vm0040}
-
-**Error**: *`The generated validators require ValidationModules.Runtime contract N or later; the referenced runtime is contract M`*
-
-Version lockstep. The generator emits calls against a runtime surface, and a runtime older than that
-surface would fail *inside generated code*, the worst place for an error to land. So the check runs
-before any source is added and the build fails here instead.
-
-Update the `ValidationModules.Runtime` package reference to match the generator.
-
-### VM0051 {#vm0051}
+### VM1008 {#vm1008}
 
 **Warning**: *`'Required' is on a record parameter without the property: target, so it lands on the parameter and is never evaluated. Write [property: Required]`*
 
 ```csharp
-public sealed record Pet([Required] string Name);              // VM0051
+public sealed record Pet([Required] string Name);              // VM1008
 public sealed record Pet([property: Required] string Name);    // correct
 ```
 
@@ -481,386 +301,37 @@ public sealed record Pet {
 }
 ```
 
----
+### VM1009 {#vm1009}
 
-## DataAnnotations diagnostics
-
-¹ Under [`ValidationModules_DataAnnotations`](/reference/msbuild) `Ignore`, VM0060 and VM0067 keep
-their Info severity but swap their message's tail: it says that *ValidationModules* is the one
-ignoring the rule. With the front end deliberately off, an attribute this library leaves alone is
-configuration working rather than a problem, and another validation system reading the same
-attributes may still enforce it.
-
-### VM0010 {#vm0010}
-
-**Info**: *`'RequiredAttribute' on 'Name' is a DataAnnotations constraint, which ValidationModules is ignoring because ValidationModules_DataAnnotations is set to Ignore; another validation system may still enforce it`*
-
-Reported once per ignored constraint, so switching the front end off cannot silently change what
-this library validates. It names ValidationModules deliberately: the attribute itself stays in
-the compilation, and DataAnnotations, a different validator, or a test harness may still read
-it. To have this library enforce the rule, remove the `Ignore` setting or move it to
-[native constraints](/guide/constraints).
-
-### VM0060 {#vm0060}
-
-**Info** (**Info** with an ignoring tail under `Ignore`¹): *`'EvenNumberAttribute' on 'Age' derives from ValidationAttribute, so its check is user code. It is constructed once and invoked with DataAnnotations semantics, so this property pays DataAnnotations' costs: a ValidationContext per check, and a box if the value is a value type`*
-
-A custom `ValidationAttribute` subclass is [invoked, not compiled](/guide/data-annotations#custom-rules-are-invoked):
-constructed once from its compile-time-constant arguments into a static field, then run through
-`GetValidationResult` exactly as `Validator.TryValidateObject` would run it. The Info exists for
-the cost model, since this is the one place a property's validation allocates on a passing value.
-A [rule class](/guide/rule-classes) remains the zero-cost home for the same logic.
-
-The rare attribute whose arguments cannot be rendered (a broken compilation) reports the same id
-back at **Warning** with the old not-enforced message.
-
-### VM0061 {#vm0061}
-
-**Warning**: *`'CompareAttribute' on 'Confirm' compares against another member, which a per-property constraint cannot express`*
+**Warning**: *`'Name' hides 'Base.Name', so the 2 constraint(s) declared there no longer apply`*
 
 ```csharp
-[Compare(nameof(Password))] // VM0061
-public string? Confirm { get; set; }
-```
+public class Base {
+    [Required]
+    [StringLength(1, 10)]
+    public virtual string? Name { get; set; }
+}
 
-Use `rules.Ensure` in a [rule class](/guide/rule-classes), the declaration form that *can* span
-two properties:
-
-```csharp
-rules.Ensure(x.Password == x.Confirm, code: "password_mismatch");
-```
-
-### VM0063 {#vm0063}
-
-**Info**: *`'EmailAddressAttribute' on 'Email' compiles to the DataAnnotations check: the value must contain exactly one '@', neither first nor last, and no line breaks - 'a@b' passes, as RFC 5322 permits. Declare a [Pattern] instead if you want a stricter rule`*
-
-Covers `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]` and
-`[FileExtensions]`, each compiled to
-[the BCL's exact check](/guide/data-annotations#the-format-validators).
-
-Info rather than Warning, because there is nothing to fix: the attribute is enforced, with the
-same semantics every other DataAnnotations consumer gives it, which Microsoft documents as frozen
-by design. The message exists because those semantics are looser than the attribute names suggest.
-An `a@b` really does pass `[EmailAddress]`, and RFC 5322 agrees it should. The exact compiled check
-is stated once, at the site that declared it, where an author who wanted something
-stricter will actually read it.
-
-### VM0064 {#vm0064}
-
-**Error**: *`'MinLengthAttribute' applies to strings and collections; 'Age' is 'int'`*
-
-`[MinLength]`, `[MaxLength]` and `[Length]` apply to both strings and collections in DataAnnotations,
-so the member's type decides which constraint each becomes. A member that is neither has no reading.
-
-### VM0065 {#vm0065}
-
-**Error**: *`The bounds on 'Born' do not parse as 'System.DateOnly'`*
-
-```csharp
-[Range("not-a-date", "2100-01-01")] // VM0065
-public DateOnly Born { get; init; }
-
-[Range("abc", "def")] // VM0065
-public decimal Price { get; init; }
-
-[Range("2000-01-01", "2100-01-01")] // VM0065
-public int Age { get; init; }
-```
-
-A bound written as a string is parsed against the member's own type at generation time, which is
-what `RangeAttribute`'s documentation has always promised. It is emitted as a constructor call rather
-than a quoted literal. A bound that does not parse is reported here, at the declaration, rather than
-becoming a comparison between a `DateOnly` and a `string` inside a generated file.
-
-The constraint is dropped when its bounds do not parse, so the build fails on VM0065 alone and not
-also on generated code that will not compile.
-
-`[Range]` on a member with no ordering at all is [VM0003](#vm0003), which fires first. Saying it
-twice would be worse than saying it once.
-
-::: tip What the emitted bound looks like
-`[Range("2000-01-15", "2100-12-31")]` on a `DateOnly` becomes
-`new global::System.DateOnly(2000, 1, 15)` and `new global::System.DateOnly(2100, 12, 31)`, in both
-the comparison and the message, so the two cannot disagree about what the bound is. A `DateTime`
-bound is `DateTimeKind.Unspecified`: a bound written `"2000-01-01"` carries no zone, and anchoring it
-to whatever the build machine happened to be in would make the same source mean two things.
-:::
-
-### VM0067 {#vm0067}
-
-**Info** (**Info** with an ignoring tail under `Ignore`¹): *`'Customer' implements IValidatableObject; the generated validator calls its Validate method after every other rule on the type has passed, exactly as Validator.TryValidateObject sequences it, and the type keeps no boolean fast path`*
-
-Object-level validation is [compiled with DataAnnotations' own sequencing](/guide/data-annotations#custom-rules-are-invoked):
-last, and only when the pass is otherwise clean. The boolean fast path cannot know "the whole pass
-was clean", so the type falls back to the interface default `IsValid`. That is correct but not
-free, the same trade a type carrying `rules.Apply(…)` already makes.
-
-### VM0068 {#vm0068}
-
-**Warning**: *`'EnumDataTypeAttribute' on 'Day' checks that a loosely-typed value parses as an enum, a runtime conversion this library does not compile. It is not enforced; type the member as the enum and use [EnumDefined]`*
-
-```csharp
-[EnumDataType(typeof(DayOfWeek))] // VM0068 - not enforced
-public string? Day { get; set; }
-```
-
-`[EnumDataType]` validates that a string or number *parses* as a member of the named enum, which
-is the same runtime string conversion [VM0080](#vm0080)'s narrowing refuses. The native answer is
-to type the member as the enum - the deserializer then owns the parse - and constrain it with
-[`[EnumDefined]`](/reference/attributes#enumdefined), which checks membership without boxing or
-reflection.
-
-### VM0080 {#vm0080}
-
-**Error**: *`'CustomValidationAttribute' on 'Name' cannot be compiled: 'Sample.Checks.Verify' is not a public static method taking one or two parameters`*
-
-`[CustomValidation]` names its method as a string, which DataAnnotations resolves reflectively per
-validation. This generator resolves it once, at build time, and emits a direct call, so a target
-that cannot be called is a build error naming the reason rather than a rule that silently never
-runs.
-Accepted shapes are DataAnnotations' own: public static, returning `ValidationResult`, taking the
-value alone or the value and a `ValidationContext`.
-
-One deliberate narrowing: the value parameter must accept the member's type as declared, or be
-`object`. DataAnnotations would attempt a runtime string conversion; this library will not convert
-silently, and the message says what to change.
-
-### VM0081 {#vm0081}
-
-**Warning**: *`'EvenNumberAttribute' on 'Age' sets ErrorMessageResourceType, which DataAnnotations resolves with reflection when the message is formatted`*
-
-The one part of an invoked attribute the trimmer can break: resource-based messages reflect over
-the resource type at format time, and a trimmed publish may have removed the property. Set
-`ErrorMessage`, or keep the resource type rooted.
-
-### VM0082 {#vm0082}
-
-**Error**: *`'SkuAttribute' on 'Code' cannot be compiled: IsValid's first parameter is 'int', which cannot accept this member's 'string?'`*
-
-A [`CustomConstraintAttribute`](/guide/custom-constraints) subclass whose contract does not hold:
-no public static bool `IsValid`, a first parameter that cannot accept the member, extra
-parameters that do not line up with the constructor positionally and by type, or a custom
-property setter, which a static check has no way to receive. Erroring beats an argument that
-silently never arrives.
-
-Catching the shape at build time is the feature. The invoked DataAnnotations form discovers the
-same mistakes at run time, or never.
-
-### VM0083 {#vm0083}
-
-**Error**: *`'EvenAttribute' on 'Code' cannot be compiled: it implements IConstraintFor<int>, and none of those accepts this member's 'string?'`*
-
-An attribute implementing [`IConstraintFor<T>`](/guide/custom-constraints#when-the-check-needs-an-instance)
-that cannot be compiled, with the reason in the tail: no implemented instantiation accepts the
-member's type, more than one does (implement the member's own type, since an exact instantiation
-always wins outright), an argument in the declaration is not a renderable constant, the attribute
-class is generic, or the class also derives from `CustomConstraintAttribute`, which is two native
-shapes disagreeing about who runs the check.
-
-Deriving from DataAnnotations' `ValidationAttribute` *and* implementing the interface is not an
-error. It is the migration story, and the interface wins.
-
-### VM0084 {#vm0084}
-
-**Info**: *`'StampedAttribute' is marked [PerValidationInstance], so checking 'Sequence' constructs a new instance on every validation pass, passing values included - the allocation a shared instance would not cost`*
-
-Nothing is wrong: the class asked for per-check isolation and gets it. But a clean pass otherwise
-allocates nothing, and this is the one constraint cost that breaks that, so it is stated at every
-site that pays it rather than only on the class that caused it.
-
----
-
-## Rule class diagnostics
-
-A `Describe` body is [read, never run](/guide/rule-classes), so a statement the generator cannot
-carry has to break the build. The generated validator would otherwise check less than the
-body says. Almost everything transcribes; these are the exceptions, and every one is an error.
-
-### VM0070 {#vm0070}
-
-**Error**: *`'PetRules.Describe' contains a TryStatement, which the generator does not transcribe`*
-
-```csharp
-public static void Describe(ValidationRules<Pet> rules, Pet x) {
-    try { rules.Require(x.Name); } catch { }   // VM0070
-    x.Name = "fixed";                          // VM0070: validation does not mutate its subject
-    if (x.Age > 20) {
-        rules.Apply(Checks.Senior);            // VM0070: Apply runs last, unconditionally
-    }
+public class Derived : Base {
+    [StringLength(1, 200)]
+    public new string? Name { get; set; } // VM1009
 }
 ```
 
-The blacklist is short and v1-deliberate: `goto`, `try`/`catch`, `lock`, `using` statements,
-assignment to the subject, and `Apply` anywhere but the top of the body. Locals, `if`/`else`,
-`switch`, loops-as-computation, helpers and the reporter tier all transcribe.
+Constraints are inherited, and the most-derived declaration of a property supplies **all** of that
+property's constraints rather than some of them, because two `[StringLength]` bounds on one field
+would be ambiguous and would report twice. So `new` silently drops what the base said, and this says
+so.
 
-### VM0071 {#vm0071}
+An `override` is one property with two declarations rather than two properties, so it does not fire:
+`ValidationConstraintAttribute` is `Inherited = true` and those declarations accumulate.
 
-**Error**: *`A rule's value argument in 'PetRules' must be a member path on the subject parameter, so the error has a field to be pathed against; anything else needs field:`*
-
-```csharp
-rules.Require(x.Name!.Trim());          // VM0071
-rules.Range(x.Nights + 1, 1, 30);       // VM0071
-rules.Require(x.Home?.PostalCode);      // fine: ?. is the nested-path spelling
-```
-
-The member path is what supplies the field name, taking `[JsonPropertyName]` first and then the
-naming policy. Naming the error `name` for `x.Name!.Trim()` would be a guess; pass `field:` when the
-value genuinely is not a path.
-
-### VM0075 {#vm0075}
-
-**Error**: *`The condition in 'PetRules.Describe' reads no property of the subject, so the rule has no field to report against. Anchor it by reading the property it is about, or pass field:`*
-
-```csharp
-rules.Ensure(1 < 2);                    // VM0075
-rules.Ensure(1 < 2, field: "nights");   // fine: field: anchors it
-rules.Ensure(x.Nights <= 7);            // fine: anchored to nights
-```
-
-An `Ensure` reports against the first property its condition reads. A condition that reads none
-needs `field:`. The sanctioned case is a fragment computing over its extra parameters.
-
-### VM0085 {#vm0085}
-
-**Error**: *`Fragment 'SharedRules.Standard' is compiled IL from a referenced assembly; fragments must be part of this compilation - use a shared project or a source-only package`*
-
-A [fragment](/guide/rule-classes#fragments) is expanded from syntax, and a referenced assembly
-ships IL. The symbol has no body to read, so the same-compilation rule is a fact rather than a
-policy, and a plain `ProjectReference` is on the wrong side of it. Share fragments through a
-shared project (`.shproj` or linked `Compile` items) or a source-only package.
-
-### VM0086 {#vm0086}
-
-**Error**: *`Fragments may call fragments, but this chain returns to where it started: Left -> Right -> Left`*
-
-Fragment expansion follows calls; a cycle would follow them forever. The message names the chain.
-
-### VM0087 {#vm0087}
-
-**Error**: *`The builder declares rules only where the generator can read them; here it would store it, capture it, return it, or pass it to anything the generator cannot read, which would validate nothing at runtime`*
-
-```csharp
-var chain = rules.Require(x.Name);                  // VM0087
-Func<PropertyRules<Pet, string?>> f = () => rules.Require(x.Name);  // VM0087
-Helper(rules);                                      // VM0087 unless Helper is a fragment
-```
-
-The anti-silent-drop rule. `ValidationRules<T>` is inert, so a rule call the generator cannot see
-would transcribe into a call on a builder that validates nothing. Every unfollowable flow is an
-error instead. A `static`, `void`, same-compilation method receiving the builder is a fragment and
-is followed; everything else is this.
-
-### VM0088 {#vm0088}
-
-**Error**: *`'Max' is not accessible from the companion file 'ModelRules.Describe' is transcribed into. Make it internal`*
-
-```csharp
-public sealed class ModelRules : IValidationRulesFor<Model> {
-    private static readonly int Max = 10;
-
-    public static void Describe(ValidationRules<Model> rules, Model x) {
-        rules.Ensure(x.Count <= Max);   // VM0088
-    }
-}
-```
-
-The body is transcribed into `{RulesClass}_Rules`, a companion class carrying the declaring file's
-`using` directives, which is what lets `x.Status == Status.Active` resolve at all. A non-private
-member is qualified automatically as `ModelRules.Max` and read as itself. A `private` one is out of
-reach, so make it `internal`.
-
-A `private const` of any type needs no change. C# bakes a constant into every use site already, so
-the value is carried across as a literal with the suffix and precision that preserve both its
-value and its type (`1.50m` keeps its scale, a `double` keeps all seventeen digits, an enum comes
-back as a cast, and `NaN` and the infinities are named).
-
-Inside a generic fragment this also covers a member the concrete target implements **explicitly**:
-`audited.CreatedBy` binds through the constraint interface, but the emitted method's subject is
-the concrete type, where an explicit implementation is not reachable by name.
-
-### VM0089 {#vm0089}
-
-**Error**: *`'PetRules.Describe' declares a rule inside a scope the generator cannot expand it in. Use Each for collections - a collection of strings chains element rules, Each(x.Steps).Length(5, 500) - or report per element through rules.Context`*
-
-```csharp
-foreach (var toy in x.Toys) {
-    rules.Require(toy.Name);            // VM0089
-}
-
-for (var i = 0; i < x.Steps.Count; i++) {
-    rules.Length(x.Steps[i], 5, 500);   // VM0089 - write rules.Each(x.Steps).Length(5, 500)
-}
-```
-
-Islands need generator-computed identity, meaning a field and a rendered message, and a loop gives
-them none. Collections are `Each`'s job: a collection of objects descends into the element type's
-validator, and a collection of strings chains element rules with indexed paths. For anything else
-per-element, loop with the [reporter tier](/guide/rule-classes#reporter) and a computed field
-string.
-
-### VM0090 {#vm0090}
-
-**Error**: *`'x.Nights' is a non-nullable value type and can never be missing, so this rule can never fail`*
-
-```csharp
-rules.Require(x.Nights);   // VM0090, the only error on the line
-```
-
-A non-nullable value type fits none of `Require`'s typed overloads - inference does not unwrap
-`Nullable`, and a dedicated non-nullable overload would collide with the reference-type one - so
-an `object?` catch-all binds the spelling for exactly this diagnosis. Typed arguments never
-reach it. Constrain the value instead, or make the property nullable.
-
-### VM0091 {#vm0091}
-
-**Error**: *`'IAudited' is validated as a facet here, but nothing in this compilation declares rules for it, so this would check nothing. Give the facet constraint attributes or a rules class`*
-
-`rules.As<IAudited>(x)` binds to the facet's own generated validator. A facet declared in this
-compilation with nothing declaring rules for it would make the `As` a silent no-op, which is the
-failure this library refuses everywhere else. Declare the facet's rules in a rules class targeting
-it, as `AuditRules : IValidationRulesFor<IAudited>`. That is the sound pairing, since an interface's
-*attribute* constraints already reach every implementer through constraint inheritance, and an `As`
-on top of those would report every facet error twice.
-
-### VM0092 {#vm0092}
-
-**Info**: *`This rule reports code 'start_less_than_end', derived from 'start < end.'. Pass code: to pin it against a change to the condition`*
-
-An `Ensure` without an explicit `code:`, stating what it derived.
-
-Info because there is nothing to fix. Deriving a code is the designed behaviour rather than a
-fallback, so a warning would imply the author erred by not passing `code:`. The diagnostic exists
-because a derived code is the one part of a rules class you cannot read off the source, and it is
-worth seeing where the rule is written. Silent when `code:` was passed, since the code is then in
-the source already.
-
-[Error codes](/reference/codes#why-ensure-derives-its-code) has the derivation and the operator
-spellings.
-
-### VM0093 {#vm0093}
-
-**Warning**: *`'x.BatteryKwh.Value' unwraps a nullable member. The rule takes the nullable directly, and the field path is derived from the member - write 'x.BatteryKwh'`*
-
-```csharp
-rules.Range(x.BatteryKwh.Value, 10, 300);   // VM0093 - write x.BatteryKwh
-```
-
-Every rule takes the nullable directly, so the unwrap is never needed - and without this
-correction it was never harmless: the derived field path kept the `.Value` hop, so the wire
-carried `batteryKwh.value` and the composed message named `value`.
-
-The reader corrects the rule - it compiles against the member itself, guard, path and all - and
-warns rather than erroring, because failing a build over a mistake it just fixed would be spite.
-The source should still drop the `.Value` so it says what is generated. See
-[nullable members in rule classes](/guide/rule-classes#the-vocabulary).
-
-### VM0079 {#vm0079}
+### VM1010 {#vm1010}
 
 **Error**: *`'Envelope' is generic, and a validator for it could not be registered`*
 
 ```csharp
-public sealed record Envelope<T> {      // VM0079
+public sealed record Envelope<T> {      // VM1010
     [Required] public string? TraceId { get; init; }
     public T? Payload { get; init; }
 }
@@ -892,7 +363,254 @@ diagnostic existed the generator emitted a *non-generic* validator referencing `
 failed with several CS0246 inside a generated file and nothing pointing at the cause.
 :::
 
-### VM0106 {#vm0106}
+### VM1101 {#vm1101}
+
+**Error**: *`The bounds on 'Name' are inverted, so the constraint can never be satisfied`*
+
+```csharp
+[StringLength(10, 1)] // VM1101
+public string? Name { get; init; }
+```
+
+Applies to `[StringLength]` and `[ItemCount]`. Equal bounds are fine, since `[StringLength(2, 2)]`
+is an exact length.
+
+### VM1102 {#vm1102}
+
+**Warning**: *`[Range] on 'Age' sets neither Min nor Max, so it can never fail`*
+
+```csharp
+[Range] // VM1102
+public int Age { get; init; }
+```
+
+A warning rather than an error, for VM1201's reason: the declaration is inert rather than wrong.
+Set `Min`, `Max`, or both.
+
+### VM1103 {#vm1103}
+
+**Error**: *`The bounds on 'Born' do not parse as 'System.DateOnly'`*
+
+```csharp
+[Range("not-a-date", "2100-01-01")] // VM1103
+public DateOnly Born { get; init; }
+
+[Range("abc", "def")] // VM1103
+public decimal Price { get; init; }
+
+[Range("2000-01-01", "2100-01-01")] // VM1103
+public int Age { get; init; }
+```
+
+A bound written as a string is parsed against the member's own type at generation time, which is
+what `RangeAttribute`'s documentation has always promised. It is emitted as a constructor call rather
+than a quoted literal. A bound that does not parse is reported here, at the declaration, rather than
+becoming a comparison between a `DateOnly` and a `string` inside a generated file.
+
+The constraint is dropped when its bounds do not parse, so the build fails on VM1103 alone and not
+also on generated code that will not compile.
+
+`[Range]` on a member with no ordering at all is [VM1003](#vm1003), which fires first. Saying it
+twice would be worse than saying it once.
+
+::: tip What the emitted bound looks like
+`[Range("2000-01-15", "2100-12-31")]` on a `DateOnly` becomes
+`new global::System.DateOnly(2000, 1, 15)` and `new global::System.DateOnly(2100, 12, 31)`, in both
+the comparison and the message, so the two cannot disagree about what the bound is. A `DateTime`
+bound is `DateTimeKind.Unspecified`: a bound written `"2000-01-01"` carries no zone, and anchoring it
+to whatever the build machine happened to be in would make the same source mean two things.
+:::
+
+### VM1104 {#vm1104}
+
+**Error**: *`The divisor on 'Quantity' is '0'; it must be greater than zero`*
+
+```csharp
+[MultipleOf(0)] // VM1104
+public int Quantity { get; init; }
+```
+
+An error rather than a dropped rule, because of where the alternative fails. `value % 0` is CS0020
+for an integral member and a `DivideByZeroException` for a decimal one. Leaving it to the emitter
+puts the failure inside a generated file, which is the one place an error must not land. A negative divisor is caught here too; OpenAPI requires `multipleOf` to be positive, and
+`% -5` answers the same question as `% 5` while reading as if it did not.
+
+### VM1105 {#vm1105}
+
+**Error**: *`The divisor on 'Quantity' does not parse as 'int'`*
+
+The divisor is parsed at build time against the member's own type. This fires when it has no form
+that type can be checked against, such as a string that is not a number or a fractional divisor on
+an integral member:
+
+```csharp
+[MultipleOf("2.5")] // VM1105: 'Quantity' is int
+public int Quantity { get; init; }
+```
+
+Dropping the fraction silently would emit `value % 2`, which is a different rule.
+
+### VM1106 {#vm1106}
+
+**Error**: *`The pattern on 'Sku' is not a valid regular expression: …`*
+
+The message is the regex engine's own. Re-describing it would produce something worse than what the
+parser already says.
+
+### VM1107 {#vm1107}
+
+**Error**: *`'PetPatterns.Sku' is not static, so the pattern on 'Sku' cannot be emitted`*
+
+The referenced member must exist, be static, take no parameters if it is a method, return `Regex`,
+and be visible to the generated validator. The message names which of those failed:
+
+| Reason |
+|---|
+| `does not exist` |
+| `is not static` |
+| `takes parameters` |
+| `does not return Regex` / `is not a Regex` |
+| `is not accessible` |
+| `is not a method, property or field` |
+
+### VM1201 {#vm1201}
+
+**Warning**: *`'Age' is a non-nullable value type, so it is always present and [Required] can never fail`*
+
+```csharp
+[Required] // VM1201
+public int Age { get; init; }
+```
+
+A warning rather than an error: the declaration is harmless, just inert. Making it an error would
+break a build over a no-op.
+
+Use `int?` if the value is genuinely optional, or `[Range]` if what you meant was "not zero".
+
+### VM1202 {#vm1202}
+
+**Warning**: *`'Sample.Tag' does not override Equals, so [UniqueItems] on 'Tags' compares elements by reference and two elements with equal contents both pass`*
+
+```csharp
+public class Tag { public string? Value { get; init; } }
+
+public sealed record Order {
+    [UniqueItems] // VM1202
+    public List<Tag> Tags { get; init; } = [];
+}
+```
+
+Uniqueness runs through `EqualityComparer<T>.Default`. For a class that overrides nothing that is
+reference equality, so two elements with identical contents are both "unique" and the rule passes
+for the wrong reason. That is worse than one that fails, because nothing says so.
+
+Make it a `record`, override `Equals`, or implement `IEquatable<T>`; any of the three silences this
+and makes the check mean what it reads as. Structs do not warn: `ValueType.Equals` compares fields,
+which is slow but correct.
+
+### VM1301 {#vm1301}
+
+**Severity depends on policy**: *`The pattern on 'Sku' is built from a string at run time, which roots the regex parser and interpreter …`*
+
+An inline `[Pattern("…")]` in an AOT-facing project. Constructing a `Regex` from a string means the
+parser and interpreter must be in the binary, which is about 450 KB, once.
+
+```csharp
+[Pattern("^[A-Z]{3}$")] // VM1301 under AOT
+public string? Sku { get; init; }
+```
+
+Declare it with `[GeneratedRegex]` and point at it:
+
+```csharp
+public static partial class PetPatterns {
+    [GeneratedRegex("^[A-Z]{3}$")]
+    public static partial Regex Sku();
+}
+
+[Pattern(typeof(PetPatterns), nameof(PetPatterns.Sku))]
+public string? Sku { get; init; }
+```
+
+| `ValidationModules_PatternPolicy` | Effect |
+|---|---|
+| *(unset)* | `Error` if `PublishAot` or `IsAotCompatible`, else `Allow` |
+| `Allow` | silent |
+| `Warn` | warning, constraint still emitted |
+| `Error` | error, constraint dropped |
+
+Under `Error` the constraint is dropped and the rest of the type is still emitted, so the build fails
+with one useful diagnostic rather than two. [Patterns and regex](/guide/patterns) has the detail.
+
+### VM1302 {#vm1302}
+
+**Warning**: *`Patterns compile through [GeneratedRegex]; RegexOptions.Compiled on 'Sku' is ignored`*
+
+```csharp
+[Pattern("^a$", Options = RegexOptions.Compiled)] // VM1302
+```
+
+`RegexOptions.Compiled` emits IL through `Reflection.Emit`, which is the habit this library exists to
+remove, and it does nothing here regardless. Other `RegexOptions` values are honoured.
+
+### VM1401 {#vm1401}
+
+**Error**: *`'PolicyNumber' names 'IsAuto', which 'Claim' does not declare`*
+
+```csharp
+[Required(When = nameof(IsAuto))] // VM1401 if Claim has no IsAuto
+public string? PolicyNumber { get; init; }
+```
+
+A condition names a member of the type being validated. Resolution walks the base chain, so a
+predicate declared on a shared base works from every type that inherits it. That is also why a
+condition on an *inherited* constraint resolves against the derived type rather than the one that
+declared it.
+
+### VM1402 {#vm1402}
+
+**Error**: *`'Claim.IsAuto' cannot be used as a condition`*
+
+Three shapes are accepted, and they are the three that cannot capture anything:
+
+```csharp
+public bool IsAuto { get; init; }                    // a bool property
+public bool IsAuto() => …;                           // a parameterless bool method
+public static bool IsAuto(Claim value) => …;         // a static bool method taking the model
+```
+
+The three shapes cannot capture anything, so self-containment holds here by construction rather
+than by analysis. There is no `WhenType`, so shared logic is reached through a one-line forwarder
+on the model.
+
+### VM1403 {#vm1403}
+
+**Error**: *`'Required' on 'PolicyNumber' sets both When and Unless, which is ambiguous`*
+
+Write two constraints, or one negated condition.
+
+### VM1501 {#vm1501}
+
+**Warning**: *`'Address' declares no constraints and no [GenerateValidator], so [ValidateNested] on 'Home' validates nothing and the descent is dropped`*
+
+No validator exists for the nested type, so there is nothing for the descent to call and it is
+dropped from the generated validator. A model that reads as validated and validates nothing is the
+failure this library exists to make impossible, which is why the silence is stated here rather
+than discovered.
+
+**Warning rather than error**, unlike its neighbours. The result is a rule that does not run rather
+than one that runs where it should not, and writing `[ValidateNested]` before the nested type's own
+constraints is an ordinary order to work in.
+
+It stays quiet when the target's rules come from a [rule class](/guide/rule-classes), when the
+target carries `[GenerateValidator]`, when the target itself carries `[ValidateNested]` and so gets
+a validator that descends further, and when the target comes from another assembly, which may carry
+a validator generated over there that this compilation cannot see.
+
+Mark the nested type `[GenerateValidator]` when its rules arrive from a
+[rule class](/guide/rule-classes) rather than from its own attributes.
+
+### VM1502 {#vm1502}
 
 **Warning**: *`'System.Collections.Generic.List<Section>' is not a type a validator can be generated for, so [ValidateNested] on 'Sections' is dropped; model the inner collection as a property of a type that declares its own rules`*
 
@@ -903,7 +621,7 @@ so there is no class this descent could call, and the descent is dropped.
 
 ```csharp
 public sealed record Document {
-    [ValidateNested] // VM0106
+    [ValidateNested] // VM1502
     public List<List<Section>> Sections { get; init; } = [];
 }
 ```
@@ -911,10 +629,524 @@ public sealed record Document {
 The fix is the remodelling [nesting](/guide/nesting#collections-of-collections) recommends: give
 the inner collection a type of its own, and nest that.
 
-Distinct from [VM0007](#vm0007), which is about a plain type that merely has no rules *yet*. This
+Distinct from [VM1501](#vm1501), which is about a plain type that merely has no rules *yet*. This
 target could never have any.
 
-### VM0107 {#vm0107}
+### VM1503 {#vm1503}
+
+**Warning**: *`'Address' is not sealed, so a value of a more derived type may reach 'Home'`*
+
+```csharp
+public record Address { … }        // not sealed
+
+public sealed record Person {
+    [ValidateNested] // VM1503
+    public Address? Home { get; init; }
+}
+```
+
+A descent dispatches on the declared type, so a subtype's own rules are not reached unless you ask
+for them. Say what should happen: seal the target, or pass a
+[`Polymorphism`](./attributes#polymorphism) mode.
+
+This fires widely on existing code, because `public record Address` without `sealed` is the common
+idiom. That is intended: sealing is the default posture, not a workaround.
+
+::: tip Why it keys on sealed rather than on subtypes
+Deliberately a local fact about the type, never "are any subtypes visible from here". A diagnostic
+keyed on visibility would appear when a hierarchy sat in one assembly and vanish when a type moved
+to a package, reintroducing the layout-dependence that explicit modes exist to prevent.
+:::
+
+### VM1504 {#vm1504}
+
+**Error**: *`'Address' is sealed, so its runtime type can never differ from its declared type`*
+
+```csharp
+[ValidateNested(Polymorphism.Runtime)] // VM1504
+public Address? Home { get; init; }    // where Address is sealed
+```
+
+`Runtime` buys a container lookup for an answer the declared type already had. Use `DeclaredOnly`.
+
+### VM1601 {#vm1601}
+
+**Error**: *`'SkuAttribute' on 'Code' cannot be compiled: IsValid's first parameter is 'int', which cannot accept this member's 'string?'`*
+
+A [`CustomConstraintAttribute`](/guide/custom-constraints) subclass whose contract does not hold:
+no public static bool `IsValid`, a first parameter that cannot accept the member, extra
+parameters that do not line up with the constructor positionally and by type, or a custom
+property setter, which a static check has no way to receive. Erroring beats an argument that
+silently never arrives.
+
+Catching the shape at build time is the feature. The invoked DataAnnotations form discovers the
+same mistakes at run time, or never.
+
+### VM1602 {#vm1602}
+
+**Error**: *`'EvenAttribute' on 'Code' cannot be compiled: it implements IConstraintFor<int>, and none of those accepts this member's 'string?'`*
+
+An attribute implementing [`IConstraintFor<T>`](/guide/custom-constraints#when-the-check-needs-an-instance)
+that cannot be compiled, with the reason in the tail: no implemented instantiation accepts the
+member's type, more than one does (implement the member's own type, since an exact instantiation
+always wins outright), an argument in the declaration is not a renderable constant, the attribute
+class is generic, or the class also derives from `CustomConstraintAttribute`, which is two native
+shapes disagreeing about who runs the check.
+
+Deriving from DataAnnotations' `ValidationAttribute` *and* implementing the interface is not an
+error. It is the migration story, and the interface wins.
+
+### VM1603 {#vm1603}
+
+**Info**: *`'StampedAttribute' is marked [PerValidationInstance], so checking 'Sequence' constructs a new instance on every validation pass, passing values included - the allocation a shared instance would not cost`*
+
+Nothing is wrong: the class asked for per-check isolation and gets it. But a clean pass otherwise
+allocates nothing, and this is the one constraint cost that breaks that, so it is stated at every
+site that pays it rather than only on the class that caused it.
+
+---
+
+## The DataAnnotations bridge
+
+¹ Under [`ValidationModules_DataAnnotations`](/reference/msbuild) `Ignore`, VM2002 and VM2006 keep
+their Info severity but swap their message's tail: it says that *ValidationModules* is the one
+ignoring the rule. With the front end deliberately off, an attribute this library leaves alone is
+configuration working rather than a problem, and another validation system reading the same
+attributes may still enforce it.
+
+These are keyed on the vocabulary rather than on the file that reports them: four are raised from
+the attribute loop, and every one of them can only fire when a `System.ComponentModel.DataAnnotations`
+attribute is present.
+
+### VM2001 {#vm2001}
+
+**Info**: *`'RequiredAttribute' on 'Name' is a DataAnnotations constraint, which ValidationModules is ignoring because ValidationModules_DataAnnotations is set to Ignore; another validation system may still enforce it`*
+
+Reported once per ignored constraint, so switching the front end off cannot silently change what
+this library validates. It names ValidationModules deliberately: the attribute itself stays in
+the compilation, and DataAnnotations, a different validator, or a test harness may still read
+it. To have this library enforce the rule, remove the `Ignore` setting or move it to
+[native constraints](/guide/constraints).
+
+### VM2002 {#vm2002}
+
+**Info** (**Info** with an ignoring tail under `Ignore`¹): *`'EvenNumberAttribute' on 'Age' derives from ValidationAttribute, so its check is user code. It is constructed once and invoked with DataAnnotations semantics, so this property pays DataAnnotations' costs: a ValidationContext per check, and a box if the value is a value type`*
+
+A custom `ValidationAttribute` subclass is [invoked, not compiled](/guide/data-annotations#custom-rules-are-invoked):
+constructed once from its compile-time-constant arguments into a static field, then run through
+`GetValidationResult` exactly as `Validator.TryValidateObject` would run it. The Info exists for
+the cost model, since this is the one place a property's validation allocates on a passing value.
+A [rule class](/guide/rule-classes) remains the zero-cost home for the same logic.
+
+The rare attribute whose arguments cannot be rendered (a broken compilation) reports the same id
+back at **Warning** with the old not-enforced message.
+
+### VM2003 {#vm2003}
+
+**Warning**: *`'CompareAttribute' on 'Confirm' compares against another member, which a per-property constraint cannot express`*
+
+```csharp
+[Compare(nameof(Password))] // VM2003
+public string? Confirm { get; set; }
+```
+
+Use `rules.Ensure` in a [rule class](/guide/rule-classes), the declaration form that *can* span
+two properties:
+
+```csharp
+rules.Ensure(x.Password == x.Confirm, code: "password_mismatch");
+```
+
+### VM2004 {#vm2004}
+
+**Info**: *`'EmailAddressAttribute' on 'Email' compiles to the DataAnnotations check: the value must contain exactly one '@', neither first nor last, and no line breaks - 'a@b' passes, as RFC 5322 permits. Declare a [Pattern] instead if you want a stricter rule`*
+
+Covers `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]` and
+`[FileExtensions]`, each compiled to
+[the BCL's exact check](/guide/data-annotations#the-format-validators).
+
+Info rather than Warning, because there is nothing to fix: the attribute is enforced, with the
+same semantics every other DataAnnotations consumer gives it, which Microsoft documents as frozen
+by design. The message exists because those semantics are looser than the attribute names suggest.
+An `a@b` really does pass `[EmailAddress]`, and RFC 5322 agrees it should. The exact compiled check
+is stated once, at the site that declared it, where an author who wanted something
+stricter will actually read it.
+
+### VM2005 {#vm2005}
+
+**Error**: *`'MinLengthAttribute' applies to strings and collections; 'Age' is 'int'`*
+
+`[MinLength]`, `[MaxLength]` and `[Length]` apply to both strings and collections in DataAnnotations,
+so the member's type decides which constraint each becomes. A member that is neither has no reading.
+
+### VM2006 {#vm2006}
+
+**Info** (**Info** with an ignoring tail under `Ignore`¹): *`'Customer' implements IValidatableObject; the generated validator calls its Validate method after every other rule on the type has passed, exactly as Validator.TryValidateObject sequences it, and the type keeps no boolean fast path`*
+
+Object-level validation is [compiled with DataAnnotations' own sequencing](/guide/data-annotations#custom-rules-are-invoked):
+last, and only when the pass is otherwise clean. The boolean fast path cannot know "the whole pass
+was clean", so the type falls back to the interface default `IsValid`. That is correct but not
+free, the same trade a type carrying `rules.Apply(…)` already makes.
+
+### VM2007 {#vm2007}
+
+**Warning**: *`'EnumDataTypeAttribute' on 'Day' checks that a loosely-typed value parses as an enum, a runtime conversion this library does not compile. It is not enforced; type the member as the enum and use [EnumDefined]`*
+
+```csharp
+[EnumDataType(typeof(DayOfWeek))] // VM2007 - not enforced
+public string? Day { get; set; }
+```
+
+`[EnumDataType]` validates that a string or number *parses* as a member of the named enum, which
+is the same runtime string conversion [VM2008](#vm2008)'s narrowing refuses. The native answer is
+to type the member as the enum - the deserializer then owns the parse - and constrain it with
+[`[EnumDefined]`](/reference/attributes#enumdefined), which checks membership without boxing or
+reflection.
+
+### VM2008 {#vm2008}
+
+**Error**: *`'CustomValidationAttribute' on 'Name' cannot be compiled: 'Sample.Checks.Verify' is not a public static method taking one or two parameters`*
+
+`[CustomValidation]` names its method as a string, which DataAnnotations resolves reflectively per
+validation. This generator resolves it once, at build time, and emits a direct call, so a target
+that cannot be called is a build error naming the reason rather than a rule that silently never
+runs.
+Accepted shapes are DataAnnotations' own: public static, returning `ValidationResult`, taking the
+value alone or the value and a `ValidationContext`.
+
+One deliberate narrowing: the value parameter must accept the member's type as declared, or be
+`object`. DataAnnotations would attempt a runtime string conversion; this library will not convert
+silently, and the message says what to change.
+
+### VM2009 {#vm2009}
+
+**Warning**: *`'EvenNumberAttribute' on 'Age' sets ErrorMessageResourceType, which DataAnnotations resolves with reflection when the message is formatted`*
+
+The one part of an invoked attribute the trimmer can break: resource-based messages reflect over
+the resource type at format time, and a trimmed publish may have removed the property. Set
+`ErrorMessage`, or keep the resource type rooted.
+
+---
+
+## Rules classes
+
+A `Describe` body is [read, never run](/guide/rule-classes), so a statement the generator cannot
+carry has to break the build. The generated validator would otherwise check less than the
+body says. Almost everything transcribes; these are the exceptions, and every one is an error.
+
+### VM3001 {#vm3001}
+
+**Error**: *`'PetRules.Describe' contains a TryStatement, which the generator does not transcribe`*
+
+```csharp
+public static void Describe(ValidationRules<Pet> rules, Pet x) {
+    try { rules.Require(x.Name); } catch { }   // VM3001
+    x.Name = "fixed";                          // VM3001: validation does not mutate its subject
+    if (x.Age > 20) {
+        rules.Apply(Checks.Senior);            // VM3001: Apply runs last, unconditionally
+    }
+}
+```
+
+The blacklist is short and v1-deliberate: `goto`, `try`/`catch`, `lock`, `using` statements,
+assignment to the subject, and `Apply` anywhere but the top of the body. Locals, `if`/`else`,
+`switch`, loops-as-computation, helpers and the reporter tier all transcribe.
+
+### VM3002 {#vm3002}
+
+**Error**: *`The builder declares rules only where the generator can read them; here it would store it, capture it, return it, or pass it to anything the generator cannot read, which would validate nothing at runtime`*
+
+```csharp
+var chain = rules.Require(x.Name);                  // VM3002
+Func<PropertyRules<Pet, string?>> f = () => rules.Require(x.Name);  // VM3002
+Helper(rules);                                      // VM3002 unless Helper is a fragment
+```
+
+The anti-silent-drop rule. `ValidationRules<T>` is inert, so a rule call the generator cannot see
+would transcribe into a call on a builder that validates nothing. Every unfollowable flow is an
+error instead. A `static`, `void`, same-compilation method receiving the builder is a fragment and
+is followed; everything else is this.
+
+### VM3003 {#vm3003}
+
+**Error**: *`'PetRules.Describe' declares a rule inside a scope the generator cannot expand it in. Use Each for collections - a collection of strings chains element rules, Each(x.Steps).Length(5, 500) - or report per element through rules.Context`*
+
+```csharp
+foreach (var toy in x.Toys) {
+    rules.Require(toy.Name);            // VM3003
+}
+
+for (var i = 0; i < x.Steps.Count; i++) {
+    rules.Length(x.Steps[i], 5, 500);   // VM3003 - write rules.Each(x.Steps).Length(5, 500)
+}
+```
+
+Islands need generator-computed identity, meaning a field and a rendered message, and a loop gives
+them none. Collections are `Each`'s job: a collection of objects descends into the element type's
+validator, and a collection of strings chains element rules with indexed paths. For anything else
+per-element, loop with the [reporter tier](/guide/rule-classes#reporter) and a computed field
+string.
+
+### VM3004 {#vm3004}
+
+**Error**: *`'Max' is not accessible from the companion file 'ModelRules.Describe' is transcribed into. Make it internal`*
+
+```csharp
+public sealed class ModelRules : IValidationRulesFor<Model> {
+    private static readonly int Max = 10;
+
+    public static void Describe(ValidationRules<Model> rules, Model x) {
+        rules.Ensure(x.Count <= Max);   // VM3004
+    }
+}
+```
+
+The body is transcribed into `{RulesClass}_Rules`, a companion class carrying the declaring file's
+`using` directives, which is what lets `x.Status == Status.Active` resolve at all. A non-private
+member is qualified automatically as `ModelRules.Max` and read as itself. A `private` one is out of
+reach, so make it `internal`.
+
+A `private const` of any type needs no change. C# bakes a constant into every use site already, so
+the value is carried across as a literal with the suffix and precision that preserve both its
+value and its type (`1.50m` keeps its scale, a `double` keeps all seventeen digits, an enum comes
+back as a cast, and `NaN` and the infinities are named).
+
+Inside a generic fragment this also covers a member the concrete target implements **explicitly**:
+`audited.CreatedBy` binds through the constraint interface, but the emitted method's subject is
+the concrete type, where an explicit implementation is not reachable by name.
+
+### VM3005 {#vm3005}
+
+**Error**: *`Fragment 'SharedRules.Standard' is compiled IL from a referenced assembly; fragments must be part of this compilation - use a shared project or a source-only package`*
+
+A [fragment](/guide/rule-classes#fragments) is expanded from syntax, and a referenced assembly
+ships IL. The symbol has no body to read, so the same-compilation rule is a fact rather than a
+policy, and a plain `ProjectReference` is on the wrong side of it. Share fragments through a
+shared project (`.shproj` or linked `Compile` items) or a source-only package.
+
+### VM3006 {#vm3006}
+
+**Error**: *`Fragments may call fragments, but this chain returns to where it started: Left -> Right -> Left`*
+
+Fragment expansion follows calls; a cycle would follow them forever. The message names the chain.
+
+### VM3007 {#vm3007}
+
+**Error**: *`A rule's value argument in 'PetRules' must be a member path on the subject parameter, so the error has a field to be pathed against; anything else needs field:`*
+
+```csharp
+rules.Require(x.Name!.Trim());          // VM3007
+rules.Range(x.Nights + 1, 1, 30);       // VM3007
+rules.Require(x.Home?.PostalCode);      // fine: ?. is the nested-path spelling
+```
+
+The member path is what supplies the field name, taking `[JsonPropertyName]` first and then the
+naming policy. Naming the error `name` for `x.Name!.Trim()` would be a guess; pass `field:` when the
+value genuinely is not a path.
+
+### VM3101 {#vm3101}
+
+**Error**: *`'x.Nights' is a non-nullable value type and can never be missing, so this rule can never fail`*
+
+```csharp
+rules.Require(x.Nights);   // VM3101, the only error on the line
+```
+
+A non-nullable value type fits none of `Require`'s typed overloads - inference does not unwrap
+`Nullable`, and a dedicated non-nullable overload would collide with the reference-type one - so
+an `object?` catch-all binds the spelling for exactly this diagnosis. Typed arguments never
+reach it. Constrain the value instead, or make the property nullable.
+
+### VM3102 {#vm3102}
+
+**Error**: *`The condition in 'PetRules.Describe' reads no property of the subject, so the rule has no field to report against. Anchor it by reading the property it is about, or pass field:`*
+
+```csharp
+rules.Ensure(1 < 2);                    // VM3102
+rules.Ensure(1 < 2, field: "nights");   // fine: field: anchors it
+rules.Ensure(x.Nights <= 7);            // fine: anchored to nights
+```
+
+An `Ensure` reports against the first property its condition reads. A condition that reads none
+needs `field:`. The sanctioned case is a fragment computing over its extra parameters.
+
+### VM3103 {#vm3103}
+
+**Info**: *`This rule reports code 'start_less_than_end', derived from 'start < end.'. Pass code: to pin it against a change to the condition`*
+
+An `Ensure` without an explicit `code:`, stating what it derived.
+
+Info because there is nothing to fix. Deriving a code is the designed behaviour rather than a
+fallback, so a warning would imply the author erred by not passing `code:`. The diagnostic exists
+because a derived code is the one part of a rules class you cannot read off the source, and it is
+worth seeing where the rule is written. Silent when `code:` was passed, since the code is then in
+the source already.
+
+[Error codes](/reference/codes#why-ensure-derives-its-code) has the derivation and the operator
+spellings.
+
+### VM3104 {#vm3104}
+
+**Warning**: *`'x.BatteryKwh.Value' unwraps a nullable member. The rule takes the nullable directly, and the field path is derived from the member - write 'x.BatteryKwh'`*
+
+```csharp
+rules.Range(x.BatteryKwh.Value, 10, 300);   // VM3104 - write x.BatteryKwh
+```
+
+Every rule takes the nullable directly, so the unwrap is never needed - and without this
+correction it was never harmless: the derived field path kept the `.Value` hop, so the wire
+carried `batteryKwh.value` and the composed message named `value`.
+
+The reader corrects the rule - it compiles against the member itself, guard, path and all - and
+warns rather than erroring, because failing a build over a mistake it just fixed would be spite.
+The source should still drop the `.Value` so it says what is generated. See
+[nullable members in rule classes](/guide/rule-classes#the-vocabulary).
+
+### VM3105 {#vm3105}
+
+**Error**: *`'IAudited' is validated as a facet here, but nothing in this compilation declares rules for it, so this would check nothing. Give the facet constraint attributes or a rules class`*
+
+`rules.As<IAudited>(x)` binds to the facet's own generated validator. A facet declared in this
+compilation with nothing declaring rules for it would make the `As` a silent no-op, which is the
+failure this library refuses everywhere else. Declare the facet's rules in a rules class targeting
+it, as `AuditRules : IValidationRulesFor<IAudited>`. That is the sound pairing, since an interface's
+*attribute* constraints already reach every implementer through constraint inheritance, and an `As`
+on top of those would report every facet error twice.
+
+---
+
+## Language packs
+
+Raised while reading a `*.validation-messages.json` pack. Packs
+[compile rather than load](/guide/messages#write-a-pack), which is what lets a broken pack fail the
+build instead of degrading to the default language in production.
+
+### VM4001 {#vm4001}
+
+**Error**: *`'fr.validation-messages.json' was skipped: it declares no "culture"`*
+
+The pack did not parse, or it parsed and named no culture:
+
+```json
+{ "templates": { "required": "{field} est obligatoire." } }
+```
+
+An error, and the whole file is skipped - no class, no registration, no partial pack. A pack that
+loaded at startup could degrade to the default language and be discovered in production; compiling
+them is what turns that into a build failure, so a pack this reader cannot understand must not
+quietly become no pack at all.
+
+Give the file a `culture` member, or fix the JSON the message quotes. The parse error names the
+offending position.
+
+### VM4002 {#vm4002}
+
+**Warning**: *`'string_length.atmost' in 'fr.validation-messages.json' names no known shape; the nearest is 'string_length.at_most'. The entry was skipped`*
+
+```json
+{
+    "culture": "fr",
+    "templates": { "string_length.atmost": "{field} : {0} max." }
+}
+```
+
+A typo in a shape key, caught by the nearest match in the [shape
+inventory](/guide/messages#write-a-pack). The entry is skipped, so the shape keeps its default
+render and the translation silently does nothing - which is exactly why this is reported.
+
+The heuristic fires only when the segment before the first `.` is a shape family this library
+knows, so `string_length.atmost` is judged a typo and `date_order` is judged one of
+[your own codes](/guide/messages#branch-when-you-need-to) and compiles untouched.
+
+### VM4003 {#vm4003}
+
+**Error**: *`'string_length.at_most' uses {1}, but the shape carries 1 argument(s); the entry in 'fr.validation-messages.json' was skipped`*
+
+```json
+{
+    "culture": "fr",
+    "templates": { "string_length.at_most": "{field} doit … {1}." }
+}
+```
+
+`string_length.at_most` carries one argument, so the highest hole it can use is `{0}`. An error
+rather than a warning because the alternative is a `FormatException` at render time, in whatever
+request first trips the rule - the failure moved from the build to production.
+
+Holes are counted only for keys the shape inventory knows. A user code's arity is the author's
+business, so its holes are not checked.
+
+### VM4004 {#vm4004}
+
+**Error**: *`'required' appears more than once in 'fr.validation-messages.json'; entries after the first were skipped`*
+
+```json
+{
+    "culture": "fr",
+    "templates": { "required": "a", "required": "b" }
+}
+```
+
+The first entry wins and the rest are skipped. Duplicate keys are legal JSON and no parser agrees
+on which one survives, so the choice is stated here rather than left to the reader to guess - and
+reported, because one of the two spellings is dead text that will never render.
+
+### VM4005 {#vm4005}
+
+**Warning**: *`'de.validation-messages.json' is named for 'de' but declares culture 'fr'; the body wins`*
+
+A file named `de.validation-messages.json` whose body says otherwise:
+
+```json
+{ "culture": "fr", "templates": { "required": "{field} est obligatoire." } }
+```
+
+The body wins. That is the whole rule: `culture` decides the culture and the file name is
+convention, so this pack registers for `fr` however it is named.
+
+A warning rather than an error because the pack is usable and the resolution is unambiguous. It is
+still worth hearing, since the usual cause is a file copied for a new language whose `culture` was
+never changed - and the symptom, one language serving another's text, reads as a translation bug
+rather than a naming one.
+
+### VM4006 {#vm4006}
+
+**Info**: *`'fr' covers 2 of 34 shapes; missing: array_bounds.at_least, array_bounds.at_least_singular, array_bounds.at_most, array_bounds.at_most_singular, array_bounds.between, array_bounds.between_singular, …`*
+
+Coverage, reported once per pack that translates at least one shape and leaves at least one
+untranslated.
+
+**Info by design.** Partial coverage is a legitimate state, not a defect: shapes a pack does not
+name keep their default render, so a pack holding the ten shapes an application actually reaches is
+a finished pack. This exists so the number is visible at the build rather than discovered by a user
+reading English inside French, and the missing keys are listed - the first six, then `…` - so
+filling the gap does not require diffing the inventory by hand.
+
+Raise it with an `.editorconfig` line if you want a full pack enforced:
+
+```ini
+[*.cs]
+dotnet_diagnostic.VM4006.severity = warning
+```
+
+---
+
+## Toolchain
+
+Not about any one declaration: the runtime contract check, the backstop that turns a generator
+crash into a build failure, and the `.Validate<T>()` analyzer.
+
+### VM5001 {#vm5001}
+
+**Error**: *`The generated validators require ValidationModules.Runtime contract N or later; the referenced runtime is contract M`*
+
+Version lockstep. The generator emits calls against a runtime surface, and a runtime older than that
+surface would fail *inside generated code*, the worst place for an error to land. So the check runs
+before any source is added and the build fails here instead.
+
+Update the `ValidationModules.Runtime` package reference to match the generator.
+
+### VM5002 {#vm5002}
 
 **Error**: *`Emitting the validator for 'Sample.Batch' threw ArgumentException: …. The build is failed so the missing generated source cannot ship silently; please report this`*
 
@@ -927,13 +1159,13 @@ build failure naming what was being emitted.
 There is nothing to fix in your code; the message exists to be pasted into an issue. Every other
 validator in the compilation is still generated.
 
-### VM0108 {#vm0108}
+### VM5003 {#vm5003}
 
 **Warning**: *`'Coupon' has no constraints, no [GenerateValidator], and no rules class or hand-written validator in this compilation, so .Validate<Coupon>() will fail when the endpoint is built. Add constraints or [GenerateValidator] - or, if its rules arrive from another assembly, ignore this and the startup check will agree`*
 
 ```csharp
 app.MapPost("/coupons", (Coupon c) => Results.Ok())
-   .Validate<Coupon>();   // VM0108 when Coupon declares no rules here
+   .Validate<Coupon>();   // VM5003 when Coupon declares no rules here
 ```
 
 The build-time version of the [endpoint filter's startup check](/guide/aspnetcore): the same
@@ -941,6 +1173,6 @@ verdict, delivered where the call was written instead of when the endpoint is bu
 `List<T>` or `T[]` argument is judged by its element, since a collection body validates
 element-wise.
 
-A **warning** for the cross-assembly reason [VM0007](#vm0007) set: the type may get its validator
+A **warning** for the cross-assembly reason [VM1501](#vm1501) set: the type may get its validator
 from a rules class in another assembly, which this compilation cannot see. The startup check
 remains the authority; this is the earlier, cheaper signal.

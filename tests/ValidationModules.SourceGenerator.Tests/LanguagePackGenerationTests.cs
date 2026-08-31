@@ -64,63 +64,63 @@ public class LanguagePackGenerationTests {
     }
 
     [Fact]
-    public void MalformedJson_IsVM0100_AndTheFileIsSkipped() {
+    public void MalformedJson_IsVM4001_AndTheFileIsSkipped() {
         var result = GeneratorHarness.RunWithFiles(Model, [("fr.validation-messages.json", "{ not json")]);
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0100");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM4001");
 
         Assert.Contains("fr.validation-messages.json", diagnostic.GetMessage());
         Assert.DoesNotContain(result.Sources.Keys, name => name.StartsWith("LanguagePack."));
     }
 
     [Fact]
-    public void MissingCulture_IsVM0100() {
+    public void MissingCulture_IsVM4001() {
         var result = GeneratorHarness.RunWithFiles(
             Model, [("fr.validation-messages.json", """{ "templates": { "required": "x" } }""")]);
 
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM0100" && d.GetMessage().Contains("culture"));
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM4001" && d.GetMessage().Contains("culture"));
     }
 
     [Fact]
-    public void AMisspelledShapeKey_IsVM0101_WithTheNearestMatch() {
+    public void AMisspelledShapeKey_IsVM4002_WithTheNearestMatch() {
         var result = GeneratorHarness.RunWithFiles(Model, [("fr.validation-messages.json", """
             { "culture": "fr", "templates": { "string_length.atmost": "{field} : {0} max." } }
             """)]);
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0101");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM4002");
 
         Assert.Contains("string_length.at_most", diagnostic.GetMessage());
         Assert.DoesNotContain("atmost", result.Sources["LanguagePack.fr.0.g.cs"]);
     }
 
     [Fact]
-    public void AHoleBeyondTheShapesArguments_IsVM0102_AndTheEntryIsSkipped() {
+    public void AHoleBeyondTheShapesArguments_IsVM4003_AndTheEntryIsSkipped() {
         var result = GeneratorHarness.RunWithFiles(Model, [("fr.validation-messages.json", """
             { "culture": "fr", "templates": { "string_length.at_most": "{field} doit … {1}." } }
             """)]);
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0102");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM4003");
 
         Assert.Contains("{1}", diagnostic.GetMessage());
         Assert.Contains("1 argument", diagnostic.GetMessage());
     }
 
     [Fact]
-    public void ADuplicateKey_IsVM0103() {
+    public void ADuplicateKey_IsVM4004() {
         var result = GeneratorHarness.RunWithFiles(Model, [("fr.validation-messages.json", """
             { "culture": "fr", "templates": { "required": "a", "required": "b" } }
             """)]);
 
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0103");
+        Assert.Single(result.Diagnostics, d => d.Id == "VM4004");
         Assert.Contains("new(\"required\", \"a\")", result.Sources["LanguagePack.fr.0.g.cs"]);
         Assert.DoesNotContain(", \"b\")", result.Sources["LanguagePack.fr.0.g.cs"]);
     }
 
     [Fact]
-    public void AFileNamedForOneCulture_DeclaringAnother_IsVM0104_AndTheBodyWins() {
+    public void AFileNamedForOneCulture_DeclaringAnother_IsVM4005_AndTheBodyWins() {
         var result = GeneratorHarness.RunWithFiles(Model, [("packs/de.validation-messages.json", FullFrench)]);
 
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0104");
+        Assert.Single(result.Diagnostics, d => d.Id == "VM4005");
         Assert.Contains("Culture => \"fr\";", result.Sources["LanguagePack.fr.0.g.cs"]);
     }
 
@@ -128,7 +128,7 @@ public class LanguagePackGenerationTests {
     public void PartialCoverage_IsAnInfo_NamingWhatIsMissing() {
         var result = GeneratorHarness.RunWithFiles(Model, [("fr.validation-messages.json", FullFrench)]);
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0105");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM4006");
 
         Assert.Contains("2 of 34", diagnostic.GetMessage());
         Assert.Contains("array_bounds.at_least", diagnostic.GetMessage());
@@ -140,7 +140,7 @@ public class LanguagePackGenerationTests {
             { "culture": "fr", "templates": { "date_order": "la date de fin doit suivre la date de début." } }
             """)]);
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0101");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM4002");
         Assert.Contains("date_order", result.Sources["LanguagePack.fr.0.g.cs"]);
     }
 

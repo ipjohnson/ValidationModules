@@ -18,7 +18,7 @@ namespace ValidationModules.SourceGenerator;
 /// guarantee a build earlier, where the mistake was made.
 /// </para>
 /// <para>
-/// The same cross-assembly caution as VM0007: only a type this compilation declares is judged,
+/// The same cross-assembly caution as VM1501: only a type this compilation declares is judged,
 /// because a referenced assembly may carry its own generated validator, and a rules class in
 /// another assembly may target even a local type - which is why this is a warning naming the
 /// startup check as the backstop, not an error.

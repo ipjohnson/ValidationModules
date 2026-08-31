@@ -30,13 +30,6 @@ namespace ValidationModules.SourceGenerator;
 [Generator]
 public sealed class ValidationSourceGenerator : IIncrementalGenerator {
 
-    /// <summary>
-    /// What VM0019 names as the site when the declaration is assembly-level rather than on a
-    /// property. The assembly's own name would be more precise and reads worse in the message,
-    /// which already says which attribute it is.
-    /// </summary>
-    private const string compilationAssemblyLabel = "this assembly";
-
     public void Initialize(IncrementalGeneratorInitializationContext context) {
         var options = context.AnalyzerConfigOptionsProvider.Select(static (provider, _) => {
             provider.GlobalOptions.TryGetValue("build_property.ValidationModules_Registration", out var registration);
@@ -105,7 +98,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
                 // The coarse backstop under the per-target catches inside BuildModels. An exception
                 // that escapes a Select surfaces as a CS8785 warning and the build succeeds with no
                 // generated source at all - in a model-only class library nothing references a
-                // generated symbol, so every validator silently disappears. VM0107 is an error, so
+                // generated symbol, so every validator silently disappears. VM5002 is an error, so
                 // the same defect fails the build instead.
                 try {
                     return BuildModels(input.Left.Left, input.Left.Right, input.Right);
@@ -147,7 +140,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
                 }
 
                 if (result.Model is { } model) {
-                    // Per model, so one model that cannot be emitted fails the build with VM0107
+                    // Per model, so one model that cannot be emitted fails the build with VM5002
                     // naming it, while every other validator in the compilation is still generated.
                     try {
                         production.AddSource(
@@ -265,7 +258,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
     /// A keyword namespace's display string carries its escape - <c>@object.Models</c> - and
     /// <c>AddSource</c> refuses the <c>@</c>. The escape matters in code, not in a file name.
     /// Before this, an assembly with a model in a keyword namespace crashed the generator on the
-    /// hint name and, per the CS8785 conversion VM0107 now closes, built green with no validators
+    /// hint name and, per the CS8785 conversion VM5002 now closes, built green with no validators
     /// generated at all.
     /// </summary>
     private static string HintSafe(string hintName) => hintName.Replace("@", string.Empty);
@@ -373,7 +366,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             }
         }
 
-        // Snapshotted before the loop below starts removing from byTarget, because VM0007 asks
+        // Snapshotted before the loop below starts removing from byTarget, because VM1501 asks
         // whether a *nested* type has rules declared anywhere - a question whose answer must not
         // depend on how far through the candidates we happen to be.
         var ruleTargets = new HashSet<INamedTypeSymbol>(byTarget.Keys, SymbolEqualityComparer.Default);
@@ -530,7 +523,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         string? PredicateHintName);
 
     /// <summary>
-    /// An unhandled exception in a stage, reported as VM0107 at Error severity.
+    /// An unhandled exception in a stage, reported as VM5002 at Error severity.
     /// </summary>
     /// <remarks>
     /// Roslyn's own answer to a generator throw is a CS8785 <b>warning</b> with every source the

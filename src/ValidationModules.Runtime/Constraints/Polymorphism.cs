@@ -14,7 +14,7 @@ namespace ValidationModules.Constraints;
 /// polymorphic behaviour is always something the author asked for by name.
 /// </para>
 /// <para>
-/// For the same reason the diagnostic that prompts for a mode (VM0031) keys on whether the target
+/// For the same reason the diagnostic that prompts for a mode (VM1503) keys on whether the target
 /// is sealed - a local, layout-independent fact - and never on which subtypes are visible from
 /// here. A diagnostic keyed on subtype visibility would appear and disappear across assembly
 /// boundaries, reintroducing the exact problem it exists to prevent.

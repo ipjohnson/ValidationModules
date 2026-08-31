@@ -85,7 +85,7 @@ generator to read rather than for an instance to hold.
   override, the message is a terse `"{field} is invalid."` and the code is
   [`custom`](/reference/codes).
 - **Anything else arrives through the constructor.** A custom init-only property has no path into
-  a static method, and setting one is [VM0082](/reference/diagnostics#vm0082), an error naming the
+  a static method, and setting one is [VM1601](/reference/diagnostics#vm1601), an error naming the
   fix, rather than an argument that silently never arrives. The same error covers every other
   wrong shape: a missing or non-static `IsValid`, a first parameter that cannot accept the member,
   parameters that do not line up with the constructor.
@@ -139,11 +139,11 @@ The rest of the contract:
   unwrapped, so an `int?` member matches `IConstraintFor<int>`.
 - **One instance, shared and called concurrently**, so be immutable after construction. A class
   that cannot be marks itself `[PerValidationInstance]` and is constructed at every check
-  instead; [VM0084](/reference/diagnostics#vm0084) states the allocation at each site that pays
+  instead; [VM1603](/reference/diagnostics#vm1603) states the allocation at each site that pays
   it.
 - **Several instantiations are fine.** The member's own type wins outright. Otherwise exactly one
   implemented instantiation must accept the member, or the build fails asking you to say
-  which ([VM0083](/reference/diagnostics#vm0083), like every other wrong shape here).
+  which ([VM1602](/reference/diagnostics#vm1602), like every other wrong shape here).
 - **A DataAnnotations attribute can adopt it.** A class deriving `ValidationAttribute` *and*
   implementing `IConstraintFor<T>` takes the fast path here and keeps working under MVC and
   `Validator.TryValidateObject`, so one class covers both. (In such a file, qualify
@@ -154,8 +154,8 @@ The rest of the contract:
 
 | | declaration | cost per check | mistakes surface |
 |---|---|---|---|
-| `CustomConstraintAttribute` | attribute on the model | a branch | at build time (VM0082) |
-| `IConstraintFor<T>` | attribute on the model | a call on a shared instance | at build time (VM0083) |
+| `CustomConstraintAttribute` | attribute on the model | a branch | at build time (VM1601) |
+| `IConstraintFor<T>` | attribute on the model | a call on a shared instance | at build time (VM1602) |
 | [Rule class `Ensure`](/guide/rule-classes) | predicate beside the model | a branch | at build time |
 | [Custom `ValidationAttribute`](/guide/data-annotations#custom-rules-are-invoked) | attribute on the model | a `ValidationContext` per check, boxing | at run time |
 

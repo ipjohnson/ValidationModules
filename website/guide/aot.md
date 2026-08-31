@@ -76,7 +76,7 @@ public static partial class PetPatterns {
 public string? Sku { get; init; }
 ```
 
-In an AOT-facing project the inline form is [VM0017](/reference/diagnostics#vm0017), an error by
+In an AOT-facing project the inline form is [VM1301](/reference/diagnostics#vm1301), an error by
 default, so you find out at build time. [Patterns and regex](/guide/patterns) has the full policy.
 
 ## Set `IsAotCompatible` on your model library

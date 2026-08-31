@@ -1158,7 +1158,7 @@ public sealed class ValidatorEmitter {
             string instance;
 
             if (constraint.PerPassInstance) {
-                // [PerValidationInstance]: constructed at the check, exactly as asked. VM0084
+                // [PerValidationInstance]: constructed at the check, exactly as asked. VM1603
                 // already told the author what that costs.
                 instance = constraint.CustomConstruction!;
             } else {
@@ -1555,7 +1555,7 @@ public sealed class ValidatorEmitter {
                 field, constraint, "ReportRangeAtMost",
                 $", {max}{Exclusivity(constraint.ExclusiveMax, "exclusive")}", property, valueAccess),
 
-            // Unreachable: a range with neither bound is VM0026 and never reaches the emitter.
+            // Unreachable: a range with neither bound is VM1102 and never reaches the emitter.
             _ => Report(field, constraint, "ReportRequired", "", property, valueAccess),
         };
     }

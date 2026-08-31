@@ -11,7 +11,7 @@ namespace SutProject.Tests;
 /// <remarks>
 /// Before this route existed, constraining a <c>List&lt;string&gt;</c> meant hand-writing the
 /// check <c>[StringLength]</c> already implements - a <c>for</c> loop over
-/// <c>rules.Context.Report</c>, because a rule declaration inside a loop is VM0089.
+/// <c>rules.Context.Report</c>, because a rule declaration inside a loop is VM3003.
 /// </remarks>
 public class ElementRulesTests {
 

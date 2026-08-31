@@ -182,7 +182,7 @@ public class MultiTargetRulesTests {
             }
             """);
 
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM0070");
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM3001");
         Assert.Contains(result.Sources.Keys, key => key.Contains("CustomerValidator"));
         Assert.Contains("ReportRequired(ctx, \"name\")", result.Sources["Sample.CatalogRules_Rules.g.cs"]);
     }

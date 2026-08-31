@@ -186,6 +186,37 @@ public static class ValidationMessageTemplates {
     /// <summary>The key vocabulary, for pack tooling and the coverage check.</summary>
     public static IReadOnlyCollection<string> KnownKeys => TemplatesByKey.Keys as IReadOnlyCollection<string> ?? [.. TemplatesByKey.Keys];
 
+    /// <summary>
+    /// The checksum of every shape key paired with its argument count.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>What this pins.</b> Not the wording, which is free to change, but the key vocabulary a
+    /// consumer authors a language pack against. A pack is a JSON file in someone else's
+    /// repository holding these strings verbatim. Rename a key and their entry stops matching:
+    /// the pack still compiles, the entry is skipped, and that shape silently renders in the
+    /// default language. The argument count is pinned with it, because a hole moving from
+    /// <c>{0}</c> to <c>{1}</c> is the same break with a different symptom.
+    /// </para>
+    /// <para>
+    /// <b>Why the existing tests were not enough.</b> The generator's shape inventory is checked
+    /// against this map, which catches the two drifting apart but not both moving together - the
+    /// exact shape a rename takes. So the vocabulary is checksummed here, in product source,
+    /// where changing it is an edit a reviewer sees next to this comment.
+    /// </para>
+    /// <para>
+    /// <b>Append is safe; rename and re-arity are not.</b> A new key reaches packs that do not
+    /// carry it as an untranslated shape, which is the ordinary partial-coverage state VM4006
+    /// reports. After 1.0.0, removing or respelling one is a breaking change to a file format.
+    /// </para>
+    /// <para>
+    /// Internal, like <c>RuleText.CodeDerivationChecksum</c>. A checksum is evidence for a test,
+    /// not surface for a consumer, and a public one would be frozen by the API snapshot and read
+    /// as a wire code by the documentation-coverage test.
+    /// </para>
+    /// </remarks>
+    internal const string ShapeVocabularyChecksum = "c810b1a480c27837";
+
     private static readonly Dictionary<string, string> KeysByTemplate = BuildReverse();
 
     private static Dictionary<string, string> BuildReverse() {

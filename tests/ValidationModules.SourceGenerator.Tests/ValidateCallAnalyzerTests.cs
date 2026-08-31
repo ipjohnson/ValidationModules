@@ -7,7 +7,7 @@ using Xunit;
 namespace ValidationModules.SourceGenerator.Tests;
 
 /// <summary>
-/// VM0108 — <c>.Validate&lt;T&gt;()</c> naming a type this compilation declares and generates no
+/// VM5003 — <c>.Validate&lt;T&gt;()</c> naming a type this compilation declares and generates no
 /// validator for, reported where the call was written rather than when the endpoint is built.
 /// </summary>
 /// <remarks>
@@ -54,7 +54,7 @@ public class ValidateCallAnalyzerTests {
         """;
 
     [Fact]
-    public void ARulelessDeclaredType_IsVM0108() {
+    public void ARulelessDeclaredType_IsVM5003() {
         var diagnostics = Analyze(Usings + """
 
             public sealed record Coupon {
@@ -66,14 +66,14 @@ public class ValidateCallAnalyzerTests {
             }
             """);
 
-        var diagnostic = Assert.Single(diagnostics, d => d.Id == "VM0108");
+        var diagnostic = Assert.Single(diagnostics, d => d.Id == "VM5003");
 
         Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
         Assert.Contains("Coupon", diagnostic.GetMessage());
     }
 
     [Fact]
-    public void AListOfARulelessDeclaredType_IsVM0108AtTheElement() {
+    public void AListOfARulelessDeclaredType_IsVM5003AtTheElement() {
         var diagnostics = Analyze(Usings + """
 
             public sealed record Coupon {
@@ -85,7 +85,7 @@ public class ValidateCallAnalyzerTests {
             }
             """);
 
-        Assert.Contains("Coupon", Assert.Single(diagnostics, d => d.Id == "VM0108").GetMessage());
+        Assert.Contains("Coupon", Assert.Single(diagnostics, d => d.Id == "VM5003").GetMessage());
     }
 
     [Fact]
@@ -105,7 +105,7 @@ public class ValidateCallAnalyzerTests {
             }
             """);
 
-        Assert.DoesNotContain(diagnostics, d => d.Id == "VM0108");
+        Assert.DoesNotContain(diagnostics, d => d.Id == "VM5003");
     }
 
     [Fact]
@@ -128,7 +128,7 @@ public class ValidateCallAnalyzerTests {
             }
             """);
 
-        Assert.DoesNotContain(diagnostics, d => d.Id == "VM0108");
+        Assert.DoesNotContain(diagnostics, d => d.Id == "VM5003");
     }
 
     [Fact]
@@ -151,12 +151,12 @@ public class ValidateCallAnalyzerTests {
             }
             """);
 
-        Assert.DoesNotContain(diagnostics, d => d.Id == "VM0108");
+        Assert.DoesNotContain(diagnostics, d => d.Id == "VM5003");
     }
 
     [Fact]
     public void ATypeFromAnotherAssembly_IsSilent() {
-        // The cross-assembly caution VM0007 set: a metadata type may carry a validator generated
+        // The cross-assembly caution VM1501 set: a metadata type may carry a validator generated
         // over there, so the startup check owns it.
         var diagnostics = Analyze(Usings + """
 
@@ -166,7 +166,7 @@ public class ValidateCallAnalyzerTests {
             }
             """);
 
-        Assert.DoesNotContain(diagnostics, d => d.Id == "VM0108");
+        Assert.DoesNotContain(diagnostics, d => d.Id == "VM5003");
     }
 
     [Fact]
@@ -183,6 +183,6 @@ public class ValidateCallAnalyzerTests {
             }
             """);
 
-        Assert.DoesNotContain(diagnostics, d => d.Id == "VM0108");
+        Assert.DoesNotContain(diagnostics, d => d.Id == "VM5003");
     }
 }

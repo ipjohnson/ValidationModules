@@ -31,10 +31,10 @@ public class DataAnnotationsDiagnosticsTests {
         }
         """;
 
-    // VM0010 — the vocabulary is switched off, so this library leaves the constraint alone.
+    // VM2001 — the vocabulary is switched off, so this library leaves the constraint alone.
 
     [Fact]
-    public void DataAnnotations_SetToIgnore_ReportsVM0010PerSkippedConstraint() {
+    public void DataAnnotations_SetToIgnore_ReportsVM2001PerSkippedConstraint() {
         var result = GeneratorHarness.Run(
             Model("""
                 [Required]
@@ -42,7 +42,7 @@ public class DataAnnotationsDiagnosticsTests {
                 """),
             ("ValidationModules_DataAnnotations", "Ignore"));
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0010");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM2001");
 
         // Info, not Warning: the project asked for Ignore, so the skip is configuration working.
         // And the message names ValidationModules as the one ignoring, because the attribute stays
@@ -66,7 +66,7 @@ public class DataAnnotationsDiagnosticsTests {
             ("ValidationModules_DataAnnotations", "Ignore"));
 
         // Two on Name, one on Age — the report is per constraint, not per property.
-        Assert.Equal(3, result.Diagnostics.Count(d => d.Id == "VM0010"));
+        Assert.Equal(3, result.Diagnostics.Count(d => d.Id == "VM2001"));
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public class DataAnnotationsDiagnosticsTests {
             public string? Name { get; set; }
             """));
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0010");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM2001");
         Assert.Contains("Sample.CustomerValidator.g.cs", result.Sources.Keys);
     }
 
@@ -107,11 +107,11 @@ public class DataAnnotationsDiagnosticsTests {
                 """),
             ("ValidationModules_DataAnnotations", "Ignore"));
 
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0010");
+        Assert.Single(result.Diagnostics, d => d.Id == "VM2001");
         Assert.Contains("\"kept\"", result.Sources["Sample.CustomerValidator.g.cs"]);
     }
 
-    // VM0060 — a custom attribute is user code, so it is constructed once and invoked.
+    // VM2002 — a custom attribute is user code, so it is constructed once and invoked.
 
     [Fact]
     public void CustomValidationAttribute_IsConstructedOnceAndInvoked() {
@@ -133,7 +133,7 @@ public class DataAnnotationsDiagnosticsTests {
 
         var result = GeneratorHarness.Run(source);
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0060");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM2002");
 
         // Info, not Warning: the attribute is enforced by running it, which is the only faithful
         // reading of user code. The message carries the cost model instead of a refusal.
@@ -179,7 +179,7 @@ public class DataAnnotationsDiagnosticsTests {
     }
 
     [Fact]
-    public void CustomValidationAttribute_WithResourceMessages_IsAlsoVM0081() {
+    public void CustomValidationAttribute_WithResourceMessages_IsAlsoVM2009() {
         // The one part of an invoked attribute the trimmer can break, visible in metadata.
         var source = """
             using System.ComponentModel.DataAnnotations;
@@ -202,12 +202,12 @@ public class DataAnnotationsDiagnosticsTests {
 
         var result = GeneratorHarness.Run(source);
 
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0081");
+        Assert.Single(result.Diagnostics, d => d.Id == "VM2009");
         Assert.Contains("typeof(global::Sample.Messages)", result.Sources["Sample.CustomerValidator.g.cs"]);
     }
 
     [Fact]
-    public void CustomValidationAttribute_UnderIgnore_IsVM0060AsInfo() {
+    public void CustomValidationAttribute_UnderIgnore_IsVM2002AsInfo() {
         // The custom attribute fires in both modes — it can never be compiled — but under Ignore
         // the project has said DataAnnotations belong to someone else, so the report drops to
         // Info and says which library is doing the ignoring.
@@ -230,7 +230,7 @@ public class DataAnnotationsDiagnosticsTests {
 
         var result = GeneratorHarness.Run(source, ("ValidationModules_DataAnnotations", "Ignore"));
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0060");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM2002");
         Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
         Assert.Contains("ValidationModules is ignoring it", diagnostic.GetMessage());
         Assert.Contains("another validation system may still enforce it", diagnostic.GetMessage());
@@ -248,7 +248,7 @@ public class DataAnnotationsDiagnosticsTests {
             public static ValidationResult? Check(object value) => ValidationResult.Success;
             """));
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0060");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM2002");
 
         var emitted = result.Sources["Sample.CustomerValidator.g.cs"];
 
@@ -273,7 +273,7 @@ public class DataAnnotationsDiagnosticsTests {
         Assert.Empty(result.CompilationErrors);
     }
 
-    // VM0080 — a [CustomValidation] target that cannot be called is an error, with the reason.
+    // VM2008 — a [CustomValidation] target that cannot be called is an error, with the reason.
 
     [Theory]
     [InlineData("public static ValidationResult? Check(int value) => ValidationResult.Success;",
@@ -283,7 +283,7 @@ public class DataAnnotationsDiagnosticsTests {
     [InlineData("public ValidationResult? Check(object value) => ValidationResult.Success;",
         "is not a public static method")]
     [InlineData("", "is not a public static method")]
-    public void CustomValidation_UnusableTarget_IsVM0080(string method, string reason) {
+    public void CustomValidation_UnusableTarget_IsVM2008(string method, string reason) {
         var result = GeneratorHarness.Run(Model($$"""
             [CustomValidation(typeof(Customer), "Check")]
             public string? Name { get; set; }
@@ -291,16 +291,16 @@ public class DataAnnotationsDiagnosticsTests {
             {{method}}
             """));
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0080");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM2008");
 
         Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
         Assert.Contains(reason, diagnostic.GetMessage());
     }
 
-    // VM0061 — a rule about two members, which a per-property constraint cannot express.
+    // VM2003 — a rule about two members, which a per-property constraint cannot express.
 
     [Fact]
-    public void CompareAttribute_IsVM0061() {
+    public void CompareAttribute_IsVM2003() {
         var result = GeneratorHarness.Run(Model("""
             public string? Password { get; set; }
 
@@ -308,23 +308,23 @@ public class DataAnnotationsDiagnosticsTests {
             public string? Confirm { get; set; }
             """));
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0061");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM2003");
         Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
         Assert.Contains("Confirm", diagnostic.GetMessage());
     }
 
-    // VM0068 — a runtime string conversion this library will not compile. It used to be dropped
+    // VM2007 — a runtime string conversion this library will not compile. It used to be dropped
     // in silence, the only validating DataAnnotations attribute that was.
 
     [Fact]
-    public void EnumDataType_IsVM0068_NamingTheNativeReplacement() {
+    public void EnumDataType_IsVM2007_NamingTheNativeReplacement() {
         var result = GeneratorHarness.Run(Model("""
             [Required]
             [EnumDataType(typeof(DayOfWeek))]
             public string? Day { get; set; }
             """));
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0068");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM2007");
         Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
         Assert.Contains("[EnumDefined]", diagnostic.GetMessage());
 
@@ -332,7 +332,7 @@ public class DataAnnotationsDiagnosticsTests {
         Assert.DoesNotContain("EnumDataType", result.Sources["Sample.CustomerValidator.g.cs"]);
     }
 
-    // VM0063 — the format validators compile to the BCL's own checks, and the Info states which.
+    // VM2004 — the format validators compile to the BCL's own checks, and the Info states which.
 
     [Theory]
     [InlineData("EmailAddress", "IsEmail", "ReportEmail")]
@@ -340,7 +340,7 @@ public class DataAnnotationsDiagnosticsTests {
     [InlineData("Url", "IsUrl", "ReportUrl")]
     [InlineData("CreditCard", "IsCreditCard", "ReportCreditCard")]
     [InlineData("Base64String", "IsBase64", "ReportBase64")]
-    public void FormatValidator_CompilesTheCheckAndReportsVM0063AsInfo(
+    public void FormatValidator_CompilesTheCheckAndReportsVM2004AsInfo(
         string attribute, string check, string report) {
         var result = GeneratorHarness.Run(Model($$"""
             [{{attribute}}]
@@ -348,7 +348,7 @@ public class DataAnnotationsDiagnosticsTests {
             public string? Value { get; set; }
             """));
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0063");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM2004");
 
         // Info, not Warning: the attribute is enforced, identically to every other DataAnnotations
         // consumer, so there is nothing to fix - only the compiled semantics, stated verbatim.
@@ -373,14 +373,14 @@ public class DataAnnotationsDiagnosticsTests {
             public string? Email { get; set; }
             """));
 
-        var message = Assert.Single(result.Diagnostics, d => d.Id == "VM0063").GetMessage();
+        var message = Assert.Single(result.Diagnostics, d => d.Id == "VM2004").GetMessage();
 
         Assert.Contains("'a@b' passes", message);
         Assert.Contains("[Pattern]", message);
     }
 
     [Fact]
-    public void FormatValidator_OnANonStringMember_IsVM0001AndNoInfo() {
+    public void FormatValidator_OnANonStringMember_IsVM1001AndNoInfo() {
         // DataAnnotations would run [EmailAddress] against the int and fail every value; a rule
         // that can never pass is a build error here, and the Info stays quiet rather than
         // narrating semantics beside an error that removes them.
@@ -389,10 +389,10 @@ public class DataAnnotationsDiagnosticsTests {
             public int Age { get; set; }
             """));
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0001");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1001");
 
         Assert.Contains("[EmailAddress]", diagnostic.GetMessage());
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0063");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM2004");
     }
 
     [Fact]
@@ -406,11 +406,11 @@ public class DataAnnotationsDiagnosticsTests {
             public Uri? Homepage { get; set; }
             """));
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0001");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1001");
         Assert.Contains("ConstraintChecks.IsUrl", result.Sources["Sample.CustomerValidator.g.cs"]);
         Assert.Contains(
             "absolute with scheme http, https or ftp",
-            Assert.Single(result.Diagnostics, d => d.Id == "VM0063").GetMessage());
+            Assert.Single(result.Diagnostics, d => d.Id == "VM2004").GetMessage());
         Assert.Empty(result.CompilationErrors);
     }
 
@@ -462,7 +462,7 @@ public class DataAnnotationsDiagnosticsTests {
     }
 
     [Fact]
-    public void FormatValidator_UnderIgnore_IsVM0010LikeAnyOtherConstraint() {
+    public void FormatValidator_UnderIgnore_IsVM2001LikeAnyOtherConstraint() {
         // Now that the format validators compile, Ignore mode owes them the same news it gives
         // [Required]: this library is leaving the attribute alone, and someone else may not.
         var result = GeneratorHarness.Run(
@@ -472,20 +472,20 @@ public class DataAnnotationsDiagnosticsTests {
                 """),
             ("ValidationModules_DataAnnotations", "Ignore"));
 
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0010");
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0063");
+        Assert.Single(result.Diagnostics, d => d.Id == "VM2001");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM2004");
     }
 
-    // VM0064 — a length constraint on a member that is neither a string nor a collection.
+    // VM2005 — a length constraint on a member that is neither a string nor a collection.
 
     [Theory]
     [InlineData("[MinLength(1)] public int Age { get; set; }")]
     [InlineData("[MaxLength(10)] public int Age { get; set; }")]
     [InlineData("[Length(1, 10)] public int Age { get; set; }")]
-    public void LengthOnUnsupportedMember_IsVM0064(string member) {
+    public void LengthOnUnsupportedMember_IsVM2005(string member) {
         var result = GeneratorHarness.Run(Model(member));
 
-        Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM0064").Severity);
+        Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM2005").Severity);
     }
 
     [Theory]
@@ -497,7 +497,7 @@ public class DataAnnotationsDiagnosticsTests {
     public void LengthOnStringOrCollection_IsSilent(string member) {
         var result = GeneratorHarness.Run(Model(member));
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0064");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM2005");
     }
 
     [Fact]
@@ -517,7 +517,7 @@ public class DataAnnotationsDiagnosticsTests {
         Assert.Contains("global::ValidationModules.ValidationMessageTemplates.ItemCountAtMost, 3", emitted);
     }
 
-    // VM0067 — IValidatableObject, compiled with TryValidateObject's sequencing.
+    // VM2006 — IValidatableObject, compiled with TryValidateObject's sequencing.
 
     [Fact]
     public void ValidatableObject_IsCompiledLastAndGatedOnACleanPass() {
@@ -539,7 +539,7 @@ public class DataAnnotationsDiagnosticsTests {
 
         var result = GeneratorHarness.Run(source);
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0067");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM2006");
 
         Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
         Assert.Contains("Customer", diagnostic.GetMessage());
@@ -557,7 +557,7 @@ public class DataAnnotationsDiagnosticsTests {
     }
 
     [Fact]
-    public void ValidatableObject_UnderIgnore_IsVM0067AsInfo() {
+    public void ValidatableObject_UnderIgnore_IsVM2006AsInfo() {
         var source = """
             using System.Collections.Generic;
             using System.ComponentModel.DataAnnotations;
@@ -577,7 +577,7 @@ public class DataAnnotationsDiagnosticsTests {
 
         var result = GeneratorHarness.Run(source, ("ValidationModules_DataAnnotations", "Ignore"));
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0067");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM2006");
         Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
         Assert.Contains("ValidationModules is ignoring its Validate method", diagnostic.GetMessage());
         Assert.Contains("another validation system may still call it", diagnostic.GetMessage());
@@ -608,13 +608,13 @@ public class DataAnnotationsDiagnosticsTests {
     }
 
     [Fact]
-    public void PlainModel_DoesNotReportVM0067() {
+    public void PlainModel_DoesNotReportVM2006() {
         var result = GeneratorHarness.Run(Model("""
             [Required]
             public string? Name { get; set; }
             """));
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0067");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM2006");
     }
 
     // The clean case, so none of the above can pass because the front end never ran.

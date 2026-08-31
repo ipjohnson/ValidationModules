@@ -12,8 +12,8 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// <remarks>
 /// A body is C# that is read, never run - so a statement the generator cannot carry must break the
 /// build rather than transcribe into a call on the inert builder that validates nothing. The
-/// blacklist is short (VM0070); the load-bearing rules are the builder flowing only where the
-/// reader can follow (VM0087) and transcribed code compiling at the emission site (VM0088). Every
+/// blacklist is short (VM3001); the load-bearing rules are the builder flowing only where the
+/// reader can follow (VM3002) and transcribed code compiling at the emission site (VM3004). Every
 /// one of these is an error rather than a warning.
 /// </remarks>
 public class RulesClassDiagnosticsTests {
@@ -44,7 +44,7 @@ public class RulesClassDiagnosticsTests {
         """;
 
     /// <summary>
-    /// What a body was refused for. VM0092 is advisory - it states the code an <c>Ensure</c>
+    /// What a body was refused for. VM3103 is advisory - it states the code an <c>Ensure</c>
     /// derived, and the rule is emitted either way - so it is not a complaint about the body and
     /// asserting its absence would be asserting the wrong thing.
     /// </summary>
@@ -85,7 +85,7 @@ public class RulesClassDiagnosticsTests {
         Assert.Empty(result.CompilationErrors);
     }
 
-    // VM0070 - the blacklist: v1-rejected exotica and mutation of the subject.
+    // VM3001 - the blacklist: v1-rejected exotica and mutation of the subject.
 
     [Theory]
     [InlineData("goto done; done: rules.Require(x.Guest);")]
@@ -93,17 +93,17 @@ public class RulesClassDiagnosticsTests {
     [InlineData("lock (string.Empty) { }")]
     [InlineData("using var reader = System.IO.File.OpenText(\"x\");")]
     [InlineData("x.Mutable = \"a\";")]
-    public void BlacklistedStatement_IsVM0070(string statement) {
+    public void BlacklistedStatement_IsVM3001(string statement) {
         var result = GeneratorHarness.Run(Rules($"        {statement}"));
 
-        var reported = result.Diagnostics.Where(d => d.Id == "VM0070").ToList();
+        var reported = result.Diagnostics.Where(d => d.Id == "VM3001").ToList();
 
         Assert.NotEmpty(reported);
         Assert.All(reported, d => Assert.Equal(DiagnosticSeverity.Error, d.Severity));
     }
 
     [Fact]
-    public void ApplyAnywhereButTheTop_IsVM0070() {
+    public void ApplyAnywhereButTheTop_IsVM3001() {
         // Applied rules run last and unconditionally - a guarded Apply would promise a condition
         // the emitted ordering cannot honour.
         var result = GeneratorHarness.Run(Rules(
@@ -115,14 +115,14 @@ public class RulesClassDiagnosticsTests {
                 }
             """));
 
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM0070");
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM3001");
     }
 
     [Fact]
-    public void VM0070_NamesTheRulesClassSoTheAuthorKnowsWhichBodyIsAtFault() {
+    public void VM3001_NamesTheRulesClassSoTheAuthorKnowsWhichBodyIsAtFault() {
         var result = GeneratorHarness.Run(Rules("        x.Mutable = \"a\";"));
 
-        Assert.Contains("ReservationRules", Assert.Single(result.Diagnostics, d => d.Id == "VM0070").GetMessage());
+        Assert.Contains("ReservationRules", Assert.Single(result.Diagnostics, d => d.Id == "VM3001").GetMessage());
     }
 
     [Fact]
@@ -140,32 +140,32 @@ public class RulesClassDiagnosticsTests {
         Assert.Empty(result.CompilationErrors);
     }
 
-    // VM0071 - a value argument that is not a member path, so the error would have no field.
+    // VM3007 - a value argument that is not a member path, so the error would have no field.
 
     [Theory]
     [InlineData("rules.Require(x.Guest!.Trim());")]
     [InlineData("rules.Range(x.Nights + 1, 1, 30);")]
     [InlineData("rules.Require(\"constant\");")]
-    public void ValueThatIsNotAMemberPath_IsVM0071(string statement) {
+    public void ValueThatIsNotAMemberPath_IsVM3007(string statement) {
         var result = GeneratorHarness.Run(Rules($"        {statement}"));
 
-        Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM0071").Severity);
+        Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM3007").Severity);
     }
 
     [Fact]
     public void PlainMemberPath_IsSilent() {
         var result = GeneratorHarness.Run(Rules("        rules.Require(x.Guest);"));
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0071");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM3007");
     }
 
-    // VM0092 - the code an Ensure derived, stated where the rule was written.
+    // VM3103 - the code an Ensure derived, stated where the rule was written.
 
     [Fact]
-    public void EnsureWithoutACode_IsVM0092NamingTheDerivedCode() {
+    public void EnsureWithoutACode_IsVM3103NamingTheDerivedCode() {
         var result = GeneratorHarness.Run(Rules("        rules.Ensure(x.Start < x.End);"));
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0092");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM3103");
 
         Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
         Assert.Contains("start_less_than_end", diagnostic.GetMessage());
@@ -177,11 +177,11 @@ public class RulesClassDiagnosticsTests {
         var result = GeneratorHarness.Run(
             Rules("        rules.Ensure(x.Start < x.End, code: \"date_order\");"));
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0092");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM3103");
     }
 
     [Fact]
-    public void EnsureIsStillEmittedAlongsideVM0092() {
+    public void EnsureIsStillEmittedAlongsideVM3103() {
         // The gate that drops a rules class counts refusals, not every diagnostic. An advisory one
         // used to take the whole class down with it.
         var result = GeneratorHarness.Run(Rules("        rules.Ensure(x.Start < x.End);"));
@@ -249,13 +249,13 @@ public class RulesClassDiagnosticsTests {
         Assert.Contains("\"start_less_than_end\"", string.Concat(result.Sources.Values));
     }
 
-    // VM0075 - an Ensure whose condition touches no property and names no field.
+    // VM3102 - an Ensure whose condition touches no property and names no field.
 
     [Fact]
-    public void EnsureReadingNoProperty_IsVM0075() {
+    public void EnsureReadingNoProperty_IsVM3102() {
         var result = GeneratorHarness.Run(Rules("        rules.Ensure(1 < 2);"));
 
-        Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM0075").Severity);
+        Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM3102").Severity);
     }
 
     [Fact]
@@ -264,7 +264,7 @@ public class RulesClassDiagnosticsTests {
         // over its extra parameters is the sanctioned case. The raw wire name is the author's.
         var result = GeneratorHarness.Run(Rules("        rules.Ensure(1 < 2, field: \"nights\");"));
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0075");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM3102");
         Assert.Empty(result.CompilationErrors);
     }
 
@@ -272,7 +272,7 @@ public class RulesClassDiagnosticsTests {
     public void EnsureReadingAProperty_InfersTheFieldAndIsSilent() {
         var result = GeneratorHarness.Run(Rules("        rules.Ensure(x.Start < x.End);"));
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0075");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM3102");
     }
 
     // Instance state is impossible by the language now, not by diagnostics.
@@ -280,7 +280,7 @@ public class RulesClassDiagnosticsTests {
     [Fact]
     public void InstanceState_IsACompilerErrorInTheRulesClassItself() {
         // Describe is static abstract, so `this` does not exist and an instance field is CS0120 in
-        // the author's own file - the language enforces what VM0072 used to police.
+        // the author's own file - the language enforces what a diagnostic used to police.
         var result = GeneratorHarness.Run(Rules(
             "        rules.Ensure(x.Nights <= _limit);",
             "    private readonly int _limit = 7;\n"));
@@ -288,67 +288,67 @@ public class RulesClassDiagnosticsTests {
         Assert.NotEmpty(result.CompilationErrors);
     }
 
-    // VM0087 - the builder flowing where the reader cannot follow.
+    // VM3002 - the builder flowing where the reader cannot follow.
 
     [Theory]
     [InlineData("var chain = rules.Require(x.Guest);")]
     [InlineData("Helper(rules);", "    private static bool Helper(ValidationRules<Reservation> r) => true;\n")]
     [InlineData("System.Func<ValidationModules.PropertyRules<Reservation, string?>> f = () => rules.Require(x.Guest);")]
-    public void BuilderInAnUnfollowableFlow_IsVM0087(string statement, string extraMembers = "") {
+    public void BuilderInAnUnfollowableFlow_IsVM3002(string statement, string extraMembers = "") {
         var result = GeneratorHarness.Run(Rules($"        {statement}", extraMembers));
 
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM0087");
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM3002");
     }
 
-    // VM0088 - transcribed code that cannot compile in the companion file.
+    // VM3004 - transcribed code that cannot compile in the companion file.
 
     [Theory]
     [InlineData("    private static bool Allowed(string? s) => true;\n",
         "if (!Allowed(x.Guest)) { rules.Context.ReportHere(\"c\", \"m\"); }")]
     [InlineData("    private static readonly int Limit = 7;\n",
         "rules.Ensure(x.Nights <= Limit);")]
-    public void APrivateNonConstantMember_IsVM0088(string extraMembers, string statement) {
+    public void APrivateNonConstantMember_IsVM3004(string extraMembers, string statement) {
         var result = GeneratorHarness.Run(Rules($"        {statement}", extraMembers));
 
-        var reported = Assert.Single(result.Diagnostics, d => d.Id == "VM0088");
+        var reported = Assert.Single(result.Diagnostics, d => d.Id == "VM3004");
 
         Assert.Equal(DiagnosticSeverity.Error, reported.Severity);
         Assert.Contains("internal", reported.GetMessage());
     }
 
-    // VM0089 - islands inside scopes the reader cannot expand them in.
+    // VM3003 - islands inside scopes the reader cannot expand them in.
 
     [Theory]
     [InlineData("foreach (var i in new[] { 1, 2 }) { rules.Range(x.Nights, 1, i); }")]
     [InlineData("for (var i = 0; i < 3; i++) { rules.Require(x.Guest); }")]
     [InlineData("void Local() { rules.Require(x.Guest); } Local();")]
-    public void IslandInALoopOrLocalFunction_IsVM0089(string statement) {
+    public void IslandInALoopOrLocalFunction_IsVM3003(string statement) {
         var result = GeneratorHarness.Run(Rules($"        {statement}"));
 
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM0089");
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM3003");
     }
 
-    // VM0090 - a Require that can never fail.
+    // VM3101 - a Require that can never fail.
 
     [Fact]
-    public void RequireOnANonNullableValueType_WithoutATypeArgument_IsVM0090Alone() {
+    public void RequireOnANonNullableValueType_WithoutATypeArgument_IsVM3101Alone() {
         // The bare spelling binds through Require's object? catch-all - inference cannot unwrap
         // Nullable, and the non-nullable twin would be CS0111 against the reference-type
-        // overload - so the author reads VM0090's "can never fail" as the only error on the
+        // overload - so the author reads VM3101's "can never fail" as the only error on the
         // line, not a CS0452 about the wrong overload.
         var result = GeneratorHarness.Run(Rules("        rules.Require(x.Nights);"));
 
         Assert.Empty(result.CompilationErrors);
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0090");
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0070");
+        Assert.Single(result.Diagnostics, d => d.Id == "VM3101");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM3001");
     }
 
     [Fact]
-    public void RequireOnANonNullableValueType_WithAnExplicitTypeArgument_IsVM0090() {
+    public void RequireOnANonNullableValueType_WithAnExplicitTypeArgument_IsVM3101() {
         // Naming the type argument gets past inference - int converts to int? - so the generator
         // diagnoses the rule that can never fail.
         var result = GeneratorHarness.Run(Rules("        rules.Require<int>(x.Nights);"));
 
-        Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM0090").Severity);
+        Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM3101").Severity);
     }
 }

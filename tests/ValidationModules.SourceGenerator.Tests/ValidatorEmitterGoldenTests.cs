@@ -558,7 +558,7 @@ public class ValidatorEmitterGoldenTests {
     [Fact]
     public void RulesClassNullableValue_GuardsTheMemberAndKeepsItsPath() {
         // A nullable-valued rule in both spellings: written against the member, and written with
-        // the .Value unwrap VM0093 corrects. The two must produce the same guarded shape and the
+        // the .Value unwrap VM3104 corrects. The two must produce the same guarded shape and the
         // same "batteryKwh" wire path - the unwrap's .value hop must appear nowhere.
         Snapshot.Match(Emit("""
             using ValidationModules;

@@ -10,7 +10,7 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// <remarks>
 /// C# infers nothing from a non-nullable argument to a <c>TValue?</c> parameter, so with only
 /// the nullable form <c>rules.Range(x.Latitude, -90, 90)</c> fixed <c>TValue</c> to <c>int</c>
-/// from the literals and failed as a CS1503 blaming the value, plus VM0070 because the call
+/// from the literals and failed as a CS1503 blaming the value, plus VM3001 because the call
 /// never bound. The rc1014 trial filed that cascade as a major. These tests pin every call
 /// shape through the pair: the plain overload wins for non-nullable members, the nullable
 /// overload for nullable members, and no shape is ambiguous.
@@ -74,8 +74,8 @@ public class RangeInferenceTests {
     }
 
     /// <summary>
-    /// The .Value-plus-raw-bounds cascade the trial filed: it used to be CS1503 plus VM0070.
-    /// Through the plain overload it now binds, so VM0093 can say the one true fix and the
+    /// The .Value-plus-raw-bounds cascade the trial filed: it used to be CS1503 plus VM3001.
+    /// Through the plain overload it now binds, so VM3104 can say the one true fix and the
     /// reader compiles the rule against the member itself.
     /// </summary>
     [Fact]
@@ -83,8 +83,8 @@ public class RangeInferenceTests {
         var result = GeneratorHarness.Run(Rules("        rules.Range(x.BatteryKwh.Value, 10, 300);"));
 
         Assert.Empty(result.CompilationErrors);
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0093");
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0070");
+        Assert.Single(result.Diagnostics, d => d.Id == "VM3104");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM3001");
 
         var region = result.Sources["Sample.TelemetryRules_Rules.g.cs"];
 
@@ -95,15 +95,15 @@ public class RangeInferenceTests {
     /// <summary>
     /// <c>Require</c> cannot grow the same twin - the reference-type overload's <c>TValue?</c>
     /// is annotation-only, so the twin is CS0111 - so it has an <c>object?</c> catch-all
-    /// instead. The bare spelling binds through it, typed spellings never reach it, and VM0090
-    /// is the only error on the line - no CS0452 about the wrong overload, no VM0070.
+    /// instead. The bare spelling binds through it, typed spellings never reach it, and VM3101
+    /// is the only error on the line - no CS0452 about the wrong overload, no VM3001.
     /// </summary>
     [Fact]
-    public void RequireOnANonNullableValueType_Bare_IsVM0090Alone() {
+    public void RequireOnANonNullableValueType_Bare_IsVM3101Alone() {
         var result = GeneratorHarness.Run(Rules("        rules.Require(x.Age);"));
 
         Assert.Empty(result.CompilationErrors);
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0090");
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0070");
+        Assert.Single(result.Diagnostics, d => d.Id == "VM3101");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM3001");
     }
 }
