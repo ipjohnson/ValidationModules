@@ -11,10 +11,10 @@ using ValidationModules.Constraints;   // not ValidationModules
 ```
 
 **The constraint is on a record parameter.** This is the most common cause, and it now reports
-[VM0051](/reference/diagnostics#vm0051), so check your warnings before reading further:
+[VM1008](/reference/diagnostics#vm1008), so check your warnings before reading further:
 
 ```csharp
-public sealed record Pet([Required] string Name);              // VM0051
+public sealed record Pet([Required] string Name);              // VM1008
 public sealed record Pet([property: Required] string Name);    // works
 ```
 
@@ -43,12 +43,12 @@ did not run at all; if the files are there, the problem is downstream.
 **DataAnnotations are switched off.** If your model's only rules are
 `System.ComponentModel.DataAnnotations` attributes and
 `ValidationModules_DataAnnotations` is `Ignore`, no validator is emitted. Every skipped constraint
-reports [VM0010](/reference/diagnostics#vm0010), so check your warnings.
+reports [VM2001](/reference/diagnostics#vm2001), so check your warnings.
 
 ## The validator exists but a rule never fires
 
 **`[Required]` on a non-nullable value type.** `int Age` is always present, so `[Required]` can never
-fail. That is [VM0004](/reference/diagnostics#vm0004), a warning. You probably wanted `[Range]`, or
+fail. That is [VM1201](/reference/diagnostics#vm1201), a warning. You probably wanted `[Range]`, or
 `int?`.
 
 **A pattern that is not anchored.** `[Pattern("abc")]` matches `"xabcx"`, because patterns follow
@@ -58,19 +58,19 @@ JSON Schema and are unanchored. Write `^abc$`.
 null collection has no element count. Add `[Required]` if absence should fail too.
 
 **`[ValidateNested]` on a type with no rules.** Nothing was generated for the nested type, so there
-is nothing to call. [VM0007](/reference/diagnostics#vm0007) warns about exactly this. If the rules
+is nothing to call. [VM1501](/reference/diagnostics#vm1501) warns about exactly this. If the rules
 come from a [rule class](/guide/rule-classes) the warning stays quiet, because the generator knows
 about it; mark the type `[GenerateValidator]` if they come from somewhere it cannot see.
 
 ## Generated code does not compile
 
 **A `[Range]` bound that does not parse.** String bounds are parsed against the member's type at
-build time, and one that does not parse is [VM0065](/reference/diagnostics#vm0065) with the
+build time, and one that does not parse is [VM1103](/reference/diagnostics#vm1103) with the
 constraint dropped, so this should no longer reach generated code. If it does, that is a bug worth
 reporting.
 
 **A referenced pattern member that is not visible.** The generated validator lands in your assembly,
-so a `private` member is out of reach. [VM0018](/reference/diagnostics#vm0018) names the reason.
+so a `private` member is out of reach. [VM1107](/reference/diagnostics#vm1107) names the reason.
 
 **Two types with the same name in one assembly.** This is handled. The hint name is qualified by
 namespace, so `Api.V1.Customer` and `Api.V2.Customer` coexist. If you see a duplicate-file error, it is a bug
@@ -132,7 +132,7 @@ use both.
 An inline `[Pattern("…")]` roots the regex parser and interpreter. Declare the pattern with
 `[GeneratedRegex]` and reference it. See [Patterns and regex](/guide/patterns).
 
-If you did not see [VM0017](/reference/diagnostics#vm0017) warning you, the policy resolved to
+If you did not see [VM1301](/reference/diagnostics#vm1301) warning you, the policy resolved to
 `Allow`, which happens when neither `PublishAot` nor `IsAotCompatible` is set on the project holding
 the models. Set `IsAotCompatible` there.
 
@@ -156,7 +156,7 @@ Every diagnostic is in category `ValidationModules.Usage`, so you can tune one o
 
 ```ini
 [*.cs]
-dotnet_diagnostic.VM0004.severity = none
+dotnet_diagnostic.VM1201.severity = none
 dotnet_analyzer_diagnostic.category-ValidationModules.Usage.severity = suggestion
 ```
 

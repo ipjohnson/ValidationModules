@@ -260,7 +260,7 @@ public sealed class QuoteRules : IValidationRulesFor<Quote> {
 }
 
 /// <summary>
-/// Element rules for collections of strings: the third route VM0089 names, landed after two
+/// Element rules for collections of strings: the third route VM3003 names, landed after two
 /// trials of models hand-writing the check [StringLength] already implements.
 /// </summary>
 public sealed record Procedure {

@@ -4,7 +4,7 @@ using Xunit;
 namespace ValidationModules.SourceGenerator.Tests;
 
 /// <summary>
-/// VM0007 — <c>[ValidateNested]</c> pointing at a type that has nothing to check.
+/// VM1501 — <c>[ValidateNested]</c> pointing at a type that has nothing to check.
 /// </summary>
 /// <remarks>
 /// This one was declared, released, and reported by nothing for the whole pre-1.0 line, which is
@@ -25,7 +25,7 @@ public class NestedTargetDiagnosticsTests {
         """;
 
     [Fact]
-    public void NestedTargetWithNoRules_IsVM0007() {
+    public void NestedTargetWithNoRules_IsVM1501() {
         var result = GeneratorHarness.Run(Model("""
             public record Address {
                 public string? PostalCode { get; init; }
@@ -37,7 +37,7 @@ public class NestedTargetDiagnosticsTests {
             }
             """));
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0007");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1501");
 
         Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
         Assert.Contains("Address", diagnostic.GetMessage());
@@ -45,7 +45,7 @@ public class NestedTargetDiagnosticsTests {
     }
 
     [Fact]
-    public void CollectionElementWithNoRules_IsVM0007() {
+    public void CollectionElementWithNoRules_IsVM1501() {
         // The descent reaches the element type, so that is what the message has to name.
         var result = GeneratorHarness.Run(Model("""
             public record Toy {
@@ -57,11 +57,11 @@ public class NestedTargetDiagnosticsTests {
             }
             """));
 
-        Assert.Contains("Toy", Assert.Single(result.Diagnostics, d => d.Id == "VM0007").GetMessage());
+        Assert.Contains("Toy", Assert.Single(result.Diagnostics, d => d.Id == "VM1501").GetMessage());
     }
 
     [Fact]
-    public void DictionaryValueWithNoRules_IsVM0007() {
+    public void DictionaryValueWithNoRules_IsVM1501() {
         var result = GeneratorHarness.Run(Model("""
             public record Product {
                 public string? Title { get; init; }
@@ -73,7 +73,7 @@ public class NestedTargetDiagnosticsTests {
             }
             """));
 
-        Assert.Contains("Product", Assert.Single(result.Diagnostics, d => d.Id == "VM0007").GetMessage());
+        Assert.Contains("Product", Assert.Single(result.Diagnostics, d => d.Id == "VM1501").GetMessage());
     }
 
     [Fact]
@@ -88,7 +88,7 @@ public class NestedTargetDiagnosticsTests {
             }
             """));
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0007");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1501");
     }
 
     [Fact]
@@ -106,14 +106,14 @@ public class NestedTargetDiagnosticsTests {
             }
             """));
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0007");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1501");
     }
 
     [Fact]
     public void NestedTargetWhoseRulesComeFromARulesClass_IsSilent() {
         // The case a front end cannot see on its own: Address carries no attribute, and its rules
         // are declared in a different file by a different type. Getting this wrong would make
-        // VM0007 fire on correct code, which is why the rules-class lookup is threaded in.
+        // VM1501 fire on correct code, which is why the rules-class lookup is threaded in.
         var result = GeneratorHarness.Run(Model("""
             public record Address {
                 public string? PostalCode { get; init; }
@@ -130,7 +130,7 @@ public class NestedTargetDiagnosticsTests {
             }
             """));
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0007");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1501");
     }
 
     [Fact]
@@ -151,12 +151,12 @@ public class NestedTargetDiagnosticsTests {
             }
             """));
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0007");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1501");
     }
 
     [Fact]
     public void NestedTargetWithNoRules_DropsTheDescentAndBuildsClean() {
-        // The half VM0007 used to leave broken: the warning promised "descends into it and
+        // The half VM1501 used to leave broken: the warning promised "descends into it and
         // validates nothing", but the emitter still wrote a call to AuthorValidator, which was
         // never generated - CS0400 inside generated code. The descent is dropped now, so the
         // behaviour matches the warning's own text.
@@ -171,7 +171,7 @@ public class NestedTargetDiagnosticsTests {
             }
             """));
 
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0007");
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1501");
         Assert.Empty(result.CompilationErrors);
 
         var validator = result.Sources["Sample.RecipeValidator.g.cs"];
@@ -194,15 +194,15 @@ public class NestedTargetDiagnosticsTests {
             }
             """));
 
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0007");
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1501");
         Assert.Empty(result.CompilationErrors);
         Assert.Contains("Sample.PetValidator.g.cs", result.Sources.Keys);
     }
 
     [Fact]
-    public void ListOfLists_IsVM0106AndBuildsClean() {
+    public void ListOfLists_IsVM1502AndBuildsClean() {
         // The element of List<List<Section>> is List<Section>: a constructed generic, which can
-        // never have a generated validator. Before VM0106 the name reached EmitterOutput.TypeRef,
+        // never have a generated validator. Before VM1502 the name reached EmitterOutput.TypeRef,
         // which threw, and the whole generator contributed nothing - reported only as a CS8785
         // warning, so a model-only class library said "Build succeeded" with zero validators.
         var result = GeneratorHarness.Run(Model("""
@@ -216,12 +216,12 @@ public class NestedTargetDiagnosticsTests {
             }
             """));
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0106");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1502");
 
         Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
         Assert.Contains("List", diagnostic.GetMessage());
         Assert.Contains("Sections", diagnostic.GetMessage());
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0107");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM5002");
         Assert.Empty(result.CompilationErrors);
 
         // Every other validator in the compilation is intact.
@@ -230,7 +230,7 @@ public class NestedTargetDiagnosticsTests {
     }
 
     [Fact]
-    public void ArrayOfArrays_IsVM0106AndBuildsClean() {
+    public void ArrayOfArrays_IsVM1502AndBuildsClean() {
         var result = GeneratorHarness.Run(Model("""
             public record Section {
                 [Required] public string? Name { get; init; }
@@ -241,14 +241,14 @@ public class NestedTargetDiagnosticsTests {
             }
             """));
 
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0106");
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1502");
         Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
-    public void NullableValueTypeElement_IsVM0106AndBuildsClean() {
+    public void NullableValueTypeElement_IsVM1502AndBuildsClean() {
         // The element of List<Money?> is Nullable<Money>, and the descent names its validator
-        // without unwrapping - VM0106's remodelling advice applies the same way.
+        // without unwrapping - VM1502's remodelling advice applies the same way.
         var result = GeneratorHarness.Run(Model("""
             public record struct Money {
                 [Required] public string? Currency { get; init; }
@@ -259,7 +259,7 @@ public class NestedTargetDiagnosticsTests {
             }
             """));
 
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0106");
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1502");
         Assert.Empty(result.CompilationErrors);
     }
 
@@ -275,6 +275,6 @@ public class NestedTargetDiagnosticsTests {
             }
             """));
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0007");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1501");
     }
 }

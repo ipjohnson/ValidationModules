@@ -151,7 +151,7 @@ dictionary keyed by user input the way you would treat logging that input.
 
 `[ValidateNested]` descends one level per property, and the element of a `List<List<Toy>>` is
 `List<Toy>` - a constructed generic, which can never have a generated validator. The build warns
-[VM0106](/reference/diagnostics#vm0106) and drops the descent. Model the inner list as a property
+[VM1502](/reference/diagnostics#vm1502) and drops the descent. Model the inner list as a property
 of a type instead:
 
 ```csharp
@@ -268,7 +268,7 @@ mutable type to reproduce. If you genuinely model a deep tree, leave the recursi
 
 `[ValidateNested]` on a type that declares no constraints validates nothing: no validator was
 generated for the target, so the descent is dropped rather than emitted. The build warns
-[VM0007](/reference/diagnostics#vm0007) at the property, so the silence is stated rather than
+[VM1501](/reference/diagnostics#vm1501) at the property, so the silence is stated rather than
 discovered. Only types this compilation declares are judged this way - a type from a referenced
 assembly may carry a validator generated over there, so its descent is kept.
 

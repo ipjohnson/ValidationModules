@@ -184,7 +184,7 @@ public class RangeBoundLiteralTypeTests {
     }
 
     /// <summary>
-    /// A bound with no form in the member's type must still route to VM0065 rather than emit
+    /// A bound with no form in the member's type must still route to VM1103 rather than emit
     /// something uncompilable - the guard Redenominate already had, kept for the widened path.
     /// </summary>
     [Fact]
@@ -201,7 +201,7 @@ public class RangeBoundLiteralTypeTests {
             """);
 
         Assert.Empty(result.CompilationErrors);
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM0065");
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM1103");
     }
 
     /// <summary>

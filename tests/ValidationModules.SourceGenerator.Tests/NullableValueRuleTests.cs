@@ -4,10 +4,10 @@ using Xunit;
 namespace ValidationModules.SourceGenerator.Tests;
 
 /// <summary>
-/// VM0093: a rule value written as <c>x.Member.Value</c>. The builder's parameters are already
+/// VM3104: a rule value written as <c>x.Member.Value</c>. The builder's parameters are already
 /// nullable, so the unwrap is never needed, and in the rc1013 trial it produced two majors from
 /// one habit: unsuffixed bound literals inferring the wrong <c>TValue</c> (an opaque CS1503 plus
-/// VM0070), and a compiling rule whose wire path was <c>batteryKwh.value</c>.
+/// VM3001), and a compiling rule whose wire path was <c>batteryKwh.value</c>.
 /// </summary>
 public class NullableValueRuleTests {
 
@@ -28,10 +28,10 @@ public class NullableValueRuleTests {
         """;
 
     [Fact]
-    public void ValueUnwrap_ReportsVM0093_NamingTheFix() {
+    public void ValueUnwrap_ReportsVM3104_NamingTheFix() {
         var result = GeneratorHarness.Run(Rules("        rules.Range(x.BatteryKwh.Value, 10m, 300m);"));
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0093");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM3104");
         Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
         Assert.Contains("x.BatteryKwh.Value", diagnostic.GetMessage());
         Assert.Contains("write 'x.BatteryKwh'", diagnostic.GetMessage());
@@ -54,16 +54,16 @@ public class NullableValueRuleTests {
     }
 
     /// <summary>
-    /// A genuinely unresolvable call carrying the unwrap: VM0070 alone said only "unresolvable";
-    /// VM0093 beside it names the habit. The unsuffixed-literal shape that used to live here now
+    /// A genuinely unresolvable call carrying the unwrap: VM3001 alone said only "unresolvable";
+    /// VM3104 beside it names the habit. The unsuffixed-literal shape that used to live here now
     /// binds through the range pair's plain overload - RangeInferenceTests owns it.
     /// </summary>
     [Fact]
-    public void ValueUnwrap_OnAnUnresolvableCall_ReportsVM0093BesideVM0070() {
+    public void ValueUnwrap_OnAnUnresolvableCall_ReportsVM3104BesideVM3001() {
         var result = GeneratorHarness.Run(Rules("""        rules.Range(x.BatteryKwh.Value, "10", "300");"""));
 
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM0070");
-        var unwrap = Assert.Single(result.Diagnostics, d => d.Id == "VM0093");
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM3001");
+        var unwrap = Assert.Single(result.Diagnostics, d => d.Id == "VM3104");
         Assert.Contains("x.BatteryKwh", unwrap.GetMessage());
     }
 
@@ -72,20 +72,20 @@ public class NullableValueRuleTests {
         var result = GeneratorHarness.Run(Rules("        rules.Range(x.BatteryKwh, 10m, 300m);"));
 
         Assert.Empty(result.CompilationErrors);
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0093");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM3104");
     }
 
     /// <summary>
     /// <c>.Value</c> on something that is not a subject path - here a local - is not this
-    /// diagnostic's business; VM0071 already owns "not a member path".
+    /// diagnostic's business; VM3007 already owns "not a member path".
     /// </summary>
     [Fact]
-    public void ValueOnANonSubjectPath_IsNotVM0093() {
+    public void ValueOnANonSubjectPath_IsNotVM3104() {
         var result = GeneratorHarness.Run(Rules("""
                 decimal? local = 5m;
                 rules.Range(local.Value, 10m, 300m);
         """));
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0093");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM3104");
     }
 }

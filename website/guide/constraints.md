@@ -71,7 +71,7 @@ What counts as missing depends on the type:
 | `string` | null, empty, or **whitespace only** |
 | any reference type | null |
 | `Nullable<T>` | null |
-| non-nullable value type | never, which is [VM0004](/reference/diagnostics#vm0004) |
+| non-nullable value type | never, which is [VM1201](/reference/diagnostics#vm1201) |
 
 ::: warning Whitespace-only strings are treated as missing
 `"   "` fails `[Required]`. This matches `System.ComponentModel.DataAnnotations`, which trims before
@@ -86,7 +86,7 @@ rather than in the emitted `else if`. See [the error model](/guide/errors#suppre
 ## `[StringLength]`
 
 Emits code `string_length`. Strings only; anything else is
-[VM0001](/reference/diagnostics#vm0001).
+[VM1001](/reference/diagnostics#vm1001).
 
 ```csharp
 [StringLength(min: 1, max: 100)]
@@ -101,7 +101,7 @@ public string? Token { get; init; }
 
 The named form exists so declaring one bound reads as declaring one bound. `Min` defaults to `0` and
 `Max` to `int.MaxValue`, so the omitted side imposes nothing. Inverted bounds are
-[VM0008](/reference/diagnostics#vm0008).
+[VM1101](/reference/diagnostics#vm1101).
 
 The two spellings do not mix: lowercase `min:`/`max:` are the two-parameter constructor's
 parameters, and the capitalized `Min`/`Max` are properties on the parameterless form. Writing
@@ -114,7 +114,7 @@ emoji outside the BMP counts as two.
 ## `[Range]`
 
 Emits code `range`. Numeric and date-like types only; anything else is
-[VM0003](/reference/diagnostics#vm0003).
+[VM1003](/reference/diagnostics#vm1003).
 
 ```csharp
 [Range(0, 30)]
@@ -143,7 +143,7 @@ public int Quantity { get; init; }
 
 An absent bound emits no comparison and is not named in the message. It reads
 `quantity must be at least 1.` rather than naming a second bound nobody wrote. A `[Range]` with neither bound can never fail, and is
-[VM0026](/reference/diagnostics#vm0026).
+[VM1102](/reference/diagnostics#vm1102).
 
 ::: tip String bounds, for the types with no constant form
 `decimal`, `DateTime`, `DateOnly`, `TimeOnly`, `TimeSpan` and `DateTimeOffset` have no constant form
@@ -163,7 +163,7 @@ public TimeSpan Window { get; init; }
 
 The bound is emitted as a constructor call, `new global::System.DateOnly(2000, 1, 1)`, in both the
 comparison and the message, so the two cannot disagree. A bound that does not parse is
-[VM0065](/reference/diagnostics#vm0065) at the declaration, not an error inside a generated file.
+[VM1103](/reference/diagnostics#vm1103) at the declaration, not an error inside a generated file.
 
 A `DateTime` bound is `DateTimeKind.Unspecified`. `"2000-01-01"` carries no zone, and anchoring it
 to the build machine's zone would make the same source mean two things on two machines.
@@ -171,7 +171,7 @@ to the build machine's zone would make the same source mean two things on two ma
 
 ## `[Pattern]`
 
-Emits code `pattern`. Strings only; anything else is [VM0001](/reference/diagnostics#vm0001).
+Emits code `pattern`. Strings only; anything else is [VM1001](/reference/diagnostics#vm1001).
 
 ```csharp
 [Pattern("^[A-Z]{3}$")]
@@ -192,14 +192,14 @@ public string? Sku { get; init; }
 
 [Patterns and regex](/guide/patterns) covers the size difference, the policy that governs it, and
 what to do about it. The short version: in an AOT-facing project the inline form is
-[VM0017](/reference/diagnostics#vm0017) by default.
+[VM1301](/reference/diagnostics#vm1301) by default.
 
-A pattern that will not parse is [VM0006](/reference/diagnostics#vm0006), reported with the regex
+A pattern that will not parse is [VM1106](/reference/diagnostics#vm1106), reported with the regex
 engine's own message. Patterns are unanchored by default, following JSON Schema, so
 `[Pattern("abc")]` matches `"xabcx"`. Write `^…$` if you mean the whole value.
 
 ::: tip `RegexOptions.Compiled` is ignored
-Setting it is [VM0016](/reference/diagnostics#vm0016). It emits IL through `Reflection.Emit`, which
+Setting it is [VM1302](/reference/diagnostics#vm1302). It emits IL through `Reflection.Emit`, which
 is what this library exists to avoid. Patterns go through `[GeneratedRegex]` instead.
 :::
 
@@ -259,7 +259,7 @@ public string? Username { get; init; }
 ## `[ItemCount]`
 
 Emits code `array_bounds`. Collections only; anything else is
-[VM0002](/reference/diagnostics#vm0002).
+[VM1002](/reference/diagnostics#vm1002).
 
 ```csharp
 [ItemCount(min: 1, max: 10)]
@@ -270,7 +270,7 @@ public List<string> Tags { get; init; } = [];
 
 A `string` is **not** a collection here, even though it implements `IEnumerable<char>`. Taking that
 reading would turn a length constraint into a per-character walk, so `[ItemCount]` on a string is
-VM0002 and `[StringLength]` is what you wanted.
+VM1002 and `[StringLength]` is what you wanted.
 
 The count is read without enumerating wherever a `Count` or `Length` exists. For a bare
 `IEnumerable<T>` the emitter walks it once instead, so the constraint still applies rather than
@@ -279,7 +279,7 @@ being silently skipped.
 ## `[MultipleOf]`
 
 Emits code `multiple_of`. OpenAPI's `multipleOf`. Numeric types only; anything else is
-[VM0021](/reference/diagnostics#vm0021).
+[VM1004](/reference/diagnostics#vm1004).
 
 ```csharp
 [MultipleOf(5)]
@@ -292,11 +292,11 @@ public decimal Price { get; init; }
 public double Ratio { get; init; }
 ```
 
-A divisor of zero or less is [VM0022](/reference/diagnostics#vm0022). It is an error rather than a
+A divisor of zero or less is [VM1104](/reference/diagnostics#vm1104). It is an error rather than a
 dropped rule because `value % 0` is a compile error for an integral member and a
 `DivideByZeroException` for a decimal one, and both would land inside a generated file. A divisor
 with no form the member's type can be checked against is
-[VM0023](/reference/diagnostics#vm0023): a fractional divisor on an `int`, or a string that does
+[VM1105](/reference/diagnostics#vm1105): a fractional divisor on an `int`, or a string that does
 not parse.
 
 `decimal` takes its divisor as a string for the same reason `[Range]` does. It has no constant form
@@ -328,7 +328,7 @@ passed as a value that could not be evaluated.
 ## `[UniqueItems]`
 
 Emits code `unique_items`. OpenAPI's `uniqueItems`. Collections only; anything else is
-[VM0024](/reference/diagnostics#vm0024). It takes no arguments, so presence is the constraint.
+[VM1005](/reference/diagnostics#vm1005). It takes no arguments, so presence is the constraint.
 
 ```csharp
 [UniqueItems]
@@ -351,7 +351,7 @@ Comparison is `EqualityComparer<T>.Default`. That is value equality for records,
 anything implementing `IEquatable<T>`, and **reference equality** for a class that overrides none of
 it. Two
 elements with identical contents would then both pass, which is a rule succeeding for the wrong
-reason. The generator reports [VM0025](/reference/diagnostics#vm0025) rather than letting it
+reason. The generator reports [VM1202](/reference/diagnostics#vm1202) rather than letting it
 through quietly.
 
 A `HashSet<T>` or a dictionary cannot fail this constraint, since its own type already guarantees
@@ -418,7 +418,7 @@ public sealed record Pet([Required] string Name);             // silently valida
 ```
 
 ::: warning Why the wrong form needs a diagnostic
-The second form is [VM0051](/reference/diagnostics#vm0051). Without that diagnostic it is silent in
+The second form is [VM1008](/reference/diagnostics#vm1008). Without that diagnostic it is silent in
 every direction: the attribute binds to the constructor parameter, so the property carries no
 metadata, **no validator is emitted at all**, `IValidatorFor<Pet>` does not resolve, and a runner
 merging zero validators reports every value as valid.
@@ -436,7 +436,7 @@ public sealed record Pet {
 ## `[EnumDefined]`
 
 Emits code `enum`. Enum types only; anything else is
-[VM0027](/reference/diagnostics#vm0027). It takes no arguments, so presence is the constraint.
+[VM1006](/reference/diagnostics#vm1006). It takes no arguments, so presence is the constraint.
 
 ```csharp
 [EnumDefined]

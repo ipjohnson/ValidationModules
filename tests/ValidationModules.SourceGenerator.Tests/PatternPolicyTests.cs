@@ -47,7 +47,7 @@ public class PatternPolicyTests {
     public void InlinePattern_NotAotFacing_IsAccepted() {
         var result = GeneratorHarness.Run(InlinePattern);
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0017");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1301");
         Assert.Contains(
             "new global::System.Text.RegularExpressions.Regex(",
             result.Sources["Sample.PetValidator.g.cs"]);
@@ -57,7 +57,7 @@ public class PatternPolicyTests {
     public void InlinePattern_PublishAot_IsAnError() {
         var result = GeneratorHarness.Run(InlinePattern, ("PublishAot", "true"));
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0017");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1301");
         Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
     }
 
@@ -67,7 +67,7 @@ public class PatternPolicyTests {
         // never see it, so gating on that alone would push the failure onto somebody else's publish.
         var result = GeneratorHarness.Run(InlinePattern, ("IsAotCompatible", "true"));
 
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0017");
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1301");
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public class PatternPolicyTests {
         var result = GeneratorHarness.Run(source, ("PublishAot", "true"));
 
         // The rejected constraint is dropped rather than emitted anyway, so the build fails with
-        // VM0017 and not also with a second, less useful error out of the generated file. Every
+        // VM1301 and not also with a second, less useful error out of the generated file. Every
         // other constraint on the type still compiles.
         var emitted = result.Sources["Sample.PetValidator.g.cs"];
         Assert.DoesNotContain("new global::System.Text.RegularExpressions.Regex(", emitted);
@@ -102,7 +102,7 @@ public class PatternPolicyTests {
         var result = GeneratorHarness.Run(InlinePattern,
             ("PublishAot", "true"), ("ValidationModules_PatternPolicy", "Warn"));
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0017");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1301");
         Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
         Assert.Contains(
             "new global::System.Text.RegularExpressions.Regex(",
@@ -114,7 +114,7 @@ public class PatternPolicyTests {
         var result = GeneratorHarness.Run(InlinePattern,
             ("PublishAot", "true"), ("ValidationModules_PatternPolicy", "Allow"));
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0017");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1301");
     }
 
     [Fact]
@@ -122,14 +122,14 @@ public class PatternPolicyTests {
         // What a library shipping to AOT consumers sets, so the failure lands on its own build.
         var result = GeneratorHarness.Run(InlinePattern, ("ValidationModules_PatternPolicy", "Error"));
 
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0017");
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1301");
     }
 
     [Fact]
     public void ReferencedPattern_UnderAot_IsAcceptedAndCallsTheMember() {
         var result = GeneratorHarness.Run(ReferencedPattern, ("PublishAot", "true"));
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0017");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1301");
 
         var emitted = result.Sources["Sample.PetValidator.g.cs"];
         Assert.Contains("global::Sample.PetPatterns.Sku().IsMatch", emitted);
@@ -157,7 +157,7 @@ public class PatternPolicyTests {
 
         var result = GeneratorHarness.Run(source, ("PublishAot", "true"));
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0018");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1107");
         Assert.Contains(reason, diagnostic.GetMessage());
     }
 
@@ -178,7 +178,7 @@ public class PatternPolicyTests {
 
         var result = GeneratorHarness.Run(source, ("PublishAot", "true"));
 
-        Assert.Contains("does not exist", Assert.Single(result.Diagnostics, d => d.Id == "VM0018").GetMessage());
+        Assert.Contains("does not exist", Assert.Single(result.Diagnostics, d => d.Id == "VM1107").GetMessage());
     }
 
     // MatchTimeoutMilliseconds - the attribute's only ReDoS mitigation.

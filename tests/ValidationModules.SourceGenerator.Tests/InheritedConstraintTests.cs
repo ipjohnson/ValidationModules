@@ -191,11 +191,11 @@ public class InheritedConstraintTests {
 
     /// <summary>
     /// The most-derived declaration supplies all of a property's constraints, never some of them:
-    /// two <c>[StringLength]</c> bounds on one field is ambiguous and would report twice. VM0030
+    /// two <c>[StringLength]</c> bounds on one field is ambiguous and would report twice. VM1009
     /// says so out loud, because the alternative is constraints disappearing on a `new` keyword.
     /// </summary>
     [Fact]
-    public void ShadowedProperty_TakesOverEveryConstraintAndReportsVM0030() {
+    public void ShadowedProperty_TakesOverEveryConstraintAndReportsVM1009() {
         var result = GeneratorHarness.Run("""
             using ValidationModules.Constraints;
 
@@ -221,7 +221,7 @@ public class InheritedConstraintTests {
         Assert.DoesNotContain(
             "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\", value: value.Name)", body);
 
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM0030");
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM1009");
     }
 
     /// <summary>
@@ -244,7 +244,7 @@ public class InheritedConstraintTests {
             }
             """);
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0030");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1009");
         Assert.Contains(
             "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\", value: value.Name)",
             Body(result, "DerivedValidator"));
@@ -349,7 +349,7 @@ public class InheritedConstraintTests {
             namespace Shared;
 
             public record BaseRequest {
-                // [StringLength] on an int: VM0001 where it is declared, not here.
+                // [StringLength] on an int: VM1001 where it is declared, not here.
                 [StringLength(1, 10)]
                 public int Count { get; init; }
             }
@@ -366,6 +366,6 @@ public class InheritedConstraintTests {
             }
             """);
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0001");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1001");
     }
 }

@@ -198,7 +198,7 @@ public sealed class VehicleRules : IValidationRulesFor<Vehicle> {
 ```
 
 Every rule takes the nullable directly, so `x.BatteryKwh.Value` is never needed - writing it is
-[VM0093](/reference/diagnostics#vm0093), and the reader compiles the rule against the member
+[VM3104](/reference/diagnostics#vm3104), and the reader compiles the rule against the member
 itself. The one literal rule is C#'s own: fractional bounds on a `decimal` member need the `m`
 suffix (`0.5m`), because `double` does not convert implicitly to `decimal`. See
 [the rules API](/reference/rules-api#the-vocabulary) for the overload pair behind this.
@@ -220,7 +220,7 @@ rules.Require(x.Name, field: "petName");
 `[JsonPropertyName]` on the property wins, then the
 [naming policy](/reference/msbuild#validationmodules-fieldnaming). An explicit `field:` is a raw
 wire name and is not put through the namer, so it is yours to get right. Anything that is not a
-member path needs one, or it is [VM0071](/reference/diagnostics#vm0071).
+member path needs one, or it is [VM3007](/reference/diagnostics#vm3007).
 
 Where free-form code needs a field name, `nameof` through the subject parameter rewrites to the wire
 path, including inside interpolated strings:
@@ -251,11 +251,11 @@ so no runtime value can reach it. Locals appear under their own names, as in `to
 which makes local naming part of your user-facing text.
 
 The rule anchors to the first member access off the subject. A condition that reads none needs
-`field:`, or it is [VM0075](/reference/diagnostics#vm0075).
+`field:`, or it is [VM3102](/reference/diagnostics#vm3102).
 
 **The code is derived from the same render**, so `x.Start < x.End` reports
 `start_less_than_end` and two `Ensure`s on one field are told apart by a client as well as by a
-reader. [VM0092](/reference/diagnostics#vm0092) states the derived code at the rule, since it is the
+reader. [VM3103](/reference/diagnostics#vm3103) states the derived code at the rule, since it is the
 one part of a rules class you cannot read off the source. Pass `code:` to pin one rule against a
 later change to its condition. [Error codes](/reference/codes#why-ensure-derives-its-code) has the
 reasoning and the operator spellings.
@@ -308,14 +308,14 @@ public sealed class OrderRules : IValidationRulesFor<Order> {
 - **Extra parameters bind at the call site**: `CustomsRules.Declare(rules, x, strict: x.Tier > 2)`.
 - The parameter typed as the subject must be passed the `Describe` subject. A facet of a child is
   `Nested`'s territory. Fragments may call fragments, and a cycle is
-  [VM0086](/reference/diagnostics#vm0086) rather than a hang.
+  [VM3006](/reference/diagnostics#vm3006) rather than a hang.
 - Each fragment expands into a companion method carrying **its own file's** using directives, so it
   compiles exactly as written where it was written.
 
 ::: warning Fragments travel as source
 A fragment is read from syntax, and a referenced assembly ships IL. There is no body to read, so a
 plain `ProjectReference` is on the wrong side of the line
-([VM0085](/reference/diagnostics#vm0085)). Share fragments through a shared project or a source-only
+([VM3005](/reference/diagnostics#vm3005)). Share fragments through a shared project or a source-only
 package, or ship the rules as a compiled facet, below.
 :::
 
@@ -342,7 +342,7 @@ rules.As<IAudited>(x);
 
 One spelling, two bindings. A facet whose validator is generated in **this** compilation binds
 statically, with no DI involved, and a facet with no rules here is
-[VM0091](/reference/diagnostics#vm0091) rather than a silent no-op. A facet from a **referenced**
+[VM3105](/reference/diagnostics#vm3105) rather than a silent no-op. A facet from a **referenced**
 assembly resolves the closed `IValidatorFor<TFacet>` through the pass's services. Compose the
 facet's own `Add…Validators()` at your root. A missing registration throws and names exactly that,
 rather than silently skipping.
@@ -384,15 +384,15 @@ independently, and a failed `Require` suppresses the rest of *its own* chain and
 Almost everything transcribes. What does not, and why:
 
 - **The builder flowing where the reader cannot follow**
-  ([VM0087](/reference/diagnostics#vm0087)): storing `rules` or a chain in a local, capturing it in
+  ([VM3002](/reference/diagnostics#vm3002)): storing `rules` or a chain in a local, capturing it in
   a lambda, or passing it to anything that is not a fragment. A rule call the generator cannot see
   would validate nothing, so it is an error instead.
 - **A member the companion file cannot reach**
-  ([VM0088](/reference/diagnostics#vm0088)): `private` members of the rules class. Make them
+  ([VM3004](/reference/diagnostics#vm3004)): `private` members of the rules class. Make them
   `internal`. A `private const` is carried across by value.
 - **Islands in loops, lambdas, or local functions**
-  ([VM0089](/reference/diagnostics#vm0089)). Collections are `Each`'s job, and the reporter tier
+  ([VM3003](/reference/diagnostics#vm3003)). Collections are `Each`'s job, and the reporter tier
   covers the unusual per-element case.
 - **Statements with no sensible transcription**
-  ([VM0070](/reference/diagnostics#vm0070)): `goto`, `try`/`catch`, `lock`, `using` statements, and
+  ([VM3001](/reference/diagnostics#vm3001)): `goto`, `try`/`catch`, `lock`, `using` statements, and
   assignment to the subject.

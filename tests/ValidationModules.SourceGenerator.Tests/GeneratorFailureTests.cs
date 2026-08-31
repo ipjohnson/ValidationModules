@@ -4,20 +4,20 @@ using Xunit;
 namespace ValidationModules.SourceGenerator.Tests;
 
 /// <summary>
-/// VM0107 — an unhandled exception in an emit stage must fail the build, not surface as the
+/// VM5002 — an unhandled exception in an emit stage must fail the build, not surface as the
 /// CS8785 warning Roslyn converts it into.
 /// </summary>
 /// <remarks>
 /// The failure mode this closes: in a class library holding only models, nothing references a
 /// generated symbol, so a generator that throws produces "Build succeeded" with zero validators
 /// and every model silently validates nothing. The rc1015 trial hit it through
-/// <c>[ValidateNested]</c> on a <c>List&lt;List&lt;T&gt;&gt;</c>; that trigger is now VM0106, and
-/// VM0107 is the backstop for the class.
+/// <c>[ValidateNested]</c> on a <c>List&lt;List&lt;T&gt;&gt;</c>; that trigger is now VM1502, and
+/// VM5002 is the backstop for the class.
 /// </remarks>
 public class GeneratorFailureTests {
 
     [Fact]
-    public void AnEmitStageThatThrows_IsAVM0107Error() {
+    public void AnEmitStageThatThrows_IsAVM5002Error() {
         // A rules-class descent into a nested generic keeps its machinery - the region's
         // transcribed text owns the walk - so the constructed generic name still reaches the
         // emitter, whose TypeRef refuses it. That throw is the one remaining reachable trigger,
@@ -44,14 +44,14 @@ public class GeneratorFailureTests {
             }
             """);
 
-        var failure = result.Diagnostics.First(d => d.Id == "VM0107");
+        var failure = result.Diagnostics.First(d => d.Id == "VM5002");
 
         Assert.Equal(DiagnosticSeverity.Error, failure.Severity);
         Assert.Contains("Batch", failure.GetMessage());
     }
 
     [Fact]
-    public void AHealthyCompilation_ReportsNoVM0107() {
+    public void AHealthyCompilation_ReportsNoVM5002() {
         var result = GeneratorHarness.Run("""
             using ValidationModules.Constraints;
 
@@ -62,7 +62,7 @@ public class GeneratorFailureTests {
             }
             """);
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0107");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM5002");
         Assert.Empty(result.CompilationErrors);
     }
 }

@@ -40,7 +40,7 @@ public class RuleTextTests {
     [InlineData("x => Other.Age")]
     [InlineData(null)]
     public void PropertyOfSelector_OnSomethingThatIsNotAPath_IsNull(string? selector) {
-        // VM0071's case. Naming the error "age" for "x => x.Age + 1" would be a guess.
+        // VM3007's case. Naming the error "age" for "x => x.Age + 1" would be a guess.
         Assert.Null(RuleText.PropertyOfSelector(selector));
     }
 
@@ -55,7 +55,7 @@ public class RuleTextTests {
 
     [Fact]
     public void AnchorOfPredicate_WhenThePredicateNeverReadsItsParameter_IsNull() {
-        // VM0075's case: nothing to anchor to and no field: supplied.
+        // VM3102's case: nothing to anchor to and no field: supplied.
         Assert.Null(RuleText.AnchorOfPredicate("x => Constants.Enabled"));
     }
 

@@ -46,7 +46,7 @@ public abstract class ValidationConstraintAttribute : Attribute {
     /// The name is resolved at build time against the type being validated, and must be one of
     /// three shapes: a <c>bool</c> property, a parameterless <c>bool</c> method, or a
     /// <c>static bool</c> method taking the model. All three keep <c>nameof</c> working, and none
-    /// can close over anything - so the self-containment rule VM0072 enforces for
+    /// can close over anything - so the self-containment a static abstract <c>Describe</c> gives
     /// <c>rules.Ensure</c> predicates is satisfied here by construction rather than by analysis.
     /// </para>
     /// <para>
@@ -68,7 +68,7 @@ public abstract class ValidationConstraintAttribute : Attribute {
     /// </summary>
     /// <remarks>
     /// Setting both <see cref="When"/> and <see cref="Unless"/> on one constraint is ambiguous by
-    /// construction and is a build error (VM0033). Write two constraints, or one negated condition.
+    /// construction and is a build error (VM1403). Write two constraints, or one negated condition.
     /// </remarks>
     public string? Unless { get; init; }
 }

@@ -171,7 +171,7 @@ public static class RangeBoundReader {
     /// <c>double.PositiveInfinity</c>, has no form in that type at all. For <c>decimal</c> that has
     /// to be reported - C# has no implicit conversion from double or float, so
     /// <c>[Range(0.5, 9.99)] decimal Price</c> emitting <c>price &lt; 0.5</c> failed the consumer's
-    /// build on CS0019 - and returning false routes it to VM0065 instead.
+    /// build on CS0019 - and returning false routes it to VM1103 instead.
     /// </para>
     /// <para>
     /// Everywhere else an unparseable bound is left exactly as written, which is what it was before

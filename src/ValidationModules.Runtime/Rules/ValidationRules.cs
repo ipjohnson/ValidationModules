@@ -62,7 +62,7 @@ public sealed class ValidationRules<T> {
         where TValue : struct => throw Inert();
 
     /// <summary>
-    /// The catch-all that makes <c>Require</c> on a non-nullable value type bind, so VM0090 can
+    /// The catch-all that makes <c>Require</c> on a non-nullable value type bind, so VM3101 can
     /// be the only error on the line.
     /// </summary>
     /// <remarks>

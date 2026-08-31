@@ -7,7 +7,7 @@ using Xunit;
 namespace ValidationModules.SourceGenerator.Tests;
 
 /// <summary>
-/// VM0040, version lockstep. Plan §7.5.
+/// VM5001, version lockstep. Plan §7.5.
 /// </summary>
 /// <remarks>
 /// The probe is exercised against hand-built compilations rather than through
@@ -23,7 +23,7 @@ public class RuntimeContractTests {
         var diagnostic = EmitterContract.Probe(Compile(""));
 
         Assert.NotNull(diagnostic);
-        Assert.Equal("VM0040", diagnostic.Id);
+        Assert.Equal("VM5001", diagnostic.Id);
         Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
     }
 
@@ -32,7 +32,7 @@ public class RuntimeContractTests {
         var diagnostic = EmitterContract.Probe(Compile(MarkerWith(EmitterContract.RequiredRuntimeContract - 1)));
 
         Assert.NotNull(diagnostic);
-        Assert.Equal("VM0040", diagnostic.Id);
+        Assert.Equal("VM5001", diagnostic.Id);
     }
 
     [Fact]
@@ -88,7 +88,7 @@ public class RuntimeContractTests {
     /// rather than left to be implied by other tests passing.
     /// </summary>
     [Fact]
-    public void Generator_DoesNotReportVM0040AgainstTheRealRuntime() {
+    public void Generator_DoesNotReportVM5001AgainstTheRealRuntime() {
         var result = GeneratorHarness.Run("""
             using ValidationModules.Constraints;
 
@@ -100,7 +100,7 @@ public class RuntimeContractTests {
             }
             """);
 
-        Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Id == "VM0040");
+        Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Id == "VM5001");
         Assert.Empty(result.CompilationErrors);
     }
 

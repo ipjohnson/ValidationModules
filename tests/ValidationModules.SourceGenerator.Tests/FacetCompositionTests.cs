@@ -107,7 +107,7 @@ public class FacetCompositionTests {
     }
 
     [Fact]
-    public void ASameCompilationFacetWithNoRules_IsVM0091() {
+    public void ASameCompilationFacetWithNoRules_IsVM3105() {
         // A facet declared here with nothing declaring rules for it would make the As a silent
         // no-op, which is the failure this library refuses everywhere else.
         var result = GeneratorHarness.Run("""
@@ -130,13 +130,13 @@ public class FacetCompositionTests {
             }
             """);
 
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM0091");
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM3105");
     }
 
     [Fact]
     public void AFacetWhoseRulesComeFromARulesClass_IsSilent() {
         // The facet's rules arrive from another rules class rather than attributes - the pre-scan
-        // is what keeps VM0091 from firing on correct code whatever the candidate order.
+        // is what keeps VM3105 from firing on correct code whatever the candidate order.
         var result = GeneratorHarness.Run("""
             using ValidationModules;
 
@@ -163,7 +163,7 @@ public class FacetCompositionTests {
             }
             """);
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0091");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM3105");
         Assert.Empty(result.CompilationErrors);
     }
 
@@ -174,7 +174,7 @@ public class FacetCompositionTests {
             "rules.As<IAudited>(x);",
             "rules.As<IAudited>(new Order());"));
 
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM0087");
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM3002");
     }
 
     [Fact]

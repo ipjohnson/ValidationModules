@@ -87,7 +87,7 @@ public sealed class AttributeFrontEnd {
     /// <param name="hasRulesClass">
     /// Whether a type is the target of a rules class somewhere in this compilation. Supplied by the
     /// caller because a front end sees one type at a time and the declarations are collected across
-    /// all of them; without it, VM0007 would fire on a nested type whose rules are declared
+    /// all of them; without it, VM1501 would fire on a nested type whose rules are declared
     /// externally, which is a false accusation rather than a missed one.
     /// </param>
     public ValidatedTypeModel? Build(
@@ -215,7 +215,7 @@ public sealed class AttributeFrontEnd {
                 // that walk and still names it.
                 if (target is not INamedTypeSymbol { IsGenericType: false } named) {
                     // A type-parameter target only occurs inside a generic validated type, which
-                    // VM0079 refuses wholesale below; a second diagnostic there would be noise.
+                    // VM1010 refuses wholesale below; a second diagnostic there would be noise.
                     if (target.TypeKind != TypeKind.TypeParameter) {
                         Report(
                             ValidationDiagnostics.NestedTargetCannotHaveValidator, property,
@@ -359,7 +359,7 @@ public sealed class AttributeFrontEnd {
         }
 
         // The walk rather than GetMembers(): a type whose only constraints are inherited still
-        // produces a validator, so asking only about declared members would make VM0007 accuse it
+        // produces a validator, so asking only about declared members would make VM1501 accuse it
         // of having no rules.
         foreach (var member in MemberWalk.PropertiesOf(type, _compilation, CarriesConstraints)) {
             if (member.Sources.Any(CarriesConstraints)) {
@@ -375,7 +375,7 @@ public sealed class AttributeFrontEnd {
     /// </summary>
     /// <remarks>
     /// Shared with the walk, which consults it to decide whether an interface declaration is worth
-    /// resolving to its implementer and whether a hidden base declaration is worth a VM0030.
+    /// resolving to its implementer and whether a hidden base declaration is worth a VM1009.
     /// </remarks>
     private bool CarriesConstraints(IPropertySymbol property) {
         if (HasValidateNested(property)) {
@@ -693,7 +693,7 @@ public sealed class AttributeFrontEnd {
         }
 
         // Only when the second vocabulary is switched on. With it off the attribute is not enforced
-        // wherever it sits, and VM0010 is the diagnostic with that news.
+        // wherever it sits, and VM2001 is the diagnostic with that news.
         if (!_compileDataAnnotations) {
             return false;
         }
@@ -714,8 +714,8 @@ public sealed class AttributeFrontEnd {
     /// </summary>
     /// <remarks>
     /// Runs before <see cref="ValidateConstraintsAgainstType"/> so the ordering check reports
-    /// VM0003 first on a member that is not ordered at all - a bound that cannot parse against a
-    /// type that could never carry a range is VM0003's news, not VM0065's. A bound that fails to
+    /// VM1003 first on a member that is not ordered at all - a bound that cannot parse against a
+    /// type that could never carry a range is VM1003's news, not VM1103's. A bound that fails to
     /// parse takes its constraint with it, so the build fails on the diagnostic alone rather than
     /// also on generated code that will not compile.
     /// </remarks>
@@ -810,8 +810,8 @@ public sealed class AttributeFrontEnd {
     /// </summary>
     /// <remarks>
     /// Runs before <see cref="ValidateConstraintsAgainstType"/> for the reason
-    /// <see cref="ResolveRangeBounds"/> does: on a member no divisor could apply to, VM0021 is the
-    /// news rather than VM0023. A divisor that survives is positive and rendered, so the emitter
+    /// <see cref="ResolveRangeBounds"/> does: on a member no divisor could apply to, VM1004 is the
+    /// news rather than VM1105. A divisor that survives is positive and rendered, so the emitter
     /// never writes <c>% 0</c> - CS0020 for an integral member, DivideByZeroException for a decimal
     /// one, and either way a failure inside generated code.
     /// </remarks>
@@ -960,7 +960,7 @@ public sealed class AttributeFrontEnd {
                 // The format checks read strings - except [Url], which also reads a System.Uri.
                 // DataAnnotations would run the attribute against the mistyped member and fail
                 // every non-null value; a rule that can never pass is a build error here, the
-                // same trade VM0004 makes for one that can never fail.
+                // same trade VM1201 makes for one that can never fail.
                 case ConstraintKind.Email or ConstraintKind.Phone or ConstraintKind.CreditCard
                     or ConstraintKind.Base64 or ConstraintKind.FileExtension when !isString:
                 case ConstraintKind.Url when !isString && !DataAnnotationsConstraintReader.IsUri(memberType):
@@ -1147,12 +1147,12 @@ public sealed class AttributeFrontEnd {
 
             // Through Report's _quiet gate like every other diagnostic: a constraint read off a
             // base or interface declaration is reported where it is declared, not once per type
-            // that inherits it - which matters doubly now that VM0063 fires on every compiled
+            // that inherits it - which matters doubly now that VM2004 fires on every compiled
             // format attribute rather than only on mistakes.
             if (outcome.Diagnostic is not null) {
-                // Only reached with the front end on, so the VM0060 fallback tail is always the
+                // Only reached with the front end on, so the VM2002 fallback tail is always the
                 // enforce one. The reader supplies Detail where its diagnostic's message has a
-                // third placeholder - VM0064's member type, VM0063's compiled semantics; VM0061
+                // third placeholder - VM2005's member type, VM2004's compiled semantics; VM2003
                 // has none and ignores the argument.
                 Report(
                     outcome.Diagnostic, member, attributeClass.Name, member.Name,
@@ -1301,7 +1301,8 @@ public sealed class AttributeFrontEnd {
     /// <remarks>
     /// Three shapes, and they are the three that cannot capture anything: a bool property, a
     /// parameterless bool method, and a static bool method taking the model. That is what makes the
-    /// self-containment VM0072 enforces for <c>Ensure</c> predicates hold here by construction.
+    /// self-containment a static abstract <c>Describe</c> gives <c>Ensure</c> predicates hold here
+    /// by construction.
     /// </remarks>
     private string? ConditionExpression(string name, ISymbol member) {
         var type = _validatedType!;
@@ -1396,7 +1397,7 @@ public sealed class AttributeFrontEnd {
     /// </summary>
     /// <remarks>
     /// "Stated" is tracked separately from the value because <c>DeclaredOnly</c> is both the
-    /// default and a legitimate explicit answer, and VM0031 exists to tell the two apart: an
+    /// default and a legitimate explicit answer, and VM1503 exists to tell the two apart: an
     /// author who wrote <c>Polymorphism.DeclaredOnly</c> has made the decision and should not be
     /// asked again.
     /// </remarks>
@@ -1425,7 +1426,7 @@ public sealed class AttributeFrontEnd {
     /// </summary>
     /// <remarks>
     /// A sealed class, a value type and an enum can have no subtypes, so there is no decision to
-    /// make and VM0031 stays quiet. Everything else can, whether or not anything visible here does.
+    /// make and VM1503 stays quiet. Everything else can, whether or not anything visible here does.
     /// </remarks>
     private static bool CanHaveSubtypes(ITypeSymbol target) =>
         target is { IsSealed: false, IsValueType: false } and not { TypeKind: TypeKind.Enum };
@@ -1484,7 +1485,7 @@ public sealed class AttributeFrontEnd {
     /// constants, and produces a constraint the emitter compiles like any built-in.
     /// </summary>
     /// <remarks>
-    /// Everything that can be wrong here is VM0082 with the reason, because catching the shape at
+    /// Everything that can be wrong here is VM1601 with the reason, because catching the shape at
     /// build time is the feature: the invoked-DataAnnotations form discovers the same mistakes at
     /// run time or never.
     /// </remarks>
@@ -1623,8 +1624,8 @@ public sealed class AttributeFrontEnd {
     /// the declaration back into its construction, and produces the constraint the emitter weaves.
     /// </summary>
     /// <remarks>
-    /// Everything that can be wrong here is VM0083 with the reason, the arrangement VM0080 and
-    /// VM0082 established: a mistake in a native shape is a build error naming the fix, never a
+    /// Everything that can be wrong here is VM1602 with the reason, the arrangement VM2008 and
+    /// VM1601 established: a mistake in a native shape is a build error naming the fix, never a
     /// rule that silently stops running.
     /// </remarks>
     private void ReadInstanceConstraint(
@@ -1636,7 +1637,7 @@ public sealed class AttributeFrontEnd {
         List<ConstraintModel> constraints) {
 
         // The hoisted field is typed as the attribute class, and TypeRef refuses a constructed
-        // generic name - the same narrowing VM0079 applies to models, for the same reason.
+        // generic name - the same narrowing VM1010 applies to models, for the same reason.
         if (attributeClass.IsGenericType) {
             Report(ValidationDiagnostics.ConstraintInterfaceUnusable, member,
                 attributeClass.Name, member.Name,

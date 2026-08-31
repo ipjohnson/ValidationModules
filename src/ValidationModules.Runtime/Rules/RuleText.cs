@@ -65,7 +65,7 @@ internal static class RuleText {
     /// <c>"x =&gt; x.Home.PostalCode"</c> gives <c>"Home"</c>, because the outermost property is
     /// what the error is pathed against.
     /// </summary>
-    /// <returns>Null when the body is not a member access on the parameter, which is VM0071.</returns>
+    /// <returns>Null when the body is not a member access on the parameter, which is VM3007.</returns>
     public static string? PropertyOfSelector(string? selectorText) {
         var body = BodyOf(selectorText, out var parameter);
 
@@ -97,7 +97,7 @@ internal static class RuleText {
     /// The property an <c>Ensure</c> anchors to: the first member read off the parameter anywhere in
     /// the predicate. <c>"x =&gt; x.Start &lt; x.End"</c> anchors to <c>"Start"</c>.
     /// </summary>
-    /// <returns>Null when the predicate never touches its parameter, which is VM0075.</returns>
+    /// <returns>Null when the predicate never touches its parameter, which is VM3102.</returns>
     public static string? AnchorOfPredicate(string? predicateText) {
         var body = BodyOf(predicateText, out var parameter);
 

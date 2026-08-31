@@ -4,7 +4,7 @@ using Xunit;
 namespace ValidationModules.SourceGenerator.Tests;
 
 /// <summary>
-/// A generic type carrying constraints - VM0079.
+/// A generic type carrying constraints - VM1010.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -36,10 +36,10 @@ public class GenericModelDiagnosticsTests {
         """;
 
     [Fact]
-    public void GenericModel_IsVM0079() {
+    public void GenericModel_IsVM1010() {
         var result = GeneratorHarness.Run(Generic);
 
-        Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM0079").Severity);
+        Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM1010").Severity);
     }
 
     [Fact]
@@ -52,8 +52,8 @@ public class GenericModelDiagnosticsTests {
     }
 
     [Fact]
-    public void VM0079_NamesTheTypeAndSaysWhatToDoInstead() {
-        var message = Assert.Single(GeneratorHarness.Run(Generic).Diagnostics, d => d.Id == "VM0079").GetMessage();
+    public void VM1010_NamesTheTypeAndSaysWhatToDoInstead() {
+        var message = Assert.Single(GeneratorHarness.Run(Generic).Diagnostics, d => d.Id == "VM1010").GetMessage();
 
         Assert.Contains("Envelope", message);
         Assert.Contains("closed", message);
@@ -71,7 +71,7 @@ public class GenericModelDiagnosticsTests {
             }
             """);
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0079");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1010");
         Assert.Empty(result.CompilationErrors);
     }
 
@@ -93,7 +93,7 @@ public class GenericModelDiagnosticsTests {
             }
             """);
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0079");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1010");
         Assert.Empty(result.CompilationErrors);
     }
 }

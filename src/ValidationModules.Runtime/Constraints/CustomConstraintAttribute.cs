@@ -19,7 +19,7 @@ namespace ValidationModules.Constraints;
 /// value-type members. This compiles to the branch you would have written by hand: no instance, no
 /// context, no boxing, nothing allocated on a passing value. The trade is that the check must be a
 /// static method over statically renderable arguments, which is also what makes it verifiable at
-/// build time - a mistake in the shape is a build error (VM0082) naming what to fix.
+/// build time - a mistake in the shape is a build error (VM1601) naming what to fix.
 /// </para>
 /// <para>
 /// A null member value passes, as it does for every constraint except <c>[Required]</c> - the

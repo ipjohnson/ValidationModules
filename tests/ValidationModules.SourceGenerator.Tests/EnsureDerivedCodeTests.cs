@@ -44,10 +44,10 @@ public class EnsureDerivedCodeTests {
 
         Assert.Empty(result.CompilationErrors);
 
-        // The code is the second argument of the emitted report call, and VM0092 states it. Reading
+        // The code is the second argument of the emitted report call, and VM3103 states it. Reading
         // it off the diagnostic keeps the assertion on what an author is told, not on emitter
         // formatting that is pinned by the golden files anyway.
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0092").GetMessage();
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM3103").GetMessage();
         var opening = diagnostic.IndexOf('\'') + 1;
 
         return diagnostic.Substring(opening, diagnostic.IndexOf('\'', opening) - opening);
@@ -110,6 +110,6 @@ public class EnsureDerivedCodeTests {
 
         Assert.Contains("\"date_order\"", string.Concat(result.Sources.Values));
         Assert.DoesNotContain("start_less_than_end", string.Concat(result.Sources.Values));
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0092");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM3103");
     }
 }

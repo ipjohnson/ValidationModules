@@ -155,7 +155,7 @@ public class PolymorphicDescentTests {
         Assert.Contains("return false;", isValid);
     }
 
-    // -- VM0031 --------------------------------------------------------------------------------
+    // -- VM1503 --------------------------------------------------------------------------------
 
     /// <summary>
     /// Keyed on whether the target is sealed, never on which subtypes are visible - a diagnostic
@@ -163,8 +163,8 @@ public class PolymorphicDescentTests {
     /// whole design exists to avoid.
     /// </summary>
     [Fact]
-    public void UnsealedTargetWithNoMode_IsVM0031() {
-        Assert.Contains(Run("[ValidateNested]").Result.Diagnostics, d => d.Id == "VM0031");
+    public void UnsealedTargetWithNoMode_IsVM1503() {
+        Assert.Contains(Run("[ValidateNested]").Result.Diagnostics, d => d.Id == "VM1503");
     }
 
     [Fact]
@@ -185,7 +185,7 @@ public class PolymorphicDescentTests {
             }
             """);
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0031");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1503");
     }
 
     /// <summary>
@@ -194,8 +194,8 @@ public class PolymorphicDescentTests {
     [Theory]
     [InlineData("[ValidateNested(Polymorphism.DeclaredOnly)]")]
     [InlineData("[ValidateNested(Polymorphism.CompileTime)]")]
-    public void AnExplicitMode_SilencesVM0031(string nested) {
-        Assert.DoesNotContain(Run(nested).Result.Diagnostics, d => d.Id == "VM0031");
+    public void AnExplicitMode_SilencesVM1503(string nested) {
+        Assert.DoesNotContain(Run(nested).Result.Diagnostics, d => d.Id == "VM1503");
     }
 
     // -- the two features together --------------------------------------------------------------
@@ -361,7 +361,7 @@ public class PolymorphicDescentTests {
     /// on it buys a container lookup and nothing else.
     /// </summary>
     [Fact]
-    public void RuntimeOnASealedTarget_IsVM0032() {
+    public void RuntimeOnASealedTarget_IsVM1504() {
         var result = GeneratorHarness.Run("""
             using ValidationModules.Constraints;
 
@@ -378,7 +378,7 @@ public class PolymorphicDescentTests {
             }
             """);
 
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM0032");
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM1504");
     }
 
     private static int Occurrences(string text, string value) {

@@ -197,7 +197,7 @@ public static class LanguagePackReader {
         return highest;
     }
 
-    /// <summary>The inventory key nearest the misspelling, for the VM0101 message.</summary>
+    /// <summary>The inventory key nearest the misspelling, for the VM4002 message.</summary>
     private static string NearestKey(string key) {
         var best = "";
         var bestDistance = int.MaxValue;

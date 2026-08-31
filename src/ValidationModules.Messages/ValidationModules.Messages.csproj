@@ -8,7 +8,7 @@
         <!--
             The soft-publish shape: this package ships no assembly. The
             props below hand the JSON to the consumer's own generator, so validation and the
-            VM0105 coverage check run against the consumer's template inventory - drift is visible
+            VM4006 coverage check run against the consumer's template inventory - drift is visible
             to the build it affects - and trimming is exact because the packs are the consumer's
             own code. The dependencies are the version floor: a runtime old enough not to know
             packs fails the contract gate rather than failing inside generated code.

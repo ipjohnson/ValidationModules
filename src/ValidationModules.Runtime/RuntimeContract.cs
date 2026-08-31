@@ -28,7 +28,7 @@ public static class RuntimeContract {
     // 1 -> 2: the emitter began calling NestedValidation.ValidateRegistered after every nested
     // descent, so that a validator registered for the nested type composes the same way one
     // registered for the top-level type always has. A runtime at contract 1 has no such method, and
-    // the failure would land inside generated code - which is what VM0040 exists to prevent.
+    // the failure would land inside generated code - which is what VM5001 exists to prevent.
     //
     //   Superseded, and NestedValidation is gone. The emitter now takes the nested type's
     //   validators as an IEnumerable<IValidatorFor<Nested>> constructor parameter and holds them as
@@ -50,7 +50,7 @@ public static class RuntimeContract {
     // resolves a validator for the value's runtime type through the provider on the collector. The
     // emitter now writes calls to DynamicValidation, which a contract-3 runtime does not have, and
     // reads ctx.Services, which it also does not have. Both would fail inside generated code, which
-    // is what VM0040 exists to prevent.
+    // is what VM5001 exists to prevent.
 
     // 4 -> 5: IValidatorFor<T>.Validate returns ValidationFlow instead of void, and the report
     // helpers are Report* rather than Add* and return it too. The emitter now writes
@@ -60,7 +60,7 @@ public static class RuntimeContract {
     // Unlike every bump before it this is not additive - the old members are gone rather than
     // joined. The additive-only rule below is what makes a bump sufficient for a framework author
     // compiling Impl themselves, and it does not cover this; the version gate turns what would be
-    // an error inside generated code into VM0040 at the call site, which is the best available
+    // an error inside generated code into VM5001 at the call site, which is the best available
     // outcome. Taken before 1.0.0 pins the surface, which is the only time it is cheap.
 
     // 5 -> 6: the DataAnnotations compatibility surface compiles instead of being diagnosed away.

@@ -52,7 +52,7 @@ chain is one statement and one suppression unit.
 
 `rules.Ensure(x.Start < x.End)` takes a plain bool. The generator captures it syntactically and
 transcribes it into the generated region. `Describe` is static, so `this` does not exist, and
-referring to a `private` member of the rules class produces `VM0088`. Write the condition inline.
+referring to a `private` member of the rules class produces `VM3004`. Write the condition inline.
 If a rule genuinely needs a service or captured state, write a hand-written `IValidatorFor<T>` and
 compose it through dependency injection.
 
@@ -106,7 +106,7 @@ These are easy to violate by habit.
 
 Consumers learn this library from compiler diagnostics more than from documentation. A diagnostic
 that names the member, states the constraint, and prints the replacement call is worth more than a
-documentation page. `VM0017` is the standard to match. When adding or changing a diagnostic, say
+documentation page. `VM1301` is the standard to match. When adding or changing a diagnostic, say
 what to do instead, not only what is wrong.
 
 ## Working style

@@ -116,7 +116,7 @@ rules.Require(x.Name, field: "petName");
 wire name, not put through the namer - with one exception: `field: nameof(x.AccountNumber)`,
 through the subject, names a *member*, so it takes that member's wire name (`accountNumber`),
 exactly as `nameof` does everywhere else in a rules class. Anything that is not a member path is
-[VM0071](/reference/diagnostics#vm0071) unless `field:` is given.
+[VM3007](/reference/diagnostics#vm3007) unless `field:` is given.
 
 A nullable member is passed as itself - every rule takes the nullable directly:
 
@@ -125,10 +125,10 @@ public decimal? BatteryKwh { get; init; }
 
 rules.Range(x.BatteryKwh, 10, 300);          // field "batteryKwh"; null passes, [Required] is
                                              // the presence check
-rules.Range(x.BatteryKwh.Value, 10, 300);    // VM0093: drop .Value
+rules.Range(x.BatteryKwh.Value, 10, 300);    // VM3104: drop .Value
 ```
 
-Writing `.Value` is never needed and is [VM0093](/reference/diagnostics#vm0093): the reader
+Writing `.Value` is never needed and is [VM3104](/reference/diagnostics#vm3104): the reader
 corrects the rule to the member itself, so the source should say what is meant.
 
 ## Anchored chaining
@@ -171,7 +171,7 @@ so codes, messages and check shapes match exactly.
 
 `Range<TValue>` is constrained `where TValue : struct, IComparable<TValue>, IFormattable`, which
 is what makes it work for `DateOnly` and `decimal` where the
-[`[Range]` string overload does not](/reference/diagnostics#vm0065). Each range method is an
+[`[Range]` string overload does not](/reference/diagnostics#vm1103). Each range method is an
 overload pair, `TValue value` beside `TValue? value`, so inference reads the member's own type
 whether or not it is nullable: `rules.Range(x.Latitude, -90, 90)` on a `double` infers `double`
 and the int literals convert. The compiler picks the right overload per call site; you never
@@ -193,7 +193,7 @@ as the attribute path. See [the guide](/guide/constraints#multipleof).
 uniqueness enumerates rather than reading a count.
 
 `Require` on a non-nullable value type cannot be written bare, because inference will not unwrap
-`Nullable`. With an explicit type argument it is [VM0090](/reference/diagnostics#vm0090).
+`Nullable`. With an explicit type argument it is [VM3101](/reference/diagnostics#vm3101).
 
 ## Conditions are C#
 
@@ -234,7 +234,7 @@ under their own names, so `var total = …; rules.Ensure(total <= x.CreditLimit)
 `total <= creditLimit.`
 
 The rule anchors to the first property the condition reads. A condition that reads none needs
-`field:`, or it is [VM0075](/reference/diagnostics#vm0075). The code derives from the same render,
+`field:`, or it is [VM3102](/reference/diagnostics#vm3102). The code derives from the same render,
 so `x.Start < x.End` reports `start_less_than_end`, and `code:` pins it. See
 [Error codes](/reference/codes#why-ensure-derives-its-code).
 
@@ -267,8 +267,8 @@ public static void Standard<T>(ValidationRules<T> rules, T audited) where T : IA
 ```
 
 See [the guide](/guide/rule-classes#fragments) for the rules: same compilation
-([VM0085](/reference/diagnostics#vm0085)), subject argument, cycles
-([VM0086](/reference/diagnostics#vm0086)).
+([VM3005](/reference/diagnostics#vm3005)), subject argument, cycles
+([VM3006](/reference/diagnostics#vm3006)).
 
 ## `As<TFacet>`
 
@@ -279,7 +279,7 @@ rules.As<IAudited>(x);   // validate x as its IAudited facet
 Validates the subject as one of its facets. This is the route when shared rules ship as compiled
 IL. A
 facet generated in this compilation binds statically (no rules for it is
-[VM0091](/reference/diagnostics#vm0091)); a facet from a referenced assembly resolves the closed
+[VM3105](/reference/diagnostics#vm3105)); a facet from a referenced assembly resolves the closed
 `IValidatorFor<TFacet>` through the pass's services, and a missing registration throws naming the
 module to compose. The path does not push. Declare facet rules in a rules class targeting the
 facet, rather than as attributes on it. See [the guide](/guide/rule-classes#facets).
@@ -296,4 +296,4 @@ rules.Apply(PetChecks.SkuChecksum);
 
 Taken as a method group rather than a `(Type, string)` pair, and emitted as a direct call. Applied
 rules run after everything else, unconditionally, in declaration order, so an `Apply` under an `if`
-is [VM0070](/reference/diagnostics#vm0070).
+is [VM3001](/reference/diagnostics#vm3001).

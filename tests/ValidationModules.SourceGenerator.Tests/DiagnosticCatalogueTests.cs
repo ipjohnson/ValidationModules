@@ -26,8 +26,8 @@ public class DiagnosticCatalogueTests {
     /// Declared, released, and never constructed anywhere in the product.
     /// </summary>
     /// <remarks>
-    /// <b>Empty, and keeping it empty is the point.</b> VM0051 and VM0065 were here and were wired
-    /// up; VM0007 was the last entry and its descriptor was deleted rather than implemented -
+    /// <b>Empty, and keeping it empty is the point.</b> VM1008 and VM1103 were here and were wired
+    /// up; VM1501 was the last entry and its descriptor was deleted rather than implemented -
     /// <c>[ValidateNested]</c> on a type with no rules still says nothing, but a descriptor nothing
     /// constructs is a promise the catalogue does not keep, and deleting it is honest where
     /// carrying it was not.
@@ -94,7 +94,7 @@ public class DiagnosticCatalogueTests {
 
     [Fact]
     public void DocumentationClaimsOfNeverReported_MatchTheRecordedSet() {
-        // The class of bug this pins: guide/nesting.md said VM0007 was "never reported" while
+        // The class of bug this pins: guide/nesting.md said VM1501 was "never reported" while
         // guide/troubleshooting.md documented it firing - and the report site existed all along.
         // NeverReported above is the authority, so a doc paragraph may make that claim only about
         // an id recorded there. With the set empty, the claim is banned outright.

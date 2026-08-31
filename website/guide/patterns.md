@@ -65,8 +65,8 @@ Which form is acceptable is governed by `ValidationModules_PatternPolicy`:
 | Value | Inline patterns |
 |---|---|
 | `Allow` | accepted silently |
-| `Warn` | [VM0017](/reference/diagnostics#vm0017) as a warning, and still emitted |
-| `Error` | VM0017 as an error, and the constraint is dropped |
+| `Warn` | [VM1301](/reference/diagnostics#vm1301) as a warning, and still emitted |
+| `Error` | VM1301 as an error, and the constraint is dropped |
 | *(unset)* | `Error` if the project is AOT-facing, `Allow` otherwise |
 
 ```xml
@@ -97,7 +97,7 @@ public sealed record Pet {
 }
 ```
 
-The build fails with VM0017, and the emitted file contains the `required` check and no regex. That
+The build fails with VM1301, and the emitted file contains the `required` check and no regex. That
 is deliberate: the build should fail with one useful diagnostic, not also with a second, less useful
 error out of a generated file.
 
@@ -110,10 +110,10 @@ The member can be a method, a property or a field, and must be:
 - of type `Regex`,
 - at least `internal`, so the generated validator in the same assembly can see it.
 
-Anything else is [VM0018](/reference/diagnostics#vm0018), which names the reason:
+Anything else is [VM1107](/reference/diagnostics#vm1107), which names the reason:
 
 ```
-VM0018: 'MyApp.PetPatterns.Sku' is not static, so the pattern on 'Sku' cannot be emitted
+VM1107: 'MyApp.PetPatterns.Sku' is not static, so the pattern on 'Sku' cannot be emitted
 ```
 
 A field works if you would rather not write a method:
@@ -147,7 +147,7 @@ A null value is not tested. Combine with `[Required]` if absence should also fai
 ```
 
 Honoured, with one exception: `RegexOptions.Compiled` is
-[VM0016](/reference/diagnostics#vm0016). It emits IL through `Reflection.Emit`, which is the habit
+[VM1302](/reference/diagnostics#vm1302). It emits IL through `Reflection.Emit`, which is the habit
 this library exists to remove. It does nothing here anyway, because patterns go through
 `[GeneratedRegex]` or a plain constructor.
 
@@ -159,7 +159,7 @@ attribute's `Options` is not consulted when a member is named.
 Caught at build time, with the regex engine's own message:
 
 ```csharp
-[Pattern("[")] // VM0006: The pattern on 'Sku' is not a valid regular expression: …
+[Pattern("[")] // VM1106: The pattern on 'Sku' is not a valid regular expression: …
 ```
 
 Re-describing the parser's complaint would produce a worse message than the one it already gives.

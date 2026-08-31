@@ -6,7 +6,7 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// <summary>
 /// <c>CustomConstraintAttribute</c>: the author's own attribute, compiled like a built-in. The
 /// claims under test are the feature: a direct static call with the constructor's constants, the
-/// base's knobs working unchanged, and every wrong shape caught at build time as VM0082.
+/// base's knobs working unchanged, and every wrong shape caught at build time as VM1601.
 /// </summary>
 public class CustomConstraintTests {
 
@@ -132,7 +132,7 @@ public class CustomConstraintTests {
         Assert.Contains("!global::Sample.SkuAttribute.IsValid(value.Code)", fastPath);
     }
 
-    // VM0082 — every wrong shape is a build error naming the fix.
+    // VM1601 — every wrong shape is a build error naming the fix.
 
     [Theory]
     [InlineData("", "declares no public static bool IsValid")]
@@ -141,7 +141,7 @@ public class CustomConstraintTests {
     [InlineData("public static bool IsValid(int value) => true;", "cannot accept this member")]
     [InlineData("public static bool IsValid(string value, int extra) => true;",
         "the constructor supplies 0")]
-    public void CustomConstraint_WrongShape_IsVM0082(string method, string reason) {
+    public void CustomConstraint_WrongShape_IsVM1601(string method, string reason) {
         var result = GeneratorHarness.Run($$"""
             using ValidationModules.Constraints;
 
@@ -157,14 +157,14 @@ public class CustomConstraintTests {
             }
             """);
 
-        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM0082");
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1601");
 
         Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
         Assert.Contains(reason, diagnostic.GetMessage());
     }
 
     [Fact]
-    public void CustomConstraint_ConstructorParameterTypeMismatch_IsVM0082() {
+    public void CustomConstraint_ConstructorParameterTypeMismatch_IsVM1601() {
         var result = GeneratorHarness.Run("""
             using ValidationModules.Constraints;
 
@@ -184,11 +184,11 @@ public class CustomConstraintTests {
 
         Assert.Contains(
             "constructor's matching parameter is 'string'",
-            Assert.Single(result.Diagnostics, d => d.Id == "VM0082").GetMessage());
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1601").GetMessage());
     }
 
     [Fact]
-    public void CustomConstraint_ACustomPropertySetter_IsVM0082() {
+    public void CustomConstraint_ACustomPropertySetter_IsVM1601() {
         // A static check has no instance to read the property from, so setting one would be an
         // argument that silently never arrives - the failure shape this library refuses.
         var result = GeneratorHarness.Run("""
@@ -210,19 +210,19 @@ public class CustomConstraintTests {
 
         Assert.Contains(
             "pass it through the constructor",
-            Assert.Single(result.Diagnostics, d => d.Id == "VM0082").GetMessage());
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1601").GetMessage());
     }
 
     [Fact]
-    public void CustomConstraint_OnARecordParameter_IsVM0051LikeAnyConstraint() {
-        // The attribute lands on the parameter and is never read - the same silent failure VM0051
+    public void CustomConstraint_OnARecordParameter_IsVM1008LikeAnyConstraint() {
+        // The attribute lands on the parameter and is never read - the same silent failure VM1008
         // exists to catch for the built-ins, so a custom constraint gets the same net.
         var result = GeneratorHarness.Run(SkuAttribute + """
 
             public record Product([Sku] string? Code);
             """);
 
-        Assert.Single(result.Diagnostics, d => d.Id == "VM0051");
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1008");
     }
 
     // -- author defaults ------------------------------------------------------------------------

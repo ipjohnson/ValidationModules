@@ -77,7 +77,7 @@ internal static class EmitterOutput {
     /// </summary>
     /// <remarks>
     /// The front ends qualify with <c>SymbolDisplayFormat.FullyQualifiedFormat</c> over closed,
-    /// non-generic named types - generic models are refused outright (VM0079) and nullable nested
+    /// non-generic named types - generic models are refused outright (VM1010) and nullable nested
     /// targets are unwrapped before they are named - so the string is always <c>global::</c> plus
     /// dotted identifiers. Anything else is a front-end defect, and throwing here surfaces it at
     /// generation time instead of compiling it into the consumer's build as CS0246.

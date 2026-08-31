@@ -26,9 +26,6 @@ public static class KnownTypes {
     /// <summary>Presence of this decides which registration branch is emitted. See plan §7.3.</summary>
     public const string DependencyModule = "DependencyModules.Runtime.Interfaces.IDependencyModule";
 
-
-    /// <summary>Assembly-level, and part of the profile feature that is not built. See VM0019.</summary>
-
     /// <summary>The marker for a declarative rule class.</summary>
     public const string ValidationRulesForInterface = "ValidationModules.IValidationRulesFor<T>";
 

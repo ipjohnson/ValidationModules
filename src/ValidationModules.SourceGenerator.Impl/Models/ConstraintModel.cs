@@ -194,7 +194,7 @@ public sealed record ConstraintModel(
     /// <summary>
     /// The member named by <c>When</c>, exactly as written. Resolved by the front end into
     /// <see cref="Condition"/>; carried separately so that "both were set" stays answerable, which
-    /// is VM0033.
+    /// is VM1403.
     /// </summary>
     string? WhenMember = null,
 

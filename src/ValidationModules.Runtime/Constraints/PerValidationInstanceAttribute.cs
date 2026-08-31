@@ -12,7 +12,7 @@ namespace ValidationModules.Constraints;
 /// implementation that cannot honour that - one keeping per-call state in fields, or wrapping
 /// something genuinely not thread-safe. It buys isolation at the cost of an allocation on every
 /// check of every value, paid whether the value passes or fails; the generator states that cost
-/// with an Info (VM0084) at each use site, because it is the one constraint cost a clean pass
+/// with an Info (VM1603) at each use site, because it is the one constraint cost a clean pass
 /// pays.
 /// </para>
 /// <para>

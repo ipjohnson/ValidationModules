@@ -15,7 +15,7 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// </para>
 /// <para>
 /// So the fix is to qualify, which reads the real member. A private member cannot be reached even
-/// qualified — that is VM0088 ("make it internal") — except a constant, which crosses by value
+/// qualified — that is VM3004 ("make it internal") — except a constant, which crosses by value
 /// because C# already bakes a const at every use site.
 /// </para>
 /// </remarks>
@@ -159,21 +159,21 @@ public class RegionScopeTests {
     }
 
     [Fact]
-    public void APrivateMethod_IsVM0088RatherThanAnErrorInGeneratedCode() {
+    public void APrivateMethod_IsVM3004RatherThanAnErrorInGeneratedCode() {
         var result = Run(
             "    private static bool Ok(Model v) => true;",
             "rules.Ensure(x.Count > 0 && Ok(x));");
 
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM0088");
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM3004");
     }
 
     [Fact]
-    public void APrivateStaticReadonlyField_IsVM0088() {
+    public void APrivateStaticReadonlyField_IsVM3004() {
         var result = Run(
             "    private static readonly int Max = 10;",
             "rules.Ensure(x.Count <= Max);");
 
-        var reported = Assert.Single(result.Diagnostics, d => d.Id == "VM0088");
+        var reported = Assert.Single(result.Diagnostics, d => d.Id == "VM3004");
 
         Assert.Contains("Max", reported.GetMessage());
         Assert.Contains("Make it internal", reported.GetMessage());

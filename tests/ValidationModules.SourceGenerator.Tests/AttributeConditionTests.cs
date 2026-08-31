@@ -230,7 +230,7 @@ public class AttributeConditionTests {
     // -- diagnostics --------------------------------------------------------------------------
 
     [Fact]
-    public void ConditionNamingAMemberThatDoesNotExist_IsVM0028() {
+    public void ConditionNamingAMemberThatDoesNotExist_IsVM1401() {
         var result = GeneratorHarness.Run("""
             using ValidationModules.Constraints;
 
@@ -242,7 +242,7 @@ public class AttributeConditionTests {
             }
             """);
 
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM0028");
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM1401");
     }
 
     [Theory]
@@ -250,7 +250,7 @@ public class AttributeConditionTests {
     [InlineData("public string? IsAuto { get; init; }")]
     [InlineData("public bool IsAuto(int x) => true;")]
     [InlineData("public static bool IsAuto(int x) => true;")]
-    public void ConditionNamingSomethingThatIsNotAPredicate_IsVM0029(string member) {
+    public void ConditionNamingSomethingThatIsNotAPredicate_IsVM1402(string member) {
         var result = GeneratorHarness.Run($$"""
             using ValidationModules.Constraints;
 
@@ -264,11 +264,11 @@ public class AttributeConditionTests {
             }
             """);
 
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM0029");
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM1402");
     }
 
     [Fact]
-    public void ConstraintSettingBothWhenAndUnless_IsVM0033() {
+    public void ConstraintSettingBothWhenAndUnless_IsVM1403() {
         var result = GeneratorHarness.Run("""
             using ValidationModules.Constraints;
 
@@ -283,7 +283,7 @@ public class AttributeConditionTests {
             }
             """);
 
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM0033");
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM1403");
     }
 
     /// <summary>

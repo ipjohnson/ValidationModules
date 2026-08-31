@@ -46,7 +46,7 @@ public string? PlateNumber { get; init; }
 public string? Reference { get; init; }
 ```
 
-Setting both on one constraint is [VM0033](/reference/diagnostics#vm0033); write two constraints, or
+Setting both on one constraint is [VM1403](/reference/diagnostics#vm1403); write two constraints, or
 one negated condition.
 
 Because it lives on the base, every constraint has it, `[ValidateNested]` included, which is the
@@ -64,7 +64,7 @@ short-circuit. Write the null check into the inner condition.
 :::
 
 Three shapes that cannot capture anything is not an accident. It is what makes the self-containment
-[VM0072](/reference/diagnostics#vm0072) enforces for `Ensure` predicates hold here by construction.
+a `static abstract Describe` gives `Ensure` predicates hold here by construction.
 There is no `WhenType`; shared logic is reached through a one-line forwarder on the model.
 
 ## `[Required]`
@@ -84,7 +84,7 @@ public string? Note { get; init; }
 ```
 
 Fails on null; on a `string`, also on empty and whitespace-only. On a non-nullable value type it can
-never fail, which is [VM0004](/reference/diagnostics#vm0004).
+never fail, which is [VM1201](/reference/diagnostics#vm1201).
 
 ## `[StringLength]`
 
@@ -111,8 +111,8 @@ unbounded sentinels, so either may be omitted: `[StringLength(min: 12)]` and
 `[StringLength(Min = 12)]` read identically, and `[StringLength(max: 40)]` gives one upper bound.
 Positionally the first argument is `min` - note the vocabulary difference from DataAnnotations,
 whose single-argument `StringLength(50)` is a maximum - so prefer the named form when giving one
-bound. Strings only, [VM0001](/reference/diagnostics#vm0001). Inverted bounds are
-[VM0008](/reference/diagnostics#vm0008).
+bound. Strings only, [VM1001](/reference/diagnostics#vm1001). Inverted bounds are
+[VM1101](/reference/diagnostics#vm1101).
 
 Length is `string.Length`, in UTF-16 code units rather than grapheme clusters.
 
@@ -146,15 +146,15 @@ public decimal Price { get; init; }
 public DateOnly Effective { get; init; }
 ```
 
-Numeric and date-like types only, which is [VM0003](/reference/diagnostics#vm0003) otherwise.
+Numeric and date-like types only, which is [VM1003](/reference/diagnostics#vm1003) otherwise.
 
 An absent bound emits no comparison and is not named in the message. Neither bound is
-[VM0026](/reference/diagnostics#vm0026).
+[VM1102](/reference/diagnostics#vm1102).
 
 The `(string, string)` overload is for the types with no constant form in metadata: `decimal`,
 `DateTime`, `DateOnly`, `TimeOnly`, `TimeSpan`, `DateTimeOffset`. The bound is parsed against the
 member's type at build time and emitted as a constructor call, in both the comparison and the
-message. A bound that does not parse is [VM0065](/reference/diagnostics#vm0065).
+message. A bound that does not parse is [VM1103](/reference/diagnostics#vm1103).
 
 ## `[Pattern]`
 
@@ -182,11 +182,11 @@ it throws `RegexMatchTimeoutException` rather than returning a verdict, which is
 input you do not control. It applies to the inline form only: the reference form's `Regex` belongs
 to you, so set the timeout on your own `[GeneratedRegex]`. Setting it also passes `Options`
 explicitly, which costs the binary-size win described under
-[VM0017](/reference/diagnostics#vm0017), paid only where a timeout was asked for.
+[VM1301](/reference/diagnostics#vm1301), paid only where a timeout was asked for.
 
 Strings only. Unanchored by default, following JSON Schema. `Options` is not consulted in the
 reference form, so put them on your `[GeneratedRegex]`. `RegexOptions.Compiled` is
-[VM0016](/reference/diagnostics#vm0016).
+[VM1302](/reference/diagnostics#vm1302).
 
 See [Patterns and regex](/guide/patterns) for which form to use.
 
@@ -207,7 +207,7 @@ names and semantics, so migrating a model is swapping a using directive. The che
 own: exactly one `@`, neither first nor last, and no line breaks. `a@b` passes, because RFC 5322
 permits a dotless domain. A stricter grammar is a `[Pattern]`.
 
-Strings only, which is [VM0001](/reference/diagnostics#vm0001) otherwise. Like every format
+Strings only, which is [VM1001](/reference/diagnostics#vm1001) otherwise. Like every format
 validator, null passes; presence is `[Required]`'s question.
 
 ## `[Phone]`
@@ -243,7 +243,7 @@ public Uri? Docs { get; init; }
 
 On a string: it must start with `http://`, `https://` or `ftp://`, case-insensitively, and
 nothing past the prefix is checked. On a `System.Uri` member: absolute, with one of those three
-schemes. Any other member type is [VM0001](/reference/diagnostics#vm0001).
+schemes. Any other member type is [VM1001](/reference/diagnostics#vm1001).
 
 ## `[CreditCard]`
 
@@ -346,7 +346,7 @@ The enum member must be one of its type's declared values - the guard against
 the check is a comparison rather than `Enum.IsDefined`: no boxing, no reflection, nothing for the
 trimmer to keep. On a `[Flags]` enum the check becomes a mask test, because `Read | Write` is a
 legitimate value that equals no single member. Enums only, which is
-[VM0027](/reference/diagnostics#vm0027) otherwise.
+[VM1006](/reference/diagnostics#vm1006) otherwise.
 
 ## `[ItemCount]`
 
@@ -362,7 +362,7 @@ legitimate value that equals no single member. Enums only, which is
 public List<string> Tags { get; init; } = [];
 ```
 
-Collections only, which is [VM0002](/reference/diagnostics#vm0002) otherwise. A `string` is not a
+Collections only, which is [VM1002](/reference/diagnostics#vm1002) otherwise. A `string` is not a
 collection here.
 Counted without enumerating where a `Count` or `Length` exists; walked once otherwise.
 
@@ -387,10 +387,10 @@ public decimal Price { get; init; }
 public double Ratio { get; init; }
 ```
 
-Numeric types only, which is [VM0021](/reference/diagnostics#vm0021) otherwise. The divisor must be
+Numeric types only, which is [VM1004](/reference/diagnostics#vm1004) otherwise. The divisor must be
 greater than zero
-([VM0022](/reference/diagnostics#vm0022)) and must have a form the member's type can be checked
-against ([VM0023](/reference/diagnostics#vm0023)).
+([VM1104](/reference/diagnostics#vm1104)) and must have a form the member's type can be checked
+against ([VM1105](/reference/diagnostics#vm1105)).
 
 `double` and `float` are checked in the decimal domain rather than with `%`, because
 `0.3 % 0.01` is `0.00999999999999998` in binary floating point. See
@@ -410,10 +410,10 @@ Constructors: `()`. Presence is the constraint.
 public List<string> Codes { get; init; } = [];
 ```
 
-Collections only, which is [VM0024](/reference/diagnostics#vm0024) otherwise. Elements are compared
+Collections only, which is [VM1005](/reference/diagnostics#vm1005) otherwise. Elements are compared
 with
 `EqualityComparer<T>.Default`; an element type with no equality of its own compares by reference and
-is [VM0025](/reference/diagnostics#vm0025).
+is [VM1202](/reference/diagnostics#vm1202).
 
 ## `[ValidateNested]`
 
@@ -461,7 +461,7 @@ depend on physical assembly layout: it would work while `Payment`, `Card` and `B
 and shrink silently the day one moved to a package, with no code change, no warning, and no failing
 test.
 Unearned confidence is worse than no feature, so the mode is always named.
-[VM0031](/reference/diagnostics#vm0031) prompts for one on an unsealed target.
+[VM1503](/reference/diagnostics#vm1503) prompts for one on an unsealed target.
 :::
 
 Subtypes are found by inverting the base chain over the compilation. Types in referenced assemblies
@@ -484,7 +484,7 @@ No members, and not a constraint: it marks a [custom constraint
 attribute](/guide/custom-constraints) implementing `IConstraintFor<T>`, telling the emitter to
 construct the attribute at every check instead of hoisting one shared instance into a static
 field. For an attribute that keeps per-pass state; the construction cost is
-[VM0084](/reference/diagnostics#vm0084), paid where it was asked for.
+[VM1603](/reference/diagnostics#vm1603), paid where it was asked for.
 
 The base class for authoring your own attribute-shaped constraints is
 `CustomConstraintAttribute` (the static-check shape) or `ValidationConstraintAttribute` plus
