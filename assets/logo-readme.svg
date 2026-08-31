@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 96 96" role="img" aria-label="ValidationModules">
+  <!-- README-header mark: the icon artwork with an intrinsic 40px size, so plain markdown
+       renders it at the right size with no width attribute. nuget.org renders CommonMark
+       only - raw HTML is escaped into visible text, so a <picture> element for theme
+       switching arrives as literal markup in the heading - and the README must reference
+       this file by absolute raw.githubusercontent.com URL, which cannot size or theme it.
+       The white tile carries its own background, which is what lets a single file serve
+       light and dark themes: it disappears into light pages leaving the bare glyph, and
+       reads as the package icon on dark ones. assets/logo.svg and logo-dark.svg remain the
+       theme-switched pair for the docs site, which does render HTML. -->
+  <rect width="96" height="96" rx="21" fill="#FFFFFF"/>
+  <g transform="translate(12,12) scale(3)">
+    <g fill="none" stroke="#16211B" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M8 4.5H4.7V19.5H8"/>
+      <path d="M16 4.5H19.3V19.5H16"/>
+    </g>
+    <rect x="9.1" y="9.1" width="5.8" height="5.8" rx="1.3" fill="#0F9D76"/>
+  </g>
+</svg>

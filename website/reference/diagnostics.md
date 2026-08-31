@@ -800,13 +800,13 @@ them none. Collections are `Each`'s job. For the unusual per-element case, loop 
 **Error**: *`'x.Nights' is a non-nullable value type and can never be missing, so this rule can never fail`*
 
 ```csharp
-rules.Require(x.Nights);         // CS0411: inference cannot unwrap Nullable
-rules.Require<int>(x.Nights);    // VM0090: compiles, and can never fail
+rules.Require(x.Nights);   // VM0090, the only error on the line
 ```
 
-The bare spelling still fails in the compiler; the explicit type argument gets past inference, so
-the generator diagnoses the rule that cannot fail. Constrain the value instead, or make the
-property nullable.
+A non-nullable value type fits none of `Require`'s typed overloads - inference does not unwrap
+`Nullable`, and a dedicated non-nullable overload would collide with the reference-type one - so
+an `object?` catch-all binds the spelling for exactly this diagnosis. Typed arguments never
+reach it. Constrain the value instead, or make the property nullable.
 
 ### VM0091 {#vm0091}
 
@@ -836,16 +836,15 @@ spellings.
 
 ### VM0093 {#vm0093}
 
-**Warning**: *`'x.BatteryKwh.Value' unwraps a nullable member. The rule takes the nullable directly, and the field path is derived from the member - write 'x.BatteryKwh', and suffix any bound literals to the member's type`*
+**Warning**: *`'x.BatteryKwh.Value' unwraps a nullable member. The rule takes the nullable directly, and the field path is derived from the member - write 'x.BatteryKwh'`*
 
 ```csharp
-rules.Range(x.BatteryKwh.Value, 10m, 300m);   // VM0093 - write x.BatteryKwh
+rules.Range(x.BatteryKwh.Value, 10, 300);   // VM0093 - write x.BatteryKwh
 ```
 
-Every rule parameter is already nullable, so the unwrap is never needed - and it is never
-harmless. With unsuffixed bound literals it skews `TValue` inference and the call fails as an
-opaque CS1503 plus [VM0070](#vm0070); when it compiles, the derived field path keeps the `.Value`
-hop, so the wire carries `batteryKwh.value` and the composed message names `value`.
+Every rule takes the nullable directly, so the unwrap is never needed - and without this
+correction it was never harmless: the derived field path kept the `.Value` hop, so the wire
+carried `batteryKwh.value` and the composed message named `value`.
 
 The reader corrects the rule - it compiles against the member itself, guard, path and all - and
 warns rather than erroring, because failing a build over a mistake it just fixed would be spite.

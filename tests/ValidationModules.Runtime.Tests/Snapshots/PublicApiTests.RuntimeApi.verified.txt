@@ -347,12 +347,19 @@ namespace ValidationModules
         public ValidationModules.PropertyRules<T, TValue?> Nested<TValue>(TValue? value, string? field = null)
             where TValue :  class { }
         public ValidationModules.PropertyRules<T, string?> Pattern(string? value, System.Func<System.Text.RegularExpressions.Regex> pattern, string? field = null) { }
+        public ValidationModules.PropertyRules<T, TValue?> Range<TValue>(TValue value, TValue min, TValue max, string? field = null)
+            where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
         public ValidationModules.PropertyRules<T, TValue?> Range<TValue>(TValue? value, TValue min, TValue max, string? field = null)
+            where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
+        public ValidationModules.PropertyRules<T, TValue?> RangeAtLeast<TValue>(TValue value, TValue min, string? field = null)
             where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
         public ValidationModules.PropertyRules<T, TValue?> RangeAtLeast<TValue>(TValue? value, TValue min, string? field = null)
             where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
+        public ValidationModules.PropertyRules<T, TValue?> RangeAtMost<TValue>(TValue value, TValue max, string? field = null)
+            where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
         public ValidationModules.PropertyRules<T, TValue?> RangeAtMost<TValue>(TValue? value, TValue max, string? field = null)
             where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
+        public ValidationModules.PropertyRules<T, object?> Require(object? value, string? field = null) { }
         public ValidationModules.PropertyRules<T, string?> Require(string? value, string? field = null) { }
         public ValidationModules.PropertyRules<T, TValue?> Require<TValue>(TValue? value, string? field = null)
             where TValue :  class { }

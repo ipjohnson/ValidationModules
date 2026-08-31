@@ -331,12 +331,16 @@ public class RulesClassDiagnosticsTests {
     // VM0090 - a Require that can never fail.
 
     [Fact]
-    public void RequireOnANonNullableValueType_WithoutATypeArgument_IsStillUnwritable() {
-        // The overload matrix survives the move to values for the bare spelling: inference cannot
-        // unwrap Nullable, so `Require(x.Nights)` is CS0411 in the author's own file.
+    public void RequireOnANonNullableValueType_WithoutATypeArgument_IsVM0090Alone() {
+        // The bare spelling binds through Require's object? catch-all - inference cannot unwrap
+        // Nullable, and the non-nullable twin would be CS0111 against the reference-type
+        // overload - so the author reads VM0090's "can never fail" as the only error on the
+        // line, not a CS0452 about the wrong overload.
         var result = GeneratorHarness.Run(Rules("        rules.Require(x.Nights);"));
 
-        Assert.NotEmpty(result.CompilationErrors);
+        Assert.Empty(result.CompilationErrors);
+        Assert.Single(result.Diagnostics, d => d.Id == "VM0090");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM0070");
     }
 
     [Fact]

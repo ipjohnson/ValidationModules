@@ -54,13 +54,13 @@ public class NullableValueRuleTests {
     }
 
     /// <summary>
-    /// The unsuffixed-literal shape: <c>TValue</c> infers <c>int</c> from the bounds, the decimal
-    /// <c>.Value</c> does not convert, and the call never binds. VM0070 alone said only
-    /// "unresolvable"; VM0093 beside it names the habit that caused it.
+    /// A genuinely unresolvable call carrying the unwrap: VM0070 alone said only "unresolvable";
+    /// VM0093 beside it names the habit. The unsuffixed-literal shape that used to live here now
+    /// binds through the range pair's plain overload - RangeInferenceTests owns it.
     /// </summary>
     [Fact]
-    public void ValueUnwrap_WithUnsuffixedLiterals_ReportsVM0093BesideVM0070() {
-        var result = GeneratorHarness.Run(Rules("        rules.Range(x.BatteryKwh.Value, 10, 300);"));
+    public void ValueUnwrap_OnAnUnresolvableCall_ReportsVM0093BesideVM0070() {
+        var result = GeneratorHarness.Run(Rules("""        rules.Range(x.BatteryKwh.Value, "10", "300");"""));
 
         Assert.Contains(result.Diagnostics, d => d.Id == "VM0070");
         var unwrap = Assert.Single(result.Diagnostics, d => d.Id == "VM0093");
