@@ -657,9 +657,9 @@ public static class ValidationDiagnostics {
     /// </remarks>
     public static readonly DiagnosticDescriptor ValidateTargetHasNoValidator = Descriptor(
         "VM0108", "Validate<T>() names a type with no validator",
-        "'{0}' declares no constraints, no [GenerateValidator] and no rules class in this " +
-        "compilation, so no validator is generated for it and .Validate<{1}>() will fail when " +
-        "the endpoint is built. Add constraints or [GenerateValidator] - or, if its rules arrive " +
-        "from another assembly, ignore this and the startup check will agree",
+        "'{0}' has no constraints, no [GenerateValidator], and no rules class or hand-written " +
+        "validator in this compilation, so .Validate<{1}>() will fail when the endpoint is " +
+        "built. Add constraints or [GenerateValidator] - or, if its rules arrive from another " +
+        "assembly, ignore this and the startup check will agree",
         DiagnosticSeverity.Warning);
 }

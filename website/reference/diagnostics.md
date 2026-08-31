@@ -929,7 +929,7 @@ validator in the compilation is still generated.
 
 ### VM0108 {#vm0108}
 
-**Warning**: *`'Coupon' declares no constraints, no [GenerateValidator] and no rules class in this compilation, so no validator is generated for it and .Validate<Coupon>() will fail when the endpoint is built. Add constraints or [GenerateValidator] - or, if its rules arrive from another assembly, ignore this and the startup check will agree`*
+**Warning**: *`'Coupon' has no constraints, no [GenerateValidator], and no rules class or hand-written validator in this compilation, so .Validate<Coupon>() will fail when the endpoint is built. Add constraints or [GenerateValidator] - or, if its rules arrive from another assembly, ignore this and the startup check will agree`*
 
 ```csharp
 app.MapPost("/coupons", (Coupon c) => Results.Ok())

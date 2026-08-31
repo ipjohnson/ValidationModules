@@ -16,6 +16,8 @@ namespace SutProject.Tests;
 /// </remarks>
 public class RunnerFieldSpellingTests {
 
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
     private sealed class NameIsTaken : IAsyncValidatorFor<Pet> {
         public async ValueTask ValidateAsync(
             ValidationContext context, Pet value, CancellationToken cancellationToken = default) {
@@ -61,10 +63,10 @@ public class RunnerFieldSpellingTests {
         var runner = scope.ServiceProvider.GetRequiredService<ValidationRunner<Pet>>();
 
         // The structural failure on Name, from the generated [Required] literal.
-        var structural = await runner.ValidateAsync(CleanPet() with { Name = null });
+        var structural = await runner.ValidateAsync(CleanPet() with { Name = null }, Ct);
 
         // The async failure on the same property, from the hand-written nameof.
-        var business = await runner.ValidateAsync(CleanPet());
+        var business = await runner.ValidateAsync(CleanPet(), Ct);
 
         var structuralField = Assert.Single(structural.Errors, e => e.Code == "required").Field;
         var businessField = Assert.Single(business.Errors, e => e.Code == "name_taken").Field;
@@ -79,7 +81,7 @@ public class RunnerFieldSpellingTests {
         using var scope = provider.CreateScope();
         var runner = scope.ServiceProvider.GetRequiredService<ValidationRunner<Pet>>();
 
-        var result = await runner.ValidateAsync(CleanPet());
+        var result = await runner.ValidateAsync(CleanPet(), Ct);
 
         Assert.Equal("steps[0]", Assert.Single(result.Errors, e => e.Code == "step_wrong").Field);
     }

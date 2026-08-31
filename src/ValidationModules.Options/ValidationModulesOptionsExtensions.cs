@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Options;
 using ValidationModules;
 using ValidationModules.Options;
@@ -37,10 +38,15 @@ public static class ValidationModulesOptionsExtensions {
     /// builds.
     /// </para>
     /// </remarks>
-    /// <typeparam name="TOptions">The options type, carrying its constraints.</typeparam>
+    /// <typeparam name="TOptions">
+    /// The options type, carrying its constraints. The trimmer annotation is
+    /// <c>ValidateOnStart</c>'s own requirement, forwarded so the whole chain stays warning-free
+    /// under Native AOT.
+    /// </typeparam>
     /// <param name="services">The collection to add to.</param>
     /// <param name="name">The options instance to validate; null for the default instance.</param>
-    public static OptionsBuilder<TOptions> AddValidatedOptions<TOptions>(
+    public static OptionsBuilder<TOptions> AddValidatedOptions<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TOptions>(
         this IServiceCollection services, string? name = null)
         where TOptions : class {
         ArgumentNullException.ThrowIfNull(services);

@@ -132,6 +132,29 @@ public class ValidateCallAnalyzerTests {
     }
 
     [Fact]
+    public void AHandWrittenValidatorTarget_IsSilent() {
+        // A hand-registered IValidatorFor<T> satisfies the startup check, so the analyzer must
+        // not be louder than the check it fronts.
+        var diagnostics = Analyze(Usings + """
+
+            public sealed record Coupon {
+                public string? Code { get; init; }
+            }
+
+            public sealed class CouponValidator : IValidatorFor<Coupon> {
+                public ValidationFlow Validate(ref ValidationContext context, Coupon value) =>
+                    ValidationFlow.Continue;
+            }
+
+            public static class Wiring {
+                public static void Map(RouteHandlerBuilder builder) => builder.Validate<Coupon>();
+            }
+            """);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id == "VM0108");
+    }
+
+    [Fact]
     public void ATypeFromAnotherAssembly_IsSilent() {
         // The cross-assembly caution VM0007 set: a metadata type may carry a validator generated
         // over there, so the startup check owns it.

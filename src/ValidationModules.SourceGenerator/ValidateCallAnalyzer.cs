@@ -48,8 +48,18 @@ public sealed class ValidateCallAnalyzer : DiagnosticAnalyzer {
 
             start.RegisterSymbolAction(symbolContext => {
                 foreach (var contract in ((INamedTypeSymbol)symbolContext.Symbol).AllInterfaces) {
-                    if (contract.ConstructedFrom.ToDisplayString() == KnownTypes.ValidationRulesForInterface &&
-                        contract.TypeArguments.Length == 1 &&
+                    // A hand-written IValidatorFor<T>/IAsyncValidatorFor<T> counts alongside a
+                    // rules class: registered by hand, it satisfies the startup check, and this
+                    // analyzer must never be louder than the check it fronts.
+                    var definition = contract.ConstructedFrom.ToDisplayString();
+
+                    if (definition is not (KnownTypes.ValidationRulesForInterface
+                            or "ValidationModules.IValidatorFor<T>"
+                            or "ValidationModules.IAsyncValidatorFor<T>")) {
+                        continue;
+                    }
+
+                    if (contract.TypeArguments.Length == 1 &&
                         contract.TypeArguments[0] is INamedTypeSymbol target) {
                         ruleTargets.TryAdd(target, 0);
                     }
