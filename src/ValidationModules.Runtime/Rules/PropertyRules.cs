@@ -108,6 +108,14 @@ public static class PropertyRulesExtensions {
         this PropertyRules<T, IReadOnlyList<TElement>?> rules)
         where TElement : class => throw ValidationRules<T>.Inert();
 
+    /// <summary>
+    /// Anchors each string element of the anchored collection, so the rules that follow apply per
+    /// element with indexed paths - <c>rules.Count(x.Steps, 1, 30).Each().Length(5, 500)</c>.
+    /// </summary>
+    public static PropertyRules<T, string?> Each<T>(
+        this PropertyRules<T, IReadOnlyList<string>?> rules) =>
+        throw ValidationRules<T>.Inert();
+
     /// <summary>Descends into the anchored object.</summary>
     public static PropertyRules<T, TValue?> Nested<T, TValue>(this PropertyRules<T, TValue?> rules)
         where TValue : class => throw ValidationRules<T>.Inert();

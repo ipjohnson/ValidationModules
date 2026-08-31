@@ -258,3 +258,21 @@ public sealed class QuoteRules : IValidationRulesFor<Quote> {
         }
     }
 }
+
+/// <summary>
+/// Element rules for collections of strings: the third route VM0089 names, landed after two
+/// trials of models hand-writing the check [StringLength] already implements.
+/// </summary>
+public sealed record Procedure {
+    public List<string> Steps { get; init; } = [];
+
+    public string[] Tags { get; init; } = [];
+}
+
+public sealed class ProcedureRules : IValidationRulesFor<Procedure> {
+
+    public static void Describe(ValidationRules<Procedure> rules, Procedure x) {
+        rules.Count(x.Steps, 1, 30).Each().Length(5, 500);
+        rules.Each(x.Tags).Length(2, 20);
+    }
+}

@@ -780,17 +780,23 @@ the concrete type, where an explicit implementation is not reachable by name.
 
 ### VM0089 {#vm0089}
 
-**Error**: *`'PetRules.Describe' declares a rule inside a scope the generator cannot expand it in. Use Each for collections, or report per element through rules.Context`*
+**Error**: *`'PetRules.Describe' declares a rule inside a scope the generator cannot expand it in. Use Each for collections - a collection of strings chains element rules, Each(x.Steps).Length(5, 500) - or report per element through rules.Context`*
 
 ```csharp
 foreach (var toy in x.Toys) {
     rules.Require(toy.Name);            // VM0089
 }
+
+for (var i = 0; i < x.Steps.Count; i++) {
+    rules.Length(x.Steps[i], 5, 500);   // VM0089 - write rules.Each(x.Steps).Length(5, 500)
+}
 ```
 
 Islands need generator-computed identity, meaning a field and a rendered message, and a loop gives
-them none. Collections are `Each`'s job. For the unusual per-element case, loop with the
-[reporter tier](/guide/rule-classes#reporter) and a computed field string.
+them none. Collections are `Each`'s job: a collection of objects descends into the element type's
+validator, and a collection of strings chains element rules with indexed paths. For anything else
+per-element, loop with the [reporter tier](/guide/rule-classes#reporter) and a computed field
+string.
 
 ### VM0090 {#vm0090}
 

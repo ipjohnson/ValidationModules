@@ -514,7 +514,8 @@ public static class ValidationDiagnostics {
     public static readonly DiagnosticDescriptor IslandInUnreadableScope = Descriptor(
         "VM0089", "Rule declaration inside a loop, lambda, or local function",
         "'{0}.Describe' declares a rule inside a scope the generator cannot expand it in. Use Each " +
-        "for collections, or report per element through rules.Context",
+        "for collections - a collection of strings chains element rules, " +
+        "Each(x.Steps).Length(5, 500) - or report per element through rules.Context",
         DiagnosticSeverity.Error);
 
     /// <summary>

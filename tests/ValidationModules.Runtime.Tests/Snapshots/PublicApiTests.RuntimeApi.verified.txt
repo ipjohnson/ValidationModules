@@ -103,6 +103,7 @@ namespace ValidationModules
     {
         public static ValidationModules.PropertyRules<T, TValue> AllowedValues<T, TValue>(this ValidationModules.PropertyRules<T, TValue> rules, params TValue[] allowed) { }
         public static ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Count<T, TElement>(this ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> rules, int min = 0, int max = 2147483647) { }
+        public static ValidationModules.PropertyRules<T, string?> Each<T>(this ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<string>?> rules) { }
         public static ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Each<T, TElement>(this ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> rules)
             where TElement :  class { }
         public static ValidationModules.PropertyRules<T, string?> Length<T>(this ValidationModules.PropertyRules<T, string?> rules, int min = 0, int max = 2147483647) { }
@@ -349,6 +350,7 @@ namespace ValidationModules
         public ValidationModules.ValidationRules<T> Apply(ValidationModules.RuleAction<T> rule) { }
         public ValidationModules.ValidationRules<T> As<TFacet>(TFacet value) { }
         public ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Count<TElement>(System.Collections.Generic.IReadOnlyList<TElement>? value, int min = 0, int max = 2147483647, string? field = null) { }
+        public ValidationModules.PropertyRules<T, string?> Each(System.Collections.Generic.IReadOnlyList<string>? value, string? field = null) { }
         public ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Each<TElement>(System.Collections.Generic.IReadOnlyList<TElement>? value, string? field = null)
             where TElement :  class { }
         public ValidationModules.ValidationRules<T> Ensure(bool condition, string? field = null, string? code = null, string? message = null, ValidationModules.ValidationSeverity severity = 0) { }

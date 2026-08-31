@@ -151,10 +151,34 @@ The vocabulary mirrors the attributes and produces the same codes and messages:
 | `rules.Count(x.Toys, 1, 10)` | `[ItemCount(1, 10)]` | `array_bounds` |
 | `rules.Nested(x.Home)` | `[ValidateNested]` | — |
 | `rules.Each(x.Toys)` | `[ValidateNested]` on a collection | — |
+| `rules.Each(x.Steps).Length(5, 500)` | — | `string_length`, per element |
 
 Members that only make sense for particular value types are extension methods constrained on the
 chain's type argument. That is how `Length` is offered on a string anchor and not on an `int`, and
 it is why the compiler catches the mistake instead of a runtime check.
+
+`Each` has two shapes, resolved by the element type. On a collection of objects it descends into
+the element type's own validator, the way `[ValidateNested]` does. On a collection of **strings**
+there is no element validator to descend into, so `Each` anchors the element itself and the rules
+chained after it expand into an indexed loop:
+
+<!-- verify -->
+```csharp
+public sealed record Procedure {
+    public List<string> Steps { get; init; } = [];
+}
+
+public sealed class ProcedureRules : IValidationRulesFor<Procedure> {
+    public static void Describe(ValidationRules<Procedure> rules, Procedure x) {
+        rules.Count(x.Steps, 1, 30).Each().Length(5, 500);
+    }
+}
+```
+
+A two-character step fails at `steps[0]` with code `string_length`, exactly as `[StringLength]`
+reports - the collection rule and the element rules are one statement and one suppression unit.
+Null elements are skipped, as a nested walk skips them. Elements of other primitive types still
+go through the [reporter tier](/guide/rule-classes#reporter).
 
 A nullable member is passed as itself, and plain literal bounds convert to the member's type:
 

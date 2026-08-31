@@ -1224,6 +1224,13 @@ public sealed class RulesFrontEnd {
             private readonly List<ConstraintModel> _constraints = new();
             private readonly List<(bool Elements, ExpressionSyntax Value, string? Field)> _descents = new();
 
+            /// <summary>
+            /// Set by an <c>Each()</c> whose anchor is a collection of strings: everything chained
+            /// after it constrains the elements, emitted as an indexed loop rather than a descent.
+            /// </summary>
+            private bool _perElement;
+            private readonly List<ConstraintModel> _elementConstraints = new();
+
             public IslandExpansion(RegionWriter writer, int depth) {
                 _writer = writer;
                 _depth = depth;
@@ -1321,6 +1328,16 @@ public sealed class RulesFrontEnd {
 
                     case "Require":
                     case "RequireAllowingEmpty":
+                        if (_perElement) {
+                            // Null elements are skipped, like a nested walk's, so a per-element
+                            // presence rule has nothing left to say that Length(1, …) does not.
+                            _writer._owner.Report(ValidationDiagnostics.NotTranscribable, call,
+                                _writer._declaringClass.Name,
+                                "Require chained after element rules - null elements are " +
+                                "skipped, and Length(1, ...) already rejects the empty");
+                            return false;
+                        }
+
                         if (_facts is { IsString: false, IsReferenceType: false, IsNullableValueType: false }) {
                             _writer._owner.Report(ValidationDiagnostics.RequireCannotFail, call,
                                 _access ?? "the value");
@@ -1337,9 +1354,33 @@ public sealed class RulesFrontEnd {
                         return ReadEnsure(call, arguments);
 
                     case "Nested":
+                        if (_perElement) {
+                            _writer._owner.Report(ValidationDiagnostics.NotTranscribable, call,
+                                _writer._declaringClass.Name,
+                                "a descent chained after element rules");
+                            return false;
+                        }
+
                         return ReadDescent(call, arguments, elements: false);
 
                     case "Each":
+                        if (_perElement) {
+                            _writer._owner.Report(ValidationDiagnostics.NotTranscribable, call,
+                                _writer._declaringClass.Name,
+                                "a second Each chained after element rules");
+                            return false;
+                        }
+
+                        // The string-element overloads return the element anchor rather than the
+                        // collection's, and that return type is the reliable tell: everything
+                        // chained after them constrains the elements, in an indexed loop. An
+                        // object element descends into its own validator as before.
+                        if (method.ReturnType is INamedTypeSymbol { TypeArguments.Length: 2 } anchor &&
+                            anchor.TypeArguments[1].SpecialType == SpecialType.System_String) {
+                            _perElement = true;
+                            return true;
+                        }
+
                         return ReadDescent(call, arguments, elements: true);
 
                     default: {
@@ -1349,6 +1390,13 @@ public sealed class RulesFrontEnd {
                             _writer._owner.Report(ValidationDiagnostics.NotTranscribable, report,
                                 _writer._declaringClass.Name, $"a call to '{name}' the reader does not know");
                             return false;
+                        }
+
+                        // An element rule carries no field override: its path is the collection's
+                        // wire name, indexed per element at the emission site.
+                        if (_perElement) {
+                            _elementConstraints.Add(constraint);
+                            return true;
                         }
 
                         _constraints.Add(constraint with { Field = FieldLiteral(arguments) });
@@ -1607,9 +1655,74 @@ public sealed class RulesFrontEnd {
                     _writer.Line(_depth, "}");
                 }
 
+                if (_perElement && _elementConstraints.Count > 0 &&
+                    _access is { } collection && _facts is { } collectionFacts) {
+                    EmitElementRules(collection, collectionFacts, missing);
+                }
+
                 foreach (var (elements, value, field) in _descents) {
                     EmitDescent(elements, value, field, missing);
                 }
+            }
+
+            /// <summary>
+            /// The rules chained after a string-element <c>Each()</c>, expanded into an indexed
+            /// loop: <c>rules.Count(x.Steps, 1, 30).Each().Length(5, 500)</c> reports at
+            /// <c>steps[0]</c> with the element's own constraint code.
+            /// </summary>
+            /// <remarks>
+            /// The field is a computed interpolation rather than a pushed segment, because the
+            /// element is the value - there is no member below it for a report to name, and the
+            /// interpolation only ever renders on a failing element. Null elements skip through
+            /// the guard <c>TestFor</c> already writes for a reference-typed access.
+            /// </remarks>
+            private void EmitElementRules(string access, ValidatedPropertyModel collection, string? missing) {
+                var n = _writer._locals++;
+                var items = $"items{n}";
+                var index = $"i{n}";
+                var element = $"element{n}";
+                var guard = missing is null ? string.Empty : $"!{missing} && ";
+                var field = _field!;
+
+                var elementFacts = new ValidatedPropertyModel(
+                    collection.PropertyName,
+                    field,
+                    "global::System.String",
+                    PropertyShape.Scalar,
+                    null,
+                    null,
+                    true,
+                    true,
+                    false,
+                    false,
+                    "Count",
+                    false,
+                    default);
+
+                _writer.Line(_depth, $"if ({guard}{access} is {{ }} {items}) {{");
+                _writer.Line(_depth + 1,
+                    $"for (var {index} = 0; {index} < {items}.{collection.CountAccessor}; {index}++) {{");
+                _writer.Line(_depth + 2, $"var {element} = {items}[{index}];");
+
+                foreach (var constraint in _elementConstraints) {
+                    var test = ValidatorEmitter.TestFor(
+                        element, elementFacts, constraint,
+                        new List<(string, ConstraintModel)>(), new List<(string, ConstraintModel)>());
+
+                    if (test is null) {
+                        continue;
+                    }
+
+                    var report = ValidatorEmitter.ReportFor(
+                        $"$\"{field}[{{{index}}}]\"", constraint, elementFacts);
+
+                    _writer.Line(_depth + 2, $"if ({ValidatorEmitter.Conjoin(test, report)}) {{");
+                    _writer.Line(_depth + 3, $"return {Flow}.Stop;");
+                    _writer.Line(_depth + 2, "}");
+                }
+
+                _writer.Line(_depth + 1, "}");
+                _writer.Line(_depth, "}");
             }
 
             private void EmitDescent(bool elements, ExpressionSyntax value, string? explicitField, string? missing) {
