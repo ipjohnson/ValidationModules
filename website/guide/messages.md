@@ -57,7 +57,7 @@ binary rather than carried and ignored.
 Drop a `*.validation-messages.json` anywhere in the project. No `<AdditionalFiles>` entry is
 needed - the build reads every file with that suffix - and the file compiles into the same
 `IValidationLanguagePack` shape the package's own languages use, validated at build time
-([VM4001–VM4006](/reference/diagnostics)) rather than parsed at startup.
+([VM4001–VM4006](/reference/diagnostics#language-packs)) rather than parsed at startup.
 
 ```json
 {
@@ -75,20 +75,21 @@ The parts, precisely:
 
 - **`culture` decides the culture.** The file name is convention (`fr.validation-messages.json`,
   or `overrides.fr.validation-messages.json` for a partial override); when name and member
-  disagree, the member wins and the build warns (VM4005).
+  disagree, the member wins and the build warns ([VM4005](/reference/diagnostics#vm4005)).
 - **`templates` is keyed by the stable vocabulary.** A key is a wire code - built-in like
   `required`, or your own like `date_order` from an `Ensure(code: …)` - or a *shape key* beneath
   the codes whose sentence varies with their arguments: `string_length.between`,
   `string_length.at_most_singular`, `range.greater_than`, `enum.denied`, and so on. The singular
   variants exist because "at most 1 characters" is wrong in most languages; the renderer picks
-  the shape, your pack words it. A key the shape inventory does not know warns at build (VM4002).
+  the shape, your pack words it. A key the shape inventory does not know warns at build
+  ([VM4002](/reference/diagnostics#vm4002)).
 - **Holes are `{field}` and the positional `{0}`, `{1}`.** `{field}` is the error's field-path
   leaf; the positions are the constraint's own arguments, in the same order the default English
-  uses them. A hole past the shape's argument count is a build error (VM4003), not a format
-  exception in one culture at runtime.
+  uses them. A hole past the shape's argument count is a build error
+  ([VM4003](/reference/diagnostics#vm4003)), not a format exception in one culture at runtime.
 - **Cover as much or as little as you like.** A pack with one entry rewords one message;
-  everything unmatched keeps its default render. VM4006 reports coverage as an Info if you want
-  the inventory.
+  everything unmatched keeps its default render. [VM4006](/reference/diagnostics#vm4006) reports
+  coverage as an Info if you want the inventory.
 
 ## What wins over what
 

@@ -6,6 +6,43 @@ namespace ValidationModules.SourceGenerator.Impl;
 /// The VM#### descriptors. Every one of these is a rule the emitter would otherwise have to guess
 /// at, so they are roughly half the work of the generator rather than a finishing touch.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <b>The thousand digit is the front end that raises the diagnostic; the hundred digit is the
+/// category within it.</b>
+/// </para>
+/// <list type="bullet">
+/// <item><description>VM1xxx - constraint declarations, from <c>AttributeFrontEnd</c>.
+/// VM10xx a constraint on a member that cannot carry it, VM11xx arguments that do not resolve,
+/// VM12xx checks that cannot fail or would mislead, VM13xx patterns under the AOT policy,
+/// VM14xx When/Unless conditions, VM15xx nesting and descent, VM16xx custom constraint
+/// shapes.</description></item>
+/// <item><description>VM2xxx - the DataAnnotations bridge, keyed on the vocabulary rather than
+/// the file: four of these report from <c>AttributeFrontEnd</c>, which hosts the attribute loop,
+/// but each can only fire when a DataAnnotations attribute is present.</description></item>
+/// <item><description>VM3xxx - rules classes, from <c>RulesFrontEnd</c>. VM30xx what the reader
+/// cannot follow, VM31xx rule semantics.</description></item>
+/// <item><description>VM4xxx - language packs, from <c>LanguagePackReader</c>.</description></item>
+/// <item><description>VM5xxx - the toolchain: the runtime contract check, the emit backstop, and
+/// the <c>.Validate&lt;T&gt;()</c> analyzer.</description></item>
+/// </list>
+/// <para>
+/// Banding follows the raiser rather than the theme because a diagnostic rarely changes which front
+/// end raises it. <c>RangeBoundsNotParseable</c> is the one deliberate exception in the other
+/// direction: it stays VM1xxx because <c>ResolveRangeBounds</c> runs for both vocabularies.
+/// </para>
+/// <para>
+/// <b>The rule for the next id.</b> Append within the category. A new category takes the next free
+/// hundred, a new raiser the next free thousand. Never reclaim a retired id: an <c>.editorconfig</c>
+/// line written against a withdrawn meaning would go on suppressing something else entirely.
+/// </para>
+/// <para>
+/// These ids replaced the flat VM0### range before 1.0.0, while nothing had shipped stable. The two
+/// ranges do not overlap, so a stale <c>dotnet_diagnostic</c> line in a consumer's
+/// <c>.editorconfig</c> is inert rather than misdirected. <c>reference/diagnostics.md</c> carries
+/// the old-to-new table.
+/// </para>
+/// </remarks>
 public static class ValidationDiagnostics {
     private const string Usage = "ValidationModules.Usage";
 
