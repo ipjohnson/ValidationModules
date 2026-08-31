@@ -2,17 +2,28 @@
 
 Every diagnostic this generator reports, why it exists, and what to do about it.
 
-All of them are in category `ValidationModules.Usage`, so a blanket `.editorconfig` rule reaches the
-whole set:
+Tune one from `.editorconfig`, by id:
 
 ```ini
 [*.cs]
 dotnet_diagnostic.VM1201.severity = none
-dotnet_analyzer_diagnostic.category-ValidationModules.Usage.severity = suggestion
 ```
 
-Prefer silencing one id over the category. Several are errors because the alternative is generated
-code that does not compile.
+`NoWarn` in the csproj and `#pragma warning disable VM1201` around a declaration both work too.
+
+::: warning The category-wide rule does not reach these
+All of them are in category `ValidationModules.Usage`, but
+`dotnet_analyzer_diagnostic.category-ValidationModules.Usage.severity` silently reaches only
+[VM5003](#vm5003). Bulk analyzer configuration is applied by the analyzer driver, and every other
+diagnostic here is reported by the source generator rather than by an analyzer, so the rule never
+sees it. VM5003 comes from `ValidateCallAnalyzer`, which is a real analyzer, and is the one
+exception.
+
+Silence them by id. `verify-packages.sh` pins this behaviour in the direction it actually works, so
+if a future Roslyn closes the gap this warning is what gets deleted.
+:::
+
+Several are errors because the alternative is generated code that does not compile.
 
 ## Renumbered at 1.0.0
 

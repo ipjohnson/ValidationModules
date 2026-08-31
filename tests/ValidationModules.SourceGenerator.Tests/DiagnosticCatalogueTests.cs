@@ -151,8 +151,14 @@ public class DiagnosticCatalogueTests {
 
     [Fact]
     public void EveryDescriptor_SharesTheOneCategory() {
-        // An .editorconfig severity override is written per category as often as per id, so a stray
-        // category silently escapes a consumer's blanket rule.
+        // The category is what an IDE groups by and what a report filters on, and it is the only
+        // handle on the set as a whole, so a stray one hides that descriptor from all of it.
+        //
+        // Not, as this comment used to say, so that a consumer's blanket .editorconfig rule reaches
+        // them: dotnet_analyzer_diagnostic.category-* is applied by the analyzer driver, and every
+        // descriptor except ValidateTargetHasNoValidator is reported by the generator rather than by
+        // an analyzer, so the blanket rule reaches exactly one of them. verify-packages.sh pins that,
+        // and reference/diagnostics.md documents silencing by id instead.
         Assert.All(Declared, descriptor => Assert.Equal("ValidationModules.Usage", descriptor.Category));
     }
 

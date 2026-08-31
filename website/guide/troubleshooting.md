@@ -151,17 +151,17 @@ levels you care about explicitly. See [Cycles and depth](/guide/nesting#cycles-a
 
 ## A diagnostic is too noisy
 
-Every diagnostic is in category `ValidationModules.Usage`, so you can tune one or all of them from
-`.editorconfig`:
+Tune it from `.editorconfig`, by id:
 
 ```ini
 [*.cs]
 dotnet_diagnostic.VM1201.severity = none
-dotnet_analyzer_diagnostic.category-ValidationModules.Usage.severity = suggestion
 ```
 
-Prefer silencing one id over the whole category. Several of them are errors because the alternative
-is generated code that does not compile.
+`<NoWarn>$(NoWarn);VM1201</NoWarn>` and `#pragma warning disable VM1201` work as well. The
+category-wide `dotnet_analyzer_diagnostic` form does not:
+[the reference explains why](/reference/diagnostics#diagnostics). Several of them are errors because
+the alternative is generated code that does not compile.
 
 ## Every diagnostic in the reference is wired up
 

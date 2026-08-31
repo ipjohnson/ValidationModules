@@ -234,13 +234,16 @@ segments join with nothing between them.
 
 ## Diagnostic severity
 
-Not MSBuild, but `.editorconfig`. Every diagnostic is in category `ValidationModules.Usage`:
+Not MSBuild, but `.editorconfig`. Silence one by id:
 
 ```ini
 [*.cs]
 dotnet_diagnostic.VM1201.severity = none
-dotnet_analyzer_diagnostic.category-ValidationModules.Usage.severity = suggestion
 ```
 
-Prefer silencing one id over the whole category. Several diagnostics are errors because the
-alternative is generated code that does not compile.
+`<NoWarn>$(NoWarn);VM1201</NoWarn>` and `#pragma warning disable VM1201` work as well.
+
+The category-wide `dotnet_analyzer_diagnostic.category-ValidationModules.Usage.severity` does
+**not** reach these, even though they all carry that category:
+[the reference explains why](/reference/diagnostics#diagnostics). Several diagnostics are errors
+because the alternative is generated code that does not compile.
