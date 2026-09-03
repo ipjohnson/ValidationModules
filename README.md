@@ -1,7 +1,9 @@
-<!-- This file is packed into every NuGet package, and nuget.org renders CommonMark only: raw HTML
-     is escaped into visible text and relative paths resolve to nothing. So the header mark is a
-     plain markdown image whose file carries its own size and background (assets/logo-readme.svg),
-     and every link is an absolute URL. -->
+<!-- This file is packed into every NuGet package, and nuget.org renders CommonMark only: HTML is
+     not one of its supported features and relative paths resolve to nothing. So the header mark is
+     a plain markdown image whose file carries its own size, ground and trailing gap
+     (assets/logo-readme.svg), and every link is an absolute URL. A <picture> pair for light and
+     dark is not available here, which is why that file is the tiled mark: the same artwork
+     nuget.org already shows as the package icon beside the title. -->
 # ![ValidationModules](https://raw.githubusercontent.com/ipjohnson/ValidationModules/main/assets/logo-readme.svg) ValidationModules
 
 [![NuGet](https://img.shields.io/nuget/v/ValidationModules.Runtime.svg)](https://www.nuget.org/packages/ValidationModules.Runtime/)
