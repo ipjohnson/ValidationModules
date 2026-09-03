@@ -102,10 +102,11 @@ public class PackageReadmeTests {
         var mark = Path.Combine(RepositoryRoot, "assets", "logo-readme.svg");
         Assert.True(File.Exists(mark), $"{mark} is referenced by the README and does not exist.");
 
-        // Intrinsic width and height, since the README cannot supply them.
+        // Intrinsic width and height, since the README cannot supply them. The width follows the
+        // viewBox aspect ratio, so it is not always whole.
         var svg = File.ReadAllText(mark);
-        Assert.Matches(@"<svg[^>]*\swidth=""\d+""", svg);
-        Assert.Matches(@"<svg[^>]*\sheight=""\d+""", svg);
+        Assert.Matches(@"<svg[^>]*\swidth=""\d+(\.\d+)?""", svg);
+        Assert.Matches(@"<svg[^>]*\sheight=""\d+(\.\d+)?""", svg);
     }
 
     /// <summary>Alt text on every image: nuget.org prints a placeholder in its place.</summary>

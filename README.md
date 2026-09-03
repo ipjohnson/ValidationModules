@@ -1,7 +1,9 @@
-<!-- This file is packed into every NuGet package, and nuget.org renders CommonMark only: raw HTML
-     is escaped into visible text and relative paths resolve to nothing. So the header mark is a
-     plain markdown image whose file carries its own size and background (assets/logo-readme.svg),
-     and every link is an absolute URL. -->
+<!-- This file is packed into every NuGet package, and nuget.org renders CommonMark only: HTML is
+     not one of its supported features and relative paths resolve to nothing. So the header mark is
+     a plain markdown image whose file carries its own size, ground and trailing gap
+     (assets/logo-readme.svg), and every link is an absolute URL. A <picture> pair for light and
+     dark is not available here, which is why that file is the tiled mark: the same artwork
+     nuget.org already shows as the package icon beside the title. -->
 # ![ValidationModules](https://raw.githubusercontent.com/ipjohnson/ValidationModules/main/assets/logo-readme.svg) ValidationModules
 
 [![NuGet](https://img.shields.io/nuget/v/ValidationModules.Runtime.svg)](https://www.nuget.org/packages/ValidationModules.Runtime/)
@@ -9,8 +11,9 @@
 [![coverage](https://raw.githubusercontent.com/ipjohnson/ValidationModules/badges/coverage.svg)](https://github.com/ipjohnson/ValidationModules/actions/workflows/build-package.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/ipjohnson/ValidationModules/blob/main/LICENSE.txt)
 
-Compile-time validation for .NET. You declare constraints as attributes on a model, and a source
-generator writes the validator into your assembly during the build.
+Compile-time validation for .NET. You declare constraints as attributes on a model or as chained
+calls in a rules class, and a source generator writes the validator into your assembly during the
+build.
 
 Nothing reflects at runtime. There are no expression trees, no regex compiled at startup, and no
 rule graph to assemble. A clean pass over a flat model takes 32 ns and allocates 56 bytes, where
@@ -22,23 +25,54 @@ and running a real binary on every release.
 Constraints go on the model:
 
 ```csharp
+using System.Text.RegularExpressions;
 using ValidationModules.Constraints;
 
-public record Pet {
+public sealed record Customer {
     [Required]
     [StringLength(min: 1, max: 100)]
     public string? Name { get; init; }
 
-    [Pattern("^[a-zA-Z0-9-]*$")]
-    public string? Sku { get; init; }
+    [Pattern(typeof(CustomerPatterns), nameof(CustomerPatterns.AccountNumber))]
+    public string? AccountNumber { get; init; }
 
     [ValidateNested]
-    public Address? Home { get; init; }
+    public Address? BillingAddress { get; init; }
 
     [ItemCount(min: 1, max: 10), ValidateNested]
-    public IReadOnlyList<Toy> Toys { get; init; } = [];
+    public IReadOnlyList<Contact> Contacts { get; init; } = [];
+}
+
+public static partial class CustomerPatterns {
+    [GeneratedRegex("^[A-Z]{2}-[0-9]{6}$")]
+    public static partial Regex AccountNumber();
 }
 ```
+
+Or the same rules in a rules class, which is how you reach a model you cannot edit and rules no
+attribute can state:
+
+```csharp
+using ValidationModules;
+
+public sealed class CustomerRules : IValidationRulesFor<Customer> {
+    public static void Describe(ValidationRules<Customer> rules, Customer x) {
+        rules.Require(x.Name).Length(1, 100);
+        rules.Pattern(x.AccountNumber, CustomerPatterns.AccountNumber);
+        rules.Nested(x.BillingAddress);
+        rules.Count(x.Contacts, 1, 10).Each();
+    }
+}
+```
+
+Use either, or both on one type. The two forms expand through one check writer, so they produce the
+same checks, the same field paths, and the same codes. Nothing registers `CustomerRules`; the
+generator finds it.
+
+Both point the pattern at a `[GeneratedRegex]` rather than carrying the string, because a `Regex`
+built from a string at run time roots the regex parser and interpreter: about 450 KB on an AOT
+binary. `[Pattern]` does take an inline string, and reports a build error for it by default in an
+AOT-facing project. `rules.Pattern` has no inline form at all.
 
 The generator emits one validator per type and a single registration call for the assembly:
 
@@ -47,15 +81,15 @@ using ValidationModules;
 
 services.AddMyAppValidators();                 // named after your assembly
 
-var validator = provider.GetRequiredService<IValidatorFor<Pet>>();
-var result = validator.Validate(pet);
+var validator = provider.GetRequiredService<IValidatorFor<Customer>>();
+var result = validator.Validate(customer);
 
 foreach (var error in result.Errors) {
     Console.WriteLine($"{error.Field}: {error.Code}");
 }
-// name             required
-// home.postalCode  required
-// toys[3].name     required
+// name                       required
+// billingAddress.postalCode  required
+// contacts[3].email          required
 ```
 
 Every error carries a field path and a stable `Code`. Build UI and localization off the code rather
@@ -79,8 +113,8 @@ on either LTS release gets one built against its own framework.
 
 ## Rules classes
 
-Some rules do not fit an attribute. A cross-field comparison, a computed total, or a type you cannot
-edit belongs in a rules class. It is full C#, read at build time and never executed.
+`Describe` is read at build time and never executed, and its body is ordinary C#. That is what lets
+one rule read more than one field:
 
 ```csharp
 public sealed class OrderRules : IValidationRulesFor<Order> {
@@ -97,8 +131,8 @@ public sealed class OrderRules : IValidationRulesFor<Order> {
 }
 ```
 
-Locals, `if`/`else`, and helper calls transcribe into the generated validator and run there. The
-vocabulary calls expand into the same checks the attributes produce.
+Locals, `if`/`else`, and helper calls transcribe into the generated validator and run there. There
+is no `When`/`Unless`, because a condition is an `if`.
 
 Both declaration layers are build-time only. What ships is the generated validators plus the small
 reporting runtime, and under trimming or Native AOT the rules class itself is gone. See
