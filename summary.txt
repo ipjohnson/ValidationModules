@@ -1,0 +1,102 @@
+Summary - ValidationModules
+  Generated on: 09/03/2026 - 11:28:06
+  Coverage date: 09/03/2026 - 11:26:46 - 09/03/2026 - 11:27:50
+  Parser: MultiReport (10x Cobertura)
+  Assemblies: 3
+  Classes: 76
+  Files: 68
+  Line coverage: 89.7%
+  Covered lines: 5791
+  Uncovered lines: 662
+  Coverable lines: 6453
+  Total lines: 17756
+  Branch coverage: 80.9% (3815 of 4715)
+  Covered branches: 3815
+  Total branches: 4715
+  Method coverage: 88.3% (578 of 654)
+  Full method coverage: 68.3% (447 of 654)
+  Covered methods: 578
+  Fully covered methods: 447
+  Total methods: 654
+
+ValidationModules.AspNetCore                                                              89.8%
+  Microsoft.AspNetCore.Builder.ValidationModulesEndpointExtensions                         100%
+  Microsoft.Extensions.DependencyInjection.ValidationModulesAspNetCoreExtensions           100%
+  ValidationModules.AspNetCore.BadRequestStatusHandler                                     100%
+  ValidationModules.AspNetCore.ValidationEndpointFilter<T>                                 100%
+  ValidationModules.AspNetCore.ValidationEndpointFilterFactory                              98%
+  ValidationModules.AspNetCore.ValidationExceptionHandler                                  100%
+  ValidationModules.AspNetCore.ValidationProblem                                           100%
+  ValidationModules.AspNetCore.ValidationProblemOptions                                   56.4%
+  ValidationModules.AspNetCore.ValidationProblemResult                                     100%
+
+ValidationModules.Runtime                                                                 90.6%
+  Microsoft.Extensions.DependencyInjection.ValidationModulesServiceCollectionExtensions    100%
+  ValidationModules.CollectionAsyncValidatorFor<T>                                         100%
+  ValidationModules.CollectionValidatorFor<T>                                               90%
+  ValidationModules.ConstraintChecks                                                       100%
+  ValidationModules.Constraints.AllowedValuesAttribute                                     100%
+  ValidationModules.Constraints.DeniedValuesAttribute                                        0%
+  ValidationModules.Constraints.ItemCountAttribute                                         100%
+  ValidationModules.Constraints.MultipleOfAttribute                                        100%
+  ValidationModules.Constraints.PatternAttribute                                           100%
+  ValidationModules.Constraints.RangeAttribute                                             100%
+  ValidationModules.Constraints.StringLengthAttribute                                      100%
+  ValidationModules.Constraints.ValidateNestedAttribute                                      0%
+  ValidationModules.DataAnnotationsSupport                                                88.8%
+  ValidationModules.DelegateMessageProvider                                                100%
+  ValidationModules.DynamicValidation                                                     78.9%
+  ValidationModules.DynamicValidatorRegistry                                               100%
+  ValidationModules.IConstraintFor<T>                                                      100%
+  ValidationModules.IValidatorFor<T>                                                       100%
+  ValidationModules.LanguagePackFormatter                                                   93%
+  ValidationModules.Naming.CamelCaseFieldNamer                                             100%
+  ValidationModules.Naming.FieldNamer                                                      100%
+  ValidationModules.Naming.PascalCaseFieldNamer                                            100%
+  ValidationModules.Naming.SnakeCaseFieldNamer                                             100%
+  ValidationModules.PropertyRules<T1, T2>                                                    0%
+  ValidationModules.PropertyRulesExtensions                                                  0%
+  ValidationModules.Rules.RuleText                                                          96%
+  ValidationModules.ValidationContext                                                     93.8%
+  ValidationModules.ValidationContextExtensions                                            100%
+  ValidationModules.ValidationError                                                        100%
+  ValidationModules.ValidationErrorCollector                                              94.1%
+  ValidationModules.ValidationException                                                    100%
+  ValidationModules.ValidationFlow                                                          50%
+  ValidationModules.ValidationMessageInfo                                                 77.9%
+  ValidationModules.ValidationMessageMap                                                   100%
+  ValidationModules.ValidationMessageTemplates                                            98.7%
+  ValidationModules.ValidationResult                                                       100%
+  ValidationModules.ValidationRules<T>                                                       0%
+  ValidationModules.ValidationRunner<T>                                                     95%
+  ValidationModules.ValidatorForExtensions                                                 100%
+
+ValidationModules.SourceGenerator                                                         89.4%
+  ValidationModules.Rules.RuleText                                                        80.7%
+  ValidationModules.SourceGenerator.Impl.CodeNaming                                        100%
+  ValidationModules.SourceGenerator.Impl.EmitterContract                                   100%
+  ValidationModules.SourceGenerator.Impl.Emitters.EmitterOutput                            100%
+  ValidationModules.SourceGenerator.Impl.Emitters.GeneratedCodeStyle                       100%
+  ValidationModules.SourceGenerator.Impl.Emitters.LanguagePackEmitter                      100%
+  ValidationModules.SourceGenerator.Impl.Emitters.NestingGraph                            97.1%
+  ValidationModules.SourceGenerator.Impl.Emitters.RegionEmitter                           94.5%
+  ValidationModules.SourceGenerator.Impl.Emitters.RegistrationEmitter                      100%
+  ValidationModules.SourceGenerator.Impl.Emitters.ValidatorEmitter                        89.8%
+  ValidationModules.SourceGenerator.Impl.EquatableArray<T>                                 100%
+  ValidationModules.SourceGenerator.Impl.EquatableArrayExtensions                          100%
+  ValidationModules.SourceGenerator.Impl.FrontEnds.AttributeConstructionRenderer          77.2%
+  ValidationModules.SourceGenerator.Impl.FrontEnds.AttributeFrontEnd                      93.9%
+  ValidationModules.SourceGenerator.Impl.FrontEnds.DataAnnotationsConstraintReader        87.5%
+  ValidationModules.SourceGenerator.Impl.FrontEnds.FragmentContainer                       100%
+  ValidationModules.SourceGenerator.Impl.FrontEnds.FragmentMethod                          100%
+  ValidationModules.SourceGenerator.Impl.FrontEnds.LanguagePackReader                     77.9%
+  ValidationModules.SourceGenerator.Impl.FrontEnds.MemberWalk                             98.3%
+  ValidationModules.SourceGenerator.Impl.FrontEnds.MultipleOfReader                       96.7%
+  ValidationModules.SourceGenerator.Impl.FrontEnds.NativeConstraintReader                 84.6%
+  ValidationModules.SourceGenerator.Impl.FrontEnds.RangeBoundReader                       90.2%
+  ValidationModules.SourceGenerator.Impl.FrontEnds.RulesFrontEnd                          83.7%
+  ValidationModules.SourceGenerator.Impl.FrontEnds.TypeFacts                              93.9%
+  ValidationModules.SourceGenerator.Impl.RegistrationNaming                               92.3%
+  ValidationModules.SourceGenerator.Impl.ValidationDiagnostics                             100%
+  ValidationModules.SourceGenerator.ValidateCallAnalyzer                                  92.2%
+  ValidationModules.SourceGenerator.ValidationSourceGenerator                               96%
