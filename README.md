@@ -25,14 +25,15 @@ and running a real binary on every release.
 Constraints go on the model:
 
 ```csharp
+using System.Text.RegularExpressions;
 using ValidationModules.Constraints;
 
-public record Customer {
+public sealed record Customer {
     [Required]
     [StringLength(min: 1, max: 100)]
     public string? Name { get; init; }
 
-    [Pattern("^[A-Z]{2}-[0-9]{6}$")]
+    [Pattern(typeof(CustomerPatterns), nameof(CustomerPatterns.AccountNumber))]
     public string? AccountNumber { get; init; }
 
     [ValidateNested]
@@ -40,6 +41,11 @@ public record Customer {
 
     [ItemCount(min: 1, max: 10), ValidateNested]
     public IReadOnlyList<Contact> Contacts { get; init; } = [];
+}
+
+public static partial class CustomerPatterns {
+    [GeneratedRegex("^[A-Z]{2}-[0-9]{6}$")]
+    public static partial Regex AccountNumber();
 }
 ```
 
@@ -60,9 +66,13 @@ public sealed class CustomerRules : IValidationRulesFor<Customer> {
 ```
 
 Use either, or both on one type. The two forms expand through one check writer, so they produce the
-same checks, the same field paths, and the same codes. Nothing registers `CustomerRules`; the generator
-finds it. The one call that does not mirror its attribute literally is `Pattern`, which takes the
-accessor for a `[GeneratedRegex]` partial rather than an inline string.
+same checks, the same field paths, and the same codes. Nothing registers `CustomerRules`; the
+generator finds it.
+
+Both point the pattern at a `[GeneratedRegex]` rather than carrying the string, because a `Regex`
+built from a string at run time roots the regex parser and interpreter: about 450 KB on an AOT
+binary. `[Pattern]` does take an inline string, and reports a build error for it by default in an
+AOT-facing project. `rules.Pattern` has no inline form at all.
 
 The generator emits one validator per type and a single registration call for the assembly:
 
