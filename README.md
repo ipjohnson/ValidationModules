@@ -27,19 +27,19 @@ Constraints go on the model:
 ```csharp
 using ValidationModules.Constraints;
 
-public record Pet {
+public record Customer {
     [Required]
     [StringLength(min: 1, max: 100)]
     public string? Name { get; init; }
 
-    [Pattern("^[a-zA-Z0-9-]*$")]
-    public string? Sku { get; init; }
+    [Pattern("^[A-Z]{2}-[0-9]{6}$")]
+    public string? AccountNumber { get; init; }
 
     [ValidateNested]
-    public Address? Home { get; init; }
+    public Address? BillingAddress { get; init; }
 
     [ItemCount(min: 1, max: 10), ValidateNested]
-    public IReadOnlyList<Toy> Toys { get; init; } = [];
+    public IReadOnlyList<Contact> Contacts { get; init; } = [];
 }
 ```
 
@@ -49,18 +49,18 @@ attribute can state:
 ```csharp
 using ValidationModules;
 
-public sealed class PetRules : IValidationRulesFor<Pet> {
-    public static void Describe(ValidationRules<Pet> rules, Pet x) {
+public sealed class CustomerRules : IValidationRulesFor<Customer> {
+    public static void Describe(ValidationRules<Customer> rules, Customer x) {
         rules.Require(x.Name).Length(1, 100);
-        rules.Pattern(x.Sku, PetPatterns.Sku);
-        rules.Nested(x.Home);
-        rules.Count(x.Toys, 1, 10).Each();
+        rules.Pattern(x.AccountNumber, CustomerPatterns.AccountNumber);
+        rules.Nested(x.BillingAddress);
+        rules.Count(x.Contacts, 1, 10).Each();
     }
 }
 ```
 
 Use either, or both on one type. The two forms expand through one check writer, so they produce the
-same checks, the same field paths, and the same codes. Nothing registers `PetRules`; the generator
+same checks, the same field paths, and the same codes. Nothing registers `CustomerRules`; the generator
 finds it. The one call that does not mirror its attribute literally is `Pattern`, which takes the
 accessor for a `[GeneratedRegex]` partial rather than an inline string.
 
@@ -71,15 +71,15 @@ using ValidationModules;
 
 services.AddMyAppValidators();                 // named after your assembly
 
-var validator = provider.GetRequiredService<IValidatorFor<Pet>>();
-var result = validator.Validate(pet);
+var validator = provider.GetRequiredService<IValidatorFor<Customer>>();
+var result = validator.Validate(customer);
 
 foreach (var error in result.Errors) {
     Console.WriteLine($"{error.Field}: {error.Code}");
 }
-// name             required
-// home.postalCode  required
-// toys[3].name     required
+// name                       required
+// billingAddress.postalCode  required
+// contacts[3].email          required
 ```
 
 Every error carries a field path and a stable `Code`. Build UI and localization off the code rather
