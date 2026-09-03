@@ -11,8 +11,9 @@
 [![coverage](https://raw.githubusercontent.com/ipjohnson/ValidationModules/badges/coverage.svg)](https://github.com/ipjohnson/ValidationModules/actions/workflows/build-package.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/ipjohnson/ValidationModules/blob/main/LICENSE.txt)
 
-Compile-time validation for .NET. You declare constraints as attributes on a model, and a source
-generator writes the validator into your assembly during the build.
+Compile-time validation for .NET. You declare constraints as attributes on a model or as chained
+calls in a rules class, and a source generator writes the validator into your assembly during the
+build.
 
 Nothing reflects at runtime. There are no expression trees, no regex compiled at startup, and no
 rule graph to assemble. A clean pass over a flat model takes 32 ns and allocates 56 bytes, where
@@ -41,6 +42,27 @@ public record Pet {
     public IReadOnlyList<Toy> Toys { get; init; } = [];
 }
 ```
+
+Or the same rules in a rules class, which is how you reach a model you cannot edit and rules no
+attribute can state:
+
+```csharp
+using ValidationModules;
+
+public sealed class PetRules : IValidationRulesFor<Pet> {
+    public static void Describe(ValidationRules<Pet> rules, Pet x) {
+        rules.Require(x.Name).Length(1, 100);
+        rules.Pattern(x.Sku, PetPatterns.Sku);
+        rules.Nested(x.Home);
+        rules.Count(x.Toys, 1, 10).Each();
+    }
+}
+```
+
+Use either, or both on one type. The two forms expand through one check writer, so they produce the
+same checks, the same field paths, and the same codes. Nothing registers `PetRules`; the generator
+finds it. The one call that does not mirror its attribute literally is `Pattern`, which takes the
+accessor for a `[GeneratedRegex]` partial rather than an inline string.
 
 The generator emits one validator per type and a single registration call for the assembly:
 
@@ -81,8 +103,8 @@ on either LTS release gets one built against its own framework.
 
 ## Rules classes
 
-Some rules do not fit an attribute. A cross-field comparison, a computed total, or a type you cannot
-edit belongs in a rules class. It is full C#, read at build time and never executed.
+`Describe` is read at build time and never executed, and its body is ordinary C#. That is what lets
+one rule read more than one field:
 
 ```csharp
 public sealed class OrderRules : IValidationRulesFor<Order> {
@@ -99,8 +121,8 @@ public sealed class OrderRules : IValidationRulesFor<Order> {
 }
 ```
 
-Locals, `if`/`else`, and helper calls transcribe into the generated validator and run there. The
-vocabulary calls expand into the same checks the attributes produce.
+Locals, `if`/`else`, and helper calls transcribe into the generated validator and run there. There
+is no `When`/`Unless`, because a condition is an `if`.
 
 Both declaration layers are build-time only. What ships is the generated validators plus the small
 reporting runtime, and under trimming or Native AOT the rules class itself is gone. See
