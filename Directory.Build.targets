@@ -5,9 +5,12 @@
         Everything below applies only to the shipping packages under src/.
     -->
 
-    <ItemGroup Condition="'$(IsPackable)' == 'true'">
-        <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All"/>
-    </ItemGroup>
+    <!--
+        SourceLink is not referenced. The SDK has carried it since 8.0.100 and drives it from the
+        PublishRepositoryUrl and EmbedUntrackedSources properties in Directory.Build.props, and
+        referencing any Microsoft.SourceLink package sets SuppressImplicitGitSourceLink, which
+        replaces the SDK's copy with the referenced one rather than adding to it.
+    -->
 
     <!-- README/LICENSE/icon live at the repo root; reference them by absolute path so every package picks them up. -->
     <ItemGroup Condition="'$(IsPackable)' == 'true'">
