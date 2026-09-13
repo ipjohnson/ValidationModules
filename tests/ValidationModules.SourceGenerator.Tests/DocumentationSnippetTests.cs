@@ -97,6 +97,25 @@ public class DocumentationSnippetTests {
         }
         """;
 
+    /// <summary>
+    /// <c>PetPatterns</c>, appended to every sample so the referenced form of <c>[Pattern]</c>
+    /// resolves.
+    /// </summary>
+    /// <remarks>
+    /// The member is a field, where the docs show the <c>[GeneratedRegex]</c> partial a reader
+    /// should write. It has to be: this harness drives one generator and the regex source generator
+    /// is not it, so a partial declared here would never get an implementation and the sample would
+    /// fail on CS8795. The referenced form accepts any static <c>Regex</c> member, so the fixture
+    /// can spell it differently without weakening what is checked, which is that the attribute
+    /// resolves the member and the emitter reaches it.
+    /// </remarks>
+    private const string Patterns = """
+
+        public static class PetPatterns {
+            public static readonly Regex Sku = new("^[A-Z]{3}$");
+        }
+        """;
+
     private static readonly Regex Fence = new(
         @"<!--\s*verify(?<mode>:models|:bare)?\s*-->\s*\r?\n```csharp\r?\n(?<code>.*?)\r?\n```",
         RegexOptions.Singleline | RegexOptions.Compiled);
@@ -135,6 +154,8 @@ public class DocumentationSnippetTests {
         if (mode == ":models") {
             source.AppendLine().Append(Models);
         }
+
+        source.AppendLine().Append(Patterns);
 
         // Both output kinds, because a sample is either statements or declarations and the two
         // disagree about which is an error: a library reports CS8805 for top-level statements, a

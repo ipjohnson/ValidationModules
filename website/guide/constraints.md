@@ -21,7 +21,7 @@ public sealed record Pet {
     [Range(0, 30)]
     public int Age { get; init; }
 
-    [Pattern("^[A-Z]{3}$")]
+    [Pattern(typeof(PetPatterns), nameof(PetPatterns.Sku))]
     public string? Sku { get; init; }
 
     [AllowedValues("available", "pending", "sold")]
@@ -45,6 +45,19 @@ public sealed record Address {
     public string? PostalCode { get; init; }
 }
 ```
+
+`PetPatterns` is yours to declare, and the reference is what keeps the regex parser out of an AOT
+binary:
+
+```csharp
+public static partial class PetPatterns {
+    [GeneratedRegex("^[A-Z]{3}$")]
+    public static partial Regex Sku();
+}
+```
+
+`[Pattern]` takes an inline string too. [Patterns and regex](/guide/patterns) covers what that
+costs, and [`[Pattern]`](#pattern) below has the short version.
 
 A type is picked up because it carries at least one constraint. Nothing needs to be registered, and
 there is no marker interface. If you want a validator for a type that has no constraints of its
@@ -173,12 +186,8 @@ to the build machine's zone would make the same source mean two things on two ma
 
 Emits code `pattern`. Strings only; anything else is [VM1001](/reference/diagnostics#vm1001).
 
-```csharp
-[Pattern("^[A-Z]{3}$")]
-public string? Sku { get; init; }
-```
-
-Two forms. For an AOT build, the choice between them is the most consequential one on this page:
+Two forms, and for an AOT build the choice between them is the most consequential one on this
+page:
 
 ```csharp
 // Inline. Convenient, and roots the regex parser and interpreter, about 450 KB, once.

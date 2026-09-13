@@ -13,7 +13,7 @@ public sealed class SkuAttribute : CustomConstraintAttribute {
         value.StartsWith("SKU-", StringComparison.Ordinal);
 }
 
-public record Product {
+public sealed record Product {
     [Required]
     [Sku]
     public string? Sku { get; init; }
