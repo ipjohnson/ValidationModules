@@ -13,17 +13,23 @@ namespace ValidationModules.Runtime.Tests.Infrastructure;
 /// suppressing the rest of its field through an else-if. That is deliberate: these tests pin the
 /// semantics the generator will have to reproduce, so they double as the emitter's spec.
 /// </remarks>
-public sealed record Address {
-    [Required] public string? PostalCode { get; init; }
+public sealed record Address
+{
+    [Required]
+    public string? PostalCode { get; init; }
 
-    [StringLength(min: 2, max: 2)] public string? Country { get; init; }
+    [StringLength(min: 2, max: 2)]
+    public string? Country { get; init; }
 }
 
-public sealed record Toy {
-    [Required] public string? Name { get; init; }
+public sealed record Toy
+{
+    [Required]
+    public string? Name { get; init; }
 }
 
-public sealed record Pet {
+public sealed record Pet
+{
     [Required]
     [StringLength(min: 1, max: 10)]
     public string? Name { get; init; }
@@ -43,19 +49,29 @@ public sealed record Pet {
 }
 
 /// <summary>Shape of what the generator emits for <see cref="Address"/>.</summary>
-public sealed class AddressValidator : IValidatorFor<Address> {
+public sealed class AddressValidator : IValidatorFor<Address>
+{
     public static readonly AddressValidator Instance = new();
 
     private AddressValidator() { }
 
-    public ValidationFlow Validate(ref ValidationContext context, Address value) {
-        if (string.IsNullOrWhiteSpace(value.PostalCode) &&
-            context.Report("postalCode", "required", "postalCode is required.").ShouldStop) {
+    public ValidationFlow Validate(ref ValidationContext context, Address value)
+    {
+        if (
+            string.IsNullOrWhiteSpace(value.PostalCode)
+            && context.Report("postalCode", "required", "postalCode is required.").ShouldStop
+        )
+        {
             return ValidationFlow.Stop;
         }
 
-        if (value.Country is { Length: not 2 } &&
-            context.Report("country", "string_length", "country must be exactly 2 characters.").ShouldStop) {
+        if (
+            value.Country is { Length: not 2 }
+            && context
+                .Report("country", "string_length", "country must be exactly 2 characters.")
+                .ShouldStop
+        )
+        {
             return ValidationFlow.Stop;
         }
 
@@ -64,14 +80,19 @@ public sealed class AddressValidator : IValidatorFor<Address> {
 }
 
 /// <summary>Shape of what the generator emits for <see cref="Toy"/>.</summary>
-public sealed class ToyValidator : IValidatorFor<Toy> {
+public sealed class ToyValidator : IValidatorFor<Toy>
+{
     public static readonly ToyValidator Instance = new();
 
     private ToyValidator() { }
 
-    public ValidationFlow Validate(ref ValidationContext context, Toy value) {
-        if (string.IsNullOrWhiteSpace(value.Name) &&
-            context.Report("name", "required", "name is required.").ShouldStop) {
+    public ValidationFlow Validate(ref ValidationContext context, Toy value)
+    {
+        if (
+            string.IsNullOrWhiteSpace(value.Name)
+            && context.Report("name", "required", "name is required.").ShouldStop
+        )
+        {
             return ValidationFlow.Stop;
         }
 
@@ -80,41 +101,61 @@ public sealed class ToyValidator : IValidatorFor<Toy> {
 }
 
 /// <summary>Shape of what the generator emits for <see cref="Pet"/> under the default profile.</summary>
-public sealed class PetValidator : IValidatorFor<Pet> {
+public sealed class PetValidator : IValidatorFor<Pet>
+{
     public static readonly PetValidator Instance = new();
 
     private PetValidator() { }
 
-    public ValidationFlow Validate(ref ValidationContext context, Pet value) {
+    public ValidationFlow Validate(ref ValidationContext context, Pet value)
+    {
         // Required suppresses the other constraints on the same field, so a null name produces one
         // error rather than one per rule. The generator emits exactly this else-if shape.
-        if (string.IsNullOrWhiteSpace(value.Name)) {
-            if (context.Report("name", "required", "name is required.").ShouldStop) {
+        if (string.IsNullOrWhiteSpace(value.Name))
+        {
+            if (context.Report("name", "required", "name is required.").ShouldStop)
+            {
                 return ValidationFlow.Stop;
             }
-        } else if (value.Name.Length > 10) {
-            if (context.Report("name", "string_length", "name must be at most 10 characters.").ShouldStop) {
+        }
+        else if (value.Name.Length > 10)
+        {
+            if (
+                context
+                    .Report("name", "string_length", "name must be at most 10 characters.")
+                    .ShouldStop
+            )
+            {
                 return ValidationFlow.Stop;
             }
         }
 
-        if (value.Home is { } home) {
+        if (value.Home is { } home)
+        {
             var nested = context.Push("home");
 
-            if (AddressValidator.Instance.Validate(ref nested, home).ShouldStop) {
+            if (AddressValidator.Instance.Validate(ref nested, home).ShouldStop)
+            {
                 return ValidationFlow.Stop;
             }
         }
 
-        if (value.Toys.Count < 1 &&
-            context.Report("toys", "array_bounds", "toys must contain at least 1 item.").ShouldStop) {
+        if (
+            value.Toys.Count < 1
+            && context
+                .Report("toys", "array_bounds", "toys must contain at least 1 item.")
+                .ShouldStop
+        )
+        {
             return ValidationFlow.Stop;
         }
 
-        for (var i = 0; i < value.Toys.Count; i++) {
+        for (var i = 0; i < value.Toys.Count; i++)
+        {
             var item = context.PushIndex("toys", i);
 
-            if (ToyValidator.Instance.Validate(ref item, value.Toys[i]).ShouldStop) {
+            if (ToyValidator.Instance.Validate(ref item, value.Toys[i]).ShouldStop)
+            {
                 return ValidationFlow.Stop;
             }
         }
@@ -124,18 +165,21 @@ public sealed class PetValidator : IValidatorFor<Pet> {
 }
 
 /// <summary>Shape of what the generator emits for <see cref="Pet"/> under <see cref="V2"/>.</summary>
-public sealed class PetValidatorV2 : IValidatorFor<Pet> {
+public sealed class PetValidatorV2 : IValidatorFor<Pet>
+{
     public static readonly PetValidatorV2 Instance = new();
 
     private PetValidatorV2() { }
 
-    public ValidationFlow Validate(ref ValidationContext context, Pet value) {
-        if (PetValidator.Instance.Validate(ref context, value).ShouldStop) {
+    public ValidationFlow Validate(ref ValidationContext context, Pet value)
+    {
+        if (PetValidator.Instance.Validate(ref context, value).ShouldStop)
+        {
             return ValidationFlow.Stop;
         }
 
-        if (value.Tag is null &&
-            context.Report("tag", "required", "tag is required.").ShouldStop) {
+        if (value.Tag is null && context.Report("tag", "required", "tag is required.").ShouldStop)
+        {
             return ValidationFlow.Stop;
         }
 
@@ -144,17 +188,25 @@ public sealed class PetValidatorV2 : IValidatorFor<Pet> {
 }
 
 /// <summary>A hand-written business rule, standing in for one that would hit a database.</summary>
-public sealed class PetNameUniquenessValidator : IAsyncValidatorFor<Pet> {
+public sealed class PetNameUniquenessValidator : IAsyncValidatorFor<Pet>
+{
     private readonly HashSet<string> _taken;
 
-    public PetNameUniquenessValidator(params string[] taken) {
+    public PetNameUniquenessValidator(params string[] taken)
+    {
         _taken = new HashSet<string>(taken, StringComparer.Ordinal);
     }
 
-    public async ValueTask ValidateAsync(ValidationContext context, Pet value, CancellationToken cancellationToken) {
+    public async ValueTask ValidateAsync(
+        ValidationContext context,
+        Pet value,
+        CancellationToken cancellationToken
+    )
+    {
         await Task.Yield();
 
-        if (value.Name is not null && _taken.Contains(value.Name)) {
+        if (value.Name is not null && _taken.Contains(value.Name))
+        {
             context.Report("name", "duplicate", "name is already taken.");
         }
     }

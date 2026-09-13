@@ -35,8 +35,8 @@ namespace ValidationModules.SourceGenerator.Impl.Emitters;
 /// at generation time.
 /// </para>
 /// </remarks>
-public sealed class ValidatorEmitter {
-
+public sealed class ValidatorEmitter
+{
     /// <summary>The one enum both engine paths return, spelled the way generated code says it.</summary>
     private const string Flow = "global::ValidationModules.ValidationFlow";
 
@@ -55,7 +55,8 @@ public sealed class ValidatorEmitter {
     /// extension of their own, declared in the validated type's namespace, would outrank a
     /// using-imported one without either file naming it.
     /// </summary>
-    private const string ContextExtensions = "global::ValidationModules.ValidationContextExtensions";
+    private const string ContextExtensions =
+        "global::ValidationModules.ValidationContextExtensions";
 
     private const string MessageInfoType = "global::ValidationModules.ValidationMessageInfo";
 
@@ -69,14 +70,17 @@ public sealed class ValidatorEmitter {
     /// The parameterless constraints never land here - they use the runtime's shared singletons -
     /// so a field only exists where the arguments made the info site-specific.
     /// </summary>
-    internal sealed class MessageInfoPool {
+    internal sealed class MessageInfoPool
+    {
         private readonly Dictionary<string, string> _byInitializer = new(StringComparer.Ordinal);
         private readonly List<(string Field, string Initializer)> _fields = new();
 
         public IReadOnlyList<(string Field, string Initializer)> Fields => _fields;
 
-        public string Get(string initializer) {
-            if (_byInitializer.TryGetValue(initializer, out var existing)) {
+        public string Get(string initializer)
+        {
+            if (_byInitializer.TryGetValue(initializer, out var existing))
+            {
                 return existing;
             }
 
@@ -111,12 +115,15 @@ public sealed class ValidatorEmitter {
     /// which is the point.
     /// </para>
     /// </remarks>
-    private sealed class ConditionScope {
+    private sealed class ConditionScope
+    {
         private readonly Dictionary<string, string> _names = new(StringComparer.Ordinal);
         private readonly List<(string Name, string Expression)> _declarations = new();
 
-        public string Local(string condition) {
-            if (_names.TryGetValue(condition, out var existing)) {
+        public string Local(string condition)
+        {
+            if (_names.TryGetValue(condition, out var existing))
+            {
                 return existing;
             }
 
@@ -129,12 +136,16 @@ public sealed class ValidatorEmitter {
             var conjuncts = condition.Split(new[] { " && " }, StringSplitOptions.None);
             string expression;
 
-            if (conjuncts.Length == 1) {
+            if (conjuncts.Length == 1)
+            {
                 expression = condition;
-            } else {
+            }
+            else
+            {
                 var parts = new string[conjuncts.Length];
 
-                for (var i = 0; i < conjuncts.Length; i++) {
+                for (var i = 0; i < conjuncts.Length; i++)
+                {
                     parts[i] = Local(conjuncts[i]);
                 }
 
@@ -188,8 +199,9 @@ public sealed class ValidatorEmitter {
         NestingGraph? nesting = null,
         BraceStyle style = BraceStyle.Allman,
         string? fieldNamer = null,
-        bool captureValues = true) {
-
+        bool captureValues = true
+    )
+    {
         var graph = nesting ?? NestingGraph.Empty;
         var patterns = new List<(string Field, ConstraintModel Constraint)>();
 
@@ -236,25 +248,45 @@ public sealed class ValidatorEmitter {
         var bodyConditions = new ConditionScope();
         var fastConditions = new ConditionScope();
 
-        foreach (var property in model.Properties) {
+        foreach (var property in model.Properties)
+        {
             EmitProperty(
-                body, fast, property, model, patterns, extensionSets, customAttributes,
-                instanceConstraints, bodyConditions, fastConditions, dispatchers, failFast, fieldNamer,
-                messageInfos, captureValues);
+                body,
+                fast,
+                property,
+                model,
+                patterns,
+                extensionSets,
+                customAttributes,
+                instanceConstraints,
+                bodyConditions,
+                fastConditions,
+                dispatchers,
+                failFast,
+                fieldNamer,
+                messageInfos,
+                captureValues
+            );
         }
 
         // The rules-class regions, after the attribute-declared checks and in rules-class name
         // order. Each is a method in a companion file carrying the author's usings; the arguments
         // beyond the value are the injected validator sets the region's descents use, so a
         // separately registered validator composes in a region exactly as on an attribute descent.
-        foreach (var region in model.Regions) {
+        foreach (var region in model.Regions)
+        {
             var arguments = string.Join(
-                ", ", new[] { "ref ctx", "value" }.Concat(region.ValidatorAccessors));
+                ", ",
+                new[] { "ref ctx", "value" }.Concat(region.ValidatorAccessors)
+            );
             var call = $"{region.CompanionQualifiedName}.{region.MethodName}({arguments})";
 
-            if (failFast) {
+            if (failFast)
+            {
                 body.If($"{call}.ShouldStop").Return($"{Flow}.Stop");
-            } else {
+            }
+            else
+            {
                 body.AddIndentedStatement(call);
             }
         }
@@ -262,10 +294,14 @@ public sealed class ValidatorEmitter {
         // Applied rules own no property, so they run once every property has been walked. Ordering
         // them last rather than at their declaration point is §19.7: they are the only rules whose
         // position in the body says nothing about which field they concern.
-        foreach (var rule in model.AppliedRules) {
-            if (failFast) {
+        foreach (var rule in model.AppliedRules)
+        {
+            if (failFast)
+            {
                 body.If($"{rule}(ref ctx, value).ShouldStop").Return($"{Flow}.Stop");
-            } else {
+            }
+            else
+            {
                 body.AddIndentedStatement($"{rule}(ref ctx, value)");
             }
         }
@@ -273,17 +309,23 @@ public sealed class ValidatorEmitter {
         // IValidatableObject runs last and only when nothing else failed, which is
         // Validator.TryValidateObject's sequencing: object-level validation is the rule the type
         // wrote for "everything else is fine".
-        if (model.ImplementsValidatableObject) {
-            var call = $"{DataAnnotations}.ValidateObject(ref ctx, value, {NamerInstance(fieldNamer)})";
+        if (model.ImplementsValidatableObject)
+        {
+            var call =
+                $"{DataAnnotations}.ValidateObject(ref ctx, value, {NamerInstance(fieldNamer)})";
 
-            if (failFast) {
+            if (failFast)
+            {
                 body.If($"!ctx.HasErrors && {call}.ShouldStop").Return($"{Flow}.Stop");
-            } else {
+            }
+            else
+            {
                 body.If("!ctx.HasErrors").AddIndentedStatement(call);
             }
         }
 
-        foreach (var (field, constraint) in patterns) {
+        foreach (var (field, constraint) in patterns)
+        {
             var expression = constraint.Anchored
                 ? $@"\A(?:{constraint.Pattern})\z"
                 : constraint.Pattern!;
@@ -310,60 +352,89 @@ public sealed class ValidatorEmitter {
             // trade the author asked for by setting it, and it is paid only where it was set.
             var arguments = new List<object> { QuoteString(expression) };
 
-            if (constraint.MatchTimeoutMilliseconds > 0) {
+            if (constraint.MatchTimeoutMilliseconds > 0)
+            {
                 arguments.Add(StaticCast(typeof(RegexOptions), constraint.RegexOptions));
-                arguments.Add(Invoke(typeof(TimeSpan), "FromMilliseconds", constraint.MatchTimeoutMilliseconds));
-            } else if (constraint.RegexOptions != 0) {
+                arguments.Add(
+                    Invoke(
+                        typeof(TimeSpan),
+                        "FromMilliseconds",
+                        constraint.MatchTimeoutMilliseconds
+                    )
+                );
+            }
+            else if (constraint.RegexOptions != 0)
+            {
                 arguments.Add(StaticCast(typeof(RegexOptions), constraint.RegexOptions));
             }
 
             var pattern = validator.AddField(TypeDefinition.Get(typeof(Regex)), field);
 
-            pattern.Modifiers = ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
+            pattern.Modifiers =
+                ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
             pattern.InitializeValue = New(TypeDefinition.Get(typeof(Regex)), arguments.ToArray());
         }
 
-        foreach (var (field, constraint) in extensionSets) {
+        foreach (var (field, constraint) in extensionSets)
+        {
             var set = validator.AddField(TypeDefinition.Get(typeof(string)).MakeArray(), field);
 
-            set.Modifiers = ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
+            set.Modifiers =
+                ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
             set.InitializeValue = NewArray(
-                TypeDefinition.Get(typeof(string)), constraint.Values.Cast<object>().ToArray());
+                TypeDefinition.Get(typeof(string)),
+                constraint.Values.Cast<object>().ToArray()
+            );
         }
 
-        foreach (var (field, constraint) in customAttributes) {
+        foreach (var (field, constraint) in customAttributes)
+        {
             // Held as the base type rather than the concrete attribute: the bridge takes
             // ValidationAttribute, and the construction on the right already names the real class.
             var instance = validator.AddField(
-                TypeDefinition.Get("System.ComponentModel.DataAnnotations", "ValidationAttribute"), field);
+                TypeDefinition.Get("System.ComponentModel.DataAnnotations", "ValidationAttribute"),
+                field
+            );
 
-            instance.Modifiers = ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
-            instance.InitializeValue = new CodeOutputComponent(constraint.CustomConstruction!) { Indented = false };
+            instance.Modifiers =
+                ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
+            instance.InitializeValue = new CodeOutputComponent(constraint.CustomConstruction!)
+            {
+                Indented = false,
+            };
         }
 
-        foreach (var (field, constraint) in instanceConstraints) {
+        foreach (var (field, constraint) in instanceConstraints)
+        {
             // Held as the concrete attribute class, unlike the bridge fields above: there is no
             // bridge, the calls bind on the class, and a public implicit implementation stays a
             // direct - inlineable - call. The sites the class cannot bind go through a cast the
             // front end already decided on.
             var instance = validator.AddField(TypeRef(constraint.InstanceType!), field);
 
-            instance.Modifiers = ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
-            instance.InitializeValue = new CodeOutputComponent(constraint.CustomConstruction!) { Indented = false };
+            instance.Modifiers =
+                ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
+            instance.InitializeValue = new CodeOutputComponent(constraint.CustomConstruction!)
+            {
+                Indented = false,
+            };
         }
 
-        foreach (var (field, initializer) in messageInfos.Fields) {
+        foreach (var (field, initializer) in messageInfos.Fields)
+        {
             // One shared instance per distinct (template, arguments) pair: the arguments are
             // compile-time constants, so their boxes are built once at type initialization and a
             // failing pass stores a reference. This is the static-data half of the structured
             // error model; the runtime singletons cover the parameterless kinds.
             var info = validator.AddField(TypeRef(MessageInfoType), field);
 
-            info.Modifiers = ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
+            info.Modifiers =
+                ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
             info.InitializeValue = new CodeOutputComponent(initializer) { Indented = false };
         }
 
-        for (var i = 0; i < dispatchers.Count; i++) {
+        for (var i = 0; i < dispatchers.Count; i++)
+        {
             // Lazily created: eager construction would allocate on every branch that is never
             // taken, and a validator costs 2.4 ns / 24 B to build. The race on first use is benign -
             // two threads build equivalent validators and one wins - which is the same reasoning
@@ -374,11 +445,13 @@ public sealed class ValidatorEmitter {
         var validate = validator.AddMethod("Validate");
 
         validate.SetReturnType(TypeDefinition.Get("ValidationModules", "ValidationFlow"));
-        validate.AddParameter(TypeDefinition.Get("ValidationModules", "ValidationContext"), "ctx")
+        validate
+            .AddParameter(TypeDefinition.Get("ValidationModules", "ValidationContext"), "ctx")
             .Modifier = ParameterModifier.Ref;
         validate.AddParameter(TypeRef(model.QualifiedTypeName), "value");
 
-        foreach (var (name, expression) in bodyConditions.Declarations) {
+        foreach (var (name, expression) in bodyConditions.Declarations)
+        {
             validate.Assign(expression).ToVar(name);
         }
 
@@ -393,7 +466,9 @@ public sealed class ValidatorEmitter {
         // context - so a type carrying one falls back to IValidatorFor<T>.IsValid, which walks
         // Validate properly. Correct, just not free, and the same trade an applied rule already
         // makes.
-        var dispatchesDynamically = model.Properties.Any(p => p.Polymorphism == PolymorphismMode.Runtime);
+        var dispatchesDynamically = model.Properties.Any(p =>
+            p.Polymorphism == PolymorphismMode.Runtime
+        );
 
         // A type that nests itself falls back for a third reason, and a worse one than being slow.
         // The straight-line form calls the nested validator's IsValid directly, and nothing on that
@@ -402,7 +477,8 @@ public sealed class ValidatorEmitter {
         // caught: the process aborted, out of the entry point documented for hot paths, while
         // Validate on the same value threw InvalidOperationException and named the cycle. The
         // interface default walks Validate into a throwaway collector, so it inherits the guard.
-        var nestsItself = model.Properties.Any(property => NestsItsOwnType(property, model))
+        var nestsItself =
+            model.Properties.Any(property => NestsItsOwnType(property, model))
             || graph.ParticipatesInACycle(model);
 
         // An IValidatableObject type falls back for the applied-rules reason: its object-level
@@ -413,17 +489,24 @@ public sealed class ValidatorEmitter {
         // A type with rules-class regions falls back too: a region carries free-form computation
         // and reporter calls whose severity is a runtime value, which a boolean path with no
         // collector cannot always project. Correct, just not free - the applied-rules trade.
-        if (model.AppliedRules.Count == 0 && !dispatchesDynamically && !nestsItself &&
-            !model.ImplementsValidatableObject && model.Regions.Count == 0) {
+        if (
+            model.AppliedRules.Count == 0
+            && !dispatchesDynamically
+            && !nestsItself
+            && !model.ImplementsValidatableObject
+            && model.Regions.Count == 0
+        )
+        {
             var isValid = validator.AddMethod("IsValid");
 
             isValid.Comment =
-                "The same tests as Validate, returning at the first failure and building\n" +
-                "no path, message or error record - a caller wanting only a boolean pays for nothing else.";
+                "The same tests as Validate, returning at the first failure and building\n"
+                + "no path, message or error record - a caller wanting only a boolean pays for nothing else.";
             isValid.SetReturnType(typeof(bool));
             isValid.AddParameter(TypeRef(model.QualifiedTypeName), "value");
 
-            foreach (var (name, expression) in fastConditions.Declarations) {
+            foreach (var (name, expression) in fastConditions.Declarations)
+            {
                 isValid.Assign(expression).ToVar(name);
             }
 
@@ -431,7 +514,8 @@ public sealed class ValidatorEmitter {
             isValid.Return("true");
         }
 
-        if (withDynamicAdapter) {
+        if (withDynamicAdapter)
+        {
             EmitDynamicAdapter(file, model);
         }
 
@@ -467,7 +551,8 @@ public sealed class ValidatorEmitter {
     /// because nothing is built until a value actually descends.
     /// </para>
     /// </remarks>
-    private static void EmitDynamicAdapter(CSharpFileDefinition file, ValidatedTypeModel model) {
+    private static void EmitDynamicAdapter(CSharpFileDefinition file, ValidatedTypeModel model)
+    {
         var validated = TypeRef(model.QualifiedTypeName);
         var validators = ValidatorFor(validated).MakeArray();
 
@@ -495,18 +580,28 @@ public sealed class ValidatorEmitter {
         var resolved = adapter.AddProperty(validators, "Validators");
 
         resolved.Modifiers = ComponentModifier.Private;
-        resolved.AddHeaderComment("The race on first use is benign: two threads build equivalent arrays and one wins.");
+        resolved.AddHeaderComment(
+            "The race on first use is benign: two threads build equivalent arrays and one wins."
+        );
         resolved.Set = null;
         resolved.Get.LambdaSyntax = true;
 
         var resolve = NullCoalesceEqual(
             "_validators",
-            Invoke(typeof(System.Linq.Enumerable), "ToArray",
+            Invoke(
+                typeof(System.Linq.Enumerable),
+                "ToArray",
                 InvokeGeneric(
-                    TypeDefinition.Get("Microsoft.Extensions.DependencyInjection", "ServiceProviderServiceExtensions"),
+                    TypeDefinition.Get(
+                        "Microsoft.Extensions.DependencyInjection",
+                        "ServiceProviderServiceExtensions"
+                    ),
                     "GetServices",
                     new[] { ValidatorFor(validated) },
-                    "_services")));
+                    "_services"
+                )
+            )
+        );
 
         resolve.PrintParentheses = false;
         resolved.Get.AddIndentedStatement(resolve);
@@ -514,7 +609,8 @@ public sealed class ValidatorEmitter {
         var validate = adapter.AddMethod("Validate");
 
         validate.SetReturnType(TypeDefinition.Get("ValidationModules", "ValidationFlow"));
-        validate.AddParameter(TypeDefinition.Get("ValidationModules", "ValidationContext"), "context")
+        validate
+            .AddParameter(TypeDefinition.Get("ValidationModules", "ValidationContext"), "context")
             .Modifier = ParameterModifier.Ref;
         validate.AddParameter(typeof(object), "value");
         validate.Assign(StaticCast(validated, "value")).ToVar("typed");
@@ -569,16 +665,25 @@ public sealed class ValidatorEmitter {
     /// </para>
     /// </remarks>
     private static void EmitNestedDependencies(
-        ClassDefinition validator, ValidatedTypeModel model, NestingGraph graph) {
+        ClassDefinition validator,
+        ValidatedTypeModel model,
+        NestingGraph graph
+    )
+    {
         var nested = model.Properties.Where(p => p.ElementValidatorName is not null).ToList();
 
-        if (nested.Count == 0) {
+        if (nested.Count == 0)
+        {
             validator.AddConstructor();
             return;
         }
 
-        foreach (var property in nested) {
-            validator.AddField(ValidatorFor(ElementTypeRef(property)).MakeArray().MakeNullable(), Field(property));
+        foreach (var property in nested)
+        {
+            validator.AddField(
+                ValidatorFor(ElementTypeRef(property)).MakeArray().MakeNullable(),
+                Field(property)
+            );
         }
 
         // A property nesting its own type is deliberately not asked for from the container. Asking
@@ -594,24 +699,31 @@ public sealed class ValidatorEmitter {
         // container would have handed back, since generated validators are registered as
         // singletons.
         var injected = nested
-            .Where(property => !NestsItsOwnType(property, model) &&
-                !graph.DescentReturnsToDeclarer(model, property))
+            .Where(property =>
+                !NestsItsOwnType(property, model)
+                && !graph.DescentReturnsToDeclarer(model, property)
+            )
             .ToList();
 
-        if (injected.Count > 0) {
+        if (injected.Count > 0)
+        {
             var resolving = validator.AddConstructor();
 
             resolving.Comment = "Resolved from the container: the full set for each nested type.";
 
-            foreach (var property in injected) {
+            foreach (var property in injected)
+            {
                 // CSharpAuthor escapes the declared name, so an ordinary Object, Event or Default
                 // property lands on @object, @event or @default without help; the body below spells
                 // the same escape through Parameter() so the two agree.
                 resolving.AddParameter(
-                    EnumerableOf(ValidatorFor(ElementTypeRef(property))), Camel(property.PropertyName));
+                    EnumerableOf(ValidatorFor(ElementTypeRef(property))),
+                    Camel(property.PropertyName)
+                );
             }
 
-            foreach (var property in injected) {
+            foreach (var property in injected)
+            {
                 // Empty means absent, not "validate nothing". A container that has no
                 // IValidatorFor<TNested> registered - the usual cause being a second assembly whose
                 // AddXValidators() was never called - injects an empty sequence, and storing that
@@ -623,30 +735,39 @@ public sealed class ValidatorEmitter {
                     .Assign(Invoke(typeof(System.Linq.Enumerable), "ToArray", Parameter(property)))
                     .ToVar($"resolved{property.PropertyName}");
                 resolving
-                    .Assign($"resolved{property.PropertyName}.Length == 0 ? null : resolved{property.PropertyName}")
+                    .Assign(
+                        $"resolved{property.PropertyName}.Length == 0 ? null : resolved{property.PropertyName}"
+                    )
                     .To(Field(property));
             }
         }
 
         var standalone = validator.AddConstructor();
 
-        standalone.Comment = "Standalone: nested types fall back to their own generated validators.";
+        standalone.Comment =
+            "Standalone: nested types fall back to their own generated validators.";
 
-        foreach (var property in nested) {
+        foreach (var property in nested)
+        {
             // A property that nests its own type resolves to this instance rather than a new one,
             // which is both correct and the cheapest way to terminate the common cycle.
             var fallback = NestsItsOwnType(property, model)
                 ? ThisInstance()
                 : (IOutputComponent)New(TypeRef(property.ElementValidatorName!));
 
-            var accessor = validator.AddProperty(ValidatorFor(ElementTypeRef(property)).MakeArray(), Accessor(property));
+            var accessor = validator.AddProperty(
+                ValidatorFor(ElementTypeRef(property)).MakeArray(),
+                Accessor(property)
+            );
 
             accessor.Modifiers = ComponentModifier.Private;
             accessor.Set = null;
             accessor.Get.LambdaSyntax = true;
 
             var fill = NullCoalesceEqual(
-                Field(property), NewArray(ValidatorFor(ElementTypeRef(property)), fallback));
+                Field(property),
+                NewArray(ValidatorFor(ElementTypeRef(property)), fallback)
+            );
 
             fill.PrintParentheses = false;
             accessor.Get.AddIndentedStatement(fill);
@@ -657,8 +778,10 @@ public sealed class ValidatorEmitter {
     /// Whether this property nests the very type being validated, so that the validator it descends
     /// through is the one declaring it.
     /// </summary>
-    private static bool NestsItsOwnType(ValidatedPropertyModel property, ValidatedTypeModel model) =>
-        property.ElementValidatorName == $"global::{Qualify(model)}";
+    private static bool NestsItsOwnType(
+        ValidatedPropertyModel property,
+        ValidatedTypeModel model
+    ) => property.ElementValidatorName == $"global::{Qualify(model)}";
 
     /// <summary>
     /// The type a nested property's validators are for. A collection or dictionary carries its
@@ -671,7 +794,8 @@ public sealed class ValidatorEmitter {
     private static ITypeDefinition ElementTypeRef(ValidatedPropertyModel property) =>
         TypeRef(ElementType(property));
 
-    private static string Field(ValidatedPropertyModel property) => $"_{Camel(property.PropertyName)}Validators";
+    private static string Field(ValidatedPropertyModel property) =>
+        $"_{Camel(property.PropertyName)}Validators";
 
     /// <summary>
     /// The constructor parameter carrying this property's nested validators.
@@ -684,12 +808,16 @@ public sealed class ValidatorEmitter {
     /// both wrap the name in affixes, and no keyword survives having <c>_</c> or <c>Validators</c>
     /// stuck to it.
     /// </remarks>
-    private static string Parameter(ValidatedPropertyModel property) => Escape(Camel(property.PropertyName));
+    private static string Parameter(ValidatedPropertyModel property) =>
+        Escape(Camel(property.PropertyName));
 
-    private static string Accessor(ValidatedPropertyModel property) => $"{property.PropertyName}Validators";
+    private static string Accessor(ValidatedPropertyModel property) =>
+        $"{property.PropertyName}Validators";
 
     private static string Camel(string name) =>
-        name.Length == 0 || char.IsLower(name[0]) ? name : char.ToLowerInvariant(name[0]) + name.Substring(1);
+        name.Length == 0 || char.IsLower(name[0])
+            ? name
+            : char.ToLowerInvariant(name[0]) + name.Substring(1);
 
     /// <summary>
     /// An identifier as it has to be written to be parsed back as one.
@@ -714,7 +842,9 @@ public sealed class ValidatorEmitter {
     private static string Escape(string identifier) => CSharpIdentifier.Escape(identifier);
 
     private static string Qualify(ValidatedTypeModel model) =>
-        model.Namespace.Length == 0 ? model.ValidatorName : $"{model.Namespace}.{model.ValidatorName}";
+        model.Namespace.Length == 0
+            ? model.ValidatorName
+            : $"{model.Namespace}.{model.ValidatorName}";
 
     private static void EmitProperty(
         StatementBuffer builder,
@@ -731,8 +861,9 @@ public sealed class ValidatorEmitter {
         bool failFast,
         string? fieldNamer,
         MessageInfoPool messageInfos,
-        bool captureValues) {
-
+        bool captureValues
+    )
+    {
         var access = $"value.{Escape(property.PropertyName)}";
         var field = QuoteString(property.FieldName);
         var required = property.Constraints.FirstOrDefault(c => c.Kind == ConstraintKind.Required);
@@ -751,21 +882,35 @@ public sealed class ValidatorEmitter {
         // carries its boolean-path form beside it; for everything else the test serves both paths.
         var others = new List<(ConstraintModel Constraint, string Test, string? BooleanTest)>();
 
-        foreach (var constraint in property.Constraints) {
-            if (constraint.Kind == ConstraintKind.Required) {
+        foreach (var constraint in property.Constraints)
+        {
+            if (constraint.Kind == ConstraintKind.Required)
+            {
                 continue;
             }
 
-            if (constraint.Kind is ConstraintKind.CustomAttribute or ConstraintKind.CustomValidationMethod
-                or ConstraintKind.CustomInstance) {
+            if (
+                constraint.Kind
+                is ConstraintKind.CustomAttribute
+                    or ConstraintKind.CustomValidationMethod
+                    or ConstraintKind.CustomInstance
+            )
+            {
                 var (flow, boolean) = CustomCalls(
-                    access, property, constraint, customAttributes, instanceConstraints, fieldNamer);
+                    access,
+                    property,
+                    constraint,
+                    customAttributes,
+                    instanceConstraints,
+                    fieldNamer
+                );
 
                 others.Add((constraint, flow, boolean));
                 continue;
             }
 
-            if (TestFor(access, property, constraint, patterns, extensionSets) is { } test) {
+            if (TestFor(access, property, constraint, patterns, extensionSets) is { } test)
+            {
                 others.Add((constraint, test, null));
             }
         }
@@ -785,55 +930,85 @@ public sealed class ValidatorEmitter {
         // no single contiguous `else` can express.
         string? missing = null;
 
-        if (required is not null) {
+        if (required is not null)
+        {
             // A guarded Required suppresses only when it runs. If its condition is false the test
             // is false, nothing is recorded, and nothing on the field is suppressed - which is the
             // correct reading of §4.2 and needs no special case, because the condition is simply
             // part of the test.
-            var requiredTest = Guarded(conditions, required.Condition, RequiredTest(access, property, required));
+            var requiredTest = Guarded(
+                conditions,
+                required.Condition,
+                RequiredTest(access, property, required)
+            );
             var guard = requiredTest;
 
-            if (others.Any(o => o.Constraint.Kind != ConstraintKind.Predicate)) {
+            if (others.Any(o => o.Constraint.Kind != ConstraintKind.Predicate))
+            {
                 missing = $"missing{property.PropertyName}";
                 builder.Assign(requiredTest).ToVar(missing);
                 guard = missing;
             }
 
-            AddRule(builder, guard, ReportFor(field, required, property, capture, messageInfos), failFast);
-            fast.If(Guarded(fastConditions, required.Condition, RequiredTest(access, property, required)))
+            AddRule(
+                builder,
+                guard,
+                ReportFor(field, required, property, capture, messageInfos),
+                failFast
+            );
+            fast.If(
+                    Guarded(
+                        fastConditions,
+                        required.Condition,
+                        RequiredTest(access, property, required)
+                    )
+                )
                 .Return("false");
         }
 
-        foreach (var (constraint, test, booleanTest) in others) {
+        foreach (var (constraint, test, booleanTest) in others)
+        {
             // A custom rule reports for itself, so its call is the whole rule: guarded like any
             // other constraint - DataAnnotations also skips a property's remaining attributes
             // after Required fails. A DataAnnotations rule is never null-guarded, because the
             // attribute owns its null semantics and most pass null deliberately; an
             // IConstraintFor<T> check is, because its contract says null never arrives - the same
             // guard-and-skip every structural constraint gets.
-            if (booleanTest is not null) {
+            if (booleanTest is not null)
+            {
                 var guards = new List<string>();
 
-                if (constraint.Condition is { } guard) {
+                if (constraint.Condition is { } guard)
+                {
                     guards.Add(conditions.Local(guard));
                 }
 
-                if (missing is not null) {
+                if (missing is not null)
+                {
                     guards.Add($"!{missing}");
                 }
 
-                if (constraint.Kind == ConstraintKind.CustomInstance &&
-                    (property.IsReferenceType || property.IsNullableValueType)) {
+                if (
+                    constraint.Kind == ConstraintKind.CustomInstance
+                    && (property.IsReferenceType || property.IsNullableValueType)
+                )
+                {
                     guards.Add($"{access} is not null");
                 }
 
-                if (failFast) {
-                    var prefix = guards.Count == 0 ? string.Empty : string.Join(" && ", guards) + " && ";
+                if (failFast)
+                {
+                    var prefix =
+                        guards.Count == 0 ? string.Empty : string.Join(" && ", guards) + " && ";
 
                     builder.If($"{prefix}{test}.ShouldStop").Return($"{Flow}.Stop");
-                } else if (guards.Count == 0) {
+                }
+                else if (guards.Count == 0)
+                {
                     builder.AddIndentedStatement(test);
-                } else {
+                }
+                else
+                {
                     builder.If(string.Join(" && ", guards)).AddIndentedStatement(test);
                 }
 
@@ -851,11 +1026,13 @@ public sealed class ValidatorEmitter {
             var guarded = missing is not null && constraint.Kind != ConstraintKind.Predicate;
             var conjuncts = new List<string>();
 
-            if (constraint.Condition is { } condition) {
+            if (constraint.Condition is { } condition)
+            {
                 conjuncts.Add(conditions.Local(condition));
             }
 
-            if (guarded) {
+            if (guarded)
+            {
                 conjuncts.Add($"!{missing}");
             }
 
@@ -868,8 +1045,11 @@ public sealed class ValidatorEmitter {
             var reportedField = constraint.Field is { } renamed ? QuoteString(renamed) : field;
 
             AddRule(
-                builder, string.Join(" && ", conjuncts),
-                ReportFor(reportedField, constraint, property, capture, messageInfos), failFast);
+                builder,
+                string.Join(" && ", conjuncts),
+                ReportFor(reportedField, constraint, property, capture, messageInfos),
+                failFast
+            );
 
             // No guard on the boolean path: a failed Required has already returned, so anything
             // still running has a value to test.
@@ -877,16 +1057,27 @@ public sealed class ValidatorEmitter {
             // A warning or an info does not make a value invalid, so the boolean path skips it
             // rather than testing it: running the check and ignoring the answer would be the same
             // result at a cost, and returning false on it would be wrong.
-            if (constraint.Severity is null) {
+            if (constraint.Severity is null)
+            {
                 fast.If(Guarded(fastConditions, constraint.Condition, test)).Return("false");
             }
         }
 
         // A descent declared only by a rules class is walked by the region's transcribed text, in
         // body order, through the same injected arrays this validator still constructs and passes.
-        if (!property.NestedWalkInRegion) {
+        if (!property.NestedWalkInRegion)
+        {
             EmitNested(
-                builder, fast, property, access, conditions, fastConditions, dispatchers, model.TypeName, failFast);
+                builder,
+                fast,
+                property,
+                access,
+                conditions,
+                fastConditions,
+                dispatchers,
+                model.TypeName,
+                failFast
+            );
         }
     }
 
@@ -916,20 +1107,26 @@ public sealed class ValidatorEmitter {
         string owner,
         List<string> dispatchers,
         bool boolean,
-        bool failFast = true) {
-
-        if (property.Polymorphism == PolymorphismMode.Runtime) {
+        bool failFast = true
+    )
+    {
+        if (property.Polymorphism == PolymorphismMode.Runtime)
+        {
             // The boolean path is not emitted for a type that dispatches dynamically, so this only
             // ever runs for Validate. Guarded rather than assumed, so that a future caller cannot
             // quietly get a services-less lookup.
-            if (!boolean) {
+            if (!boolean)
+            {
                 var dynamicCall =
-                    $"global::ValidationModules.DynamicValidation.Validate(" +
-                    $"ref {context}, {value}, {QuoteString(property.FieldName)}, {QuoteString(owner)})";
+                    $"global::ValidationModules.DynamicValidation.Validate("
+                    + $"ref {context}, {value}, {QuoteString(property.FieldName)}, {QuoteString(owner)})";
 
-                if (failFast) {
+                if (failFast)
+                {
                     block.If($"{dynamicCall}.ShouldStop").Return($"{Flow}.Stop");
-                } else {
+                }
+                else
+                {
                     block.AddIndentedStatement(dynamicCall);
                 }
             }
@@ -939,17 +1136,20 @@ public sealed class ValidatorEmitter {
 
         var subtypes = property.Subtypes;
 
-        if (property.Polymorphism != PolymorphismMode.CompileTime || subtypes.Count == 0) {
+        if (property.Polymorphism != PolymorphismMode.CompileTime || subtypes.Count == 0)
+        {
             EmitDeclaredCall(block, property, value, context, validators, boolean, failFast);
             return;
         }
 
         var dispatch = block.Switch(value);
 
-        foreach (var subtype in subtypes) {
+        foreach (var subtype in subtypes)
+        {
             var index = dispatchers.IndexOf(subtype.ValidatorName);
 
-            if (index < 0) {
+            if (index < 0)
+            {
                 dispatchers.Add(subtype.ValidatorName);
                 index = dispatchers.Count - 1;
             }
@@ -957,15 +1157,23 @@ public sealed class ValidatorEmitter {
             // The case pattern is IR data - a qualified type plus the binding - so the arm's label
             // stays composed text the same way the tests are.
             var arm = dispatch.AddCase(
-                new CodeOutputComponent($"{subtype.QualifiedTypeName} __typed") { Indented = false });
+                new CodeOutputComponent($"{subtype.QualifiedTypeName} __typed") { Indented = false }
+            );
 
-            if (boolean) {
+            if (boolean)
+            {
                 arm.If($"!(_dispatch{index} ??= new()).IsValid(__typed)").Return("false");
-            } else if (failFast) {
+            }
+            else if (failFast)
+            {
                 arm.If($"(_dispatch{index} ??= new()).Validate(ref {context}, __typed).ShouldStop")
                     .Return($"{Flow}.Stop");
-            } else {
-                arm.AddIndentedStatement($"(_dispatch{index} ??= new()).Validate(ref {context}, __typed)");
+            }
+            else
+            {
+                arm.AddIndentedStatement(
+                    $"(_dispatch{index} ??= new()).Validate(ref {context}, __typed)"
+                );
             }
 
             arm.Break();
@@ -985,17 +1193,24 @@ public sealed class ValidatorEmitter {
         string context,
         string validators,
         bool boolean,
-        bool failFast = true) {
-
+        bool failFast = true
+    )
+    {
         block.Assign(Accessor(property)).ToVar(validators);
 
         var walk = block.For("vi", 0, $"{validators}.Length");
 
-        if (boolean) {
+        if (boolean)
+        {
             walk.If($"!{validators}[vi].IsValid({value})").Return("false");
-        } else if (failFast) {
-            walk.If($"{validators}[vi].Validate(ref {context}, {value}).ShouldStop").Return($"{Flow}.Stop");
-        } else {
+        }
+        else if (failFast)
+        {
+            walk.If($"{validators}[vi].Validate(ref {context}, {value}).ShouldStop")
+                .Return($"{Flow}.Stop");
+        }
+        else
+        {
             walk.AddIndentedStatement($"{validators}[vi].Validate(ref {context}, {value})");
         }
     }
@@ -1009,8 +1224,11 @@ public sealed class ValidatorEmitter {
         ConditionScope fastConditions,
         List<string> dispatchers,
         string owner,
-        bool failFast) {
-        if (property.ElementValidatorName is null) {
+        bool failFast
+    )
+    {
+        if (property.ElementValidatorName is null)
+        {
             return;
         }
 
@@ -1024,40 +1242,89 @@ public sealed class ValidatorEmitter {
         string Enter(ConditionScope scope, string test) =>
             property.Condition is null ? test : $"{scope.Local(property.Condition)} && ({test})";
 
-        if (property.Shape == PropertyShape.Dictionary) {
+        if (property.Shape == PropertyShape.Dictionary)
+        {
             var entries = $"entries{property.PropertyName}";
 
             var descend = builder.If(Enter(conditions, $"{access} is {{ }} {entries}"));
-            var pairs = descend.ForEach("pair", new CodeOutputComponent(entries) { Indented = false });
+            var pairs = descend.ForEach(
+                "pair",
+                new CodeOutputComponent(entries) { Indented = false }
+            );
             var present = pairs.If("pair.Value is not null");
 
-            present.Assign($"ctx.PushKey({QuoteString(property.FieldName)}, pair.Key?.ToString() ?? \"\")")
+            present
+                .Assign(
+                    $"ctx.PushKey({QuoteString(property.FieldName)}, pair.Key?.ToString() ?? \"\")"
+                )
                 .ToVar("entryCtx");
-            EmitDescent(present, property, "pair.Value", "entryCtx", "entryValidators", owner, dispatchers,
-                boolean: false, failFast);
+            EmitDescent(
+                present,
+                property,
+                "pair.Value",
+                "entryCtx",
+                "entryValidators",
+                owner,
+                dispatchers,
+                boolean: false,
+                failFast
+            );
 
             var check = fast.If(Enter(fastConditions, $"{access} is {{ }} {entries}"));
-            var checkPairs = check.ForEach("pair", new CodeOutputComponent(entries) { Indented = false });
+            var checkPairs = check.ForEach(
+                "pair",
+                new CodeOutputComponent(entries) { Indented = false }
+            );
             var checkPresent = checkPairs.If("pair.Value is not null");
 
-            EmitDescent(checkPresent, property, "pair.Value", string.Empty, "entryValidators", owner, dispatchers,
-                boolean: true);
+            EmitDescent(
+                checkPresent,
+                property,
+                "pair.Value",
+                string.Empty,
+                "entryValidators",
+                owner,
+                dispatchers,
+                boolean: true
+            );
             return;
         }
 
-        if (property.Shape == PropertyShape.Object) {
-            var descend = builder.If(Enter(conditions, $"{access} is {{ }} nested{property.PropertyName}"));
+        if (property.Shape == PropertyShape.Object)
+        {
+            var descend = builder.If(
+                Enter(conditions, $"{access} is {{ }} nested{property.PropertyName}")
+            );
 
-            descend.Assign($"ctx.Push({QuoteString(property.FieldName)})").ToVar($"ctx{property.PropertyName}");
+            descend
+                .Assign($"ctx.Push({QuoteString(property.FieldName)})")
+                .ToVar($"ctx{property.PropertyName}");
             EmitDescent(
-                descend, property, $"nested{property.PropertyName}", $"ctx{property.PropertyName}",
-                $"validators{property.PropertyName}", owner, dispatchers, boolean: false, failFast);
+                descend,
+                property,
+                $"nested{property.PropertyName}",
+                $"ctx{property.PropertyName}",
+                $"validators{property.PropertyName}",
+                owner,
+                dispatchers,
+                boolean: false,
+                failFast
+            );
 
-            var check = fast.If(Enter(fastConditions, $"{access} is {{ }} nested{property.PropertyName}"));
+            var check = fast.If(
+                Enter(fastConditions, $"{access} is {{ }} nested{property.PropertyName}")
+            );
 
             EmitDescent(
-                check, property, $"nested{property.PropertyName}", string.Empty,
-                $"validators{property.PropertyName}", owner, dispatchers, boolean: true);
+                check,
+                property,
+                $"nested{property.PropertyName}",
+                string.Empty,
+                $"validators{property.PropertyName}",
+                owner,
+                dispatchers,
+                boolean: true
+            );
             return;
         }
 
@@ -1066,14 +1333,36 @@ public sealed class ValidatorEmitter {
 
         var walk = builder.If(Enter(conditions, $"{access} is {{ }} {items}"));
 
-        EmitElementWalk(walk, property, items, index, owner, dispatchers, boolean: false, failFast, element => {
-            element.Assign($"ctx.PushIndex({QuoteString(property.FieldName)}, {index})").ToVar("elementCtx");
-        });
+        EmitElementWalk(
+            walk,
+            property,
+            items,
+            index,
+            owner,
+            dispatchers,
+            boolean: false,
+            failFast,
+            element =>
+            {
+                element
+                    .Assign($"ctx.PushIndex({QuoteString(property.FieldName)}, {index})")
+                    .ToVar("elementCtx");
+            }
+        );
 
         var check2 = fast.If(Enter(fastConditions, $"{access} is {{ }} {items}"));
 
-        EmitElementWalk(check2, property, items, index, owner, dispatchers, boolean: true, failFast: true,
-            beforeDescent: null);
+        EmitElementWalk(
+            check2,
+            property,
+            items,
+            index,
+            owner,
+            dispatchers,
+            boolean: true,
+            failFast: true,
+            beforeDescent: null
+        );
     }
 
     /// <summary>
@@ -1093,15 +1382,20 @@ public sealed class ValidatorEmitter {
         List<string> dispatchers,
         bool boolean,
         bool failFast,
-        Action<BaseBlockDefinition>? beforeDescent) {
-
+        Action<BaseBlockDefinition>? beforeDescent
+    )
+    {
         BaseBlockDefinition loop;
 
-        if (property.IsIndexable) {
+        if (property.IsIndexable)
+        {
             loop = block.For(index, 0, $"{items}.{property.CountAccessor}");
             loop.Assign($"{items}[{index}]").ToVar("element");
-        } else {
-            if (!boolean) {
+        }
+        else
+        {
+            if (!boolean)
+            {
                 block.Assign("0").ToVar(index);
             }
 
@@ -1112,16 +1406,31 @@ public sealed class ValidatorEmitter {
 
         beforeDescent?.Invoke(present);
         EmitDescent(
-            present, property, "element", boolean ? string.Empty : "elementCtx", "elementValidators",
-            owner, dispatchers, boolean, failFast);
+            present,
+            property,
+            "element",
+            boolean ? string.Empty : "elementCtx",
+            "elementValidators",
+            owner,
+            dispatchers,
+            boolean,
+            failFast
+        );
 
-        if (!property.IsIndexable && !boolean) {
+        if (!property.IsIndexable && !boolean)
+        {
             loop.AddIndentedStatement($"{index}++");
         }
     }
 
-    internal static string RequiredTest(string access, ValidatedPropertyModel property, ConstraintModel constraint) {
-        if (property.IsString) {
+    internal static string RequiredTest(
+        string access,
+        ValidatedPropertyModel property,
+        ConstraintModel constraint
+    )
+    {
+        if (property.IsString)
+        {
             return constraint.AllowEmptyStrings
                 ? $"{access} is null"
                 : $"string.IsNullOrWhiteSpace({access})";
@@ -1141,8 +1450,9 @@ public sealed class ValidatorEmitter {
         ConstraintModel constraint,
         List<(string, ConstraintModel)> customAttributes,
         List<(string, ConstraintModel)> instanceConstraints,
-        string? fieldNamer) {
-
+        string? fieldNamer
+    )
+    {
         var fieldLiteral = QuoteString(property.FieldName);
         var memberLiteral = QuoteString(property.PropertyName);
         var displayLiteral = QuoteString(property.DisplayName ?? property.PropertyName);
@@ -1152,16 +1462,20 @@ public sealed class ValidatorEmitter {
         // interface when the default or an explicit implementation is what answers. The value is
         // unwrapped here; the null guard sits with the caller, where the boolean form carries its
         // own because the fast path has no guard list to join.
-        if (constraint.Kind == ConstraintKind.CustomInstance) {
+        if (constraint.Kind == ConstraintKind.CustomInstance)
+        {
             var unwrapped = property.IsNullableValueType ? $"{access}.Value" : access;
 
             string instance;
 
-            if (constraint.PerPassInstance) {
+            if (constraint.PerPassInstance)
+            {
                 // [PerValidationInstance]: constructed at the check, exactly as asked. VM1603
                 // already told the author what that costs.
                 instance = constraint.CustomConstruction!;
-            } else {
+            }
+            else
+            {
                 instance = $"{property.PropertyName}Constraint{instanceConstraints.Count}";
                 instanceConstraints.Add((instance, constraint));
             }
@@ -1173,24 +1487,28 @@ public sealed class ValidatorEmitter {
                 ? $"(({constraint.InstanceInterface}){instance})"
                 : instance;
 
-            var nullGuard = property.IsReferenceType || property.IsNullableValueType
-                ? $"{access} is not null && "
-                : string.Empty;
+            var nullGuard =
+                property.IsReferenceType || property.IsNullableValueType
+                    ? $"{access} is not null && "
+                    : string.Empty;
 
             return (
                 $"{validateTarget}.Validate(ref ctx, {unwrapped}, {fieldLiteral})",
-                $"{nullGuard}!{isValidTarget}.IsValid({unwrapped})");
+                $"{nullGuard}!{isValidTarget}.IsValid({unwrapped})"
+            );
         }
 
-        if (constraint.Kind == ConstraintKind.CustomAttribute) {
+        if (constraint.Kind == ConstraintKind.CustomAttribute)
+        {
             var instance = $"{property.PropertyName}Custom{customAttributes.Count}";
 
             customAttributes.Add((instance, constraint));
 
             return (
-                $"{DataAnnotations}.Validate(ref ctx, {instance}, value, {access}, " +
-                    $"{fieldLiteral}, {memberLiteral}, {displayLiteral})",
-                $"!{DataAnnotations}.IsValid({instance}, value, {access}, {memberLiteral}, {displayLiteral})");
+                $"{DataAnnotations}.Validate(ref ctx, {instance}, value, {access}, "
+                    + $"{fieldLiteral}, {memberLiteral}, {displayLiteral})",
+                $"!{DataAnnotations}.IsValid({instance}, value, {access}, {memberLiteral}, {displayLiteral})"
+            );
         }
 
         // [CustomValidation]: a direct static call, with a context built only for the overload
@@ -1199,18 +1517,21 @@ public sealed class ValidatorEmitter {
         // a boolean pass has.
         var accessor = constraint.CustomAccessor!;
 
-        if (constraint.CustomTakesContext) {
+        if (constraint.CustomTakesContext)
+        {
             return (
-                $"{DataAnnotations}.Apply(ref ctx, {accessor}({access}, " +
-                    $"{DataAnnotations}.CreateContext(ctx.Services, value, {memberLiteral}, {displayLiteral})), " +
-                    $"{fieldLiteral}, {NamerInstance(fieldNamer)})",
-                $"{accessor}({access}, {DataAnnotations}.CreateContext(null, value, " +
-                    $"{memberLiteral}, {displayLiteral})) is not null");
+                $"{DataAnnotations}.Apply(ref ctx, {accessor}({access}, "
+                    + $"{DataAnnotations}.CreateContext(ctx.Services, value, {memberLiteral}, {displayLiteral})), "
+                    + $"{fieldLiteral}, {NamerInstance(fieldNamer)})",
+                $"{accessor}({access}, {DataAnnotations}.CreateContext(null, value, "
+                    + $"{memberLiteral}, {displayLiteral})) is not null"
+            );
         }
 
         return (
             $"{DataAnnotations}.Apply(ref ctx, {accessor}({access}), {fieldLiteral}, {NamerInstance(fieldNamer)})",
-            $"{accessor}({access}) is not null");
+            $"{accessor}({access}) is not null"
+        );
     }
 
     /// <summary>
@@ -1223,39 +1544,52 @@ public sealed class ValidatorEmitter {
         ValidatedPropertyModel property,
         ConstraintModel constraint,
         List<(string, ConstraintModel)> patterns,
-        List<(string, ConstraintModel)> extensionSets) {
-
+        List<(string, ConstraintModel)> extensionSets
+    )
+    {
         var value = property.IsNullableValueType ? $"{access}.Value" : access;
-        var guard = property.IsReferenceType || property.IsNullableValueType ? $"{access} is not null && " : string.Empty;
+        var guard =
+            property.IsReferenceType || property.IsNullableValueType
+                ? $"{access} is not null && "
+                : string.Empty;
 
-        switch (constraint.Kind) {
+        switch (constraint.Kind)
+        {
             // No null guard, deliberately. A predicate may read fields other than the one it is
             // anchored to - "x => x.Start < x.End" is pathed at start and reads both - so guarding on
             // the anchor would skip a rule that had nothing to do with it. Null is the author's, the
             // same as it is on the runtime path.
             case ConstraintKind.Predicate:
-                return constraint.PredicateAccessor is { } predicate ? $"!{predicate}(value)" : null;
+                return constraint.PredicateAccessor is { } predicate
+                    ? $"!{predicate}(value)"
+                    : null;
 
-            case ConstraintKind.StringLength: {
+            case ConstraintKind.StringLength:
+            {
                 var tests = new List<string>();
-                if (constraint.Min is { } min && min != "0") {
+                if (constraint.Min is { } min && min != "0")
+                {
                     tests.Add($"{access}.Length < {min}");
                 }
 
-                if (constraint.Max is { } max && max != int.MaxValue.ToString()) {
+                if (constraint.Max is { } max && max != int.MaxValue.ToString())
+                {
                     tests.Add($"{access}.Length > {max}");
                 }
 
                 return tests.Count == 0 ? null : $"{guard}({string.Join(" || ", tests)})";
             }
 
-            case ConstraintKind.ItemCount: {
+            case ConstraintKind.ItemCount:
+            {
                 var tests = new List<string>();
-                if (constraint.Min is { } min && min != "0") {
+                if (constraint.Min is { } min && min != "0")
+                {
                     tests.Add($"{access}.{property.CountAccessor} < {min}");
                 }
 
-                if (constraint.Max is { } max && max != int.MaxValue.ToString()) {
+                if (constraint.Max is { } max && max != int.MaxValue.ToString())
+                {
                     tests.Add($"{access}.{property.CountAccessor} > {max}");
                 }
 
@@ -1265,13 +1599,16 @@ public sealed class ValidatorEmitter {
             // Each bound is optional and an absent one emits nothing, so a spec that set only
             // `minimum` compiles to one comparison rather than two, the second of which could never
             // fail and whose bound the composed message would then quote back at the caller.
-            case ConstraintKind.Range: {
+            case ConstraintKind.Range:
+            {
                 var tests = new List<string>();
-                if (constraint.Min is { } min) {
+                if (constraint.Min is { } min)
+                {
                     tests.Add($"{value} {(constraint.ExclusiveMin ? "<=" : "<")} {min}");
                 }
 
-                if (constraint.Max is { } max) {
+                if (constraint.Max is { } max)
+                {
                     tests.Add($"{value} {(constraint.ExclusiveMax ? ">=" : ">")} {max}");
                 }
 
@@ -1282,8 +1619,10 @@ public sealed class ValidatorEmitter {
             // rest of this switch has. A double or float cannot: `0.3 % 0.01` is 0.00999999999999998
             // in binary floating point, so the check goes through the runtime, which converts to
             // decimal first. The divisor already arrives in the right denomination.
-            case ConstraintKind.MultipleOf: {
-                if (constraint.Divisor is not { } divisor) {
+            case ConstraintKind.MultipleOf:
+            {
+                if (constraint.Divisor is not { } divisor)
+                {
                     return null;
                 }
 
@@ -1298,10 +1637,12 @@ public sealed class ValidatorEmitter {
             case ConstraintKind.UniqueItems:
                 return $"{guard}!global::ValidationModules.ConstraintChecks.AllUnique({access})";
 
-            case ConstraintKind.Pattern: {
+            case ConstraintKind.Pattern:
+            {
                 // The reference form resolves to the consumer's own [GeneratedRegex], so nothing is
                 // declared here and the regex engine is never rooted.
-                if (constraint.RegexAccessor is { } accessor) {
+                if (constraint.RegexAccessor is { } accessor)
+                {
                     return $"{guard}!{accessor}.IsMatch({access})";
                 }
 
@@ -1329,8 +1670,10 @@ public sealed class ValidatorEmitter {
             case ConstraintKind.Base64:
                 return $"{guard}!global::ValidationModules.ConstraintChecks.IsBase64({access})";
 
-            case ConstraintKind.FileExtension: {
-                if (constraint.Values.Count == 0) {
+            case ConstraintKind.FileExtension:
+            {
+                if (constraint.Values.Count == 0)
+                {
                     return null;
                 }
 
@@ -1343,14 +1686,17 @@ public sealed class ValidatorEmitter {
             // built-in, with the constructor's constants following the member's value. Null-guarded
             // and unwrapped like every structural constraint - a null passes, [Required] is the
             // presence check.
-            case ConstraintKind.CustomCheck: {
-                if (constraint.CustomAccessor is not { } accessor) {
+            case ConstraintKind.CustomCheck:
+            {
+                if (constraint.CustomAccessor is not { } accessor)
+                {
                     return null;
                 }
 
-                var arguments = constraint.Values.Count == 0
-                    ? string.Empty
-                    : ", " + string.Join(", ", constraint.Values);
+                var arguments =
+                    constraint.Values.Count == 0
+                        ? string.Empty
+                        : ", " + string.Join(", ", constraint.Values);
 
                 return $"{guard}!{accessor}({value}{arguments})";
             }
@@ -1358,25 +1704,36 @@ public sealed class ValidatorEmitter {
             // Membership against the declared members, or - on a [Flags] enum - whether any bit
             // outside them is set. Never Enum.IsDefined: the members were known at build time, and
             // the reflective form would box and search on a path that is otherwise a comparison.
-            case ConstraintKind.EnumDefined: {
-                if (constraint.FlagsMask is { } mask) {
+            case ConstraintKind.EnumDefined:
+            {
+                if (constraint.FlagsMask is { } mask)
+                {
                     return $"{guard}(({value} & ~{mask}) != 0)";
                 }
 
-                if (constraint.Values.Count == 0) {
+                if (constraint.Values.Count == 0)
+                {
                     return null;
                 }
 
                 return $"{guard}({string.Join(" && ", constraint.Values.Select(v => $"{value} != {v}"))})";
             }
 
-            case ConstraintKind.AllowedValues: {
-                if (constraint.Values.Count == 0) {
+            case ConstraintKind.AllowedValues:
+            {
+                if (constraint.Values.Count == 0)
+                {
                     return null;
                 }
 
-                var comparisons = string.Join(" && ", constraint.Values.Select(v => $"{value} != {v}"));
-                var anyMatch = string.Join(" || ", constraint.Values.Select(v => $"{value} == {v}"));
+                var comparisons = string.Join(
+                    " && ",
+                    constraint.Values.Select(v => $"{value} != {v}")
+                );
+                var anyMatch = string.Join(
+                    " || ",
+                    constraint.Values.Select(v => $"{value} == {v}")
+                );
                 return constraint.Negated ? $"{guard}({anyMatch})" : $"{guard}({comparisons})";
             }
 
@@ -1394,10 +1751,14 @@ public sealed class ValidatorEmitter {
     /// this emitted before <c>ValidationFlow</c> existed. The collector still stops recording, so
     /// the two shapes answer alike under <c>StopOnFirstError</c>; only one of them stops working.
     /// </remarks>
-    private static void AddRule(StatementBuffer block, string test, string report, bool failFast) {
-        if (failFast) {
+    private static void AddRule(StatementBuffer block, string test, string report, bool failFast)
+    {
+        if (failFast)
+        {
             block.If(Conjoin(test, report)).Return($"{Flow}.Stop");
-        } else {
+        }
+        else
+        {
             block.If(test).AddIndentedStatement(report);
         }
     }
@@ -1416,14 +1777,22 @@ public sealed class ValidatorEmitter {
     internal static string Conjoin(string test, string report) =>
         (HasTopLevelOr(test) ? $"({test})" : test) + $" && {report}.ShouldStop";
 
-    private static bool HasTopLevelOr(string text) {
+    private static bool HasTopLevelOr(string text)
+    {
         var depth = 0;
 
-        for (var i = 0; i < text.Length; i++) {
-            switch (text[i]) {
-                case '(': depth++; break;
-                case ')': depth--; break;
-                case '|' when depth == 0 && i + 1 < text.Length && text[i + 1] == '|': return true;
+        for (var i = 0; i < text.Length; i++)
+        {
+            switch (text[i])
+            {
+                case '(':
+                    depth++;
+                    break;
+                case ')':
+                    depth--;
+                    break;
+                case '|' when depth == 0 && i + 1 < text.Length && text[i + 1] == '|':
+                    return true;
             }
         }
 
@@ -1435,11 +1804,14 @@ public sealed class ValidatorEmitter {
         ConstraintModel constraint,
         ValidatedPropertyModel property,
         string? valueAccess = null,
-        MessageInfoPool? infos = null) {
+        MessageInfoPool? infos = null
+    )
+    {
         // An explicit Message is the author's text and always the literal branch, whatever the
         // kind - its {field} (and, for a DataAnnotations message, {0}) substituted right here,
         // because every argument is known at generation time.
-        if (constraint.Message is not null) {
+        if (constraint.Message is not null)
+        {
             return LiteralReport(field, constraint, property);
         }
 
@@ -1447,75 +1819,210 @@ public sealed class ValidatorEmitter {
         // can carry - so it forces the pool path for every kind, parameterless ones included. The
         // baked template is the ordinary default for the kind; it is the constructor's required
         // fallback and unreached while the provider is set.
-        if (constraint.MessageResourceAccessor is { } accessor && infos is not null) {
+        if (constraint.MessageResourceAccessor is { } accessor && infos is not null)
+        {
             var resourceArgs = string.Concat(
-                constraint.MessageResourceArgs.Select(static argument => $", {argument}"));
+                constraint.MessageResourceArgs.Select(static argument => $", {argument}")
+            );
             var suffix =
                 $" {{ Provider = new {MessageProviderType}(static () => {accessor}), DataAnnotationsHoles = true }}";
 
-            return Structured(field, constraint, valueAccess, infos, TemplateFor(constraint), resourceArgs, suffix);
+            return Structured(
+                field,
+                constraint,
+                valueAccess,
+                infos,
+                TemplateFor(constraint),
+                resourceArgs,
+                suffix
+            );
         }
 
-        return constraint.Kind switch {
+        return constraint.Kind switch
+        {
             ConstraintKind.StringLength when infos is not null => Structured(
-                field, constraint, valueAccess, infos,
-                BoundedTemplate(constraint, "StringLength"), BoundedArgs(constraint)),
-            ConstraintKind.StringLength =>
-                Report(field, constraint, "ReportStringLength", Bounds(constraint), property, valueAccess),
+                field,
+                constraint,
+                valueAccess,
+                infos,
+                BoundedTemplate(constraint, "StringLength"),
+                BoundedArgs(constraint)
+            ),
+            ConstraintKind.StringLength => Report(
+                field,
+                constraint,
+                "ReportStringLength",
+                Bounds(constraint),
+                property,
+                valueAccess
+            ),
             ConstraintKind.ItemCount when infos is not null => Structured(
-                field, constraint, valueAccess, infos,
-                BoundedTemplate(constraint, "ItemCount"), BoundedArgs(constraint)),
-            ConstraintKind.ItemCount =>
-                Report(field, constraint, "ReportItemCount", Bounds(constraint), property, valueAccess),
+                field,
+                constraint,
+                valueAccess,
+                infos,
+                BoundedTemplate(constraint, "ItemCount"),
+                BoundedArgs(constraint)
+            ),
+            ConstraintKind.ItemCount => Report(
+                field,
+                constraint,
+                "ReportItemCount",
+                Bounds(constraint),
+                property,
+                valueAccess
+            ),
             ConstraintKind.Range => RangeReport(field, constraint, property, valueAccess, infos),
             ConstraintKind.MultipleOf when infos is not null => Structured(
-                field, constraint, valueAccess, infos,
-                $"{MessageTemplates}.MultipleOf", $", {constraint.Divisor}"),
-            ConstraintKind.MultipleOf =>
-                Report(field, constraint, "ReportMultipleOf", $", {constraint.Divisor}", property, valueAccess),
-            ConstraintKind.UniqueItems =>
-                Report(field, constraint, "ReportUniqueItems", "", property, valueAccess),
-            ConstraintKind.Pattern => Report(field, constraint, "ReportPattern", "", property, valueAccess),
+                field,
+                constraint,
+                valueAccess,
+                infos,
+                $"{MessageTemplates}.MultipleOf",
+                $", {constraint.Divisor}"
+            ),
+            ConstraintKind.MultipleOf => Report(
+                field,
+                constraint,
+                "ReportMultipleOf",
+                $", {constraint.Divisor}",
+                property,
+                valueAccess
+            ),
+            ConstraintKind.UniqueItems => Report(
+                field,
+                constraint,
+                "ReportUniqueItems",
+                "",
+                property,
+                valueAccess
+            ),
+            ConstraintKind.Pattern => Report(
+                field,
+                constraint,
+                "ReportPattern",
+                "",
+                property,
+                valueAccess
+            ),
             ConstraintKind.AllowedValues when infos is not null => Structured(
-                field, constraint, valueAccess, infos,
-                constraint.Negated ? $"{MessageTemplates}.DeniedValues" : $"{MessageTemplates}.AllowedValues",
-                $", {QuoteString(string.Join(", ", Displays(constraint)))}"),
+                field,
+                constraint,
+                valueAccess,
+                infos,
+                constraint.Negated
+                    ? $"{MessageTemplates}.DeniedValues"
+                    : $"{MessageTemplates}.AllowedValues",
+                $", {QuoteString(string.Join(", ", Displays(constraint)))}"
+            ),
             ConstraintKind.AllowedValues => Report(
-                field, constraint, constraint.Negated ? "ReportDeniedValues" : "ReportAllowedValues",
-                $", {QuoteString(string.Join(", ", Displays(constraint)))}", property, valueAccess),
-            ConstraintKind.Email => Report(field, constraint, "ReportEmail", "", property, valueAccess),
-            ConstraintKind.Phone => Report(field, constraint, "ReportPhone", "", property, valueAccess),
+                field,
+                constraint,
+                constraint.Negated ? "ReportDeniedValues" : "ReportAllowedValues",
+                $", {QuoteString(string.Join(", ", Displays(constraint)))}",
+                property,
+                valueAccess
+            ),
+            ConstraintKind.Email => Report(
+                field,
+                constraint,
+                "ReportEmail",
+                "",
+                property,
+                valueAccess
+            ),
+            ConstraintKind.Phone => Report(
+                field,
+                constraint,
+                "ReportPhone",
+                "",
+                property,
+                valueAccess
+            ),
             ConstraintKind.Url => Report(field, constraint, "ReportUrl", "", property, valueAccess),
-            ConstraintKind.CreditCard => Report(field, constraint, "ReportCreditCard", "", property, valueAccess),
-            ConstraintKind.Base64 => Report(field, constraint, "ReportBase64", "", property, valueAccess),
+            ConstraintKind.CreditCard => Report(
+                field,
+                constraint,
+                "ReportCreditCard",
+                "",
+                property,
+                valueAccess
+            ),
+            ConstraintKind.Base64 => Report(
+                field,
+                constraint,
+                "ReportBase64",
+                "",
+                property,
+                valueAccess
+            ),
             ConstraintKind.FileExtension when infos is not null => Structured(
-                field, constraint, valueAccess, infos,
+                field,
+                constraint,
+                valueAccess,
+                infos,
                 $"{MessageTemplates}.FileExtension",
-                $", {QuoteString(string.Join(", ", Displays(constraint)))}"),
-            ConstraintKind.FileExtension => Report(field, constraint, "ReportFileExtension",
-                $", {QuoteString(string.Join(", ", Displays(constraint)))}", property, valueAccess),
-            ConstraintKind.CustomCheck => Report(field, constraint, "ReportCustom", "", property, valueAccess),
+                $", {QuoteString(string.Join(", ", Displays(constraint)))}"
+            ),
+            ConstraintKind.FileExtension => Report(
+                field,
+                constraint,
+                "ReportFileExtension",
+                $", {QuoteString(string.Join(", ", Displays(constraint)))}",
+                property,
+                valueAccess
+            ),
+            ConstraintKind.CustomCheck => Report(
+                field,
+                constraint,
+                "ReportCustom",
+                "",
+                property,
+                valueAccess
+            ),
             // A flags value is a combination, so "must be one of" would be wrong about what the
             // type accepts. Says which flags exist instead.
-            ConstraintKind.EnumDefined when constraint.FlagsMask is not null && infos is not null => Structured(
-                field, constraint, valueAccess, infos,
-                $"{MessageTemplates}.EnumFlags",
-                $", {QuoteString(string.Join(", ", Displays(constraint)))}"),
+            ConstraintKind.EnumDefined when constraint.FlagsMask is not null && infos is not null =>
+                Structured(
+                    field,
+                    constraint,
+                    valueAccess,
+                    infos,
+                    $"{MessageTemplates}.EnumFlags",
+                    $", {QuoteString(string.Join(", ", Displays(constraint)))}"
+                ),
             ConstraintKind.EnumDefined when constraint.FlagsMask is not null =>
-                $"ctx.Report({field}, " +
-                $"{(constraint.Code is { } flagsCode ? QuoteString(flagsCode) : $"{Codes}.Enum")}, " +
-                $"{QuoteString($"{Unquote(field)} must be a combination of: {string.Join(", ", Displays(constraint))}.")})",
+                $"ctx.Report({field}, "
+                    + $"{(constraint.Code is { } flagsCode ? QuoteString(flagsCode) : $"{Codes}.Enum")}, "
+                    + $"{QuoteString($"{Unquote(field)} must be a combination of: {string.Join(", ", Displays(constraint))}.")})",
             ConstraintKind.EnumDefined when infos is not null => Structured(
-                field, constraint, valueAccess, infos,
+                field,
+                constraint,
+                valueAccess,
+                infos,
                 $"{MessageTemplates}.AllowedValues",
-                $", {QuoteString(string.Join(", ", Displays(constraint)))}"),
-            ConstraintKind.EnumDefined => Report(field, constraint, "ReportAllowedValues",
-                $", {QuoteString(string.Join(", ", Displays(constraint)))}", property, valueAccess),
+                $", {QuoteString(string.Join(", ", Displays(constraint)))}"
+            ),
+            ConstraintKind.EnumDefined => Report(
+                field,
+                constraint,
+                "ReportAllowedValues",
+                $", {QuoteString(string.Join(", ", Displays(constraint)))}",
+                property,
+                valueAccess
+            ),
 
             // Always the literal branch: a predicate's message was rendered from its own source when
             // the front-end read it, so there is nothing here to compose and nothing the runtime
             // could compose it from.
-            ConstraintKind.Predicate => Report(field, constraint, "Report", "", property, valueAccess),
+            ConstraintKind.Predicate => Report(
+                field,
+                constraint,
+                "Report",
+                "",
+                property,
+                valueAccess
+            ),
             _ => Report(field, constraint, "ReportRequired", "", property, valueAccess),
         };
     }
@@ -1531,29 +2038,55 @@ public sealed class ValidatorEmitter {
         ConstraintModel constraint,
         ValidatedPropertyModel property,
         string? valueAccess,
-        MessageInfoPool? infos) {
-        if (infos is not null) {
-            var arguments = constraint switch {
+        MessageInfoPool? infos
+    )
+    {
+        if (infos is not null)
+        {
+            var arguments = constraint switch
+            {
                 { Min: { } min, Max: { } max } => $", {min}, {max}",
                 { Min: { } min } => $", {min}",
                 { Max: { } max } => $", {max}",
                 _ => string.Empty,
             };
 
-            return Structured(field, constraint, valueAccess, infos, RangeTemplate(constraint), arguments);
+            return Structured(
+                field,
+                constraint,
+                valueAccess,
+                infos,
+                RangeTemplate(constraint),
+                arguments
+            );
         }
 
-        return constraint switch {
+        return constraint switch
+        {
             { Min: { } min, Max: { } max } => Report(
-                field, constraint, "ReportRange",
+                field,
+                constraint,
+                "ReportRange",
                 $", {min}, {max}{Exclusivity(constraint.ExclusiveMin, "exclusiveMin")}{Exclusivity(constraint.ExclusiveMax, "exclusiveMax")}",
-                property, valueAccess),
+                property,
+                valueAccess
+            ),
             { Min: { } min } => Report(
-                field, constraint, "ReportRangeAtLeast",
-                $", {min}{Exclusivity(constraint.ExclusiveMin, "exclusive")}", property, valueAccess),
+                field,
+                constraint,
+                "ReportRangeAtLeast",
+                $", {min}{Exclusivity(constraint.ExclusiveMin, "exclusive")}",
+                property,
+                valueAccess
+            ),
             { Max: { } max } => Report(
-                field, constraint, "ReportRangeAtMost",
-                $", {max}{Exclusivity(constraint.ExclusiveMax, "exclusive")}", property, valueAccess),
+                field,
+                constraint,
+                "ReportRangeAtMost",
+                $", {max}{Exclusivity(constraint.ExclusiveMax, "exclusive")}",
+                property,
+                valueAccess
+            ),
 
             // Unreachable: a range with neither bound is VM1102 and never reaches the emitter.
             _ => Report(field, constraint, "ReportRequired", "", property, valueAccess),
@@ -1571,11 +2104,13 @@ public sealed class ValidatorEmitter {
     /// mirroring the runtime's own <c>BoundedInfo</c> selection, so a hoisted info and a
     /// helper-built one render the same text for the same bounds.
     /// </summary>
-    private static string BoundedTemplate(ConstraintModel constraint, string prefix) {
+    private static string BoundedTemplate(ConstraintModel constraint, string prefix)
+    {
         int.TryParse(constraint.Min, out var min);
         var hasMax = int.TryParse(constraint.Max, out var max) && max != int.MaxValue;
 
-        if (min > 0 && hasMax) {
+        if (min > 0 && hasMax)
+        {
             return $"{MessageTemplates}.{prefix}{(max == 1 ? "BetweenSingular" : "Between")}";
         }
 
@@ -1585,11 +2120,13 @@ public sealed class ValidatorEmitter {
     }
 
     /// <summary>The info arguments matching <see cref="BoundedTemplate"/>'s holes, in hole order.</summary>
-    private static string BoundedArgs(ConstraintModel constraint) {
+    private static string BoundedArgs(ConstraintModel constraint)
+    {
         int.TryParse(constraint.Min, out var min);
         var hasMax = int.TryParse(constraint.Max, out var max) && max != int.MaxValue;
 
-        if (min > 0 && hasMax) {
+        if (min > 0 && hasMax)
+        {
             return $", {constraint.Min}, {constraint.Max}";
         }
 
@@ -1597,8 +2134,10 @@ public sealed class ValidatorEmitter {
     }
 
     private static string RangeTemplate(ConstraintModel constraint) =>
-        (constraint.Min is not null, constraint.Max is not null) switch {
-            (true, true) => (constraint.ExclusiveMin, constraint.ExclusiveMax) switch {
+        (constraint.Min is not null, constraint.Max is not null) switch
+        {
+            (true, true) => (constraint.ExclusiveMin, constraint.ExclusiveMax) switch
+            {
                 (false, false) => $"{MessageTemplates}.RangeBetween",
                 (true, false) => $"{MessageTemplates}.RangeGreaterAndAtMost",
                 (false, true) => $"{MessageTemplates}.RangeAtLeastAndLess",
@@ -1618,26 +2157,28 @@ public sealed class ValidatorEmitter {
     /// Kinds whose default arguments differ from the resx ones share the nearest shape; the
     /// provider is set on every info built with this, so the fallback text is never rendered.
     /// </summary>
-    private static string TemplateFor(ConstraintModel constraint) => constraint.Kind switch {
-        ConstraintKind.StringLength => BoundedTemplate(constraint, "StringLength"),
-        ConstraintKind.ItemCount => BoundedTemplate(constraint, "ItemCount"),
-        ConstraintKind.Range => RangeTemplate(constraint),
-        ConstraintKind.MultipleOf => $"{MessageTemplates}.MultipleOf",
-        ConstraintKind.UniqueItems => $"{MessageTemplates}.UniqueItems",
-        ConstraintKind.Pattern => $"{MessageTemplates}.Pattern",
-        ConstraintKind.AllowedValues => constraint.Negated
-            ? $"{MessageTemplates}.DeniedValues"
-            : $"{MessageTemplates}.AllowedValues",
-        ConstraintKind.EnumDefined => $"{MessageTemplates}.AllowedValues",
-        ConstraintKind.Email => $"{MessageTemplates}.Email",
-        ConstraintKind.Phone => $"{MessageTemplates}.Phone",
-        ConstraintKind.Url => $"{MessageTemplates}.Url",
-        ConstraintKind.CreditCard => $"{MessageTemplates}.CreditCard",
-        ConstraintKind.Base64 => $"{MessageTemplates}.Base64",
-        ConstraintKind.FileExtension => $"{MessageTemplates}.FileExtension",
-        ConstraintKind.CustomCheck => $"{MessageTemplates}.Custom",
-        _ => $"{MessageTemplates}.Required",
-    };
+    private static string TemplateFor(ConstraintModel constraint) =>
+        constraint.Kind switch
+        {
+            ConstraintKind.StringLength => BoundedTemplate(constraint, "StringLength"),
+            ConstraintKind.ItemCount => BoundedTemplate(constraint, "ItemCount"),
+            ConstraintKind.Range => RangeTemplate(constraint),
+            ConstraintKind.MultipleOf => $"{MessageTemplates}.MultipleOf",
+            ConstraintKind.UniqueItems => $"{MessageTemplates}.UniqueItems",
+            ConstraintKind.Pattern => $"{MessageTemplates}.Pattern",
+            ConstraintKind.AllowedValues => constraint.Negated
+                ? $"{MessageTemplates}.DeniedValues"
+                : $"{MessageTemplates}.AllowedValues",
+            ConstraintKind.EnumDefined => $"{MessageTemplates}.AllowedValues",
+            ConstraintKind.Email => $"{MessageTemplates}.Email",
+            ConstraintKind.Phone => $"{MessageTemplates}.Phone",
+            ConstraintKind.Url => $"{MessageTemplates}.Url",
+            ConstraintKind.CreditCard => $"{MessageTemplates}.CreditCard",
+            ConstraintKind.Base64 => $"{MessageTemplates}.Base64",
+            ConstraintKind.FileExtension => $"{MessageTemplates}.FileExtension",
+            ConstraintKind.CustomCheck => $"{MessageTemplates}.Custom",
+            _ => $"{MessageTemplates}.Required",
+        };
 
     /// <summary>
     /// The structured report: value and hoisted info, no text. The initializer is the pool's
@@ -1651,11 +2192,18 @@ public sealed class ValidatorEmitter {
         MessageInfoPool infos,
         string template,
         string argumentsExpression,
-        string? initializerSuffix = null) {
-        var initializer = $"new {MessageInfoType}({template}{argumentsExpression}){initializerSuffix ?? string.Empty}";
+        string? initializerSuffix = null
+    )
+    {
+        var initializer =
+            $"new {MessageInfoType}({template}{argumentsExpression}){initializerSuffix ?? string.Empty}";
         var info = infos.Get(initializer);
-        var code = constraint.Code is { } custom ? QuoteString(custom) : CodeConstant(constraint.Kind);
-        var severity = constraint.Severity is { } member ? $", {SeverityEnum}.{member}" : string.Empty;
+        var code = constraint.Code is { } custom
+            ? QuoteString(custom)
+            : CodeConstant(constraint.Kind);
+        var severity = constraint.Severity is { } member
+            ? $", {SeverityEnum}.{member}"
+            : string.Empty;
 
         return $"ctx.Report({field}, {code}, {valueAccess ?? "null"}, {info}{severity})";
     }
@@ -1666,12 +2214,22 @@ public sealed class ValidatorEmitter {
     /// data - <c>{field}</c> is the wire name at this very site, and a DataAnnotations message's
     /// <c>{0}</c> is the display name the front end already resolved.
     /// </summary>
-    private static string LiteralReport(string field, ConstraintModel constraint, ValidatedPropertyModel property) {
-        var severity = constraint.Severity is { } member ? $", {SeverityEnum}.{member}" : string.Empty;
-        var code = constraint.Code is { } custom ? QuoteString(custom) : CodeConstant(constraint.Kind);
+    private static string LiteralReport(
+        string field,
+        ConstraintModel constraint,
+        ValidatedPropertyModel property
+    )
+    {
+        var severity = constraint.Severity is { } member
+            ? $", {SeverityEnum}.{member}"
+            : string.Empty;
+        var code = constraint.Code is { } custom
+            ? QuoteString(custom)
+            : CodeConstant(constraint.Kind);
         var text = constraint.Message!.Replace("{field}", Unquote(field));
 
-        if (constraint.DataAnnotationsMessage) {
+        if (constraint.DataAnnotationsMessage)
+        {
             text = text.Replace("{0}", property.DisplayName ?? property.PropertyName);
         }
 
@@ -1698,43 +2256,54 @@ public sealed class ValidatorEmitter {
         string helper,
         string arguments,
         ValidatedPropertyModel property,
-        string? valueAccess) {
-        if (constraint.Message is not null) {
+        string? valueAccess
+    )
+    {
+        if (constraint.Message is not null)
+        {
             return LiteralReport(field, constraint, property);
         }
 
         // Omitted entirely at the default rather than passed as ValidationSeverity.Error, so the
         // emitted line stays the one a reader would have written by hand. Named, because severity
         // sits between the bounds and the named arguments that may follow it.
-        var severity = constraint.Severity is { } member ? $", severity: {SeverityEnum}.{member}" : string.Empty;
-        var explicitCode = constraint.Code is { } declared ? $", code: {QuoteString(declared)}" : string.Empty;
+        var severity = constraint.Severity is { } member
+            ? $", severity: {SeverityEnum}.{member}"
+            : string.Empty;
+        var explicitCode = constraint.Code is { } declared
+            ? $", code: {QuoteString(declared)}"
+            : string.Empty;
         var value = valueAccess is null ? string.Empty : $", value: {valueAccess}";
 
         return $"{ContextExtensions}.{helper}(ctx, {field}{arguments}{severity}{explicitCode}{value})";
     }
 
-    private static string CodeConstant(ConstraintKind kind) => kind switch {
-        ConstraintKind.Required => $"{Codes}.Required",
-        ConstraintKind.StringLength => $"{Codes}.StringLength",
-        ConstraintKind.Range => $"{Codes}.Range",
-        ConstraintKind.Pattern => $"{Codes}.Pattern",
-        ConstraintKind.AllowedValues => $"{Codes}.Enum",
-        ConstraintKind.EnumDefined => $"{Codes}.Enum",
-        ConstraintKind.MultipleOf => $"{Codes}.MultipleOf",
-        ConstraintKind.UniqueItems => $"{Codes}.UniqueItems",
-        ConstraintKind.Predicate => $"{Codes}.Predicate",
-        ConstraintKind.Email => $"{Codes}.Email",
-        ConstraintKind.Phone => $"{Codes}.Phone",
-        ConstraintKind.Url => $"{Codes}.Url",
-        ConstraintKind.CreditCard => $"{Codes}.CreditCard",
-        ConstraintKind.Base64 => $"{Codes}.Base64",
-        ConstraintKind.FileExtension => $"{Codes}.FileExtension",
-        ConstraintKind.CustomCheck => $"{Codes}.Custom",
-        _ => $"{Codes}.ArrayBounds",
-    };
+    private static string CodeConstant(ConstraintKind kind) =>
+        kind switch
+        {
+            ConstraintKind.Required => $"{Codes}.Required",
+            ConstraintKind.StringLength => $"{Codes}.StringLength",
+            ConstraintKind.Range => $"{Codes}.Range",
+            ConstraintKind.Pattern => $"{Codes}.Pattern",
+            ConstraintKind.AllowedValues => $"{Codes}.Enum",
+            ConstraintKind.EnumDefined => $"{Codes}.Enum",
+            ConstraintKind.MultipleOf => $"{Codes}.MultipleOf",
+            ConstraintKind.UniqueItems => $"{Codes}.UniqueItems",
+            ConstraintKind.Predicate => $"{Codes}.Predicate",
+            ConstraintKind.Email => $"{Codes}.Email",
+            ConstraintKind.Phone => $"{Codes}.Phone",
+            ConstraintKind.Url => $"{Codes}.Url",
+            ConstraintKind.CreditCard => $"{Codes}.CreditCard",
+            ConstraintKind.Base64 => $"{Codes}.Base64",
+            ConstraintKind.FileExtension => $"{Codes}.FileExtension",
+            ConstraintKind.CustomCheck => $"{Codes}.Custom",
+            _ => $"{Codes}.ArrayBounds",
+        };
 
     private static string Unquote(string literal) =>
-        literal.Length >= 2 && literal[0] == '"' ? literal.Substring(1, literal.Length - 2) : literal;
+        literal.Length >= 2 && literal[0] == '"'
+            ? literal.Substring(1, literal.Length - 2)
+            : literal;
 
     /// <summary>
     /// The permitted set as a reader should see it: <c>Pro, Enterprise</c> rather than

@@ -7,7 +7,8 @@ the same validators. A model that already carries them needs no edits:
 ```csharp
 using System.ComponentModel.DataAnnotations;
 
-public class Customer {
+public class Customer
+{
     [Required]
     [StringLength(100, MinimumLength = 1)]
     public string? Name { get; set; }
@@ -174,8 +175,10 @@ attribute ergonomics at straight-line cost, and a [rule class](/guide/rule-class
 same rule beside the model:
 
 ```csharp
-public sealed class CustomerRules : IValidationRulesFor<Customer> {
-    public static void Describe(ValidationRules<Customer> rules, Customer x) {
+public sealed class CustomerRules : IValidationRulesFor<Customer>
+{
+    public static void Describe(ValidationRules<Customer> rules, Customer x)
+    {
         rules.Ensure(x.Age % 2 == 0, code: "even_age");
     }
 }
@@ -201,8 +204,10 @@ generator skipped would still *look* enforced, because you have every reason to 
 declaration form that *can* express a rule spanning two properties:
 
 ```csharp
-public sealed class CustomerRules : IValidationRulesFor<Customer> {
-    public static void Describe(ValidationRules<Customer> rules, Customer x) {
+public sealed class CustomerRules : IValidationRulesFor<Customer>
+{
+    public static void Describe(ValidationRules<Customer> rules, Customer x)
+    {
         rules.Ensure(x.Password == x.Confirm, code: "password_mismatch");
     }
 }
@@ -231,7 +236,7 @@ matters, because importing both makes the shared names ambiguous:
 
 ```csharp
 using System.ComponentModel.DataAnnotations;
-using ValidationModules.Constraints;   // error CS0104: 'Required' is an ambiguous reference
+using ValidationModules.Constraints; // error CS0104: 'Required' is an ambiguous reference
 ```
 
 The names match on purpose: shared names only hurt a file that imports both, and complete

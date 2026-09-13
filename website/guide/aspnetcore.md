@@ -18,7 +18,7 @@ builder.Services.AddMyAppValidators();
 var app = builder.Build();
 
 app.MapPost("/orders", (CreateOrder order) => Results.Ok(new { accepted = true }))
-   .Validate<CreateOrder>();
+    .Validate<CreateOrder>();
 ```
 
 ```json
@@ -75,8 +75,8 @@ Chain it when a handler has more than one thing worth checking:
 
 ```csharp
 app.MapPost("/orders", (CreateOrder order, [AsParameters] CouponQuery coupon) => Results.Ok())
-   .Validate<CreateOrder>()
-   .Validate<CouponQuery>();
+    .Validate<CreateOrder>()
+    .Validate<CouponQuery>();
 ```
 
 Filters run in the order they were added, so the first failure answers and the second never runs.
@@ -110,8 +110,11 @@ A batch endpoint takes a JSON array, and a JSON array binds to a `List<T>` or a 
 validate element-wise, with the element's position in the path:
 
 ```csharp
-app.MapPost("/orders/batch", (List<CreateOrder> orders) => Results.Ok(new { accepted = orders.Count }))
-   .Validate<List<CreateOrder>>();
+app.MapPost(
+        "/orders/batch",
+        (List<CreateOrder> orders) => Results.Ok(new { accepted = orders.Count })
+    )
+    .Validate<List<CreateOrder>>();
 ```
 
 ```json
@@ -146,9 +149,10 @@ default for an enum body field is **numbers only**. A client sending the name me
 serializer, not the validator:
 
 ```csharp
-public sealed record CreateTicket {
+public sealed record CreateTicket
+{
     [EnumDefined]
-    public TicketPriority Priority { get; init; }   // {"priority": "urgent"} is a 400 before validation runs
+    public TicketPriority Priority { get; init; } // {"priority": "urgent"} is a 400 before validation runs
 }
 ```
 
@@ -156,7 +160,8 @@ Opt into names with the converter, application-wide:
 
 ```csharp
 builder.Services.ConfigureHttpJsonOptions(options =>
-    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter())
+);
 ```
 
 The division of labour is exact: `JsonStringEnumConverter` decides what parses, and
@@ -199,11 +204,10 @@ One endpoint can answer failures with a different status while the rest of the a
 the default. `Validate<T>()` takes the override directly:
 
 ```csharp
-app.MapPost("/orders", (CreateOrder order) => Results.Ok())
-   .Validate<CreateOrder>();                       // 400, the application-wide default
+app.MapPost("/orders", (CreateOrder order) => Results.Ok()).Validate<CreateOrder>(); // 400, the application-wide default
 
 app.MapPost("/orders/strict", (CreateOrder order) => Results.Ok())
-   .Validate<CreateOrder>(statusCode: 422);        // 422 on this endpoint alone
+    .Validate<CreateOrder>(statusCode: 422); // 422 on this endpoint alone
 ```
 
 The body's `type` member follows the status - the 422 response links RFC 9110's definition of

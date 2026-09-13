@@ -19,31 +19,38 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// because C# already bakes a const at every use site.
 /// </para>
 /// </remarks>
-public class RegionScopeTests {
+public class RegionScopeTests
+{
+    private static GeneratorHarness.Result Run(string members, string statement) =>
+        GeneratorHarness.Run(
+            $$"""
+            using ValidationModules;
 
-    private static GeneratorHarness.Result Run(string members, string statement) => GeneratorHarness.Run($$"""
-        using ValidationModules;
+            namespace Sample;
 
-        namespace Sample;
-
-        public sealed record Model {
-            public int Count { get; init; }
-            public string? Name { get; init; }
-        }
-
-        public sealed class ModelRules : IValidationRulesFor<Model> {
-        {{members}}
-            public static void Describe(ValidationRules<Model> rules, Model x) {
-                {{statement}}
+            public sealed record Model {
+                public int Count { get; init; }
+                public string? Name { get; init; }
             }
-        }
-        """);
 
-    private static string Region(string members, string statement) {
+            public sealed class ModelRules : IValidationRulesFor<Model> {
+            {{members}}
+                public static void Describe(ValidationRules<Model> rules, Model x) {
+                    {{statement}}
+                }
+            }
+            """
+        );
+
+    private static string Region(string members, string statement)
+    {
         var result = Run(members, statement);
 
         Assert.Empty(result.CompilationErrors);
-        Assert.DoesNotContain(result.Diagnostics, d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error);
+        Assert.DoesNotContain(
+            result.Diagnostics,
+            d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error
+        );
 
         return result.Sources.Single(source => source.Key.Contains("_Rules")).Value;
     }
@@ -55,7 +62,8 @@ public class RegionScopeTests {
     [InlineData("    public const int Max = 10;")]
     [InlineData("    internal static readonly int Max = 10;")]
     [InlineData("    public static int Max => 10;")]
-    public void ANonPrivateMember_IsQualifiedRatherThanCopied(string member) {
+    public void ANonPrivateMember_IsQualifiedRatherThanCopied(string member)
+    {
         var region = Region(member, "rules.Ensure(x.Count <= Max);");
 
         Assert.Contains("global::Sample.ModelRules.Max", region);
@@ -66,44 +74,52 @@ public class RegionScopeTests {
     /// file names, so a value that changes changes for the validator too.
     /// </summary>
     [Fact]
-    public void AStaticReadonlyField_IsReadRatherThanBaked() {
+    public void AStaticReadonlyField_IsReadRatherThanBaked()
+    {
         var region = Region(
             "    internal static readonly int Max = 10;",
-            "rules.Ensure(x.Count <= Max);");
+            "rules.Ensure(x.Count <= Max);"
+        );
 
         Assert.Contains("global::Sample.ModelRules.Max", region);
         Assert.DoesNotContain("<= 10", region);
     }
 
     [Fact]
-    public void AnInternalMethod_IsQualified() {
+    public void AnInternalMethod_IsQualified()
+    {
         var region = Region(
             "    internal static bool Ok(Model v) => true;",
-            "rules.Ensure(x.Count > 0 && Ok(x));");
+            "rules.Ensure(x.Count > 0 && Ok(x));"
+        );
 
         Assert.Contains("global::Sample.ModelRules.Ok(x)", region);
     }
 
     [Fact]
-    public void AConstantUsedAsAChainBound_IsRewrittenTheSameWay() {
+    public void AConstantUsedAsAChainBound_IsRewrittenTheSameWay()
+    {
         // Island arguments are check text, not raw text: a private const bound bakes by value
         // exactly as it does in an Ensure condition. Carried raw, this emitted CS0103 in the
         // companion - the multi-target work is what surfaced it.
         var region = Region(
             "    private const int Max = 40;",
-            "rules.Require(x.Name).Length(2, Max);");
+            "rules.Require(x.Name).Length(2, Max);"
+        );
 
         Assert.Contains("x.Name.Length > 40", region);
         Assert.DoesNotContain("ModelRules.Max", region);
     }
 
     [Fact]
-    public void AnIfCondition_IsRewrittenTheSameWay() {
+    public void AnIfCondition_IsRewrittenTheSameWay()
+    {
         // Control flow is C# now, and its conditions transcribe under the same rewrites the
         // island arguments do.
         var region = Region(
             "    internal const int Max = 10;",
-            "if (x.Count <= Max) { rules.Require(x.Name); }");
+            "if (x.Count <= Max) { rules.Require(x.Name); }"
+        );
 
         Assert.Contains("global::Sample.ModelRules.Max", region);
     }
@@ -111,8 +127,10 @@ public class RegionScopeTests {
     // -- what is left alone ---------------------------------------------------------------------
 
     [Fact]
-    public void AMemberOfAnotherClass_IsUntouched() {
-        var result = GeneratorHarness.Run("""
+    public void AMemberOfAnotherClass_IsUntouched()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules;
 
             namespace Sample;
@@ -126,14 +144,16 @@ public class RegionScopeTests {
                     rules.Ensure(x.Count <= Limits.Max);
                 }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
         Assert.Contains("Limits.Max", result.Sources.Single(s => s.Key.Contains("_Rules")).Value);
     }
 
     [Fact]
-    public void TheSubjectParameterIsNotRewritten() {
+    public void TheSubjectParameterIsNotRewritten()
+    {
         var region = Region(string.Empty, "rules.Ensure(x.Count > 0);");
 
         Assert.Contains("x.Count > 0", region);
@@ -151,7 +171,12 @@ public class RegionScopeTests {
     [InlineData("    private const int Max = 10;", "x.Count <= Max", "10")]
     [InlineData("    private const string Max = \"ab\";", "x.Name == Max", "\"ab\"")]
     [InlineData("    private const bool Max = true;", "x.Count > 0 == Max", "true")]
-    public void APrivateConstant_IsCarriedAcrossByValue(string member, string condition, string expected) {
+    public void APrivateConstant_IsCarriedAcrossByValue(
+        string member,
+        string condition,
+        string expected
+    )
+    {
         var region = Region(member, $"rules.Ensure({condition});");
 
         Assert.Contains(expected, region);
@@ -159,19 +184,23 @@ public class RegionScopeTests {
     }
 
     [Fact]
-    public void APrivateMethod_IsVM3004RatherThanAnErrorInGeneratedCode() {
+    public void APrivateMethod_IsVM3004RatherThanAnErrorInGeneratedCode()
+    {
         var result = Run(
             "    private static bool Ok(Model v) => true;",
-            "rules.Ensure(x.Count > 0 && Ok(x));");
+            "rules.Ensure(x.Count > 0 && Ok(x));"
+        );
 
         Assert.Contains(result.Diagnostics, d => d.Id == "VM3004");
     }
 
     [Fact]
-    public void APrivateStaticReadonlyField_IsVM3004() {
+    public void APrivateStaticReadonlyField_IsVM3004()
+    {
         var result = Run(
             "    private static readonly int Max = 10;",
-            "rules.Ensure(x.Count <= Max);");
+            "rules.Ensure(x.Count <= Max);"
+        );
 
         var reported = Assert.Single(result.Diagnostics, d => d.Id == "VM3004");
 
@@ -194,11 +223,15 @@ public class RegionScopeTests {
     [InlineData("ulong", "10UL", "10UL")]
     [InlineData("short", "10", "10")]
     public void APrivateConstantOfAnyNumericType_IsWrittenBackWithItsType(
-        string type, string literal, string expected) {
-
+        string type,
+        string literal,
+        string expected
+    )
+    {
         var region = Region(
             $"    private const {type} Max = {literal};",
-            "rules.Ensure(x.Count <= (double)Max);");
+            "rules.Ensure(x.Count <= (double)Max);"
+        );
 
         Assert.Contains(expected, region);
     }
@@ -209,10 +242,12 @@ public class RegionScopeTests {
     /// Framework host — where the default would quietly drop the last two digits here.
     /// </summary>
     [Fact]
-    public void ADoubleConstant_KeepsEveryDigit() {
+    public void ADoubleConstant_KeepsEveryDigit()
+    {
         var region = Region(
             "    private const double Max = 1.2345678901234567;",
-            "rules.Ensure(x.Count <= Max);");
+            "rules.Ensure(x.Count <= Max);"
+        );
 
         Assert.Contains("1.2345678901234567D", region);
     }
@@ -221,10 +256,12 @@ public class RegionScopeTests {
     /// A decimal carries its scale, and the two are the same value but not the same representation.
     /// </summary>
     [Fact]
-    public void ADecimalConstant_KeepsItsScale() {
+    public void ADecimalConstant_KeepsItsScale()
+    {
         var region = Region(
             "    private const decimal Max = 1.50m;",
-            "rules.Ensure(x.Count <= (double)Max);");
+            "rules.Ensure(x.Count <= (double)Max);"
+        );
 
         Assert.Contains("1.50m", region);
     }
@@ -235,8 +272,10 @@ public class RegionScopeTests {
     /// combination is an ordinary constant.
     /// </summary>
     [Fact]
-    public void AnEnumConstant_IsWrittenBackAsACast() {
-        var result = GeneratorHarness.Run("""
+    public void AnEnumConstant_IsWrittenBackAsACast()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules;
 
             namespace Sample;
@@ -252,19 +291,23 @@ public class RegionScopeTests {
                     rules.Ensure(x.Status == Wanted);
                 }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
         Assert.Contains(
             "(global::Sample.Status)1",
-            result.Sources.Single(source => source.Key.Contains("_Rules")).Value);
+            result.Sources.Single(source => source.Key.Contains("_Rules")).Value
+        );
     }
 
     [Fact]
-    public void ANullConstant_IsWrittenBackAsNull() {
+    public void ANullConstant_IsWrittenBackAsNull()
+    {
         var region = Region(
             "    private const string? Missing = null;",
-            "rules.Ensure(x.Name != Missing);");
+            "rules.Ensure(x.Name != Missing);"
+        );
 
         Assert.Contains("x.Name != null", region);
     }
@@ -276,10 +319,12 @@ public class RegionScopeTests {
     [InlineData("double.NaN", "double.NaN")]
     [InlineData("double.PositiveInfinity", "double.PositiveInfinity")]
     [InlineData("double.NegativeInfinity", "double.NegativeInfinity")]
-    public void AFloatingPointConstantWithNoLiteralForm_IsNamed(string literal, string expected) {
+    public void AFloatingPointConstantWithNoLiteralForm_IsNamed(string literal, string expected)
+    {
         var region = Region(
             $"    private const double Max = {literal};",
-            "rules.Ensure(x.Count <= Max);");
+            "rules.Ensure(x.Count <= Max);"
+        );
 
         Assert.Contains(expected, region);
     }

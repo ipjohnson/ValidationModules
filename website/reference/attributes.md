@@ -500,7 +500,7 @@ Overrides the derived field name, highest precedence.
 ```csharp
 [Required]
 [JsonPropertyName("pet_name")]
-public string? Name { get; init; }      // errors report "pet_name"
+public string? Name { get; init; } // errors report "pet_name"
 ```
 
 ### `System.ComponentModel.DataAnnotations.Display`
@@ -519,7 +519,8 @@ mapping and for what is deliberately not compiled.
 ### `IValidationRulesFor<T>`
 
 ```csharp
-public interface IValidationRulesFor<T> {
+public interface IValidationRulesFor<T>
+{
     static abstract void Describe(ValidationRules<T> rules, T x);
 }
 ```
@@ -530,12 +531,18 @@ Declares rules for `T` from outside it, in a body that is read at build time and
 ### `IValidatorFor<T>` and `IAsyncValidatorFor<T>`
 
 ```csharp
-public interface IValidatorFor<in T> {
+public interface IValidatorFor<in T>
+{
     ValidationFlow Validate(ref ValidationContext context, T value);
 }
 
-public interface IAsyncValidatorFor<in T> {
-    ValueTask ValidateAsync(ValidationContext context, T value, CancellationToken cancellationToken = default);
+public interface IAsyncValidatorFor<in T>
+{
+    ValueTask ValidateAsync(
+        ValidationContext context,
+        T value,
+        CancellationToken cancellationToken = default
+    );
 }
 ```
 

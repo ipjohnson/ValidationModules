@@ -15,22 +15,25 @@ namespace SutProject.Tests;
 /// Two constraints that both fail must both report, whether they share a chain or sit in separate
 /// statements.
 /// </remarks>
-public class ConstraintChainConformanceTests {
-
+public class ConstraintChainConformanceTests
+{
     private static readonly IValidatorFor<Ticket> Validator = new TicketValidator();
 
     /// <summary>
     /// Two constraints failing on one field, in the three arrangements that matter: behind a
     /// passing <c>Require</c>, with no <c>Require</c> at all, and on a value type.
     /// </summary>
-    private static Ticket TwoFailuresPerField() => new() {
-        Code = "AB",
-        Note = "AB",
-        Amount = 5m,
-    };
+    private static Ticket TwoFailuresPerField() =>
+        new()
+        {
+            Code = "AB",
+            Note = "AB",
+            Amount = 5m,
+        };
 
     [Fact]
-    public void Validate_ReportsEveryFailingConstraintOnAField() {
+    public void Validate_ReportsEveryFailingConstraintOnAField()
+    {
         var errors = Validator.Validate(TwoFailuresPerField()).Errors;
 
         Assert.Equal(
@@ -42,7 +45,8 @@ public class ConstraintChainConformanceTests {
                 ("amount", ValidationCodes.Range),
                 ("amount", ValidationCodes.MultipleOf),
             ],
-            errors.Select(error => (error.Field, error.Code)));
+            errors.Select(error => (error.Field, error.Code))
+        );
     }
 
     /// <summary>
@@ -51,7 +55,8 @@ public class ConstraintChainConformanceTests {
     /// the other two fields still report both of theirs.
     /// </summary>
     [Fact]
-    public void Validate_WhenRequireFails_SuppressesOnlyItsOwnChain() {
+    public void Validate_WhenRequireFails_SuppressesOnlyItsOwnChain()
+    {
         var errors = Validator.Validate(TwoFailuresPerField() with { Code = null }).Errors;
 
         Assert.Equal(
@@ -62,12 +67,19 @@ public class ConstraintChainConformanceTests {
                 ("amount", ValidationCodes.Range),
                 ("amount", ValidationCodes.MultipleOf),
             ],
-            errors.Select(error => (error.Field, error.Code)));
+            errors.Select(error => (error.Field, error.Code))
+        );
     }
 
     [Fact]
-    public void Validate_OnAValueSatisfyingEveryConstraint_ReportsNothing() {
-        var valid = new Ticket { Code = "12345", Note = "67890", Amount = 12m };
+    public void Validate_OnAValueSatisfyingEveryConstraint_ReportsNothing()
+    {
+        var valid = new Ticket
+        {
+            Code = "12345",
+            Note = "67890",
+            Amount = 12m,
+        };
 
         Assert.True(Validator.Validate(valid).IsValid);
     }
@@ -77,8 +89,18 @@ public class ConstraintChainConformanceTests {
     /// with <c>Validate</c> about whether the value is valid.
     /// </summary>
     [Fact]
-    public void IsValid_AgreesWithValidate() {
+    public void IsValid_AgreesWithValidate()
+    {
         Assert.False(Validator.IsValid(TwoFailuresPerField()));
-        Assert.True(Validator.IsValid(new Ticket { Code = "12345", Note = "67890", Amount = 12m }));
+        Assert.True(
+            Validator.IsValid(
+                new Ticket
+                {
+                    Code = "12345",
+                    Note = "67890",
+                    Amount = 12m,
+                }
+            )
+        );
     }
 }

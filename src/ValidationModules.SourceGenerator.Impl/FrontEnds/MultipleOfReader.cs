@@ -21,8 +21,8 @@ namespace ValidationModules.SourceGenerator.Impl.FrontEnds;
 /// something that surfaces from generated code.
 /// </para>
 /// </remarks>
-public static class MultipleOfReader {
-
+public static class MultipleOfReader
+{
     /// <summary>
     /// Rewrites a divisor against <paramref name="type"/>.
     /// </summary>
@@ -36,8 +36,13 @@ public static class MultipleOfReader {
     /// <param name="decimalDomain">True when the check has to leave binary floating point.</param>
     /// <returns>False when the divisor has no form the member's type can be checked against.</returns>
     public static bool TryResolve(
-        ITypeSymbol type, string literal, out string expression, out decimal value, out bool decimalDomain) {
-
+        ITypeSymbol type,
+        string literal,
+        out string expression,
+        out decimal value,
+        out bool decimalDomain
+    )
+    {
         expression = string.Empty;
         value = 0m;
         decimalDomain = false;
@@ -46,7 +51,8 @@ public static class MultipleOfReader {
             ? RangeBoundReader.Unquote(literal)
             : literal.TrimEnd('d', 'D', 'f', 'F', 'm', 'M');
 
-        if (!decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value)) {
+        if (!decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value))
+        {
             return false;
         }
 
@@ -54,7 +60,8 @@ public static class MultipleOfReader {
             ? ((INamedTypeSymbol)type).TypeArguments[0]
             : type;
 
-        switch (underlying.SpecialType) {
+        switch (underlying.SpecialType)
+        {
             case SpecialType.System_Byte:
             case SpecialType.System_SByte:
             case SpecialType.System_Int16:
@@ -82,12 +89,14 @@ public static class MultipleOfReader {
     }
 
     /// <summary>Whether a member's type can carry a <c>[MultipleOf]</c> at all.</summary>
-    public static bool IsSupported(ITypeSymbol type) {
+    public static bool IsSupported(ITypeSymbol type)
+    {
         var underlying = TypeFacts.IsNullableValueType(type)
             ? ((INamedTypeSymbol)type).TypeArguments[0]
             : type;
 
-        switch (underlying.SpecialType) {
+        switch (underlying.SpecialType)
+        {
             case SpecialType.System_Byte:
             case SpecialType.System_SByte:
             case SpecialType.System_Int16:
@@ -109,10 +118,12 @@ public static class MultipleOfReader {
     /// A divisor for an integral member, which has to be a whole number: <c>[MultipleOf("2.5")]</c>
     /// on an <c>int</c> would emit <c>value % 2</c> if the fraction were dropped silently.
     /// </summary>
-    private static bool Integral(decimal value, string suffix, out string expression) {
+    private static bool Integral(decimal value, string suffix, out string expression)
+    {
         expression = string.Empty;
 
-        if (decimal.Truncate(value) != value) {
+        if (decimal.Truncate(value) != value)
+        {
             return false;
         }
 

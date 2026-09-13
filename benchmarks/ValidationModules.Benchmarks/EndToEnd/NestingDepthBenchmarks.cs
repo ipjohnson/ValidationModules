@@ -23,8 +23,8 @@ namespace ValidationModules.Benchmarks.EndToEnd;
 /// </remarks>
 [MemoryDiagnoser]
 [BenchmarkCategory(BenchmarkCategories.EndToEnd)]
-public class NestingDepthBenchmarks {
-
+public class NestingDepthBenchmarks
+{
     // Hoisted: constructing per invocation would put an allocation on the measured path.
     private static readonly NodeValidator NodeValidatorShared = new();
     private readonly ValidationErrorCollector _pooled = new();
@@ -37,7 +37,8 @@ public class NestingDepthBenchmarks {
     public int Depth { get; set; }
 
     [GlobalSetup]
-    public void Setup() {
+    public void Setup()
+    {
         _clean = SampleData.ChainOf(Depth, failAtLeaf: false);
         _failingAtLeaf = SampleData.ChainOf(Depth, failAtLeaf: true);
     }
@@ -46,7 +47,8 @@ public class NestingDepthBenchmarks {
     public bool Clean_IsValid() => NodeValidatorShared.IsValid(_clean);
 
     [Benchmark(Description = "Clean chain, ValidateInto a pooled collector")]
-    public bool Clean_ValidateInto() {
+    public bool Clean_ValidateInto()
+    {
         _pooled.Reset();
 
         NodeValidatorShared.ValidateInto(_pooled, _clean);

@@ -27,8 +27,8 @@ namespace ValidationModules;
 /// layer's answer - additive in both directions.
 /// </para>
 /// </remarks>
-public interface IValidationLanguagePack {
-
+public interface IValidationLanguagePack
+{
     /// <summary>
     /// The culture this pack translates - <c>"fr"</c>, <c>"zh"</c>, <c>"fr-CA"</c>. Matched
     /// case-insensitively against the requested culture and its parents, so a neutral-culture

@@ -14,7 +14,8 @@ namespace ValidationModules.SourceGenerator.Impl.FrontEnds;
 /// their arguments are read out of metadata at build time, which is what keeps the result free of
 /// the reflection <c>Validator.TryValidateObject</c> would otherwise do.
 /// </remarks>
-public sealed class AttributeFrontEnd {
+public sealed class AttributeFrontEnd
+{
     private readonly List<Diagnostic> _diagnostics = new();
     private readonly Compilation _compilation;
     private readonly bool _compileDataAnnotations;
@@ -59,7 +60,9 @@ public sealed class AttributeFrontEnd {
         bool compileDataAnnotations,
         Func<string, string> fieldNamer,
         PatternPolicy patternPolicy,
-        string? codeNamespace = null) {
+        string? codeNamespace = null
+    )
+    {
         _compilation = compilation;
         _compileDataAnnotations = compileDataAnnotations;
         _fieldNamer = fieldNamer;
@@ -96,9 +99,11 @@ public sealed class AttributeFrontEnd {
         IReadOnlyList<DeclaredRule>? declared = null,
         IReadOnlyList<string>? applied = null,
         Func<INamedTypeSymbol, bool>? hasRulesClass = null,
-        Func<INamedTypeSymbol, IReadOnlyList<(INamedTypeSymbol Type, int Depth)>>? subtypesOf = null,
-        IReadOnlyList<RegionModel>? regions = null) {
-
+        Func<INamedTypeSymbol, IReadOnlyList<(INamedTypeSymbol Type, int Depth)>>? subtypesOf =
+            null,
+        IReadOnlyList<RegionModel>? regions = null
+    )
+    {
         _hasRulesClass = hasRulesClass;
         _validatedType = type;
         _subtypesOf = subtypesOf;
@@ -109,11 +114,15 @@ public sealed class AttributeFrontEnd {
 
         var properties = ImmutableArray.CreateBuilder<ValidatedPropertyModel>();
         var order = new List<int>();
-        var sawAnything = HasGenerateValidator(type) || declared is { Count: > 0 } ||
-            applied is { Count: > 0 } || regions is { Count: > 0 };
+        var sawAnything =
+            HasGenerateValidator(type)
+            || declared is { Count: > 0 }
+            || applied is { Count: > 0 }
+            || regions is { Count: > 0 };
         var sawAttribute = false;
 
-        foreach (var member in MemberWalk.PropertiesOf(type, _compilation, CarriesConstraints)) {
+        foreach (var member in MemberWalk.PropertiesOf(type, _compilation, CarriesConstraints))
+        {
             var property = member.Property;
 
             // A property this type inherited rather than declared is validated where it is
@@ -128,7 +137,8 @@ public sealed class AttributeFrontEnd {
             // because the walk hands back the most-derived declaration of each name.
             var constraints = new List<ConstraintModel>();
 
-            foreach (var source in member.Sources) {
+            foreach (var source in member.Sources)
+            {
                 var owned = SymbolEqualityComparer.Default.Equals(source.ContainingType, type);
                 var wasQuiet = _quiet;
 
@@ -145,17 +155,23 @@ public sealed class AttributeFrontEnd {
             // a narrower version of it.
             sawAttribute |= constraints.Count > 0 || validateNested;
 
-            if (member.Hidden is { } displaced && (constraints.Count > 0 || validateNested)) {
+            if (member.Hidden is { } displaced && (constraints.Count > 0 || validateNested))
+            {
                 // Counted quietly: this is the displaced declaration's own text, and the point here
                 // is to say how much of it was dropped, not to re-report what is wrong with it.
                 _quiet = true;
                 var dropped = ReadConstraintsFor(displaced, displaced.Type).Count;
                 _quiet = member.Inherited;
 
-                if (dropped > 0) {
+                if (dropped > 0)
+                {
                     Report(
-                        ValidationDiagnostics.HiddenBaseConstraints, property,
-                        property.Name, displaced.ContainingType.Name, dropped);
+                        ValidationDiagnostics.HiddenBaseConstraints,
+                        property,
+                        property.Name,
+                        displaced.ContainingType.Name,
+                        dropped
+                    );
                 }
             }
 
@@ -163,9 +179,12 @@ public sealed class AttributeFrontEnd {
             var attributeNesting = validateNested;
             var declaredNesting = false;
 
-            if (declared is not null) {
-                foreach (var rule in declared) {
-                    if (!SymbolEqualityComparer.Default.Equals(rule.Property, property)) {
+            if (declared is not null)
+            {
+                foreach (var rule in declared)
+                {
+                    if (!SymbolEqualityComparer.Default.Equals(rule.Property, property))
+                    {
                         continue;
                     }
 
@@ -173,15 +192,18 @@ public sealed class AttributeFrontEnd {
                     // the constraint, so promoting it here would rename every other rule anchored
                     // to the same property - and would also defeat [JsonPropertyName], which
                     // FieldNameFor honours and a rule's namered CLR name does not.
-                    if (rule.Nesting != Nesting.None) {
+                    if (rule.Nesting != Nesting.None)
+                    {
                         overriddenField ??= rule.Field;
                     }
 
-                    if (rule.Constraint is not null) {
+                    if (rule.Constraint is not null)
+                    {
                         constraints.Add(rule.Constraint);
                     }
 
-                    if (rule.Nesting != Nesting.None) {
+                    if (rule.Nesting != Nesting.None)
+                    {
                         validateNested = true;
                         declaredNesting = true;
 
@@ -192,20 +214,26 @@ public sealed class AttributeFrontEnd {
                 }
             }
 
-            if (constraints.Count == 0 && !validateNested) {
+            if (constraints.Count == 0 && !validateNested)
+            {
                 _quiet = enclosingQuiet;
                 continue;
             }
 
             sawAnything = true;
 
-            if (property.GetMethod is null || property.GetMethod.DeclaredAccessibility == Accessibility.Private) {
+            if (
+                property.GetMethod is null
+                || property.GetMethod.DeclaredAccessibility == Accessibility.Private
+            )
+            {
                 Report(ValidationDiagnostics.InaccessibleProperty, property, property.Name);
                 _quiet = enclosingQuiet;
                 continue;
             }
 
-            if (validateNested) {
+            if (validateNested)
+            {
                 var target = DescentTargetOf(property);
 
                 // Dropped rather than emitted, in both arms, because emitting either descent calls
@@ -213,24 +241,38 @@ public sealed class AttributeFrontEnd {
                 // code - or, for a constructed generic, throws inside the emitter. A descent a
                 // rules class declared keeps its machinery: the region's transcribed text owns
                 // that walk and still names it.
-                if (target is not INamedTypeSymbol { IsGenericType: false } named) {
+                if (target is not INamedTypeSymbol { IsGenericType: false } named)
+                {
                     // A type-parameter target only occurs inside a generic validated type, which
                     // VM1010 refuses wholesale below; a second diagnostic there would be noise.
-                    if (target.TypeKind != TypeKind.TypeParameter) {
+                    if (target.TypeKind != TypeKind.TypeParameter)
+                    {
                         Report(
-                            ValidationDiagnostics.NestedTargetCannotHaveValidator, property,
-                            target.ToDisplayString(), property.Name);
+                            ValidationDiagnostics.NestedTargetCannotHaveValidator,
+                            property,
+                            target.ToDisplayString(),
+                            property.Name
+                        );
                     }
 
-                    if (!declaredNesting) {
+                    if (!declaredNesting)
+                    {
                         validateNested = false;
                     }
-                } else if (named.DeclaringSyntaxReferences.Length > 0 && !ProducesAValidator(named)) {
+                }
+                else if (named.DeclaringSyntaxReferences.Length > 0 && !ProducesAValidator(named))
+                {
                     // Anything not declared in this compilation is left alone - it may carry a
                     // validator generated in its own assembly, which is invisible from here.
-                    Report(ValidationDiagnostics.NestedTypeHasNoRules, property, named.Name, property.Name);
+                    Report(
+                        ValidationDiagnostics.NestedTypeHasNoRules,
+                        property,
+                        named.Name,
+                        property.Name
+                    );
 
-                    if (!declaredNesting) {
+                    if (!declaredNesting)
+                    {
                         validateNested = false;
                     }
                 }
@@ -240,7 +282,8 @@ public sealed class AttributeFrontEnd {
             // descent contributes nothing, but the type keeps its validator - sawAnything is
             // already true, and an empty validator that validates nothing is what the dropped
             // descent's warning promises.
-            if (constraints.Count == 0 && !validateNested) {
+            if (constraints.Count == 0 && !validateNested)
+            {
                 _quiet = enclosingQuiet;
                 continue;
             }
@@ -249,33 +292,54 @@ public sealed class AttributeFrontEnd {
                 ? NestedPolymorphism(member.Sources)
                 : (PolymorphismMode.DeclaredOnly, false);
 
-            if (validateNested && DescentTargetOf(property) is INamedTypeSymbol surviving) {
-                if (!CanHaveSubtypes(surviving)) {
-                    if (polymorphism == PolymorphismMode.Runtime) {
+            if (validateNested && DescentTargetOf(property) is INamedTypeSymbol surviving)
+            {
+                if (!CanHaveSubtypes(surviving))
+                {
+                    if (polymorphism == PolymorphismMode.Runtime)
+                    {
                         Report(
-                            ValidationDiagnostics.RuntimePolymorphismOnClosedType, property,
-                            surviving.Name, surviving.IsValueType ? "a value type" : "sealed");
+                            ValidationDiagnostics.RuntimePolymorphismOnClosedType,
+                            property,
+                            surviving.Name,
+                            surviving.IsValueType ? "a value type" : "sealed"
+                        );
                     }
-                } else if (!stated) {
+                }
+                else if (!stated)
+                {
                     Report(
-                        ValidationDiagnostics.UnsealedNestedTargetHasNoMode, property,
-                        surviving.Name, property.Name);
+                        ValidationDiagnostics.UnsealedNestedTargetHasNoMode,
+                        property,
+                        surviving.Name,
+                        property.Name
+                    );
                 }
             }
 
-            properties.Add(BuildProperty(
-                property, constraints, validateNested, validatorNameFor, overriddenField,
-                validateNested ? NestedDescentCondition(member.Sources, declaredNestedCondition) : null,
-                polymorphism,
-                // The region's transcribed text owns a walk only the rules class declared; the
-                // injected machinery is still built here, which is what the entry is for.
-                nestedWalkInRegion: declaredNesting && !attributeNesting));
+            properties.Add(
+                BuildProperty(
+                    property,
+                    constraints,
+                    validateNested,
+                    validatorNameFor,
+                    overriddenField,
+                    validateNested
+                        ? NestedDescentCondition(member.Sources, declaredNestedCondition)
+                        : null,
+                    polymorphism,
+                    // The region's transcribed text owns a walk only the rules class declared; the
+                    // injected machinery is still built here, which is what the entry is for.
+                    nestedWalkInRegion: declaredNesting && !attributeNesting
+                )
+            );
             order.Add(FirstMentionOf(property, declared));
 
             _quiet = enclosingQuiet;
         }
 
-        if (!sawAnything) {
+        if (!sawAnything)
+        {
             return null;
         }
 
@@ -284,24 +348,38 @@ public sealed class AttributeFrontEnd {
         // the validator and its registration entry: emitting either would put the type parameter
         // into a non-generic class and a service table that cannot name it, which is the CS0246
         // this replaces.
-        if (type.IsGenericType) {
+        if (type.IsGenericType)
+        {
             Report(ValidationDiagnostics.GenericTypeCannotBeValidated, type, type.Name);
             return null;
         }
 
         var compilesValidatableObject = false;
 
-        if (ImplementsValidatableObject(type)) {
+        if (ImplementsValidatableObject(type))
+        {
             // Compiled-and-sequenced is information; ignored-by-configuration is information too,
             // and the tail says which library is doing the ignoring - another validation system
             // reading the same interface may still call it.
-            if (_compileDataAnnotations) {
+            if (_compileDataAnnotations)
+            {
                 compilesValidatableObject = true;
-                Report(ValidationDiagnostics.ValidatableObjectCompiled, type,
-                    type.Name, ValidationDiagnostics.ValidatableObjectEnforceTail);
-            } else {
-                ReportAs(DiagnosticSeverity.Info, ValidationDiagnostics.ValidatableObjectCompiled, type,
-                    type.Name, ValidationDiagnostics.ValidatableObjectIgnoreTail);
+                Report(
+                    ValidationDiagnostics.ValidatableObjectCompiled,
+                    type,
+                    type.Name,
+                    ValidationDiagnostics.ValidatableObjectEnforceTail
+                );
+            }
+            else
+            {
+                ReportAs(
+                    DiagnosticSeverity.Info,
+                    ValidationDiagnostics.ValidatableObjectCompiled,
+                    type,
+                    type.Name,
+                    ValidationDiagnostics.ValidatableObjectIgnoreTail
+                );
             }
         }
 
@@ -317,12 +395,18 @@ public sealed class AttributeFrontEnd {
             type.Name,
             type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             validatorNameFor(type),
-            new EquatableArray<ValidatedPropertyModel>(Ordered(properties.ToImmutable(), order, sawAttribute)),
-            new EquatableArray<string>(ImmutableArray.CreateRange(applied ?? Array.Empty<string>())),
+            new EquatableArray<ValidatedPropertyModel>(
+                Ordered(properties.ToImmutable(), order, sawAttribute)
+            ),
+            new EquatableArray<string>(
+                ImmutableArray.CreateRange(applied ?? Array.Empty<string>())
+            ),
             IsExternallyVisible(type),
             compilesValidatableObject,
             new EquatableArray<RegionModel>(
-                ImmutableArray.CreateRange(regions ?? Array.Empty<RegionModel>())));
+                ImmutableArray.CreateRange(regions ?? Array.Empty<RegionModel>())
+            )
+        );
     }
 
     /// <summary>
@@ -330,12 +414,15 @@ public sealed class AttributeFrontEnd {
     /// a collection's element type, or the property's own type with <c>Nullable&lt;T&gt;</c>
     /// unwrapped - the exact type <see cref="BuildProperty"/> names a validator for.
     /// </summary>
-    private static ITypeSymbol DescentTargetOf(IPropertySymbol property) {
-        if (TypeFacts.DictionaryTypesOf(property.Type) is { } entry) {
+    private static ITypeSymbol DescentTargetOf(IPropertySymbol property)
+    {
+        if (TypeFacts.DictionaryTypesOf(property.Type) is { } entry)
+        {
             return entry.Value;
         }
 
-        if (TypeFacts.ElementTypeOf(property.Type) is { } element) {
+        if (TypeFacts.ElementTypeOf(property.Type) is { } element)
+        {
             return element;
         }
 
@@ -353,16 +440,20 @@ public sealed class AttributeFrontEnd {
     /// <c>[ValidateNested]</c>, which produces a validator that descends even with no constraints
     /// of its own. Any narrower test would warn about a type that does get one.
     /// </remarks>
-    private bool ProducesAValidator(INamedTypeSymbol type) {
-        if (HasGenerateValidator(type) || _hasRulesClass?.Invoke(type) == true) {
+    private bool ProducesAValidator(INamedTypeSymbol type)
+    {
+        if (HasGenerateValidator(type) || _hasRulesClass?.Invoke(type) == true)
+        {
             return true;
         }
 
         // The walk rather than GetMembers(): a type whose only constraints are inherited still
         // produces a validator, so asking only about declared members would make VM1501 accuse it
         // of having no rules.
-        foreach (var member in MemberWalk.PropertiesOf(type, _compilation, CarriesConstraints)) {
-            if (member.Sources.Any(CarriesConstraints)) {
+        foreach (var member in MemberWalk.PropertiesOf(type, _compilation, CarriesConstraints))
+        {
+            if (member.Sources.Any(CarriesConstraints))
+            {
                 return true;
             }
         }
@@ -377,33 +468,45 @@ public sealed class AttributeFrontEnd {
     /// Shared with the walk, which consults it to decide whether an interface declaration is worth
     /// resolving to its implementer and whether a hidden base declaration is worth a VM1009.
     /// </remarks>
-    private bool CarriesConstraints(IPropertySymbol property) {
-        if (HasValidateNested(property)) {
+    private bool CarriesConstraints(IPropertySymbol property)
+    {
+        if (HasValidateNested(property))
+        {
             return true;
         }
 
-        foreach (var attribute in property.GetAttributes()) {
-            if (attribute.AttributeClass is not { } attributeClass) {
+        foreach (var attribute in property.GetAttributes())
+        {
+            if (attribute.AttributeClass is not { } attributeClass)
+            {
                 continue;
             }
 
             var ns = attributeClass.ContainingNamespace?.ToDisplayString();
 
-            if (ns == KnownTypes.ConstraintsNamespace ||
-                (_compileDataAnnotations && ns == KnownTypes.DataAnnotationsNamespace)) {
+            if (
+                ns == KnownTypes.ConstraintsNamespace
+                || (_compileDataAnnotations && ns == KnownTypes.DataAnnotationsNamespace)
+            )
+            {
                 return true;
             }
 
             // A CustomConstraintAttribute subclass is native vocabulary wherever it is declared,
             // independent of the DataAnnotations switch. An IConstraintFor<T> implementer is the
             // same vocabulary's instance shape, and counts for the same reason.
-            if (DerivesFromCustomConstraint(attributeClass) || ImplementsConstraintInterface(attributeClass)) {
+            if (
+                DerivesFromCustomConstraint(attributeClass)
+                || ImplementsConstraintInterface(attributeClass)
+            )
+            {
                 return true;
             }
 
             // A custom ValidationAttribute now compiles to an invocation, so a property carrying
             // only one is a validated property - without this, the walk would never read it.
-            if (_compileDataAnnotations && DerivesFromValidationAttribute(attributeClass)) {
+            if (_compileDataAnnotations && DerivesFromValidationAttribute(attributeClass))
+            {
                 return true;
             }
         }
@@ -419,9 +522,16 @@ public sealed class AttributeFrontEnd {
     /// public type nested inside an internal one is internal in effect, and a public validator over
     /// it is the same CS0051 as one over a plainly internal type.
     /// </remarks>
-    private static bool IsExternallyVisible(INamedTypeSymbol type) {
-        for (INamedTypeSymbol? current = type; current is not null; current = current.ContainingType) {
-            if (current.DeclaredAccessibility != Accessibility.Public) {
+    private static bool IsExternallyVisible(INamedTypeSymbol type)
+    {
+        for (
+            INamedTypeSymbol? current = type;
+            current is not null;
+            current = current.ContainingType
+        )
+        {
+            if (current.DeclaredAccessibility != Accessibility.Public)
+            {
                 return false;
             }
         }
@@ -444,9 +554,13 @@ public sealed class AttributeFrontEnd {
     /// would be worse than either: source order stays authoritative the moment source is involved.
     /// </remarks>
     private static ImmutableArray<ValidatedPropertyModel> Ordered(
-        ImmutableArray<ValidatedPropertyModel> properties, List<int> order, bool sawAttribute) {
-
-        if (sawAttribute || properties.Length < 2) {
+        ImmutableArray<ValidatedPropertyModel> properties,
+        List<int> order,
+        bool sawAttribute
+    )
+    {
+        if (sawAttribute || properties.Length < 2)
+        {
             return properties;
         }
 
@@ -459,13 +573,20 @@ public sealed class AttributeFrontEnd {
     }
 
     /// <summary>Where a property is first constrained by a rules class, or int.MaxValue.</summary>
-    private static int FirstMentionOf(IPropertySymbol property, IReadOnlyList<DeclaredRule>? declared) {
-        if (declared is null) {
+    private static int FirstMentionOf(
+        IPropertySymbol property,
+        IReadOnlyList<DeclaredRule>? declared
+    )
+    {
+        if (declared is null)
+        {
             return int.MaxValue;
         }
 
-        for (var i = 0; i < declared.Count; i++) {
-            if (SymbolEqualityComparer.Default.Equals(declared[i].Property, property)) {
+        for (var i = 0; i < declared.Count; i++)
+        {
+            if (SymbolEqualityComparer.Default.Equals(declared[i].Property, property))
+            {
                 return i;
             }
         }
@@ -481,8 +602,9 @@ public sealed class AttributeFrontEnd {
         string? overriddenField = null,
         string? condition = null,
         PolymorphismMode polymorphism = PolymorphismMode.DeclaredOnly,
-        bool nestedWalkInRegion = false) {
-
+        bool nestedWalkInRegion = false
+    )
+    {
         var type = property.Type;
         var isString = type.SpecialType == SpecialType.System_String;
         var elementType = TypeFacts.ElementTypeOf(type);
@@ -497,24 +619,36 @@ public sealed class AttributeFrontEnd {
 
         var dictionary = TypeFacts.DictionaryTypesOf(type);
 
-        if (validateNested) {
-            if (dictionary is { } entry) {
+        if (validateNested)
+        {
+            if (dictionary is { } entry)
+            {
                 shape = PropertyShape.Dictionary;
-                elementTypeName = entry.Value.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                elementTypeName = entry.Value.ToDisplayString(
+                    SymbolDisplayFormat.FullyQualifiedFormat
+                );
 
-                if (entry.Value is INamedTypeSymbol namedValue) {
+                if (entry.Value is INamedTypeSymbol namedValue)
+                {
                     elementValidatorName = QualifiedValidator(namedValue, validatorNameFor);
                     nestedTarget = namedValue;
                 }
-            } else if (elementType is not null) {
+            }
+            else if (elementType is not null)
+            {
                 shape = PropertyShape.Collection;
-                elementTypeName = elementType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                elementTypeName = elementType.ToDisplayString(
+                    SymbolDisplayFormat.FullyQualifiedFormat
+                );
 
-                if (elementType is INamedTypeSymbol namedElement) {
+                if (elementType is INamedTypeSymbol namedElement)
+                {
                     elementValidatorName = QualifiedValidator(namedElement, validatorNameFor);
                     nestedTarget = namedElement;
                 }
-            } else if (type is INamedTypeSymbol namedType) {
+            }
+            else if (type is INamedTypeSymbol namedType)
+            {
                 shape = PropertyShape.Object;
 
                 // Nullable<Money> is not what the descent reaches - Money is. Reading the property's
@@ -529,8 +663,11 @@ public sealed class AttributeFrontEnd {
                 // Carried explicitly for the nullable case. ElementType() falls back to the
                 // property's own type name when this is null, which would ask for
                 // IValidatorFor<Money?> - a different service from the one that is registered.
-                if (!SymbolEqualityComparer.Default.Equals(target, namedType)) {
-                    elementTypeName = target.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                if (!SymbolEqualityComparer.Default.Equals(target, namedType))
+                {
+                    elementTypeName = target.ToDisplayString(
+                        SymbolDisplayFormat.FullyQualifiedFormat
+                    );
                 }
 
                 elementValidatorName = QualifiedValidator(target, validatorNameFor);
@@ -540,7 +677,12 @@ public sealed class AttributeFrontEnd {
 
         var subtypes = ImmutableArray<SubtypeModel>.Empty;
 
-        if (polymorphism == PolymorphismMode.CompileTime && nestedTarget is not null && _subtypesOf is not null) {
+        if (
+            polymorphism == PolymorphismMode.CompileTime
+            && nestedTarget is not null
+            && _subtypesOf is not null
+        )
+        {
             // Sorted most-derived first, then ordinally. A type pattern matches derived types too,
             // so `case Card` ahead of `case Premium : Card` makes the second arm unreachable -
             // CS8120, raised inside a generated file. The ordinal tiebreak is for determinism: an
@@ -554,7 +696,8 @@ public sealed class AttributeFrontEnd {
                 .Select(subtype => new SubtypeModel(
                     subtype.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                     QualifiedValidator(subtype.Type, validatorNameFor),
-                    subtype.Depth))
+                    subtype.Depth
+                ))
                 .OrderByDescending(subtype => subtype.Depth)
                 .ThenBy(subtype => subtype.QualifiedTypeName, StringComparer.Ordinal)
                 .ToImmutableArray();
@@ -580,7 +723,8 @@ public sealed class AttributeFrontEnd {
             polymorphism,
             new EquatableArray<SubtypeModel>(subtypes),
             DisplayNameFor(property),
-            nestedWalkInRegion);
+            nestedWalkInRegion
+        );
     }
 
     /// <summary>
@@ -588,14 +732,19 @@ public sealed class AttributeFrontEnd {
     /// when present, otherwise the CLR name. Resolved here, at build time, so the runtime bridge
     /// never enters the reflective resolution the DataAnnotations constructors are annotated for.
     /// </summary>
-    private static string DisplayNameFor(IPropertySymbol property) {
-        foreach (var attribute in property.GetAttributes()) {
-            if (attribute.AttributeClass?.ToDisplayString() != KnownTypes.DisplayAttribute) {
+    private static string DisplayNameFor(IPropertySymbol property)
+    {
+        foreach (var attribute in property.GetAttributes())
+        {
+            if (attribute.AttributeClass?.ToDisplayString() != KnownTypes.DisplayAttribute)
+            {
                 continue;
             }
 
-            foreach (var named in attribute.NamedArguments) {
-                if (named.Key == "Name" && named.Value.Value is string displayName) {
+            foreach (var named in attribute.NamedArguments)
+            {
+                if (named.Key == "Name" && named.Value.Value is string displayName)
+                {
                     return displayName;
                 }
             }
@@ -610,7 +759,8 @@ public sealed class AttributeFrontEnd {
     /// is what §4.2 promises.
     /// </summary>
     private static IEnumerable<ConstraintModel> Order(List<ConstraintModel> constraints) =>
-        constraints.Where(constraint => constraint.Kind == ConstraintKind.Required)
+        constraints
+            .Where(constraint => constraint.Kind == ConstraintKind.Required)
             .Concat(constraints.Where(constraint => constraint.Kind != ConstraintKind.Required));
 
     /// <summary>
@@ -632,32 +782,48 @@ public sealed class AttributeFrontEnd {
     /// diagnostic gives would be wrong.
     /// </para>
     /// </remarks>
-    private void ReportRecordParameterConstraints(INamedTypeSymbol type) {
-        if (!type.IsRecord) {
+    private void ReportRecordParameterConstraints(INamedTypeSymbol type)
+    {
+        if (!type.IsRecord)
+        {
             return;
         }
 
-        foreach (var constructor in type.InstanceConstructors) {
-            if (!IsPrimaryConstructor(constructor)) {
+        foreach (var constructor in type.InstanceConstructors)
+        {
+            if (!IsPrimaryConstructor(constructor))
+            {
                 continue;
             }
 
-            foreach (var parameter in constructor.Parameters) {
-                foreach (var attribute in parameter.GetAttributes()) {
-                    if (attribute.AttributeClass is not { } attributeClass || !IsConstraintAttribute(attributeClass)) {
+            foreach (var parameter in constructor.Parameters)
+            {
+                foreach (var attribute in parameter.GetAttributes())
+                {
+                    if (
+                        attribute.AttributeClass is not { } attributeClass
+                        || !IsConstraintAttribute(attributeClass)
+                    )
+                    {
                         continue;
                     }
 
                     // Qualified because this class has a Location(ISymbol) helper of its own, which
                     // otherwise shadows the type.
                     var location = attribute.ApplicationSyntaxReference is { } reference
-                        ? Microsoft.CodeAnalysis.Location.Create(reference.SyntaxTree, reference.Span)
+                        ? Microsoft.CodeAnalysis.Location.Create(
+                            reference.SyntaxTree,
+                            reference.Span
+                        )
                         : Location(parameter);
 
-                    _diagnostics.Add(Diagnostic.Create(
-                        ValidationDiagnostics.RecordParameterMissingPropertyTarget,
-                        location,
-                        Unsuffixed(attributeClass.Name)));
+                    _diagnostics.Add(
+                        Diagnostic.Create(
+                            ValidationDiagnostics.RecordParameterMissingPropertyTarget,
+                            location,
+                            Unsuffixed(attributeClass.Name)
+                        )
+                    );
                 }
             }
         }
@@ -671,9 +837,12 @@ public sealed class AttributeFrontEnd {
     /// <c>ConstructorDeclarationSyntax</c>. The record's copy constructor is implicit and has no
     /// declaring syntax at all.
     /// </remarks>
-    private static bool IsPrimaryConstructor(IMethodSymbol constructor) {
-        foreach (var reference in constructor.DeclaringSyntaxReferences) {
-            if (reference.GetSyntax() is Microsoft.CodeAnalysis.CSharp.Syntax.TypeDeclarationSyntax) {
+    private static bool IsPrimaryConstructor(IMethodSymbol constructor)
+    {
+        foreach (var reference in constructor.DeclaringSyntaxReferences)
+        {
+            if (reference.GetSyntax() is Microsoft.CodeAnalysis.CSharp.Syntax.TypeDeclarationSyntax)
+            {
                 return true;
             }
         }
@@ -681,20 +850,27 @@ public sealed class AttributeFrontEnd {
         return false;
     }
 
-    private bool IsConstraintAttribute(INamedTypeSymbol attributeClass) {
+    private bool IsConstraintAttribute(INamedTypeSymbol attributeClass)
+    {
         var ns = attributeClass.ContainingNamespace?.ToDisplayString();
 
-        if (ns == KnownTypes.ConstraintsNamespace) {
+        if (ns == KnownTypes.ConstraintsNamespace)
+        {
             return true;
         }
 
-        if (DerivesFromCustomConstraint(attributeClass) || ImplementsConstraintInterface(attributeClass)) {
+        if (
+            DerivesFromCustomConstraint(attributeClass)
+            || ImplementsConstraintInterface(attributeClass)
+        )
+        {
             return true;
         }
 
         // Only when the second vocabulary is switched on. With it off the attribute is not enforced
         // wherever it sits, and VM2001 is the diagnostic with that news.
-        if (!_compileDataAnnotations) {
+        if (!_compileDataAnnotations)
+        {
             return false;
         }
 
@@ -719,19 +895,28 @@ public sealed class AttributeFrontEnd {
     /// parse takes its constraint with it, so the build fails on the diagnostic alone rather than
     /// also on generated code that will not compile.
     /// </remarks>
-    private void ResolveRangeBounds(ISymbol member, ITypeSymbol memberType, List<ConstraintModel> constraints) {
-        if (!TypeFacts.IsOrdered(memberType)) {
+    private void ResolveRangeBounds(
+        ISymbol member,
+        ITypeSymbol memberType,
+        List<ConstraintModel> constraints
+    )
+    {
+        if (!TypeFacts.IsOrdered(memberType))
+        {
             return;
         }
 
-        for (var i = constraints.Count - 1; i >= 0; i--) {
+        for (var i = constraints.Count - 1; i >= 0; i--)
+        {
             var constraint = constraints[i];
 
-            if (constraint.Kind != ConstraintKind.Range) {
+            if (constraint.Kind != ConstraintKind.Range)
+            {
                 continue;
             }
 
-            if (constraint.Min is null && constraint.Max is null) {
+            if (constraint.Min is null && constraint.Max is null)
+            {
                 Report(ValidationDiagnostics.RangeHasNoBounds, member, member.Name);
                 constraints.RemoveAt(i);
                 continue;
@@ -745,19 +930,26 @@ public sealed class AttributeFrontEnd {
             var max = constraint.Max;
             var parsed = true;
 
-            if (min is not null) {
+            if (min is not null)
+            {
                 parsed = RangeBoundReader.TryResolve(memberType, min, out var resolved);
                 min = resolved;
             }
 
-            if (parsed && max is not null) {
+            if (parsed && max is not null)
+            {
                 parsed = RangeBoundReader.TryResolve(memberType, max, out var resolved);
                 max = resolved;
             }
 
-            if (!parsed) {
-                Report(ValidationDiagnostics.RangeBoundsNotParseable, member,
-                    member.Name, memberType.ToDisplayString());
+            if (!parsed)
+            {
+                Report(
+                    ValidationDiagnostics.RangeBoundsNotParseable,
+                    member,
+                    member.Name,
+                    memberType.ToDisplayString()
+                );
 
                 constraints.RemoveAt(i);
                 continue;
@@ -796,8 +988,9 @@ public sealed class AttributeFrontEnd {
         ITypeSymbol memberType,
         List<ConstraintModel> constraints,
         bool isString,
-        ITypeSymbol? elementType) {
-
+        ITypeSymbol? elementType
+    )
+    {
         ResolveRangeBounds(member, memberType, constraints);
         ResolveMultipleOfDivisors(member, memberType, constraints);
         ResolveEnumMembers(member, memberType, constraints);
@@ -815,31 +1008,55 @@ public sealed class AttributeFrontEnd {
     /// never writes <c>% 0</c> - CS0020 for an integral member, DivideByZeroException for a decimal
     /// one, and either way a failure inside generated code.
     /// </remarks>
-    private void ResolveMultipleOfDivisors(ISymbol member, ITypeSymbol memberType, List<ConstraintModel> constraints) {
-        if (!MultipleOfReader.IsSupported(memberType)) {
+    private void ResolveMultipleOfDivisors(
+        ISymbol member,
+        ITypeSymbol memberType,
+        List<ConstraintModel> constraints
+    )
+    {
+        if (!MultipleOfReader.IsSupported(memberType))
+        {
             return;
         }
 
-        for (var i = constraints.Count - 1; i >= 0; i--) {
+        for (var i = constraints.Count - 1; i >= 0; i--)
+        {
             var constraint = constraints[i];
 
-            if (constraint.Kind != ConstraintKind.MultipleOf) {
+            if (constraint.Kind != ConstraintKind.MultipleOf)
+            {
                 continue;
             }
 
-            if (!MultipleOfReader.TryResolve(
-                    memberType, constraint.Divisor ?? "0",
-                    out var divisor, out var value, out var decimalDomain)) {
-
-                Report(ValidationDiagnostics.MultipleOfDivisorNotParseable, member,
-                    member.Name, memberType.ToDisplayString());
+            if (
+                !MultipleOfReader.TryResolve(
+                    memberType,
+                    constraint.Divisor ?? "0",
+                    out var divisor,
+                    out var value,
+                    out var decimalDomain
+                )
+            )
+            {
+                Report(
+                    ValidationDiagnostics.MultipleOfDivisorNotParseable,
+                    member,
+                    member.Name,
+                    memberType.ToDisplayString()
+                );
 
                 constraints.RemoveAt(i);
                 continue;
             }
 
-            if (value <= 0m) {
-                Report(ValidationDiagnostics.MultipleOfDivisorNotPositive, member, member.Name, divisor);
+            if (value <= 0m)
+            {
+                Report(
+                    ValidationDiagnostics.MultipleOfDivisorNotPositive,
+                    member,
+                    member.Name,
+                    divisor
+                );
                 constraints.RemoveAt(i);
                 continue;
             }
@@ -864,9 +1081,16 @@ public sealed class AttributeFrontEnd {
     /// the question there is whether any bit outside the declared ones is set.
     /// </para>
     /// </remarks>
-    private void ResolveEnumMembers(ISymbol member, ITypeSymbol memberType, List<ConstraintModel> constraints) {
-        for (var i = constraints.Count - 1; i >= 0; i--) {
-            if (constraints[i].Kind != ConstraintKind.EnumDefined) {
+    private void ResolveEnumMembers(
+        ISymbol member,
+        ITypeSymbol memberType,
+        List<ConstraintModel> constraints
+    )
+    {
+        for (var i = constraints.Count - 1; i >= 0; i--)
+        {
+            if (constraints[i].Kind != ConstraintKind.EnumDefined)
+            {
                 continue;
             }
 
@@ -874,60 +1098,83 @@ public sealed class AttributeFrontEnd {
                 ? ((INamedTypeSymbol)memberType).TypeArguments[0]
                 : memberType;
 
-            if (underlying is not INamedTypeSymbol { EnumUnderlyingType: not null } enumType) {
-                Report(ValidationDiagnostics.EnumDefinedOnNonEnum, member,
-                    member.Name, memberType.ToDisplayString());
+            if (underlying is not INamedTypeSymbol { EnumUnderlyingType: not null } enumType)
+            {
+                Report(
+                    ValidationDiagnostics.EnumDefinedOnNonEnum,
+                    member,
+                    member.Name,
+                    memberType.ToDisplayString()
+                );
                 constraints.RemoveAt(i);
                 continue;
             }
 
             var qualified = enumType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
-            var members = enumType.GetMembers()
+            var members = enumType
+                .GetMembers()
                 .OfType<IFieldSymbol>()
                 .Where(field => field.HasConstantValue)
                 .ToList();
 
             // An enum with no members admits no value at all. Reported as unemittable rather than
             // emitted as a check nothing can pass.
-            if (members.Count == 0) {
-                Report(ValidationDiagnostics.EnumDefinedOnNonEnum, member,
-                    member.Name, memberType.ToDisplayString());
+            if (members.Count == 0)
+            {
+                Report(
+                    ValidationDiagnostics.EnumDefinedOnNonEnum,
+                    member,
+                    member.Name,
+                    memberType.ToDisplayString()
+                );
                 constraints.RemoveAt(i);
                 continue;
             }
 
-            var isFlags = enumType.GetAttributes().Any(a =>
-                a.AttributeClass?.ToDisplayString() == "System.FlagsAttribute");
+            var isFlags = enumType
+                .GetAttributes()
+                .Any(a => a.AttributeClass?.ToDisplayString() == "System.FlagsAttribute");
 
-            if (isFlags) {
+            if (isFlags)
+            {
                 var mask = string.Join(" | ", members.Select(m => $"{qualified}.{m.Name}"));
 
                 // Values as well as displays, kept parallel: the mask is what the check tests, but
                 // the message still names the flags, and Displays reads the two together.
-                constraints[i] = constraints[i] with {
+                constraints[i] = constraints[i] with
+                {
                     FlagsMask = $"({mask})",
                     Values = new EquatableArray<string>(
-                        members.Select(m => $"{qualified}.{m.Name}").ToImmutableArray()),
+                        members.Select(m => $"{qualified}.{m.Name}").ToImmutableArray()
+                    ),
                     ValueDisplays = new EquatableArray<string>(
-                        members.Select(m => m.Name).ToImmutableArray()),
+                        members.Select(m => m.Name).ToImmutableArray()
+                    ),
                 };
                 continue;
             }
 
-            constraints[i] = constraints[i] with {
+            constraints[i] = constraints[i] with
+            {
                 Values = new EquatableArray<string>(
-                    members.Select(m => $"{qualified}.{m.Name}").ToImmutableArray()),
+                    members.Select(m => $"{qualified}.{m.Name}").ToImmutableArray()
+                ),
                 ValueDisplays = new EquatableArray<string>(
-                    members.Select(m => m.Name).ToImmutableArray()),
+                    members.Select(m => m.Name).ToImmutableArray()
+                ),
             };
         }
     }
 
     private void ValidateConstraintsAgainstType(
-        ISymbol member, ITypeSymbol memberType, List<ConstraintModel> constraints,
-        bool isString, ITypeSymbol? elementType) {
-
+        ISymbol member,
+        ITypeSymbol memberType,
+        List<ConstraintModel> constraints,
+        bool isString,
+        ITypeSymbol? elementType
+    )
+    {
         var isCollection = elementType is not null;
 
         // Backwards, so a constraint can be dropped in place - the same shape ResolveRangeBounds and
@@ -939,21 +1186,33 @@ public sealed class AttributeFrontEnd {
         // one names their property. One mistake, three errors, two of them noise. Diagnostics whose
         // code still compiles stay: they are advice about a check that will not fail, not about a
         // check that cannot be written.
-        for (var i = constraints.Count - 1; i >= 0; i--) {
+        for (var i = constraints.Count - 1; i >= 0; i--)
+        {
             var constraint = constraints[i];
             var typeName = memberType.ToDisplayString();
             var unemittable = false;
 
-            switch (constraint.Kind) {
+            switch (constraint.Kind)
+            {
                 case ConstraintKind.StringLength when !isString:
-                    Report(ValidationDiagnostics.StringConstraintOnNonString, member,
-                        "[StringLength]", member.Name, typeName);
+                    Report(
+                        ValidationDiagnostics.StringConstraintOnNonString,
+                        member,
+                        "[StringLength]",
+                        member.Name,
+                        typeName
+                    );
                     unemittable = true;
                     break;
 
                 case ConstraintKind.Pattern when !isString:
-                    Report(ValidationDiagnostics.StringConstraintOnNonString, member,
-                        "[Pattern]", member.Name, typeName);
+                    Report(
+                        ValidationDiagnostics.StringConstraintOnNonString,
+                        member,
+                        "[Pattern]",
+                        member.Name,
+                        typeName
+                    );
                     unemittable = true;
                     break;
 
@@ -961,31 +1220,60 @@ public sealed class AttributeFrontEnd {
                 // DataAnnotations would run the attribute against the mistyped member and fail
                 // every non-null value; a rule that can never pass is a build error here, the
                 // same trade VM1201 makes for one that can never fail.
-                case ConstraintKind.Email or ConstraintKind.Phone or ConstraintKind.CreditCard
-                    or ConstraintKind.Base64 or ConstraintKind.FileExtension when !isString:
-                case ConstraintKind.Url when !isString && !DataAnnotationsConstraintReader.IsUri(memberType):
-                    Report(ValidationDiagnostics.StringConstraintOnNonString, member,
-                        FormatConstraintDisplay(constraint.Kind), member.Name, typeName);
+                case ConstraintKind.Email
+                or ConstraintKind.Phone
+                or ConstraintKind.CreditCard
+                or ConstraintKind.Base64
+                or ConstraintKind.FileExtension when !isString:
+                case ConstraintKind.Url
+                    when !isString && !DataAnnotationsConstraintReader.IsUri(memberType):
+                    Report(
+                        ValidationDiagnostics.StringConstraintOnNonString,
+                        member,
+                        FormatConstraintDisplay(constraint.Kind),
+                        member.Name,
+                        typeName
+                    );
                     unemittable = true;
                     break;
 
                 case ConstraintKind.ItemCount when !isCollection:
-                    Report(ValidationDiagnostics.ItemCountOnNonCollection, member, member.Name, typeName);
+                    Report(
+                        ValidationDiagnostics.ItemCountOnNonCollection,
+                        member,
+                        member.Name,
+                        typeName
+                    );
                     unemittable = true;
                     break;
 
                 case ConstraintKind.Range when !TypeFacts.IsOrdered(memberType):
-                    Report(ValidationDiagnostics.RangeOnUnorderedType, member, member.Name, typeName);
+                    Report(
+                        ValidationDiagnostics.RangeOnUnorderedType,
+                        member,
+                        member.Name,
+                        typeName
+                    );
                     unemittable = true;
                     break;
 
                 case ConstraintKind.MultipleOf when !MultipleOfReader.IsSupported(memberType):
-                    Report(ValidationDiagnostics.MultipleOfOnUnsupportedType, member, member.Name, typeName);
+                    Report(
+                        ValidationDiagnostics.MultipleOfOnUnsupportedType,
+                        member,
+                        member.Name,
+                        typeName
+                    );
                     unemittable = true;
                     break;
 
                 case ConstraintKind.UniqueItems when !isCollection:
-                    Report(ValidationDiagnostics.UniqueItemsOnNonCollection, member, member.Name, typeName);
+                    Report(
+                        ValidationDiagnostics.UniqueItemsOnNonCollection,
+                        member,
+                        member.Name,
+                        typeName
+                    );
                     unemittable = true;
                     break;
 
@@ -993,112 +1281,167 @@ public sealed class AttributeFrontEnd {
                 // equality of its own compares by reference and two elements with identical contents
                 // are "unique". A rule that passes for the wrong reason, which is worse than one
                 // that fails.
-                case ConstraintKind.UniqueItems when elementType is { } element && TypeFacts.ComparesByReference(element):
-                    Report(ValidationDiagnostics.UniqueItemsComparesByReference, member,
-                        member.Name, element.ToDisplayString());
+                case ConstraintKind.UniqueItems
+                    when elementType is { } element && TypeFacts.ComparesByReference(element):
+                    Report(
+                        ValidationDiagnostics.UniqueItemsComparesByReference,
+                        member,
+                        member.Name,
+                        element.ToDisplayString()
+                    );
                     break;
 
                 // Dropped as well as reported, and the two agree: the diagnostic says the check can
                 // never fail, and a check that can never fail is the same as no check. Emitting it
                 // asked whether an int was null, which does not compile.
-                case ConstraintKind.Required when memberType.IsValueType && !TypeFacts.IsNullableValueType(memberType):
-                    Report(ValidationDiagnostics.RequiredOnNonNullableValueType, member, member.Name);
+                case ConstraintKind.Required
+                    when memberType.IsValueType && !TypeFacts.IsNullableValueType(memberType):
+                    Report(
+                        ValidationDiagnostics.RequiredOnNonNullableValueType,
+                        member,
+                        member.Name
+                    );
                     unemittable = true;
                     break;
             }
 
-            if (constraint.Kind is ConstraintKind.StringLength or ConstraintKind.ItemCount &&
-                int.TryParse(constraint.Min, out var min) &&
-                int.TryParse(constraint.Max, out var max) &&
-                min > max) {
+            if (
+                constraint.Kind is ConstraintKind.StringLength or ConstraintKind.ItemCount
+                && int.TryParse(constraint.Min, out var min)
+                && int.TryParse(constraint.Max, out var max)
+                && min > max
+            )
+            {
                 Report(ValidationDiagnostics.MinExceedsMax, member, member.Name);
             }
 
-            if (constraint.Kind == ConstraintKind.Pattern && constraint.RegexAccessor is null &&
-                constraint.Pattern is { } pattern && !TypeFacts.IsValidRegex(pattern, out var error)) {
+            if (
+                constraint.Kind == ConstraintKind.Pattern
+                && constraint.RegexAccessor is null
+                && constraint.Pattern is { } pattern
+                && !TypeFacts.IsValidRegex(pattern, out var error)
+            )
+            {
                 Report(ValidationDiagnostics.InvalidPattern, member, member.Name, error);
                 unemittable = true;
             }
 
             // RegexOptions.Compiled is 8. Meaningless against a source-generated regex, and asking
             // for it usually means someone is carrying over a habit this library exists to remove.
-            if (constraint.Kind == ConstraintKind.Pattern && (constraint.RegexOptions & 8) != 0) {
+            if (constraint.Kind == ConstraintKind.Pattern && (constraint.RegexOptions & 8) != 0)
+            {
                 Report(ValidationDiagnostics.CompiledRegexRequested, member, member.Name);
             }
 
-            if (unemittable) {
+            if (unemittable)
+            {
                 constraints.RemoveAt(i);
             }
         }
     }
 
     /// <summary>The attribute name a format kind's diagnostics print, as it would be typed.</summary>
-    private static string FormatConstraintDisplay(ConstraintKind kind) => kind switch {
-        ConstraintKind.Email => "[EmailAddress]",
-        ConstraintKind.Phone => "[Phone]",
-        ConstraintKind.Url => "[Url]",
-        ConstraintKind.CreditCard => "[CreditCard]",
-        ConstraintKind.Base64 => "[Base64String]",
-        _ => "[FileExtensions]",
-    };
+    private static string FormatConstraintDisplay(ConstraintKind kind) =>
+        kind switch
+        {
+            ConstraintKind.Email => "[EmailAddress]",
+            ConstraintKind.Phone => "[Phone]",
+            ConstraintKind.Url => "[Url]",
+            ConstraintKind.CreditCard => "[CreditCard]",
+            ConstraintKind.Base64 => "[Base64String]",
+            _ => "[FileExtensions]",
+        };
 
-    public List<ConstraintModel> ReadConstraintsFor(ISymbol member, ITypeSymbol memberType) {
+    public List<ConstraintModel> ReadConstraintsFor(ISymbol member, ITypeSymbol memberType)
+    {
         var constraints = new List<ConstraintModel>();
 
-        foreach (var attribute in member.GetAttributes()) {
+        foreach (var attribute in member.GetAttributes())
+        {
             var attributeClass = attribute.AttributeClass;
-            if (attributeClass is null) {
+            if (attributeClass is null)
+            {
                 continue;
             }
 
             var ns = attributeClass.ContainingNamespace?.ToDisplayString();
 
-            if (ns == KnownTypes.ConstraintsNamespace) {
+            if (ns == KnownTypes.ConstraintsNamespace)
+            {
                 var native = NativeConstraintReader.Read(attribute, attributeClass.Name);
 
-                if (native is { Kind: ConstraintKind.Pattern }) {
+                if (native is { Kind: ConstraintKind.Pattern })
+                {
                     native = ResolvePattern(native, attribute, member);
                 }
 
-                if (native is not null) {
+                if (native is not null)
+                {
                     constraints.Add(ResolveCondition(native, member));
                 }
 
                 continue;
             }
 
-            if (ns != KnownTypes.DataAnnotationsNamespace) {
+            if (ns != KnownTypes.DataAnnotationsNamespace)
+            {
                 // The instance shape is read first, so an attribute that also subclasses
                 // ValidationAttribute takes the native path - that combination is the migration
                 // story, one class that goes fast here and keeps working under MVC and
                 // Validator.TryValidateObject. Combining it with the static shape is refused
                 // instead: both are native, both were opted into deliberately, and the two
                 // disagree about who runs the check.
-                if (ConstraintInterfacesOf(attributeClass) is { Count: > 0 } contracts) {
-                    if (DerivesFromCustomConstraint(attributeClass)) {
-                        Report(ValidationDiagnostics.ConstraintInterfaceUnusable, member,
-                            attributeClass.Name, member.Name,
-                            "it derives from CustomConstraintAttribute and also implements " +
-                            "IConstraintFor<T>, and the two shapes disagree about who runs the " +
-                            "check - pick one");
+                if (ConstraintInterfacesOf(attributeClass) is { Count: > 0 } contracts)
+                {
+                    if (DerivesFromCustomConstraint(attributeClass))
+                    {
+                        Report(
+                            ValidationDiagnostics.ConstraintInterfaceUnusable,
+                            member,
+                            attributeClass.Name,
+                            member.Name,
+                            "it derives from CustomConstraintAttribute and also implements "
+                                + "IConstraintFor<T>, and the two shapes disagree about who runs the "
+                                + "check - pick one"
+                        );
                         continue;
                     }
 
-                    ReadInstanceConstraint(member, memberType, attributeClass, attribute, contracts, constraints);
+                    ReadInstanceConstraint(
+                        member,
+                        memberType,
+                        attributeClass,
+                        attribute,
+                        contracts,
+                        constraints
+                    );
                     continue;
                 }
 
-                if (DerivesFromCustomConstraint(attributeClass)) {
-                    ReadCustomConstraint(member, memberType, attributeClass, attribute, constraints);
+                if (DerivesFromCustomConstraint(attributeClass))
+                {
+                    ReadCustomConstraint(
+                        member,
+                        memberType,
+                        attributeClass,
+                        attribute,
+                        constraints
+                    );
                     continue;
                 }
 
-                if (DerivesFromValidationAttribute(attributeClass)) {
-                    if (!_compileDataAnnotations) {
-                        ReportAs(DiagnosticSeverity.Info,
-                            ValidationDiagnostics.CustomValidationAttribute, member,
-                            attributeClass.Name, member.Name,
-                            ValidationDiagnostics.CustomValidationIgnoreTail);
+                if (DerivesFromValidationAttribute(attributeClass))
+                {
+                    if (!_compileDataAnnotations)
+                    {
+                        ReportAs(
+                            DiagnosticSeverity.Info,
+                            ValidationDiagnostics.CustomValidationAttribute,
+                            member,
+                            attributeClass.Name,
+                            member.Name,
+                            ValidationDiagnostics.CustomValidationIgnoreTail
+                        );
                         continue;
                     }
 
@@ -1106,42 +1449,76 @@ public sealed class AttributeFrontEnd {
                     // faithful reading of an attribute whose check is user code. The unrenderable
                     // case is a broken compilation's Error constant, and falls back to the old
                     // not-enforced Warning rather than emitting code that cannot compile.
-                    if (AttributeConstructionRenderer.Render(attribute) is { } construction) {
-                        constraints.Add(new ConstraintModel(
-                            ConstraintKind.CustomAttribute, CustomConstruction: construction));
+                    if (AttributeConstructionRenderer.Render(attribute) is { } construction)
+                    {
+                        constraints.Add(
+                            new ConstraintModel(
+                                ConstraintKind.CustomAttribute,
+                                CustomConstruction: construction
+                            )
+                        );
 
-                        Report(ValidationDiagnostics.CustomValidationAttribute, member,
-                            attributeClass.Name, member.Name,
-                            ValidationDiagnostics.CustomValidationInvokeTail);
+                        Report(
+                            ValidationDiagnostics.CustomValidationAttribute,
+                            member,
+                            attributeClass.Name,
+                            member.Name,
+                            ValidationDiagnostics.CustomValidationInvokeTail
+                        );
 
                         // The one part of an invoked attribute the trimmer can break, visible in
                         // metadata and so reported where it is declared.
-                        if (NativeConstraintReader.Named(attribute, "ErrorMessageResourceType") is not null) {
-                            Report(ValidationDiagnostics.ResourceErrorMessageUnderTrimming, member,
-                                attributeClass.Name, member.Name);
+                        if (
+                            NativeConstraintReader.Named(attribute, "ErrorMessageResourceType")
+                            is not null
+                        )
+                        {
+                            Report(
+                                ValidationDiagnostics.ResourceErrorMessageUnderTrimming,
+                                member,
+                                attributeClass.Name,
+                                member.Name
+                            );
                         }
-                    } else {
-                        ReportAs(DiagnosticSeverity.Warning,
-                            ValidationDiagnostics.CustomValidationAttribute, member,
-                            attributeClass.Name, member.Name,
-                            ValidationDiagnostics.CustomValidationEnforceTail);
+                    }
+                    else
+                    {
+                        ReportAs(
+                            DiagnosticSeverity.Warning,
+                            ValidationDiagnostics.CustomValidationAttribute,
+                            member,
+                            attributeClass.Name,
+                            member.Name,
+                            ValidationDiagnostics.CustomValidationEnforceTail
+                        );
                     }
                 }
 
                 continue;
             }
 
-            if (!_compileDataAnnotations) {
-                if (DataAnnotationsConstraintReader.IsConstraint(attributeClass.Name)) {
-                    Report(ValidationDiagnostics.DataAnnotationsSkipped, member,
-                        attributeClass.Name, member.Name);
+            if (!_compileDataAnnotations)
+            {
+                if (DataAnnotationsConstraintReader.IsConstraint(attributeClass.Name))
+                {
+                    Report(
+                        ValidationDiagnostics.DataAnnotationsSkipped,
+                        member,
+                        attributeClass.Name,
+                        member.Name
+                    );
                 }
 
                 continue;
             }
 
-            var outcome = DataAnnotationsConstraintReader.Read(attribute, attributeClass.Name, memberType);
-            if (outcome.Constraint is not null) {
+            var outcome = DataAnnotationsConstraintReader.Read(
+                attribute,
+                attributeClass.Name,
+                memberType
+            );
+            if (outcome.Constraint is not null)
+            {
                 constraints.Add(outcome.Constraint);
             }
 
@@ -1149,24 +1526,33 @@ public sealed class AttributeFrontEnd {
             // base or interface declaration is reported where it is declared, not once per type
             // that inherits it - which matters doubly now that VM2004 fires on every compiled
             // format attribute rather than only on mistakes.
-            if (outcome.Diagnostic is not null) {
+            if (outcome.Diagnostic is not null)
+            {
                 // Only reached with the front end on, so the VM2002 fallback tail is always the
                 // enforce one. The reader supplies Detail where its diagnostic's message has a
                 // third placeholder - VM2005's member type, VM2004's compiled semantics; VM2003
                 // has none and ignores the argument.
                 Report(
-                    outcome.Diagnostic, member, attributeClass.Name, member.Name,
-                    outcome.Detail ?? ValidationDiagnostics.CustomValidationEnforceTail);
+                    outcome.Diagnostic,
+                    member,
+                    attributeClass.Name,
+                    member.Name,
+                    outcome.Detail ?? ValidationDiagnostics.CustomValidationEnforceTail
+                );
             }
         }
 
         // The one place every authored code this front end reads leaves by, whichever attribute
         // shape supplied it. The built-in vocabulary is not here: an unset Code means the emitter
         // writes a ValidationCodes constant, which is never namespaced.
-        if (!string.IsNullOrWhiteSpace(_codeNamespace)) {
-            for (var index = 0; index < constraints.Count; index++) {
-                if (constraints[index].Code is { } authored) {
-                    constraints[index] = constraints[index] with {
+        if (!string.IsNullOrWhiteSpace(_codeNamespace))
+        {
+            for (var index = 0; index < constraints.Count; index++)
+            {
+                if (constraints[index].Code is { } authored)
+                {
+                    constraints[index] = constraints[index] with
+                    {
                         Code = CodeNaming.Apply(_codeNamespace, authored),
                     };
                 }
@@ -1179,16 +1565,28 @@ public sealed class AttributeFrontEnd {
     /// <summary>
     /// Resolves the reference form's member, or applies the policy to the inline form.
     /// </summary>
-    private ConstraintModel? ResolvePattern(ConstraintModel constraint, AttributeData attribute, ISymbol owner) {
+    private ConstraintModel? ResolvePattern(
+        ConstraintModel constraint,
+        AttributeData attribute,
+        ISymbol owner
+    )
+    {
         var args = attribute.ConstructorArguments;
 
-        if (args.Length == 2 && args[0].Value is INamedTypeSymbol provider && args[1].Value is string memberName) {
+        if (
+            args.Length == 2
+            && args[0].Value is INamedTypeSymbol provider
+            && args[1].Value is string memberName
+        )
+        {
             var member = provider.GetMembers(memberName).FirstOrDefault();
 
-            string? problem = member switch {
+            string? problem = member switch
+            {
                 null => "does not exist",
-                IMethodSymbol { IsStatic: false } or IPropertySymbol { IsStatic: false } or IFieldSymbol { IsStatic: false }
-                    => "is not static",
+                IMethodSymbol { IsStatic: false }
+                or IPropertySymbol { IsStatic: false }
+                or IFieldSymbol { IsStatic: false } => "is not static",
                 IMethodSymbol { Parameters.Length: > 0 } => "takes parameters",
                 IMethodSymbol method when !IsRegex(method.ReturnType) => "does not return Regex",
                 IPropertySymbol prop when !IsRegex(prop.Type) => "does not return Regex",
@@ -1197,38 +1595,68 @@ public sealed class AttributeFrontEnd {
                 _ => "is not a method, property or field",
             };
 
-            if (member is not null && problem is null &&
-                member.DeclaredAccessibility is Accessibility.Private or Accessibility.ProtectedAndInternal) {
+            if (
+                member is not null
+                && problem is null
+                && member.DeclaredAccessibility
+                    is Accessibility.Private
+                        or Accessibility.ProtectedAndInternal
+            )
+            {
                 problem = "is not accessible";
             }
 
-            if (problem is not null) {
-                _diagnostics.Add(Diagnostic.Create(
-                    ValidationDiagnostics.RegexMemberUnusable, Location(owner),
-                    provider.ToDisplayString(), memberName, problem, owner.Name));
+            if (problem is not null)
+            {
+                _diagnostics.Add(
+                    Diagnostic.Create(
+                        ValidationDiagnostics.RegexMemberUnusable,
+                        Location(owner),
+                        provider.ToDisplayString(),
+                        memberName,
+                        problem,
+                        owner.Name
+                    )
+                );
 
                 return null;
             }
 
             var qualified = provider.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-            var accessor = member is IMethodSymbol ? $"{qualified}.{memberName}()" : $"{qualified}.{memberName}";
+            var accessor =
+                member is IMethodSymbol
+                    ? $"{qualified}.{memberName}()"
+                    : $"{qualified}.{memberName}";
 
-            return constraint with { RegexAccessor = accessor };
+            return constraint with
+            {
+                RegexAccessor = accessor,
+            };
         }
 
         // Inline form. Correct and AOT-clean, but it roots the regex parser and interpreter, which
         // is +1.16 MB on a published AOT binary. The policy decides whether that is acceptable here.
-        if (_patternPolicy is PatternPolicy.Error or PatternPolicy.Warn) {
-            var severity = _patternPolicy == PatternPolicy.Error
-                ? DiagnosticSeverity.Error
-                : DiagnosticSeverity.Warning;
+        if (_patternPolicy is PatternPolicy.Error or PatternPolicy.Warn)
+        {
+            var severity =
+                _patternPolicy == PatternPolicy.Error
+                    ? DiagnosticSeverity.Error
+                    : DiagnosticSeverity.Warning;
 
-            _diagnostics.Add(Diagnostic.Create(
-                ValidationDiagnostics.InlinePatternUnderAot, Location(owner), severity,
-                additionalLocations: null, properties: null,
-                owner.Name, owner.ContainingType?.Name));
+            _diagnostics.Add(
+                Diagnostic.Create(
+                    ValidationDiagnostics.InlinePatternUnderAot,
+                    Location(owner),
+                    severity,
+                    additionalLocations: null,
+                    properties: null,
+                    owner.Name,
+                    owner.ContainingType?.Name
+                )
+            );
 
-            if (_patternPolicy == PatternPolicy.Error) {
+            if (_patternPolicy == PatternPolicy.Error)
+            {
                 return null;
             }
         }
@@ -1239,19 +1667,27 @@ public sealed class AttributeFrontEnd {
     private static bool IsRegex(ITypeSymbol type) =>
         type.ToDisplayString() == "System.Text.RegularExpressions.Regex";
 
-    private string FieldNameFor(IPropertySymbol property) {
-        foreach (var attribute in property.GetAttributes()) {
+    private string FieldNameFor(IPropertySymbol property)
+    {
+        foreach (var attribute in property.GetAttributes())
+        {
             var name = attribute.AttributeClass?.ToDisplayString();
 
-            if (name == KnownTypes.JsonPropertyName &&
-                attribute.ConstructorArguments.Length == 1 &&
-                attribute.ConstructorArguments[0].Value is string jsonName) {
+            if (
+                name == KnownTypes.JsonPropertyName
+                && attribute.ConstructorArguments.Length == 1
+                && attribute.ConstructorArguments[0].Value is string jsonName
+            )
+            {
                 return jsonName;
             }
 
-            if (name == KnownTypes.DisplayAttribute) {
-                foreach (var named in attribute.NamedArguments) {
-                    if (named.Key == "Name" && named.Value.Value is string displayName) {
+            if (name == KnownTypes.DisplayAttribute)
+            {
+                foreach (var named in attribute.NamedArguments)
+                {
+                    if (named.Key == "Name" && named.Value.Value is string displayName)
+                    {
                         return displayName;
                     }
                 }
@@ -1261,7 +1697,11 @@ public sealed class AttributeFrontEnd {
         return _fieldNamer(property.Name);
     }
 
-    private static string QualifiedValidator(INamedTypeSymbol type, Func<INamedTypeSymbol, string> validatorNameFor) {
+    private static string QualifiedValidator(
+        INamedTypeSymbol type,
+        Func<INamedTypeSymbol, string> validatorNameFor
+    )
+    {
         var name = validatorNameFor(type);
 
         return type.ContainingNamespace.IsGlobalNamespace
@@ -1270,28 +1710,41 @@ public sealed class AttributeFrontEnd {
     }
 
     private static bool HasGenerateValidator(INamedTypeSymbol type) =>
-        type.GetAttributes().Any(attribute =>
-            attribute.AttributeClass?.ToDisplayString() == KnownTypes.GenerateValidatorAttribute);
+        type.GetAttributes()
+            .Any(attribute =>
+                attribute.AttributeClass?.ToDisplayString() == KnownTypes.GenerateValidatorAttribute
+            );
 
     /// <summary>
     /// Turns a <c>When</c>/<c>Unless</c> member name into the boolean expression the emitter tests,
     /// with the negation baked in so that the emitter cannot tell the two apart.
     /// </summary>
-    private ConstraintModel ResolveCondition(ConstraintModel constraint, ISymbol member) {
+    private ConstraintModel ResolveCondition(ConstraintModel constraint, ISymbol member)
+    {
         var when = constraint.WhenMember;
         var unless = constraint.UnlessMember;
 
-        if (when is null && unless is null) {
+        if (when is null && unless is null)
+        {
             return constraint;
         }
 
-        if (when is not null && unless is not null) {
-            Report(ValidationDiagnostics.ConditionSetBothWays, member, constraint.Kind, member.Name);
+        if (when is not null && unless is not null)
+        {
+            Report(
+                ValidationDiagnostics.ConditionSetBothWays,
+                member,
+                constraint.Kind,
+                member.Name
+            );
             return constraint;
         }
 
         return ConditionExpression(when ?? unless!, member) is { } expression
-            ? constraint with { Condition = when is not null ? expression : $"!({expression})" }
+            ? constraint with
+            {
+                Condition = when is not null ? expression : $"!({expression})",
+            }
             : constraint;
     }
 
@@ -1304,28 +1757,40 @@ public sealed class AttributeFrontEnd {
     /// self-containment a static abstract <c>Describe</c> gives <c>Ensure</c> predicates hold here
     /// by construction.
     /// </remarks>
-    private string? ConditionExpression(string name, ISymbol member) {
+    private string? ConditionExpression(string name, ISymbol member)
+    {
         var type = _validatedType!;
 
         // The base chain too, so a predicate declared on a shared base is usable from every type
         // that inherits it - the same reach the constraints themselves now have.
         var candidates = new List<ISymbol>();
 
-        for (INamedTypeSymbol? current = type; current is not null; current = current.BaseType) {
+        for (INamedTypeSymbol? current = type; current is not null; current = current.BaseType)
+        {
             candidates.AddRange(current.GetMembers(name));
         }
 
-        if (candidates.Count == 0) {
-            Report(ValidationDiagnostics.ConditionMemberNotFound, member, member.Name, name, type.Name);
+        if (candidates.Count == 0)
+        {
+            Report(
+                ValidationDiagnostics.ConditionMemberNotFound,
+                member,
+                member.Name,
+                name,
+                type.Name
+            );
             return null;
         }
 
-        foreach (var candidate in candidates) {
-            if (!_compilation.IsSymbolAccessibleWithin(candidate, type.ContainingAssembly)) {
+        foreach (var candidate in candidates)
+        {
+            if (!_compilation.IsSymbolAccessibleWithin(candidate, type.ContainingAssembly))
+            {
                 continue;
             }
 
-            switch (candidate) {
+            switch (candidate)
+            {
                 case IPropertySymbol { IsStatic: false, GetMethod: not null } property
                     when property.Type.SpecialType == SpecialType.System_Boolean:
                     return $"value.{EscapeIdentifier(name)}";
@@ -1338,8 +1803,8 @@ public sealed class AttributeFrontEnd {
                 case IMethodSymbol { IsStatic: true, Parameters.Length: 1 } stat
                     when stat.ReturnType.SpecialType == SpecialType.System_Boolean
                         && TakesTheModel(stat.Parameters[0].Type, type):
-                    return $"{stat.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}" +
-                        $".{EscapeIdentifier(name)}(value)";
+                    return $"{stat.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}"
+                        + $".{EscapeIdentifier(name)}(value)";
             }
         }
 
@@ -1351,9 +1816,12 @@ public sealed class AttributeFrontEnd {
     /// Whether a static predicate's parameter accepts the model. A base type or an implemented
     /// interface counts: a condition shared across a hierarchy is written once, against the base.
     /// </summary>
-    private static bool TakesTheModel(ITypeSymbol parameter, INamedTypeSymbol model) {
-        for (INamedTypeSymbol? current = model; current is not null; current = current.BaseType) {
-            if (SymbolEqualityComparer.Default.Equals(current, parameter)) {
+    private static bool TakesTheModel(ITypeSymbol parameter, INamedTypeSymbol model)
+    {
+        for (INamedTypeSymbol? current = model; current is not null; current = current.BaseType)
+        {
+            if (SymbolEqualityComparer.Default.Equals(current, parameter))
+            {
                 return true;
             }
         }
@@ -1363,27 +1831,36 @@ public sealed class AttributeFrontEnd {
 
     private static string EscapeIdentifier(string identifier) =>
         Microsoft.CodeAnalysis.CSharp.SyntaxFacts.GetKeywordKind(identifier)
-            == Microsoft.CodeAnalysis.CSharp.SyntaxKind.None
+        == Microsoft.CodeAnalysis.CSharp.SyntaxKind.None
             ? identifier
             : "@" + identifier;
 
     /// <summary>
     /// The condition guarding a nested descent, read off <c>[ValidateNested]</c> itself.
     /// </summary>
-    private string? NestedCondition(IEnumerable<IPropertySymbol> sources) {
-        foreach (var source in sources) {
-            foreach (var attribute in source.GetAttributes()) {
-                if (attribute.AttributeClass?.Name != "ValidateNestedAttribute" ||
-                    attribute.AttributeClass.ContainingNamespace?.ToDisplayString() != KnownTypes.ConstraintsNamespace) {
+    private string? NestedCondition(IEnumerable<IPropertySymbol> sources)
+    {
+        foreach (var source in sources)
+        {
+            foreach (var attribute in source.GetAttributes())
+            {
+                if (
+                    attribute.AttributeClass?.Name != "ValidateNestedAttribute"
+                    || attribute.AttributeClass.ContainingNamespace?.ToDisplayString()
+                        != KnownTypes.ConstraintsNamespace
+                )
+                {
                     continue;
                 }
 
                 var probe = new ConstraintModel(
                     ConstraintKind.Required,
                     WhenMember: NamedArgument(attribute, "When"),
-                    UnlessMember: NamedArgument(attribute, "Unless"));
+                    UnlessMember: NamedArgument(attribute, "Unless")
+                );
 
-                if (ResolveCondition(probe, source).Condition is { } condition) {
+                if (ResolveCondition(probe, source).Condition is { } condition)
+                {
                     return condition;
                 }
             }
@@ -1402,17 +1879,27 @@ public sealed class AttributeFrontEnd {
     /// asked again.
     /// </remarks>
     private static (PolymorphismMode Mode, bool Stated) NestedPolymorphism(
-        IEnumerable<IPropertySymbol> sources) {
-
-        foreach (var source in sources) {
-            foreach (var attribute in source.GetAttributes()) {
-                if (attribute.AttributeClass?.Name != "ValidateNestedAttribute" ||
-                    attribute.AttributeClass.ContainingNamespace?.ToDisplayString() != KnownTypes.ConstraintsNamespace) {
+        IEnumerable<IPropertySymbol> sources
+    )
+    {
+        foreach (var source in sources)
+        {
+            foreach (var attribute in source.GetAttributes())
+            {
+                if (
+                    attribute.AttributeClass?.Name != "ValidateNestedAttribute"
+                    || attribute.AttributeClass.ContainingNamespace?.ToDisplayString()
+                        != KnownTypes.ConstraintsNamespace
+                )
+                {
                     continue;
                 }
 
-                if (attribute.ConstructorArguments.Length == 1 &&
-                    attribute.ConstructorArguments[0].Value is int mode) {
+                if (
+                    attribute.ConstructorArguments.Length == 1
+                    && attribute.ConstructorArguments[0].Value is int mode
+                )
+                {
                     return ((PolymorphismMode)mode, true);
                 }
             }
@@ -1438,12 +1925,12 @@ public sealed class AttributeFrontEnd {
     /// Conjoined rather than one winning, for the same reason the two rule sources union rather
     /// than replace (§19.7): both were written and both are meant.
     /// </remarks>
-    private string? NestedDescentCondition(
-        IEnumerable<IPropertySymbol> sources, string? declared) {
-
+    private string? NestedDescentCondition(IEnumerable<IPropertySymbol> sources, string? declared)
+    {
         var attributed = NestedCondition(sources);
 
-        return (attributed, declared) switch {
+        return (attributed, declared) switch
+        {
             (null, null) => null,
             ({ } only, null) => only,
             (null, { } only) => only,
@@ -1455,13 +1942,20 @@ public sealed class AttributeFrontEnd {
         attribute.NamedArguments.FirstOrDefault(pair => pair.Key == name).Value.Value as string;
 
     private static bool HasValidateNested(IPropertySymbol property) =>
-        property.GetAttributes().Any(attribute =>
-            attribute.AttributeClass?.Name == "ValidateNestedAttribute" &&
-            attribute.AttributeClass.ContainingNamespace?.ToDisplayString() == KnownTypes.ConstraintsNamespace);
+        property
+            .GetAttributes()
+            .Any(attribute =>
+                attribute.AttributeClass?.Name == "ValidateNestedAttribute"
+                && attribute.AttributeClass.ContainingNamespace?.ToDisplayString()
+                    == KnownTypes.ConstraintsNamespace
+            );
 
-    private static bool DerivesFromValidationAttribute(INamedTypeSymbol attributeClass) {
-        for (var current = attributeClass.BaseType; current is not null; current = current.BaseType) {
-            if (current.ToDisplayString() == KnownTypes.ValidationAttribute) {
+    private static bool DerivesFromValidationAttribute(INamedTypeSymbol attributeClass)
+    {
+        for (var current = attributeClass.BaseType; current is not null; current = current.BaseType)
+        {
+            if (current.ToDisplayString() == KnownTypes.ValidationAttribute)
+            {
                 return true;
             }
         }
@@ -1469,9 +1963,12 @@ public sealed class AttributeFrontEnd {
         return false;
     }
 
-    private static bool DerivesFromCustomConstraint(INamedTypeSymbol attributeClass) {
-        for (var current = attributeClass.BaseType; current is not null; current = current.BaseType) {
-            if (current.ToDisplayString() == KnownTypes.CustomConstraintAttribute) {
+    private static bool DerivesFromCustomConstraint(INamedTypeSymbol attributeClass)
+    {
+        for (var current = attributeClass.BaseType; current is not null; current = current.BaseType)
+        {
+            if (current.ToDisplayString() == KnownTypes.CustomConstraintAttribute)
+            {
                 return true;
             }
         }
@@ -1494,26 +1991,37 @@ public sealed class AttributeFrontEnd {
         ITypeSymbol memberType,
         INamedTypeSymbol attributeClass,
         AttributeData attribute,
-        List<ConstraintModel> constraints) {
-
+        List<ConstraintModel> constraints
+    )
+    {
         IMethodSymbol? check = null;
 
-        foreach (var candidate in attributeClass.GetMembers("IsValid")) {
-            if (candidate is IMethodSymbol {
+        foreach (var candidate in attributeClass.GetMembers("IsValid"))
+        {
+            if (
+                candidate is IMethodSymbol
+                {
                     IsStatic: true,
                     DeclaredAccessibility: Accessibility.Public,
                     ReturnType.SpecialType: SpecialType.System_Boolean,
                     Parameters.Length: >= 1,
-                } method) {
+                } method
+            )
+            {
                 check = method;
                 break;
             }
         }
 
-        if (check is null) {
-            Report(ValidationDiagnostics.CustomConstraintUnusable, member,
-                attributeClass.Name, member.Name,
-                "it declares no public static bool IsValid method taking the member's value");
+        if (check is null)
+        {
+            Report(
+                ValidationDiagnostics.CustomConstraintUnusable,
+                member,
+                attributeClass.Name,
+                member.Name,
+                "it declares no public static bool IsValid method taking the member's value"
+            );
             return;
         }
 
@@ -1523,11 +2031,16 @@ public sealed class AttributeFrontEnd {
             ? ((INamedTypeSymbol)memberType).TypeArguments[0]
             : memberType;
 
-        if (!AcceptsMember(check.Parameters[0].Type, unwrapped)) {
-            Report(ValidationDiagnostics.CustomConstraintUnusable, member,
-                attributeClass.Name, member.Name,
-                $"IsValid's first parameter is '{check.Parameters[0].Type.ToDisplayString()}', " +
-                $"which cannot accept this member's '{memberType.ToDisplayString()}'");
+        if (!AcceptsMember(check.Parameters[0].Type, unwrapped))
+        {
+            Report(
+                ValidationDiagnostics.CustomConstraintUnusable,
+                member,
+                attributeClass.Name,
+                member.Name,
+                $"IsValid's first parameter is '{check.Parameters[0].Type.ToDisplayString()}', "
+                    + $"which cannot accept this member's '{memberType.ToDisplayString()}'"
+            );
             return;
         }
 
@@ -1535,34 +2048,53 @@ public sealed class AttributeFrontEnd {
         var supplied = constructor?.Parameters.Length ?? 0;
         var expected = check.Parameters.Length - 1;
 
-        if (supplied != expected) {
-            Report(ValidationDiagnostics.CustomConstraintUnusable, member,
-                attributeClass.Name, member.Name,
-                $"IsValid takes {expected} argument(s) after the value but the constructor " +
-                $"supplies {supplied} - the two are matched positionally");
+        if (supplied != expected)
+        {
+            Report(
+                ValidationDiagnostics.CustomConstraintUnusable,
+                member,
+                attributeClass.Name,
+                member.Name,
+                $"IsValid takes {expected} argument(s) after the value but the constructor "
+                    + $"supplies {supplied} - the two are matched positionally"
+            );
             return;
         }
 
         var arguments = new List<string>();
 
-        for (var i = 0; i < expected; i++) {
+        for (var i = 0; i < expected; i++)
+        {
             var parameter = check.Parameters[i + 1].Type;
             var argument = constructor!.Parameters[i].Type;
 
-            if (!SymbolEqualityComparer.Default.Equals(parameter, argument)) {
-                Report(ValidationDiagnostics.CustomConstraintUnusable, member,
-                    attributeClass.Name, member.Name,
-                    $"IsValid's '{check.Parameters[i + 1].Name}' parameter is " +
-                    $"'{parameter.ToDisplayString()}' but the constructor's matching parameter is " +
-                    $"'{argument.ToDisplayString()}'");
+            if (!SymbolEqualityComparer.Default.Equals(parameter, argument))
+            {
+                Report(
+                    ValidationDiagnostics.CustomConstraintUnusable,
+                    member,
+                    attributeClass.Name,
+                    member.Name,
+                    $"IsValid's '{check.Parameters[i + 1].Name}' parameter is "
+                        + $"'{parameter.ToDisplayString()}' but the constructor's matching parameter is "
+                        + $"'{argument.ToDisplayString()}'"
+                );
                 return;
             }
 
-            if (AttributeConstructionRenderer.RenderArgument(attribute.ConstructorArguments[i]) is not { } rendered) {
-                Report(ValidationDiagnostics.CustomConstraintUnusable, member,
-                    attributeClass.Name, member.Name,
-                    $"the constructor argument for '{check.Parameters[i + 1].Name}' is not a " +
-                    "renderable constant");
+            if (
+                AttributeConstructionRenderer.RenderArgument(attribute.ConstructorArguments[i])
+                is not { } rendered
+            )
+            {
+                Report(
+                    ValidationDiagnostics.CustomConstraintUnusable,
+                    member,
+                    attributeClass.Name,
+                    member.Name,
+                    $"the constructor argument for '{check.Parameters[i + 1].Name}' is not a "
+                        + "renderable constant"
+                );
                 return;
             }
 
@@ -1571,12 +2103,18 @@ public sealed class AttributeFrontEnd {
 
         // A named argument that is not one of the base's knobs is a property the static check has
         // no way to receive - erroring beats a parameter that silently never arrives.
-        foreach (var named in attribute.NamedArguments) {
-            if (named.Key is not ("Code" or "Message" or "When" or "Unless")) {
-                Report(ValidationDiagnostics.CustomConstraintUnusable, member,
-                    attributeClass.Name, member.Name,
-                    $"'{named.Key}' is set as a property, which the static IsValid cannot " +
-                    "receive; pass it through the constructor");
+        foreach (var named in attribute.NamedArguments)
+        {
+            if (named.Key is not ("Code" or "Message" or "When" or "Unless"))
+            {
+                Report(
+                    ValidationDiagnostics.CustomConstraintUnusable,
+                    member,
+                    attributeClass.Name,
+                    member.Name,
+                    $"'{named.Key}' is set as a property, which the static IsValid cannot "
+                        + "receive; pass it through the constructor"
+                );
                 return;
             }
         }
@@ -1593,7 +2131,8 @@ public sealed class AttributeFrontEnd {
             WhenMember: NativeConstraintReader.Named(attribute, "When") as string,
             UnlessMember: NativeConstraintReader.Named(attribute, "Unless") as string,
             CustomAccessor: accessor,
-            Values: new EquatableArray<string>(arguments.ToImmutableArray()));
+            Values: new EquatableArray<string>(arguments.ToImmutableArray())
+        );
 
         constraints.Add(ResolveCondition(constraint, member));
     }
@@ -1606,10 +2145,18 @@ public sealed class AttributeFrontEnd {
     /// as readable as the constructor arguments already are. A use-site <c>Message</c> or
     /// <c>Code</c> still wins, same as overriding a built-in's composed text.
     /// </summary>
-    private static string? ConstDefault(INamedTypeSymbol attributeClass, string name) {
-        for (INamedTypeSymbol? current = attributeClass; current is not null; current = current.BaseType) {
-            foreach (var field in current.GetMembers(name).OfType<IFieldSymbol>()) {
-                if (field is { HasConstantValue: true, ConstantValue: string text }) {
+    private static string? ConstDefault(INamedTypeSymbol attributeClass, string name)
+    {
+        for (
+            INamedTypeSymbol? current = attributeClass;
+            current is not null;
+            current = current.BaseType
+        )
+        {
+            foreach (var field in current.GetMembers(name).OfType<IFieldSymbol>())
+            {
+                if (field is { HasConstantValue: true, ConstantValue: string text })
+                {
                     return text;
                 }
             }
@@ -1634,15 +2181,21 @@ public sealed class AttributeFrontEnd {
         INamedTypeSymbol attributeClass,
         AttributeData attribute,
         List<INamedTypeSymbol> contracts,
-        List<ConstraintModel> constraints) {
-
+        List<ConstraintModel> constraints
+    )
+    {
         // The hoisted field is typed as the attribute class, and TypeRef refuses a constructed
         // generic name - the same narrowing VM1010 applies to models, for the same reason.
-        if (attributeClass.IsGenericType) {
-            Report(ValidationDiagnostics.ConstraintInterfaceUnusable, member,
-                attributeClass.Name, member.Name,
-                "it is a generic attribute class, which the field holding the shared instance " +
-                "cannot name; declare a closed subclass");
+        if (attributeClass.IsGenericType)
+        {
+            Report(
+                ValidationDiagnostics.ConstraintInterfaceUnusable,
+                member,
+                attributeClass.Name,
+                member.Name,
+                "it is a generic attribute class, which the field holding the shared instance "
+                    + "cannot name; declare a closed subclass"
+            );
             return;
         }
 
@@ -1654,51 +2207,74 @@ public sealed class AttributeFrontEnd {
 
         INamedTypeSymbol? matched = null;
 
-        foreach (var contract in contracts) {
-            if (SymbolEqualityComparer.Default.Equals(contract.TypeArguments[0], unwrapped)) {
+        foreach (var contract in contracts)
+        {
+            if (SymbolEqualityComparer.Default.Equals(contract.TypeArguments[0], unwrapped))
+            {
                 matched = contract;
                 break;
             }
         }
 
-        if (matched is null) {
+        if (matched is null)
+        {
             var fits = contracts.Where(c => AcceptsMember(c.TypeArguments[0], unwrapped)).ToList();
 
-            if (fits.Count == 0) {
-                Report(ValidationDiagnostics.ConstraintInterfaceUnusable, member,
-                    attributeClass.Name, member.Name,
-                    $"it implements {ContractDisplay(contracts)}, and none of those accepts this " +
-                    $"member's '{memberType.ToDisplayString()}'");
+            if (fits.Count == 0)
+            {
+                Report(
+                    ValidationDiagnostics.ConstraintInterfaceUnusable,
+                    member,
+                    attributeClass.Name,
+                    member.Name,
+                    $"it implements {ContractDisplay(contracts)}, and none of those accepts this "
+                        + $"member's '{memberType.ToDisplayString()}'"
+                );
                 return;
             }
 
-            if (fits.Count > 1) {
+            if (fits.Count > 1)
+            {
                 // The suggested instantiation drops the nullable annotation: the null guard means
                 // the check receives a value, so IConstraintFor<string?> is never what to write.
-                Report(ValidationDiagnostics.ConstraintInterfaceUnusable, member,
-                    attributeClass.Name, member.Name,
-                    $"more than one implemented instantiation accepts this member's " +
-                    $"'{memberType.ToDisplayString()}' ({ContractDisplay(fits)}); implement " +
-                    $"IConstraintFor<{unwrapped.WithNullableAnnotation(NullableAnnotation.NotAnnotated).ToDisplayString()}> " +
-                    "to say which one runs");
+                Report(
+                    ValidationDiagnostics.ConstraintInterfaceUnusable,
+                    member,
+                    attributeClass.Name,
+                    member.Name,
+                    $"more than one implemented instantiation accepts this member's "
+                        + $"'{memberType.ToDisplayString()}' ({ContractDisplay(fits)}); implement "
+                        + $"IConstraintFor<{unwrapped.WithNullableAnnotation(NullableAnnotation.NotAnnotated).ToDisplayString()}> "
+                        + "to say which one runs"
+                );
                 return;
             }
 
             matched = fits[0];
         }
 
-        if (AttributeConstructionRenderer.Render(attribute) is not { } construction) {
-            Report(ValidationDiagnostics.ConstraintInterfaceUnusable, member,
-                attributeClass.Name, member.Name,
-                "an argument in its declaration is not a renderable constant");
+        if (AttributeConstructionRenderer.Render(attribute) is not { } construction)
+        {
+            Report(
+                ValidationDiagnostics.ConstraintInterfaceUnusable,
+                member,
+                attributeClass.Name,
+                member.Name,
+                "an argument in its declaration is not a renderable constant"
+            );
             return;
         }
 
         var perPass = HasPerValidationInstance(attributeClass);
 
-        if (perPass) {
-            Report(ValidationDiagnostics.PerValidationInstanceCost, member,
-                attributeClass.Name, member.Name);
+        if (perPass)
+        {
+            Report(
+                ValidationDiagnostics.PerValidationInstanceCost,
+                member,
+                attributeClass.Name,
+                member.Name
+            );
         }
 
         // The base's condition knobs are read only off the base that declares them; on a plain
@@ -1708,21 +2284,29 @@ public sealed class AttributeFrontEnd {
 
         var constraint = new ConstraintModel(
             ConstraintKind.CustomInstance,
-            WhenMember: conditional ? NativeConstraintReader.Named(attribute, "When") as string : null,
-            UnlessMember: conditional ? NativeConstraintReader.Named(attribute, "Unless") as string : null,
+            WhenMember: conditional
+                ? NativeConstraintReader.Named(attribute, "When") as string
+                : null,
+            UnlessMember: conditional
+                ? NativeConstraintReader.Named(attribute, "Unless") as string
+                : null,
             CustomConstruction: construction,
             InstanceType: attributeClass.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             InstanceInterface: matched.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             ValidateThroughInterface: ThroughInterface(attributeClass, matched, "Validate"),
             IsValidThroughInterface: ThroughInterface(attributeClass, matched, "IsValid"),
-            PerPassInstance: perPass);
+            PerPassInstance: perPass
+        );
 
         constraints.Add(ResolveCondition(constraint, member));
     }
 
     /// <summary>The implemented instantiations as the diagnostic should name them.</summary>
     private static string ContractDisplay(IEnumerable<INamedTypeSymbol> contracts) =>
-        string.Join(" and ", contracts.Select(c => $"IConstraintFor<{c.TypeArguments[0].ToDisplayString()}>"));
+        string.Join(
+            " and ",
+            contracts.Select(c => $"IConstraintFor<{c.TypeArguments[0].ToDisplayString()}>")
+        );
 
     /// <summary>
     /// Whether a woven call to <paramref name="memberName"/> must go through the interface: the
@@ -1730,18 +2314,24 @@ public sealed class AttributeFrontEnd {
     /// no public method of that name binds on the class itself.
     /// </summary>
     private static bool ThroughInterface(
-        INamedTypeSymbol attributeClass, INamedTypeSymbol contract, string memberName) {
-
+        INamedTypeSymbol attributeClass,
+        INamedTypeSymbol contract,
+        string memberName
+    )
+    {
         var definition = contract.GetMembers(memberName).OfType<IMethodSymbol>().FirstOrDefault();
 
-        if (definition is null) {
+        if (definition is null)
+        {
             return true;
         }
 
-        return attributeClass.FindImplementationForInterfaceMember(definition) is not IMethodSymbol {
-                MethodKind: MethodKind.Ordinary,
-                DeclaredAccessibility: Accessibility.Public,
-            } implementation
+        return attributeClass.FindImplementationForInterfaceMember(definition)
+                is not IMethodSymbol
+                {
+                    MethodKind: MethodKind.Ordinary,
+                    DeclaredAccessibility: Accessibility.Public,
+                } implementation
             || implementation.ContainingType.TypeKind == TypeKind.Interface;
     }
 
@@ -1749,11 +2339,14 @@ public sealed class AttributeFrontEnd {
     /// The <c>IConstraintFor&lt;T&gt;</c> instantiations a class implements. Inherited and
     /// re-implemented ones included, which is what <c>AllInterfaces</c> answers.
     /// </summary>
-    private static List<INamedTypeSymbol> ConstraintInterfacesOf(INamedTypeSymbol attributeClass) {
+    private static List<INamedTypeSymbol> ConstraintInterfacesOf(INamedTypeSymbol attributeClass)
+    {
         var contracts = new List<INamedTypeSymbol>();
 
-        foreach (var contract in attributeClass.AllInterfaces) {
-            if (contract.OriginalDefinition.ToDisplayString() == KnownTypes.ConstraintForInterface) {
+        foreach (var contract in attributeClass.AllInterfaces)
+        {
+            if (contract.OriginalDefinition.ToDisplayString() == KnownTypes.ConstraintForInterface)
+            {
                 contracts.Add(contract);
             }
         }
@@ -1763,16 +2356,30 @@ public sealed class AttributeFrontEnd {
 
     private static bool ImplementsConstraintInterface(INamedTypeSymbol attributeClass) =>
         attributeClass.AllInterfaces.Any(contract =>
-            contract.OriginalDefinition.ToDisplayString() == KnownTypes.ConstraintForInterface);
+            contract.OriginalDefinition.ToDisplayString() == KnownTypes.ConstraintForInterface
+        );
 
     /// <summary>
     /// Whether <c>[PerValidationInstance]</c> is on the class or a base of it. The base chain
     /// counts because statefulness is a property of the implementation a subclass inherits.
     /// </summary>
-    private static bool HasPerValidationInstance(INamedTypeSymbol attributeClass) {
-        for (INamedTypeSymbol? current = attributeClass; current is not null; current = current.BaseType) {
-            if (current.GetAttributes().Any(marker =>
-                    marker.AttributeClass?.ToDisplayString() == KnownTypes.PerValidationInstanceAttribute)) {
+    private static bool HasPerValidationInstance(INamedTypeSymbol attributeClass)
+    {
+        for (
+            INamedTypeSymbol? current = attributeClass;
+            current is not null;
+            current = current.BaseType
+        )
+        {
+            if (
+                current
+                    .GetAttributes()
+                    .Any(marker =>
+                        marker.AttributeClass?.ToDisplayString()
+                        == KnownTypes.PerValidationInstanceAttribute
+                    )
+            )
+            {
                 return true;
             }
         }
@@ -1780,9 +2387,12 @@ public sealed class AttributeFrontEnd {
         return false;
     }
 
-    private static bool DerivesFromValidationConstraint(INamedTypeSymbol attributeClass) {
-        for (var current = attributeClass.BaseType; current is not null; current = current.BaseType) {
-            if (current.ToDisplayString() == KnownTypes.ValidationConstraintAttribute) {
+    private static bool DerivesFromValidationConstraint(INamedTypeSymbol attributeClass)
+    {
+        for (var current = attributeClass.BaseType; current is not null; current = current.BaseType)
+        {
+            if (current.ToDisplayString() == KnownTypes.ValidationConstraintAttribute)
+            {
                 return true;
             }
         }
@@ -1794,21 +2404,27 @@ public sealed class AttributeFrontEnd {
     /// Whether the member's (unwrapped) type can be passed where <paramref name="parameter"/> is
     /// declared: identity, a base type, an implemented interface, or <c>object</c>.
     /// </summary>
-    private static bool AcceptsMember(ITypeSymbol parameter, ITypeSymbol memberType) {
-        if (parameter.SpecialType == SpecialType.System_Object) {
+    private static bool AcceptsMember(ITypeSymbol parameter, ITypeSymbol memberType)
+    {
+        if (parameter.SpecialType == SpecialType.System_Object)
+        {
             return true;
         }
 
         var comparer = SymbolEqualityComparer.Default;
 
-        for (ITypeSymbol? current = memberType; current is not null; current = current.BaseType) {
-            if (comparer.Equals(parameter, current)) {
+        for (ITypeSymbol? current = memberType; current is not null; current = current.BaseType)
+        {
+            if (comparer.Equals(parameter, current))
+            {
                 return true;
             }
         }
 
-        foreach (var contract in memberType.AllInterfaces) {
-            if (comparer.Equals(parameter, contract)) {
+        foreach (var contract in memberType.AllInterfaces)
+        {
+            if (comparer.Equals(parameter, contract))
+            {
                 return true;
             }
         }
@@ -1819,8 +2435,10 @@ public sealed class AttributeFrontEnd {
     private static bool ImplementsValidatableObject(INamedTypeSymbol type) =>
         type.AllInterfaces.Any(i => i.ToDisplayString() == KnownTypes.ValidatableObject);
 
-    private void Report(DiagnosticDescriptor descriptor, ISymbol symbol, params object?[] args) {
-        if (_quiet) {
+    private void Report(DiagnosticDescriptor descriptor, ISymbol symbol, params object?[] args)
+    {
+        if (_quiet)
+        {
             return;
         }
 
@@ -1832,13 +2450,27 @@ public sealed class AttributeFrontEnd {
     /// where the descriptor stays a Warning for the mode that asked for compilation.
     /// </summary>
     private void ReportAs(
-        DiagnosticSeverity severity, DiagnosticDescriptor descriptor, ISymbol symbol, params object?[] args) {
-        if (_quiet) {
+        DiagnosticSeverity severity,
+        DiagnosticDescriptor descriptor,
+        ISymbol symbol,
+        params object?[] args
+    )
+    {
+        if (_quiet)
+        {
             return;
         }
 
-        _diagnostics.Add(Diagnostic.Create(
-            descriptor, Location(symbol), severity, additionalLocations: null, properties: null, args));
+        _diagnostics.Add(
+            Diagnostic.Create(
+                descriptor,
+                Location(symbol),
+                severity,
+                additionalLocations: null,
+                properties: null,
+                args
+            )
+        );
     }
 
     private static Location? Location(ISymbol symbol) => symbol.Locations.FirstOrDefault();

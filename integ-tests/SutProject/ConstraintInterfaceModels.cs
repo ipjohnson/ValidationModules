@@ -8,12 +8,14 @@ namespace SutProject;
 /// reading it on every pass. The construction counter is what the tests observe - one instance
 /// per declaration site is the promise.
 /// </summary>
-public sealed class ChannelAttribute : Attribute, IConstraintFor<string> {
+public sealed class ChannelAttribute : Attribute, IConstraintFor<string>
+{
     public static int Constructions;
 
     private readonly string[] _allowed;
 
-    public ChannelAttribute(params string[] allowed) {
+    public ChannelAttribute(params string[] allowed)
+    {
         Constructions++;
         _allowed = allowed;
     }
@@ -23,15 +25,21 @@ public sealed class ChannelAttribute : Attribute, IConstraintFor<string> {
     public ValidationFlow Validate(ref ValidationContext context, string value, string field) =>
         IsValid(value)
             ? ValidationFlow.Continue
-            : context.Report(field, "channel", $"{field} must be one of: {string.Join(", ", _allowed)}.");
+            : context.Report(
+                field,
+                "channel",
+                $"{field} must be one of: {string.Join(", ", _allowed)}."
+            );
 }
 
 /// <summary>The opt-out: a fresh instance at every check, counted the same way.</summary>
 [PerValidationInstance]
-public sealed class StampedAttribute : Attribute, IConstraintFor<int> {
+public sealed class StampedAttribute : Attribute, IConstraintFor<int>
+{
     public static int Constructions;
 
-    public StampedAttribute() {
+    public StampedAttribute()
+    {
         Constructions++;
     }
 
@@ -45,11 +53,13 @@ public sealed class StampedAttribute : Attribute, IConstraintFor<int> {
 /// Only <c>IsValid</c>: the interface's default <c>Validate</c> answers, honouring the base's
 /// <c>Code</c> and <c>Message</c> set at the declaration site.
 /// </summary>
-public sealed class PairedAttribute : ValidationConstraintAttribute, IConstraintFor<int> {
+public sealed class PairedAttribute : ValidationConstraintAttribute, IConstraintFor<int>
+{
     public bool IsValid(int value) => value % 2 == 0;
 }
 
-public record Bulletin {
+public record Bulletin
+{
     [Required]
     [Channel("email", "sms")]
     public string? Channel { get; init; }

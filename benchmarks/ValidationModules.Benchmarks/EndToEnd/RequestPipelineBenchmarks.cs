@@ -27,8 +27,8 @@ namespace ValidationModules.Benchmarks.EndToEnd;
 /// </remarks>
 [MemoryDiagnoser]
 [BenchmarkCategory(BenchmarkCategories.EndToEnd)]
-public class RequestPipelineBenchmarks {
-
+public class RequestPipelineBenchmarks
+{
     // Hoisted: constructing per invocation would put an allocation on the measured path.
     private static readonly OrderValidator OrderValidatorShared = new();
 
@@ -42,7 +42,8 @@ public class RequestPipelineBenchmarks {
     private Order _order = null!;
 
     [GlobalSetup]
-    public void Setup() {
+    public void Setup()
+    {
         _order = SampleData.ValidOrder();
 
         // Stands in for what a container hands back: the validator arrives as a sequence that has
@@ -55,9 +56,11 @@ public class RequestPipelineBenchmarks {
     /// a collector and a result for it.
     /// </summary>
     [Benchmark(Baseline = true, Description = "Look up the validator per request, fresh collector")]
-    public bool ResolvePerRequest() {
+    public bool ResolvePerRequest()
+    {
         IValidatorFor<Order>? validator = null;
-        for (var i = 0; i < _registered.Length; i++) {
+        for (var i = 0; i < _registered.Length; i++)
+        {
             validator = _registered[i];
         }
 
@@ -76,7 +79,8 @@ public class RequestPipelineBenchmarks {
     /// <see cref="ValidationResult"/> is materialized on the clean path.
     /// </summary>
     [Benchmark(Description = "Validator resolved once, pooled collector - what pooling is worth")]
-    public bool ResolvedOnce_PooledCollector() {
+    public bool ResolvedOnce_PooledCollector()
+    {
         _pooledCollector.Reset();
 
         _resolvedOnce.ValidateInto(_pooledCollector, _order);
@@ -90,7 +94,8 @@ public class RequestPipelineBenchmarks {
     /// instance, so this should land on top of the benchmark above rather than above it.
     /// </summary>
     [Benchmark(Description = "Pooled collector, then ToResult - what a filter returns")]
-    public ValidationResult PooledCollector_ToResult() {
+    public ValidationResult PooledCollector_ToResult()
+    {
         _pooledCollector.Reset();
 
         _resolvedOnce.ValidateInto(_pooledCollector, _order);

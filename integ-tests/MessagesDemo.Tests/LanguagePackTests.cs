@@ -12,9 +12,10 @@ namespace MessagesDemo.Tests;
 /// same registration TryAdds - and the app-local override file winning per key because it landed
 /// later in the additional-files order.
 /// </summary>
-public class LanguagePackTests {
-
-    private static readonly Reservation Invalid = new() {
+public class LanguagePackTests
+{
+    private static readonly Reservation Invalid = new()
+    {
         Name = null,
         PartySize = 12,
         Code = "nope",
@@ -26,7 +27,8 @@ public class LanguagePackTests {
     private static ServiceProvider Services() =>
         new ServiceCollection().AddMessagesDemoValidators().BuildServiceProvider();
 
-    private static Dictionary<string, string> MessagesUnder(string culture) {
+    private static Dictionary<string, string> MessagesUnder(string culture)
+    {
         using var services = Services();
 
         var validator = services.GetRequiredService<IValidatorFor<Reservation>>();
@@ -37,18 +39,24 @@ public class LanguagePackTests {
 
         var previous = CultureInfo.CurrentUICulture;
 
-        try {
+        try
+        {
             CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo(culture);
 
-            return result.Errors.ToDictionary(error => error.Field, error => error.ToMessage(formatter));
+            return result.Errors.ToDictionary(
+                error => error.Field,
+                error => error.ToMessage(formatter)
+            );
         }
-        finally {
+        finally
+        {
             CultureInfo.CurrentUICulture = previous;
         }
     }
 
     [Fact]
-    public void French_TranslatesEveryShape_AndTheOverrideWinsItsOneKey() {
+    public void French_TranslatesEveryShape_AndTheOverrideWinsItsOneKey()
+    {
         var messages = MessagesUnder("fr");
 
         // "required" comes from the override file, which registered later and wins per key…
@@ -61,14 +69,16 @@ public class LanguagePackTests {
     }
 
     [Fact]
-    public void RegionalCulture_FallsBackToItsParentPack() {
+    public void RegionalCulture_FallsBackToItsParentPack()
+    {
         var messages = MessagesUnder("fr-CA");
 
         Assert.Equal("partySize doit être compris entre 1 et 8.", messages["partySize"]);
     }
 
     [Fact]
-    public void UnpackedCulture_KeepsTheDefaultRender() {
+    public void UnpackedCulture_KeepsTheDefaultRender()
+    {
         var messages = MessagesUnder("it");
 
         Assert.Equal("name is required.", messages["name"]);
@@ -82,32 +92,52 @@ public class LanguagePackTests {
     [InlineData("ja", "partySize", "partySizeは1から8の範囲で入力してください。")]
     [InlineData("zh-CN", "code", "code的格式不正确。")]
     [InlineData("ja", "end", "終了日は開始日より後にしてください。")]
-    public void EveryShippedLanguage_RendersFromItsPack(string culture, string field, string expected) {
+    public void EveryShippedLanguage_RendersFromItsPack(
+        string culture,
+        string field,
+        string expected
+    )
+    {
         Assert.Equal(expected, MessagesUnder(culture)[field]);
     }
 
     [Fact]
-    public void TheFormatter_IsTryAdded_SoAnAppsOwnStillWins() {
+    public void TheFormatter_IsTryAdded_SoAnAppsOwnStillWins()
+    {
         var services = new ServiceCollection();
 
-        services.AddSingleton<ValidationMessageFormatter>(new ValidationMessageMap()
-            .Map(ValidationCodes.Required, static (in ValidationError e) => $"{e.Field}?!"));
+        services.AddSingleton<ValidationMessageFormatter>(
+            new ValidationMessageMap().Map(
+                ValidationCodes.Required,
+                static (in ValidationError e) => $"{e.Field}?!"
+            )
+        );
         services.AddMessagesDemoValidators();
 
         using var provider = services.BuildServiceProvider();
-        var error = new ValidationError("name", ValidationCodes.Required, null, ValidationMessageInfo.Required);
+        var error = new ValidationError(
+            "name",
+            ValidationCodes.Required,
+            null,
+            ValidationMessageInfo.Required
+        );
 
-        Assert.Equal("name?!", error.ToMessage(provider.GetRequiredService<ValidationMessageFormatter>()));
+        Assert.Equal(
+            "name?!",
+            error.ToMessage(provider.GetRequiredService<ValidationMessageFormatter>())
+        );
     }
 
     [Fact]
-    public void ValidationCodes_AreUntouchedByAnyOfThis() {
+    public void ValidationCodes_AreUntouchedByAnyOfThis()
+    {
         using var services = Services();
 
         var result = services.GetRequiredService<IValidatorFor<Reservation>>().Validate(Invalid);
 
         Assert.Equal(
             ["required", "range", "pattern", "array_bounds", "date_order"],
-            result.Errors.Select(error => error.Code).ToArray());
+            result.Errors.Select(error => error.Code).ToArray()
+        );
     }
 }

@@ -17,28 +17,32 @@ namespace ApiDemo.Tests;
 /// validation. Both travel through middleware the test hosts elsewhere in this repository do not
 /// build.
 /// </remarks>
-public class ProblemResponseTests {
-
+public class ProblemResponseTests
+{
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    private static CreateOrder Valid() => new() {
-        Reference = "ORD-100",
-        Quantity = 3,
-        ShipTo = new Address { Postcode = "SW1A 1AA" },
-        Lines = [new OrderLine { Sku = "SKU-1" }],
-    };
+    private static CreateOrder Valid() =>
+        new()
+        {
+            Reference = "ORD-100",
+            Quantity = 3,
+            ShipTo = new Address { Postcode = "SW1A 1AA" },
+            Lines = [new OrderLine { Sku = "SKU-1" }],
+        };
 
     private static StringContent Malformed() =>
         new("{\"reference\": \"ORD-1\", \"quantity\": ", Encoding.UTF8, "application/json");
 
-    private static string[] CodesFor(Problem problem, string field) {
+    private static string[] CodesFor(Problem problem, string field)
+    {
         Assert.NotNull(problem.ValidationCodes);
         return Assert.Contains(field, problem.ValidationCodes);
     }
 
-    private static async Task<Problem> ProblemFrom(HttpResponseMessage response) {
+    private static async Task<Problem> ProblemFrom(HttpResponseMessage response)
+    {
         var body = await response.Content.ReadAsStringAsync(Ct);
         Assert.False(string.IsNullOrWhiteSpace(body), "the response carried no body at all.");
         return JsonSerializer.Deserialize<Problem>(body, Json)
@@ -48,7 +52,8 @@ public class ProblemResponseTests {
     // ---- the filter path ------------------------------------------------------------------
 
     [Fact]
-    public async Task ValidBody_ReachesTheHandler() {
+    public async Task ValidBody_ReachesTheHandler()
+    {
         using var api = DemoApi.Development();
         using var client = api.CreateClient();
 
@@ -58,16 +63,22 @@ public class ProblemResponseTests {
     }
 
     [Fact]
-    public async Task InvalidBody_IsAProblemDocumentCarryingPathsAndCodes() {
+    public async Task InvalidBody_IsAProblemDocumentCarryingPathsAndCodes()
+    {
         using var api = DemoApi.Development();
         using var client = api.CreateClient();
 
-        var response = await client.PostAsJsonAsync("/orders", new CreateOrder {
-            Reference = "x",
-            Quantity = 0,
-            ShipTo = new Address(),
-            Lines = [new OrderLine()],
-        }, Ct);
+        var response = await client.PostAsJsonAsync(
+            "/orders",
+            new CreateOrder
+            {
+                Reference = "x",
+                Quantity = 0,
+                ShipTo = new Address(),
+                Lines = [new OrderLine()],
+            },
+            Ct
+        );
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
@@ -86,7 +97,8 @@ public class ProblemResponseTests {
     /// status rather than pointing every failure at the definition of 400.
     /// </summary>
     [Fact]
-    public async Task PerEndpointStatus_OverridesOneEndpointAndItsTypeMember() {
+    public async Task PerEndpointStatus_OverridesOneEndpointAndItsTypeMember()
+    {
         using var api = DemoApi.Development();
         using var client = api.CreateClient();
 
@@ -114,11 +126,20 @@ public class ProblemResponseTests {
     /// sample never showed one, so nothing pinned it.
     /// </summary>
     [Fact]
-    public async Task ObjectLevelFailure_UsesTheEmptyFieldKey() {
+    public async Task ObjectLevelFailure_UsesTheEmptyFieldKey()
+    {
         using var api = DemoApi.Development();
         using var client = api.CreateClient();
 
-        var response = await client.PostAsJsonAsync("/orders", Valid() with { Quantity = 200, Lines = [] }, Ct);
+        var response = await client.PostAsJsonAsync(
+            "/orders",
+            Valid() with
+            {
+                Quantity = 200,
+                Lines = [],
+            },
+            Ct
+        );
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
@@ -130,11 +151,16 @@ public class ProblemResponseTests {
     // ---- the thrown path ------------------------------------------------------------------
 
     [Fact]
-    public async Task ValidateAndThrow_DeeperIn_ProducesTheSameShape() {
+    public async Task ValidateAndThrow_DeeperIn_ProducesTheSameShape()
+    {
         using var api = DemoApi.Development();
         using var client = api.CreateClient();
 
-        var response = await client.PostAsJsonAsync("/orders/deep", new CreateOrder { Reference = "x", Quantity = 0 }, Ct);
+        var response = await client.PostAsJsonAsync(
+            "/orders/deep",
+            new CreateOrder { Reference = "x", Quantity = 0 },
+            Ct
+        );
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
@@ -152,7 +178,8 @@ public class ProblemResponseTests {
     [Theory]
     [InlineData("Development")]
     [InlineData("Production")]
-    public async Task MalformedJson_IsABadRequest(string environment) {
+    public async Task MalformedJson_IsABadRequest(string environment)
+    {
         using var api = new DemoApi(environment);
         using var client = api.CreateClient();
 
@@ -172,7 +199,8 @@ public class ProblemResponseTests {
     [Theory]
     [InlineData("Development")]
     [InlineData("Production")]
-    public async Task NonValidationException_StaysAServerError(string environment) {
+    public async Task NonValidationException_StaysAServerError(string environment)
+    {
         using var api = new DemoApi(environment);
         using var client = api.CreateClient();
 
@@ -185,7 +213,8 @@ public class ProblemResponseTests {
         Assert.Empty(problem.Errors);
     }
 
-    private sealed record Problem {
+    private sealed record Problem
+    {
         public string? Type { get; init; }
         public string? Title { get; init; }
         public int Status { get; init; }

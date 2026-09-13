@@ -14,13 +14,18 @@ namespace SutProject.Tests;
 /// <c>nameof</c> spelling <c>Name</c>, in the same result list. A client keying off
 /// <c>errors["name"]</c> silently missed the async failure.
 /// </remarks>
-public class RunnerFieldSpellingTests {
-
+public class RunnerFieldSpellingTests
+{
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private sealed class NameIsTaken : IAsyncValidatorFor<Pet> {
+    private sealed class NameIsTaken : IAsyncValidatorFor<Pet>
+    {
         public async ValueTask ValidateAsync(
-            ValidationContext context, Pet value, CancellationToken cancellationToken = default) {
+            ValidationContext context,
+            Pet value,
+            CancellationToken cancellationToken = default
+        )
+        {
             await Task.Yield();
 
             // Verbatim nameof, exactly what a hand-written business rule writes. The generator
@@ -29,16 +34,23 @@ public class RunnerFieldSpellingTests {
         }
     }
 
-    private sealed class StepZeroIsWrong : IAsyncValidatorFor<Pet> {
+    private sealed class StepZeroIsWrong : IAsyncValidatorFor<Pet>
+    {
         public async ValueTask ValidateAsync(
-            ValidationContext context, Pet value, CancellationToken cancellationToken = default) {
+            ValidationContext context,
+            Pet value,
+            CancellationToken cancellationToken = default
+        )
+        {
             await Task.Yield();
 
             context.Report("steps[0]", "step_wrong", "the first step is wrong.");
         }
     }
 
-    private static ServiceProvider Provider<TRule>() where TRule : class, IAsyncValidatorFor<Pet> {
+    private static ServiceProvider Provider<TRule>()
+        where TRule : class, IAsyncValidatorFor<Pet>
+    {
         var services = new ServiceCollection();
 
         services.AddSutProjectValidators();
@@ -47,17 +59,20 @@ public class RunnerFieldSpellingTests {
         return services.BuildServiceProvider();
     }
 
-    private static Pet CleanPet() => new() {
-        Name = "Rex",
-        Sku = "ABC",
-        Slug = "rex-1",
-        Age = 3,
-        Status = "available",
-        Toys = new List<Toy> { new() { Name = "ball" } },
-    };
+    private static Pet CleanPet() =>
+        new()
+        {
+            Name = "Rex",
+            Sku = "ABC",
+            Slug = "rex-1",
+            Age = 3,
+            Status = "available",
+            Toys = new List<Toy> { new() { Name = "ball" } },
+        };
 
     [Fact]
-    public async Task GeneratedAndHandWrittenFailures_OnOneProperty_ShareOneWireName() {
+    public async Task GeneratedAndHandWrittenFailures_OnOneProperty_ShareOneWireName()
+    {
         await using var provider = Provider<NameIsTaken>();
         using var scope = provider.CreateScope();
         var runner = scope.ServiceProvider.GetRequiredService<ValidationRunner<Pet>>();
@@ -76,7 +91,8 @@ public class RunnerFieldSpellingTests {
     }
 
     [Fact]
-    public async Task ADeliberatelyShapedField_SurvivesUntouched() {
+    public async Task ADeliberatelyShapedField_SurvivesUntouched()
+    {
         await using var provider = Provider<StepZeroIsWrong>();
         using var scope = provider.CreateScope();
         var runner = scope.ServiceProvider.GetRequiredService<ValidationRunner<Pet>>();

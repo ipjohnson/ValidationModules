@@ -12,20 +12,23 @@ namespace SutProject.Tests;
 /// against a divisor of 0.01; a <c>[UniqueItems]</c> over the wrong comparer compiles and then
 /// calls two identical elements distinct. Only running the comparison shows either.
 /// </remarks>
-public class MultipleOfAndUniqueItemsTests {
-
-    private static Order Valid() => new() {
-        Quantity = 10,
-        Cents = 500,
-        Price = 4.95m,
-        Ratio = 1.05,
-        Optional = null,
-        Codes = ["a", "b"],
-        Sizes = [1, 2, 3],
-    };
+public class MultipleOfAndUniqueItemsTests
+{
+    private static Order Valid() =>
+        new()
+        {
+            Quantity = 10,
+            Cents = 500,
+            Price = 4.95m,
+            Ratio = 1.05,
+            Optional = null,
+            Codes = ["a", "b"],
+            Sizes = [1, 2, 3],
+        };
 
     [Fact]
-    public void CleanOrder_IsValid() {
+    public void CleanOrder_IsValid()
+    {
         Assert.True(new OrderValidator().IsValid(Valid()));
     }
 
@@ -36,7 +39,8 @@ public class MultipleOfAndUniqueItemsTests {
     [InlineData(-5, true)]
     [InlineData(3, false)]
     [InlineData(-3, false)]
-    public void Integral_AcceptsExactMultiples(int quantity, bool expected) {
+    public void Integral_AcceptsExactMultiples(int quantity, bool expected)
+    {
         Assert.Equal(expected, new OrderValidator().IsValid(Valid() with { Quantity = quantity }));
     }
 
@@ -46,8 +50,10 @@ public class MultipleOfAndUniqueItemsTests {
     [InlineData("0.00", true)]
     [InlineData("4.99", false)]
     [InlineData("0.01", false)]
-    public void Decimal_AcceptsExactMultiples(string price, bool expected) {
-        var order = Valid() with {
+    public void Decimal_AcceptsExactMultiples(string price, bool expected)
+    {
+        var order = Valid() with
+        {
             Price = decimal.Parse(price, System.Globalization.CultureInfo.InvariantCulture),
         };
 
@@ -64,7 +70,8 @@ public class MultipleOfAndUniqueItemsTests {
     [InlineData(99.99)]
     [InlineData(1234.56)]
     [InlineData(0.07)]
-    public void Double_AcceptsWhatTheNaiveModuloWouldReject(double ratio) {
+    public void Double_AcceptsWhatTheNaiveModuloWouldReject(double ratio)
+    {
         Assert.NotEqual(0, ratio % 0.01);
         Assert.True(new OrderValidator().IsValid(Valid() with { Ratio = ratio }));
     }
@@ -72,19 +79,22 @@ public class MultipleOfAndUniqueItemsTests {
     [Theory]
     [InlineData(0.125)]
     [InlineData(1.0050001)]
-    public void Double_StillRejectsWhatIsNotAMultiple(double ratio) {
+    public void Double_StillRejectsWhatIsNotAMultiple(double ratio)
+    {
         Assert.False(new OrderValidator().IsValid(Valid() with { Ratio = ratio }));
     }
 
     [Fact]
-    public void NullableMember_IsSkippedWhenAbsentAndCheckedWhenPresent() {
+    public void NullableMember_IsSkippedWhenAbsentAndCheckedWhenPresent()
+    {
         Assert.True(new OrderValidator().IsValid(Valid() with { Optional = null }));
         Assert.True(new OrderValidator().IsValid(Valid() with { Optional = 50 }));
         Assert.False(new OrderValidator().IsValid(Valid() with { Optional = 51 }));
     }
 
     [Fact]
-    public void MultipleOf_ReportsItsOwnCodeAndNamesTheDivisor() {
+    public void MultipleOf_ReportsItsOwnCodeAndNamesTheDivisor()
+    {
         var result = new OrderValidator().Validate(Valid() with { Quantity = 3 });
 
         var error = Assert.Single(result.Errors);
@@ -98,14 +108,16 @@ public class MultipleOfAndUniqueItemsTests {
     [InlineData(new[] { "a", "b", "a" }, false)]
     [InlineData(new string[0], true)]
     [InlineData(new[] { "a" }, true)]
-    public void UniqueItems_ChecksAList(string[] codes, bool expected) {
+    public void UniqueItems_ChecksAList(string[] codes, bool expected)
+    {
         Assert.Equal(expected, new OrderValidator().IsValid(Valid() with { Codes = [.. codes] }));
     }
 
     [Theory]
     [InlineData(new[] { 1, 2, 3 }, true)]
     [InlineData(new[] { 1, 2, 1 }, false)]
-    public void UniqueItems_ChecksAnArray(int[] sizes, bool expected) {
+    public void UniqueItems_ChecksAnArray(int[] sizes, bool expected)
+    {
         Assert.Equal(expected, new OrderValidator().IsValid(Valid() with { Sizes = sizes }));
     }
 
@@ -116,7 +128,8 @@ public class MultipleOfAndUniqueItemsTests {
     [Theory]
     [InlineData(8)]
     [InlineData(40)]
-    public void UniqueItems_AgreesAcrossTheAllocationThreshold(int count) {
+    public void UniqueItems_AgreesAcrossTheAllocationThreshold(int count)
+    {
         var distinct = Enumerable.Range(0, count).ToArray();
         Assert.True(new OrderValidator().IsValid(Valid() with { Sizes = distinct }));
 
@@ -125,7 +138,8 @@ public class MultipleOfAndUniqueItemsTests {
     }
 
     [Fact]
-    public void UniqueItems_ReportsItsOwnCodeAndDoesNotEchoTheDuplicate() {
+    public void UniqueItems_ReportsItsOwnCodeAndDoesNotEchoTheDuplicate()
+    {
         var result = new OrderValidator().Validate(Valid() with { Codes = ["a", "a"] });
 
         var error = Assert.Single(result.Errors);

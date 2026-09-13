@@ -28,8 +28,8 @@ namespace ValidationModules;
 /// statically. Nothing constructs a type or looks one up.
 /// </para>
 /// </remarks>
-public static class ConstraintChecks {
-
+public static class ConstraintChecks
+{
     private const string PhoneCharacters = "-.()";
     private const string PhoneExtensionExtDot = "ext.";
     private const string PhoneExtensionExt = "ext";
@@ -62,14 +62,19 @@ public static class ConstraintChecks {
     /// <summary>Whether every element differs from every other.</summary>
     /// <typeparam name="T">The element type. Compared with its default equality.</typeparam>
     /// <param name="items">The elements. Never null at the call site - the emitter guards first.</param>
-    public static bool AllUnique<T>(IEnumerable<T> items) {
+    public static bool AllUnique<T>(IEnumerable<T> items)
+    {
         // Indexable and small: no enumerator, no set, nothing on the heap.
-        if (items is IReadOnlyList<T> list && list.Count <= PairwiseLimit) {
+        if (items is IReadOnlyList<T> list && list.Count <= PairwiseLimit)
+        {
             var comparer = EqualityComparer<T>.Default;
 
-            for (var i = 1; i < list.Count; i++) {
-                for (var j = 0; j < i; j++) {
-                    if (comparer.Equals(list[i], list[j])) {
+            for (var i = 1; i < list.Count; i++)
+            {
+                for (var j = 0; j < i; j++)
+                {
+                    if (comparer.Equals(list[i], list[j]))
+                    {
                         return false;
                     }
                 }
@@ -80,8 +85,10 @@ public static class ConstraintChecks {
 
         var seen = new HashSet<T>();
 
-        foreach (var item in items) {
-            if (!seen.Add(item)) {
+        foreach (var item in items)
+        {
+            if (!seen.Add(item))
+            {
                 return false;
             }
         }
@@ -102,9 +109,15 @@ public static class ConstraintChecks {
     /// be shown to be a multiple of anything, and reporting them as passing would claim a check ran
     /// that did not.
     /// </remarks>
-    public static bool IsMultipleOf(double value, decimal divisor) {
-        if (double.IsNaN(value) || double.IsInfinity(value) ||
-            value < -DecimalRange || value > DecimalRange) {
+    public static bool IsMultipleOf(double value, decimal divisor)
+    {
+        if (
+            double.IsNaN(value)
+            || double.IsInfinity(value)
+            || value < -DecimalRange
+            || value > DecimalRange
+        )
+        {
             return false;
         }
 
@@ -124,9 +137,15 @@ public static class ConstraintChecks {
     /// rounds to the seven significant digits a float actually carries, which is the precision the
     /// caller wrote the constraint against.
     /// </remarks>
-    public static bool IsMultipleOf(float value, decimal divisor) {
-        if (float.IsNaN(value) || float.IsInfinity(value) ||
-            value < -DecimalRange || value > DecimalRange) {
+    public static bool IsMultipleOf(float value, decimal divisor)
+    {
+        if (
+            float.IsNaN(value)
+            || float.IsInfinity(value)
+            || value < -DecimalRange
+            || value > DecimalRange
+        )
+        {
             return false;
         }
 
@@ -142,16 +161,16 @@ public static class ConstraintChecks {
     /// so the check is an approximation of a deliberately permissive grammar, not a loose stand-in
     /// for a strict one. The line-break rejection is the BCL's own hardening and is kept.
     /// </remarks>
-    public static bool IsEmail(string value) {
-        if (value.AsSpan().IndexOfAny('\r', '\n') >= 0) {
+    public static bool IsEmail(string value)
+    {
+        if (value.AsSpan().IndexOfAny('\r', '\n') >= 0)
+        {
             return false;
         }
 
         var index = value.IndexOf('@');
 
-        return index > 0 &&
-            index != value.Length - 1 &&
-            index == value.LastIndexOf('@');
+        return index > 0 && index != value.Length - 1 && index == value.LastIndexOf('@');
     }
 
     /// <summary>
@@ -166,14 +185,18 @@ public static class ConstraintChecks {
     /// a <c>'+'</c> inside <c>e+xt.</c> still reads as an extension marker, because the strip
     /// happens before the extension search there too.
     /// </remarks>
-    public static bool IsPhone(string value) {
-        Span<char> scratch = value.Length <= PhoneStackLimit
-            ? stackalloc char[PhoneStackLimit]
-            : new char[value.Length];
+    public static bool IsPhone(string value)
+    {
+        Span<char> scratch =
+            value.Length <= PhoneStackLimit
+                ? stackalloc char[PhoneStackLimit]
+                : new char[value.Length];
         var length = 0;
 
-        foreach (var c in value) {
-            if (c != '+') {
+        foreach (var c in value)
+        {
+            if (c != '+')
+            {
                 scratch[length++] = c;
             }
         }
@@ -184,19 +207,24 @@ public static class ConstraintChecks {
 
         var digitFound = false;
 
-        foreach (var c in span) {
-            if (char.IsDigit(c)) {
+        foreach (var c in span)
+        {
+            if (char.IsDigit(c))
+            {
                 digitFound = true;
                 break;
             }
         }
 
-        if (!digitFound) {
+        if (!digitFound)
+        {
             return false;
         }
 
-        foreach (var c in span) {
-            if (!(char.IsDigit(c) || char.IsWhiteSpace(c) || PhoneCharacters.Contains(c))) {
+        foreach (var c in span)
+        {
+            if (!(char.IsDigit(c) || char.IsWhiteSpace(c) || PhoneCharacters.Contains(c)))
+            {
                 return false;
             }
         }
@@ -209,9 +237,9 @@ public static class ConstraintChecks {
     /// <c>ftp://</c>, case-insensitively. Nothing past the prefix is checked.
     /// </summary>
     public static bool IsUrl(string value) =>
-        value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-        value.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
-        value.StartsWith("ftp://", StringComparison.OrdinalIgnoreCase);
+        value.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("ftp://", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// <c>[Url]</c> on a <see cref="Uri"/>: absolute, with scheme http, https or ftp.
@@ -223,24 +251,30 @@ public static class ConstraintChecks {
     /// answer that does not fail a member for being better-typed.
     /// </remarks>
     public static bool IsUrl(Uri value) =>
-        value.IsAbsoluteUri &&
-        (value.Scheme == Uri.UriSchemeHttp ||
-            value.Scheme == Uri.UriSchemeHttps ||
-            value.Scheme == Uri.UriSchemeFtp);
+        value.IsAbsoluteUri
+        && (
+            value.Scheme == Uri.UriSchemeHttp
+            || value.Scheme == Uri.UriSchemeHttps
+            || value.Scheme == Uri.UriSchemeFtp
+        );
 
     /// <summary>
     /// <c>[CreditCard]</c>: digits, with dashes and spaces skipped, passing the Luhn mod-10
     /// checksum.
     /// </summary>
-    public static bool IsCreditCard(string value) {
+    public static bool IsCreditCard(string value)
+    {
         var checksum = 0;
         var evenDigit = false;
 
-        for (var i = value.Length - 1; i >= 0; i--) {
+        for (var i = value.Length - 1; i >= 0; i--)
+        {
             var digit = value[i];
 
-            if (!char.IsAsciiDigit(digit)) {
-                if (digit is '-' or ' ') {
+            if (!char.IsAsciiDigit(digit))
+            {
+                if (digit is '-' or ' ')
+                {
                     continue;
                 }
 
@@ -251,7 +285,8 @@ public static class ConstraintChecks {
 
             evenDigit = !evenDigit;
 
-            while (digitValue > 0) {
+            while (digitValue > 0)
+            {
                 checksum += digitValue % 10;
                 digitValue /= 10;
             }
@@ -285,11 +320,14 @@ public static class ConstraintChecks {
     /// already-lowered set gives the same answer for any extension representable in the attribute
     /// and allocates nothing.
     /// </remarks>
-    public static bool HasFileExtension(string value, string[] extensions) {
+    public static bool HasFileExtension(string value, string[] extensions)
+    {
         var extension = System.IO.Path.GetExtension(value.AsSpan());
 
-        foreach (var candidate in extensions) {
-            if (extension.Equals(candidate.AsSpan(), StringComparison.OrdinalIgnoreCase)) {
+        foreach (var candidate in extensions)
+        {
+            if (extension.Equals(candidate.AsSpan(), StringComparison.OrdinalIgnoreCase))
+            {
                 return true;
             }
         }
@@ -301,36 +339,55 @@ public static class ConstraintChecks {
     /// The trailing-extension strip, ported from <c>PhoneAttribute</c> verbatim: the last
     /// occurrence of each marker in turn, kept only when nothing but digits follows it.
     /// </summary>
-    private static ReadOnlySpan<char> RemovePhoneExtension(ReadOnlySpan<char> potentialPhoneNumber) {
-        var lastIndexOfExtension = potentialPhoneNumber
-            .LastIndexOf(PhoneExtensionExtDot.AsSpan(), StringComparison.OrdinalIgnoreCase);
+    private static ReadOnlySpan<char> RemovePhoneExtension(ReadOnlySpan<char> potentialPhoneNumber)
+    {
+        var lastIndexOfExtension = potentialPhoneNumber.LastIndexOf(
+            PhoneExtensionExtDot.AsSpan(),
+            StringComparison.OrdinalIgnoreCase
+        );
 
-        if (lastIndexOfExtension >= 0) {
-            var extension = potentialPhoneNumber.Slice(lastIndexOfExtension + PhoneExtensionExtDot.Length);
+        if (lastIndexOfExtension >= 0)
+        {
+            var extension = potentialPhoneNumber.Slice(
+                lastIndexOfExtension + PhoneExtensionExtDot.Length
+            );
 
-            if (MatchesPhoneExtension(extension)) {
+            if (MatchesPhoneExtension(extension))
+            {
                 return potentialPhoneNumber.Slice(0, lastIndexOfExtension);
             }
         }
 
-        lastIndexOfExtension = potentialPhoneNumber
-            .LastIndexOf(PhoneExtensionExt.AsSpan(), StringComparison.OrdinalIgnoreCase);
+        lastIndexOfExtension = potentialPhoneNumber.LastIndexOf(
+            PhoneExtensionExt.AsSpan(),
+            StringComparison.OrdinalIgnoreCase
+        );
 
-        if (lastIndexOfExtension >= 0) {
-            var extension = potentialPhoneNumber.Slice(lastIndexOfExtension + PhoneExtensionExt.Length);
+        if (lastIndexOfExtension >= 0)
+        {
+            var extension = potentialPhoneNumber.Slice(
+                lastIndexOfExtension + PhoneExtensionExt.Length
+            );
 
-            if (MatchesPhoneExtension(extension)) {
+            if (MatchesPhoneExtension(extension))
+            {
                 return potentialPhoneNumber.Slice(0, lastIndexOfExtension);
             }
         }
 
-        lastIndexOfExtension = potentialPhoneNumber
-            .LastIndexOf(PhoneExtensionX.AsSpan(), StringComparison.OrdinalIgnoreCase);
+        lastIndexOfExtension = potentialPhoneNumber.LastIndexOf(
+            PhoneExtensionX.AsSpan(),
+            StringComparison.OrdinalIgnoreCase
+        );
 
-        if (lastIndexOfExtension >= 0) {
-            var extension = potentialPhoneNumber.Slice(lastIndexOfExtension + PhoneExtensionX.Length);
+        if (lastIndexOfExtension >= 0)
+        {
+            var extension = potentialPhoneNumber.Slice(
+                lastIndexOfExtension + PhoneExtensionX.Length
+            );
 
-            if (MatchesPhoneExtension(extension)) {
+            if (MatchesPhoneExtension(extension))
+            {
                 return potentialPhoneNumber.Slice(0, lastIndexOfExtension);
             }
         }
@@ -338,15 +395,19 @@ public static class ConstraintChecks {
         return potentialPhoneNumber;
     }
 
-    private static bool MatchesPhoneExtension(ReadOnlySpan<char> potentialExtension) {
+    private static bool MatchesPhoneExtension(ReadOnlySpan<char> potentialExtension)
+    {
         potentialExtension = potentialExtension.TrimStart();
 
-        if (potentialExtension.Length == 0) {
+        if (potentialExtension.Length == 0)
+        {
             return false;
         }
 
-        foreach (var c in potentialExtension) {
-            if (!char.IsDigit(c)) {
+        foreach (var c in potentialExtension)
+        {
+            if (!char.IsDigit(c))
+            {
                 return false;
             }
         }

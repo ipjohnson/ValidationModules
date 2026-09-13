@@ -11,13 +11,14 @@ namespace ValidationModules.Runtime.Tests;
 /// <c>RuleAction&lt;T&gt;</c> signature has no other, which is why checks needing services currently
 /// get hoisted into static helpers away from their declarations.
 /// </remarks>
-public class CollectorServicesTests {
-
+public class CollectorServicesTests
+{
     private static ServiceProvider Provider() =>
         new ServiceCollection().AddSingleton("injected").BuildServiceProvider();
 
     [Fact]
-    public void ContextForwardsTheCollectorsServices() {
+    public void ContextForwardsTheCollectorsServices()
+    {
         using var provider = Provider();
 
         var context = new ValidationContext(new ValidationErrorCollector(provider));
@@ -26,7 +27,8 @@ public class CollectorServicesTests {
     }
 
     [Fact]
-    public void WithoutServices_TheContextReportsNone() {
+    public void WithoutServices_TheContextReportsNone()
+    {
         Assert.Null(new ValidationContext(new ValidationErrorCollector()).Services);
     }
 
@@ -34,7 +36,8 @@ public class CollectorServicesTests {
     /// A descent carries the services with it, because the context forwards rather than holding.
     /// </summary>
     [Fact]
-    public void ServicesSurviveADescent() {
+    public void ServicesSurviveADescent()
+    {
         using var provider = Provider();
 
         var context = new ValidationContext(new ValidationErrorCollector(provider));
@@ -48,7 +51,8 @@ public class CollectorServicesTests {
     /// point. Crossing a scope means a new collector.
     /// </summary>
     [Fact]
-    public void ResetKeepsTheServices() {
+    public void ResetKeepsTheServices()
+    {
         using var provider = Provider();
         var collector = new ValidationErrorCollector(provider);
 
@@ -62,34 +66,45 @@ public class CollectorServicesTests {
     /// pooled collector for a different scope is not expressible.
     /// </summary>
     [Fact]
-    public void ServicesHasNoSetter() {
-        var property = typeof(ValidationErrorCollector).GetProperty(nameof(ValidationErrorCollector.Services));
+    public void ServicesHasNoSetter()
+    {
+        var property = typeof(ValidationErrorCollector).GetProperty(
+            nameof(ValidationErrorCollector.Services)
+        );
 
         Assert.NotNull(property);
         Assert.Null(property!.SetMethod);
     }
 
     [Fact]
-    public void PathModeIsUnaffectedByCarryingServices() {
+    public void PathModeIsUnaffectedByCarryingServices()
+    {
         using var provider = Provider();
 
         Assert.Equal(
             ValidationPathMode.Full,
-            new ValidationErrorCollector(provider, ValidationPathMode.Full).PathMode);
+            new ValidationErrorCollector(provider, ValidationPathMode.Full).PathMode
+        );
     }
 
     /// <summary>
     /// The motivating case: an applied rule reaching a dependency at its declaration site.
     /// </summary>
     [Fact]
-    public void AnAppliedRuleCanReachServicesThroughTheContext() {
+    public void AnAppliedRuleCanReachServicesThroughTheContext()
+    {
         using var provider = Provider();
 
         var collector = new ValidationErrorCollector(provider);
         var context = new ValidationContext(collector);
 
-        static void Rule(ref ValidationContext context, string value) {
-            if (context.Services?.GetService(typeof(string)) is string expected && value != expected) {
+        static void Rule(ref ValidationContext context, string value)
+        {
+            if (
+                context.Services?.GetService(typeof(string)) is string expected
+                && value != expected
+            )
+            {
                 context.Report("value", "mismatch", $"expected '{expected}'.");
             }
         }

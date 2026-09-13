@@ -24,29 +24,32 @@ namespace SutProject.Tests;
 /// <c>MakeGenericType</c>, which is the thing this library exists to avoid.
 /// </para>
 /// </remarks>
-public class NestedCompositionTests {
-
+public class NestedCompositionTests
+{
     /// <remarks>
     /// Note the field name. Address.PostalCode carries [JsonPropertyName("postal_code")], so the
     /// generated validator reports "postal_code" - and a hand-written validator that composes with
     /// it has to say the same thing, or one field arrives under two names depending on which rule
     /// failed. The runtime cannot check this: reading the attribute at run time is reflection.
     /// </remarks>
-    private sealed class AddressBlocklistValidator : IValidatorFor<Address> {
+    private sealed class AddressBlocklistValidator : IValidatorFor<Address>
+    {
         public ValidationFlow Validate(ref ValidationContext context, Address value) =>
             value.PostalCode == "BLOCKED"
                 ? context.Report("postal_code", "blocked", "postal code is blocked.")
                 : ValidationFlow.Continue;
     }
 
-    private sealed class ToyRecallValidator : IValidatorFor<Toy> {
+    private sealed class ToyRecallValidator : IValidatorFor<Toy>
+    {
         public ValidationFlow Validate(ref ValidationContext context, Toy value) =>
             value.Name == "recalled"
                 ? context.Report("name", "recalled", "toy is recalled.")
                 : ValidationFlow.Continue;
     }
 
-    private static ServiceProvider Provider() {
+    private static ServiceProvider Provider()
+    {
         var services = new ServiceCollection();
 
         services.AddSutProjectValidators();
@@ -60,17 +63,25 @@ public class NestedCompositionTests {
     private static ValidationRunner<Pet> Runner(ServiceProvider provider) =>
         provider.CreateScope().ServiceProvider.GetRequiredService<ValidationRunner<Pet>>();
 
-    private static Pet Valid() => new() {
-        Name = "Rex", Sku = "ABC", Slug = "rex", Age = 3, Status = "available",
-        Home = new Address { PostalCode = "SW1" },
-        Toys = [new Toy { Name = "ball" }],
-    };
+    private static Pet Valid() =>
+        new()
+        {
+            Name = "Rex",
+            Sku = "ABC",
+            Slug = "rex",
+            Age = 3,
+            Status = "available",
+            Home = new Address { PostalCode = "SW1" },
+            Toys = [new Toy { Name = "ball" }],
+        };
 
     [Fact]
-    public void RegisteredValidatorForANestedObject_Runs() {
+    public void RegisteredValidatorForANestedObject_Runs()
+    {
         using var provider = Provider();
 
-        var result = Runner(provider).Validate(Valid() with { Home = new Address { PostalCode = "BLOCKED" } });
+        var result = Runner(provider)
+            .Validate(Valid() with { Home = new Address { PostalCode = "BLOCKED" } });
 
         var error = Assert.Single(result.Errors);
         Assert.Equal("home.postal_code", error.Field);
@@ -78,12 +89,17 @@ public class NestedCompositionTests {
     }
 
     [Fact]
-    public void RegisteredValidatorForACollectionElement_RunsAndIsIndexed() {
+    public void RegisteredValidatorForACollectionElement_RunsAndIsIndexed()
+    {
         using var provider = Provider();
 
-        var result = Runner(provider).Validate(Valid() with {
-            Toys = [new Toy { Name = "ball" }, new Toy { Name = "recalled" }],
-        });
+        var result = Runner(provider)
+            .Validate(
+                Valid() with
+                {
+                    Toys = [new Toy { Name = "ball" }, new Toy { Name = "recalled" }],
+                }
+            );
 
         var error = Assert.Single(result.Errors);
         Assert.Equal("toys[1].name", error.Field);
@@ -91,12 +107,14 @@ public class NestedCompositionTests {
     }
 
     [Fact]
-    public void GeneratedNestedValidatorDoesNotRunTwice() {
+    public void GeneratedNestedValidatorDoesNotRunTwice()
+    {
         // The generated validator is registered in the container as well as being reachable
         // statically, so without excluding it by reference every nested error would be duplicated.
         using var provider = Provider();
 
-        var result = Runner(provider).Validate(Valid() with { Home = new Address { PostalCode = null } });
+        var result = Runner(provider)
+            .Validate(Valid() with { Home = new Address { PostalCode = null } });
 
         var error = Assert.Single(result.Errors);
         Assert.Equal("home.postal_code", error.Field);
@@ -104,44 +122,57 @@ public class NestedCompositionTests {
     }
 
     [Fact]
-    public void GeneratedAndRegisteredNestedErrors_BothSurvive() {
+    public void GeneratedAndRegisteredNestedErrors_BothSurvive()
+    {
         using var provider = Provider();
 
-        var result = Runner(provider).Validate(Valid() with {
-            Home = new Address { PostalCode = "BLOCKED" },
-            Toys = [new Toy { Name = null }, new Toy { Name = "recalled" }],
-        });
+        var result = Runner(provider)
+            .Validate(
+                Valid() with
+                {
+                    Home = new Address { PostalCode = "BLOCKED" },
+                    Toys = [new Toy { Name = null }, new Toy { Name = "recalled" }],
+                }
+            );
 
         Assert.Equal(
             new[] { "home.postal_code:blocked", "toys[0].name:required", "toys[1].name:recalled" },
-            result.Errors.Select(e => $"{e.Field}:{e.Code}").OrderBy(x => x, StringComparer.Ordinal));
+            result.Errors.Select(e => $"{e.Field}:{e.Code}").OrderBy(x => x, StringComparer.Ordinal)
+        );
     }
 
     [Fact]
-    public void CleanValue_StaysCleanWithCompositionOn() {
+    public void CleanValue_StaysCleanWithCompositionOn()
+    {
         using var provider = Provider();
 
         Assert.True(Runner(provider).Validate(Valid()).IsValid);
     }
 
     [Fact]
-    public void InstanceCall_IsUnaffectedBecauseItHasNoProvider() {
+    public void InstanceCall_IsUnaffectedBecauseItHasNoProvider()
+    {
         // The no-container path must keep working exactly as before: Services is null, the resolve
         // short-circuits, and nothing is allocated for it.
-        var pet = Valid() with { Home = new Address { PostalCode = "BLOCKED" } };
+        var pet = Valid() with
+        {
+            Home = new Address { PostalCode = "BLOCKED" },
+        };
 
         Assert.True(new PetValidator().IsValid(pet));
         Assert.Empty(new PetValidator().Validate(pet).Errors);
     }
 
     [Fact]
-    public void RunnerConstructedByHandWithoutAProvider_RunsGeneratedValidatorsOnly() {
+    public void RunnerConstructedByHandWithoutAProvider_RunsGeneratedValidatorsOnly()
+    {
         // What a unit test does. Composition is a property of having been resolved from a scope.
         var runner = new ValidationRunner<Pet>([new PetValidator()], []);
 
-        Assert.True(runner.Validate(Valid() with { Home = new Address { PostalCode = "BLOCKED" } }).IsValid);
+        Assert.True(
+            runner.Validate(Valid() with { Home = new Address { PostalCode = "BLOCKED" } }).IsValid
+        );
     }
-
 
     /// <summary>
     /// A container with no <c>IValidatorFor&lt;Item&gt;</c> registered injects an empty sequence,
@@ -151,13 +182,18 @@ public class NestedCompositionTests {
     /// <c>AddXValidators()</c> was never called.
     /// </summary>
     [Fact]
-    public void NestedValidator_NotRegistered_FallsBackRatherThanSkipping() {
+    public void NestedValidator_NotRegistered_FallsBackRatherThanSkipping()
+    {
         var validator = new SutProject.Nesting.CatalogValidator(
-            System.Array.Empty<IValidatorFor<SutProject.Nesting.Item>>());
+            System.Array.Empty<IValidatorFor<SutProject.Nesting.Item>>()
+        );
 
-        var result = validator.Validate(new SutProject.Nesting.Catalog {
-            Items = { ["a"] = new SutProject.Nesting.Item { Sku = null } }
-        });
+        var result = validator.Validate(
+            new SutProject.Nesting.Catalog
+            {
+                Items = { ["a"] = new SutProject.Nesting.Item { Sku = null } },
+            }
+        );
 
         var error = Assert.Single(result.Errors);
         Assert.Equal(ValidationCodes.Required, error.Code);
@@ -165,16 +201,21 @@ public class NestedCompositionTests {
 
     /// <summary>The registered case is unaffected: an injected validator still wins.</summary>
     [Fact]
-    public void NestedValidator_Registered_StillComposes() {
+    public void NestedValidator_Registered_StillComposes()
+    {
         var services = new ServiceCollection();
         services.AddSutProjectValidators();
 
         using var provider = services.BuildServiceProvider();
 
-        var result = provider.GetRequiredService<IValidatorFor<SutProject.Nesting.Catalog>>()
-            .Validate(new SutProject.Nesting.Catalog {
-                Items = { ["a"] = new SutProject.Nesting.Item { Sku = null } }
-            });
+        var result = provider
+            .GetRequiredService<IValidatorFor<SutProject.Nesting.Catalog>>()
+            .Validate(
+                new SutProject.Nesting.Catalog
+                {
+                    Items = { ["a"] = new SutProject.Nesting.Item { Sku = null } },
+                }
+            );
 
         Assert.Single(result.Errors);
     }

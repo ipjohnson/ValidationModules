@@ -18,13 +18,17 @@ namespace ValidationModules;
 /// </para>
 /// </remarks>
 /// <typeparam name="T">The type being validated.</typeparam>
-public interface IAsyncValidatorFor<in T> {
-
+public interface IAsyncValidatorFor<in T>
+{
     /// <summary>
     /// Validates <paramref name="value"/>, adding any failures to <paramref name="context"/>.
     /// </summary>
     /// <param name="context">Accumulates failures and carries the current field path.</param>
     /// <param name="value">The value to validate.</param>
     /// <param name="cancellationToken">Cancels any I/O the rule performs.</param>
-    ValueTask ValidateAsync(ValidationContext context, T value, CancellationToken cancellationToken = default);
+    ValueTask ValidateAsync(
+        ValidationContext context,
+        T value,
+        CancellationToken cancellationToken = default
+    );
 }

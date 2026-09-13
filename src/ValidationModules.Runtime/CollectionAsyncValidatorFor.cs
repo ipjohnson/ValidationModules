@@ -18,8 +18,9 @@ namespace ValidationModules;
 /// </para>
 /// </remarks>
 /// <typeparam name="TElement">The element type, which owns the actual rules.</typeparam>
-public sealed class CollectionAsyncValidatorFor<TElement> : IAsyncValidatorFor<IReadOnlyList<TElement>> {
-
+public sealed class CollectionAsyncValidatorFor<TElement>
+    : IAsyncValidatorFor<IReadOnlyList<TElement>>
+{
     private readonly IAsyncValidatorFor<TElement>[] _element;
 
     /// <summary>
@@ -29,27 +30,35 @@ public sealed class CollectionAsyncValidatorFor<TElement> : IAsyncValidatorFor<I
     /// Every async validator registered for <typeparamref name="TElement"/>, run per element in
     /// registration order.
     /// </param>
-    public CollectionAsyncValidatorFor(IEnumerable<IAsyncValidatorFor<TElement>> element) {
+    public CollectionAsyncValidatorFor(IEnumerable<IAsyncValidatorFor<TElement>> element)
+    {
         ArgumentNullException.ThrowIfNull(element);
 
-        _element = element as IAsyncValidatorFor<TElement>[] ?? System.Linq.Enumerable.ToArray(element);
+        _element =
+            element as IAsyncValidatorFor<TElement>[] ?? System.Linq.Enumerable.ToArray(element);
     }
 
     /// <inheritdoc/>
     public async ValueTask ValidateAsync(
         ValidationContext context,
         IReadOnlyList<TElement> value,
-        CancellationToken cancellationToken = default) {
-
-        for (var i = 0; i < value.Count; i++) {
-            if (value[i] is not { } element) {
+        CancellationToken cancellationToken = default
+    )
+    {
+        for (var i = 0; i < value.Count; i++)
+        {
+            if (value[i] is not { } element)
+            {
                 continue;
             }
 
             var elementContext = context.PushIndex(string.Empty, i);
 
-            for (var v = 0; v < _element.Length; v++) {
-                await _element[v].ValidateAsync(elementContext, element, cancellationToken).ConfigureAwait(false);
+            for (var v = 0; v < _element.Length; v++)
+            {
+                await _element[v]
+                    .ValidateAsync(elementContext, element, cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
     }

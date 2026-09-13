@@ -26,10 +26,9 @@ namespace ValidationModules;
 /// </para>
 /// </remarks>
 /// <typeparam name="T">The type being described.</typeparam>
-public sealed class ValidationRules<T> {
-
-    internal ValidationRules() {
-    }
+public sealed class ValidationRules<T>
+{
+    internal ValidationRules() { }
 
     /// <summary>
     /// The reporting surface for free-form logic - <c>rules.Context.Report(nameof(x.Sku), …)</c>.
@@ -42,7 +41,8 @@ public sealed class ValidationRules<T> {
     /// Anchors to a value without declaring anything, for when the anchor reads better stated than
     /// carried by the first rule.
     /// </summary>
-    public PropertyRules<T, TValue> For<TValue>(TValue value, string? field = null) => throw Inert();
+    public PropertyRules<T, TValue> For<TValue>(TValue value, string? field = null) =>
+        throw Inert();
 
     /// <summary>
     /// Declares that a string must be present. Whitespace counts as missing - plan §12 Q5;
@@ -51,7 +51,8 @@ public sealed class ValidationRules<T> {
     public PropertyRules<T, string?> Require(string? value, string? field = null) => throw Inert();
 
     /// <summary>Declares that a string must be non-null, accepting empty and whitespace-only values.</summary>
-    public PropertyRules<T, string?> RequireAllowingEmpty(string? value, string? field = null) => throw Inert();
+    public PropertyRules<T, string?> RequireAllowingEmpty(string? value, string? field = null) =>
+        throw Inert();
 
     /// <summary>Declares that a reference-typed value must be present.</summary>
     public PropertyRules<T, TValue?> Require<TValue>(TValue? value, string? field = null)
@@ -81,7 +82,11 @@ public sealed class ValidationRules<T> {
     /// business.
     /// </summary>
     public PropertyRules<T, string?> Length(
-        string? value, int min = 0, int max = int.MaxValue, string? field = null) => throw Inert();
+        string? value,
+        int min = 0,
+        int max = int.MaxValue,
+        string? field = null
+    ) => throw Inert();
 
     /// <summary>Declares an inclusive range.</summary>
     /// <remarks>
@@ -102,28 +107,54 @@ public sealed class ValidationRules<T> {
     /// Both overloads return the nullable anchor, so a chain reads the same whichever bound.
     /// </para>
     /// </remarks>
-    public PropertyRules<T, TValue?> Range<TValue>(TValue value, TValue min, TValue max, string? field = null)
+    public PropertyRules<T, TValue?> Range<TValue>(
+        TValue value,
+        TValue min,
+        TValue max,
+        string? field = null
+    )
         where TValue : struct, IComparable<TValue>, IFormattable => throw Inert();
 
     /// <summary>Declares an inclusive range over a nullable member. Null passes; presence is
     /// <c>Require</c>'s question.</summary>
-    public PropertyRules<T, TValue?> Range<TValue>(TValue? value, TValue min, TValue max, string? field = null)
+    public PropertyRules<T, TValue?> Range<TValue>(
+        TValue? value,
+        TValue min,
+        TValue max,
+        string? field = null
+    )
         where TValue : struct, IComparable<TValue>, IFormattable => throw Inert();
 
     /// <summary>Declares an inclusive lower bound and no upper one - <c>[Range(Min = 1)]</c>.</summary>
-    public PropertyRules<T, TValue?> RangeAtLeast<TValue>(TValue value, TValue min, string? field = null)
+    public PropertyRules<T, TValue?> RangeAtLeast<TValue>(
+        TValue value,
+        TValue min,
+        string? field = null
+    )
         where TValue : struct, IComparable<TValue>, IFormattable => throw Inert();
 
     /// <summary>The nullable-member form. See <c>Range</c> on why each range method is a pair.</summary>
-    public PropertyRules<T, TValue?> RangeAtLeast<TValue>(TValue? value, TValue min, string? field = null)
+    public PropertyRules<T, TValue?> RangeAtLeast<TValue>(
+        TValue? value,
+        TValue min,
+        string? field = null
+    )
         where TValue : struct, IComparable<TValue>, IFormattable => throw Inert();
 
     /// <summary>Declares an inclusive upper bound and no lower one - <c>[Range(Max = 99)]</c>.</summary>
-    public PropertyRules<T, TValue?> RangeAtMost<TValue>(TValue value, TValue max, string? field = null)
+    public PropertyRules<T, TValue?> RangeAtMost<TValue>(
+        TValue value,
+        TValue max,
+        string? field = null
+    )
         where TValue : struct, IComparable<TValue>, IFormattable => throw Inert();
 
     /// <summary>The nullable-member form. See <c>Range</c> on why each range method is a pair.</summary>
-    public PropertyRules<T, TValue?> RangeAtMost<TValue>(TValue? value, TValue max, string? field = null)
+    public PropertyRules<T, TValue?> RangeAtMost<TValue>(
+        TValue? value,
+        TValue max,
+        string? field = null
+    )
         where TValue : struct, IComparable<TValue>, IFormattable => throw Inert();
 
     /// <summary>
@@ -133,14 +164,20 @@ public sealed class ValidationRules<T> {
     /// Taking the accessor rather than a pattern string is what keeps this AOT-clean without a
     /// policy: there is no inline form to diagnose, and the short spelling is the good one.
     /// </remarks>
-    public PropertyRules<T, string?> Pattern(string? value, Func<Regex> pattern, string? field = null) =>
-        throw Inert();
+    public PropertyRules<T, string?> Pattern(
+        string? value,
+        Func<Regex> pattern,
+        string? field = null
+    ) => throw Inert();
 
     /// <summary>
     /// Declares the permitted set - <c>rules.AllowedValues(x.Status, ["open", "closed"])</c>.
     /// </summary>
-    public PropertyRules<T, TValue> AllowedValues<TValue>(TValue value, TValue[] allowed, string? field = null) =>
-        throw Inert();
+    public PropertyRules<T, TValue> AllowedValues<TValue>(
+        TValue value,
+        TValue[] allowed,
+        string? field = null
+    ) => throw Inert();
 
     /// <summary>
     /// Declares element-count bounds.
@@ -152,7 +189,11 @@ public sealed class ValidationRules<T> {
     /// <see cref="Ensure"/>.
     /// </remarks>
     public PropertyRules<T, IReadOnlyList<TElement>?> Count<TElement>(
-        IReadOnlyList<TElement>? value, int min = 0, int max = int.MaxValue, string? field = null) => throw Inert();
+        IReadOnlyList<TElement>? value,
+        int min = 0,
+        int max = int.MaxValue,
+        string? field = null
+    ) => throw Inert();
 
     /// <summary>Declares that the collection's elements must all differ.</summary>
     /// <remarks>
@@ -161,7 +202,9 @@ public sealed class ValidationRules<T> {
     /// count - so a set-typed or enumerable-only property is declarable here where a count is not.
     /// </remarks>
     public PropertyRules<T, IEnumerable<TElement>?> Unique<TElement>(
-        IEnumerable<TElement>? value, string? field = null) => throw Inert();
+        IEnumerable<TElement>? value,
+        string? field = null
+    ) => throw Inert();
 
     /// <summary>Declares that an integral value must be an exact multiple of a divisor.</summary>
     /// <remarks>
@@ -169,18 +212,25 @@ public sealed class ValidationRules<T> {
     /// resolves them: <c>MultipleOf(x.Quantity, 5)</c> picks this one, <c>0.05m</c> picks the
     /// decimal one and <c>0.01</c> the double one.
     /// </remarks>
-    public PropertyRules<T, long?> MultipleOf(long? value, long divisor, string? field = null) => throw Inert();
+    public PropertyRules<T, long?> MultipleOf(long? value, long divisor, string? field = null) =>
+        throw Inert();
 
     /// <summary>Declares that a decimal value must be an exact multiple of a divisor.</summary>
-    public PropertyRules<T, decimal?> MultipleOf(decimal? value, decimal divisor, string? field = null) =>
-        throw Inert();
+    public PropertyRules<T, decimal?> MultipleOf(
+        decimal? value,
+        decimal divisor,
+        string? field = null
+    ) => throw Inert();
 
     /// <summary>
     /// Declares that a floating-point value must be a multiple of a divisor, decided in the decimal
     /// domain - see <see cref="ConstraintChecks.IsMultipleOf(double, decimal)"/>.
     /// </summary>
-    public PropertyRules<T, double?> MultipleOf(double? value, double divisor, string? field = null) =>
-        throw Inert();
+    public PropertyRules<T, double?> MultipleOf(
+        double? value,
+        double divisor,
+        string? field = null
+    ) => throw Inert();
 
     /// <summary>Descends into a nested object, the equivalent of <c>[ValidateNested]</c>.</summary>
     public PropertyRules<T, TValue?> Nested<TValue>(TValue? value, string? field = null)
@@ -188,7 +238,9 @@ public sealed class ValidationRules<T> {
 
     /// <summary>Descends into each element of a collection.</summary>
     public PropertyRules<T, IReadOnlyList<TElement>?> Each<TElement>(
-        IReadOnlyList<TElement>? value, string? field = null)
+        IReadOnlyList<TElement>? value,
+        string? field = null
+    )
         where TElement : class => throw Inert();
 
     /// <summary>
@@ -230,7 +282,8 @@ public sealed class ValidationRules<T> {
         string? field = null,
         string? code = null,
         string? message = null,
-        ValidationSeverity severity = ValidationSeverity.Error) => throw Inert();
+        ValidationSeverity severity = ValidationSeverity.Error
+    ) => throw Inert();
 
     /// <summary>
     /// Validates the subject as one of its facets - an interface or base type whose rules are
@@ -262,9 +315,11 @@ public sealed class ValidationRules<T> {
     /// <summary>
     /// The surface is read, never run; reaching any member means that guarantee broke somewhere.
     /// </summary>
-    internal static NotSupportedException Inert() => new(
-        $"ValidationRules<{typeof(T).Name}> is read by the ValidationModules source generator and " +
-        "never executed - nothing constructs the builder and nothing calls Describe. The generated " +
-        "validator contains the transcribed checks. If this threw, a Describe body was invoked at " +
-        "runtime, which nothing should do.");
+    internal static NotSupportedException Inert() =>
+        new(
+            $"ValidationRules<{typeof(T).Name}> is read by the ValidationModules source generator and "
+                + "never executed - nothing constructs the builder and nothing calls Describe. The generated "
+                + "validator contains the transcribed checks. If this threw, a Describe body was invoked at "
+                + "runtime, which nothing should do."
+        );
 }

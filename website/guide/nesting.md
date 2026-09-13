@@ -17,14 +17,16 @@ public Dictionary<string, Toy> ByName { get; init; } // a dictionary
 ## Objects
 
 ```csharp
-public sealed record Pet {
+public sealed record Pet
+{
     [ValidateNested]
     public Address? Home { get; init; }
 }
 ```
 
 ```csharp
-if (value.Home is { } nestedHome) {
+if (value.Home is { } nestedHome)
+{
     var ctxHome = ctx.Push("home");
     validatorsHome[vi].Validate(ref ctxHome, nestedHome);
 }
@@ -55,7 +57,8 @@ inside `Address`. Suppression is a whole-path match, so `home` failing does not 
 ## Collections
 
 ```csharp
-public sealed record Pet {
+public sealed record Pet
+{
     [ItemCount(min: 1, max: 10)]
     [ValidateNested]
     public List<Toy> Toys { get; init; } = [];
@@ -66,10 +69,13 @@ public sealed record Pet {
 if (value.Toys is not null && (value.Toys.Count < 1 || value.Toys.Count > 10))
     ctx.ReportItemCount("toys", 1, 10);
 
-if (value.Toys is { } itemsToys) {
-    for (var iToys = 0; iToys < itemsToys.Count; iToys++) {
+if (value.Toys is { } itemsToys)
+{
+    for (var iToys = 0; iToys < itemsToys.Count; iToys++)
+    {
         var element = itemsToys[iToys];
-        if (element is not null) {
+        if (element is not null)
+        {
             var elementCtx = ctx.PushIndex("toys", iToys);
             elementValidators[vi].Validate(ref elementCtx, element);
         }
@@ -96,10 +102,13 @@ public IEnumerable<Toy> Toys { get; init; }
 ```
 
 ```csharp
-if (value.Toys is { } itemsToys) {
+if (value.Toys is { } itemsToys)
+{
     var iToys = 0;
-    foreach (var element in itemsToys) {
-        if (element is not null) {
+    foreach (var element in itemsToys)
+    {
+        if (element is not null)
+        {
             var elementCtx = ctx.PushIndex("toys", iToys);
             elementValidators[vi].Validate(ref elementCtx, element);
         }
@@ -122,9 +131,12 @@ public Dictionary<string, Toy> ToysByName { get; init; } = new();
 ```
 
 ```csharp
-if (value.ToysByName is { } entriesToysByName) {
-    foreach (var pair in entriesToysByName) {
-        if (pair.Value is not null) {
+if (value.ToysByName is { } entriesToysByName)
+{
+    foreach (var pair in entriesToysByName)
+    {
+        if (pair.Value is not null)
+        {
             var entryCtx = ctx.PushKey("toysByName", pair.Key?.ToString() ?? "");
             entryValidators[vi].Validate(ref entryCtx, pair.Value);
         }
@@ -155,12 +167,14 @@ dictionary keyed by user input the way you would treat logging that input.
 of a type instead:
 
 ```csharp
-public sealed record Shelf {
+public sealed record Shelf
+{
     [ValidateNested]
     public List<Toy> Toys { get; init; } = [];
 }
 
-public sealed record Room {
+public sealed record Room
+{
     [ValidateNested]
     public List<Shelf> Shelves { get; init; } = [];
 }
@@ -257,7 +271,7 @@ caught and takes the process down with it.
 var head = new MutableNode { Label = "head" };
 head.Child = head;
 
-new MutableNodeValidator().Validate(head);   // InvalidOperationException
+new MutableNodeValidator().Validate(head); // InvalidOperationException
 ```
 
 Note that a `record` cannot hold a cycle, because `a with { Child = b }` copies, so this needs a
@@ -277,7 +291,8 @@ for the sake of *its* nested properties, mark it:
 
 ```csharp
 [GenerateValidator]
-public sealed record Address {
+public sealed record Address
+{
     // no constraints here; rules arrive from AddressRules
 }
 ```

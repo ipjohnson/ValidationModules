@@ -13,7 +13,8 @@ builder.Services.AddValidatedOptions<HubOptions>().BindConfiguration("Hub");
 ```
 
 ```csharp
-public sealed class HubOptions {
+public sealed class HubOptions
+{
     [Required]
     [StringLength(min: 3, max: 40)]
     public string? HubName { get; set; }

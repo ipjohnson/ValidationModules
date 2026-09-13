@@ -31,14 +31,15 @@ namespace ValidationModules.Benchmarks.Comparative.Comparisons;
 /// </remarks>
 [MemoryDiagnoser]
 [BenchmarkCategory(ComparativeCategories.Startup)]
-public class ValidatorConstructionComparison {
-
+public class ValidatorConstructionComparison
+{
     // Hoisted: constructing per invocation would put an allocation on the measured path.
     private static readonly CustomerValidator CustomerValidatorShared = new();
     private Customer _valid = null!;
 
     [GlobalSetup]
-    public void Setup() {
+    public void Setup()
+    {
         _valid = SampleData.ValidCustomer();
 
         _ = CustomerValidatorShared.IsValid(_valid);
@@ -73,5 +74,6 @@ public class ValidatorConstructionComparison {
     /// The anti-pattern, quantified: a fresh validator per call, then one validation through it.
     /// </summary>
     [Benchmark(Description = "FluentValidation - construct per call + validate (the §10.2 shape)")]
-    public bool Fv_ConstructPerCall_Validate() => new CustomerFluentValidator().Validate(_valid).IsValid;
+    public bool Fv_ConstructPerCall_Validate() =>
+        new CustomerFluentValidator().Validate(_valid).IsValid;
 }

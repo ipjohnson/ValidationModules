@@ -46,12 +46,13 @@ namespace ValidationModules;
 /// verbatim, per the tolerant-renderer rule.
 /// </para>
 /// </remarks>
-public sealed class LanguagePackFormatter : ValidationMessageFormatter {
-
+public sealed class LanguagePackFormatter : ValidationMessageFormatter
+{
     private readonly IValidationLanguagePack[] _packs;
 
-    private readonly ConcurrentDictionary<string, Dictionary<string, Entry>> _byCulture =
-        new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, Dictionary<string, Entry>> _byCulture = new(
+        StringComparer.OrdinalIgnoreCase
+    );
 
     private readonly record struct Entry(string Template, int Layer);
 
@@ -62,31 +63,36 @@ public sealed class LanguagePackFormatter : ValidationMessageFormatter {
     /// Usually the container's <c>IEnumerable&lt;IValidationLanguagePack&gt;</c>, whose order is
     /// registration order - the order the layering rule is defined against.
     /// </param>
-    public LanguagePackFormatter(IEnumerable<IValidationLanguagePack> packs) {
+    public LanguagePackFormatter(IEnumerable<IValidationLanguagePack> packs)
+    {
         ArgumentNullException.ThrowIfNull(packs);
 
         _packs = packs.ToArray();
     }
 
     /// <inheritdoc />
-    public override string Format(in ValidationError error) {
+    public override string Format(in ValidationError error)
+    {
         // An authored message - a constraint's Message = …, an Ensure's explicit message: - is
         // the application's own text and always wins. Before this, the override survived or died
         // according to whether the active pack happened to carry a bare key for that code: the
         // shipped de pack has a bare `required` and no bare `string_length`, so [Required]'s
         // override was replaced and [StringLength]'s kept, same class, same culture. Translating
         // custom text is the code's job: give the rule its own code and word it per culture.
-        if (error.MessageIsAuthored) {
+        if (error.MessageIsAuthored)
+        {
             return error.Message;
         }
 
-        if (_packs.Length == 0) {
+        if (_packs.Length == 0)
+        {
             return error.Message;
         }
 
         var table = _byCulture.GetOrAdd(CultureInfo.CurrentUICulture.Name, BuildTable, this);
 
-        if (table.Count == 0) {
+        if (table.Count == 0)
+        {
             return error.Message;
         }
 
@@ -98,13 +104,18 @@ public sealed class LanguagePackFormatter : ValidationMessageFormatter {
         // The shape key is the more specific claim, but only within a layer: a later pack that
         // rewrote the whole code outranks an earlier pack's shape entry, or a one-line override
         // could never reword a family.
-        if (shape is not null && table.TryGetValue(shape, out var byShape) &&
-            (!found || byShape.Layer >= byCode.Layer)) {
+        if (
+            shape is not null
+            && table.TryGetValue(shape, out var byShape)
+            && (!found || byShape.Layer >= byCode.Layer)
+        )
+        {
             byCode = byShape;
             found = true;
         }
 
-        if (!found) {
+        if (!found)
+        {
             return error.Message;
         }
 
@@ -117,12 +128,17 @@ public sealed class LanguagePackFormatter : ValidationMessageFormatter {
     /// The merged table for one requested culture: its parent chain folded beneath it, each entry
     /// stamped with a strictly increasing layer so precedence survives the flattening.
     /// </summary>
-    private static Dictionary<string, Entry> BuildTable(string cultureName, LanguagePackFormatter self) {
+    private static Dictionary<string, Entry> BuildTable(
+        string cultureName,
+        LanguagePackFormatter self
+    )
+    {
         // Parent-most first, requested culture last, so later writes are higher precedence and
         // the final overwrite per key is the winner - no per-key comparisons during the fold.
         var chain = new List<string>(3);
 
-        for (var culture = Culture(cultureName); culture.Name.Length > 0; culture = culture.Parent) {
+        for (var culture = Culture(cultureName); culture.Name.Length > 0; culture = culture.Parent)
+        {
             chain.Add(culture.Name);
         }
 
@@ -131,9 +147,12 @@ public sealed class LanguagePackFormatter : ValidationMessageFormatter {
         var table = new Dictionary<string, Entry>(StringComparer.Ordinal);
         var layer = 0;
 
-        foreach (var name in chain) {
-            foreach (var pack in self._packs) {
-                if (!string.Equals(pack.Culture, name, StringComparison.OrdinalIgnoreCase)) {
+        foreach (var name in chain)
+        {
+            foreach (var pack in self._packs)
+            {
+                if (!string.Equals(pack.Culture, name, StringComparison.OrdinalIgnoreCase))
+                {
                     continue;
                 }
 
@@ -141,7 +160,8 @@ public sealed class LanguagePackFormatter : ValidationMessageFormatter {
 
                 var templates = pack.Templates;
 
-                for (var i = 0; i < templates.Count; i++) {
+                for (var i = 0; i < templates.Count; i++)
+                {
                     table[templates[i].Key] = new Entry(templates[i].Value, layer);
                 }
             }
@@ -154,11 +174,14 @@ public sealed class LanguagePackFormatter : ValidationMessageFormatter {
     /// The culture for a name, or the invariant culture for one the platform refuses - an
     /// unrenderable name should fall through to default messages, not throw on the error path.
     /// </summary>
-    private static CultureInfo Culture(string name) {
-        try {
+    private static CultureInfo Culture(string name)
+    {
+        try
+        {
             return CultureInfo.GetCultureInfo(name);
         }
-        catch (CultureNotFoundException) {
+        catch (CultureNotFoundException)
+        {
             return CultureInfo.InvariantCulture;
         }
     }

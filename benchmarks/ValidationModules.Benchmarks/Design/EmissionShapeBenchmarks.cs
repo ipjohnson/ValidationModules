@@ -30,7 +30,8 @@ namespace ValidationModules.Benchmarks.Design;
 /// </remarks>
 [MemoryDiagnoser]
 [BenchmarkCategory(BenchmarkCategories.Design)]
-public class EmissionShapeBenchmarks {
+public class EmissionShapeBenchmarks
+{
     private readonly ValidationErrorCollector _collector = new();
 
     private Model _model = null!;
@@ -43,18 +44,30 @@ public class EmissionShapeBenchmarks {
     public int FailingFields { get; set; }
 
     [GlobalSetup]
-    public void Setup() {
+    public void Setup()
+    {
         string? Field(int index) => index < FailingFields ? null : "value";
 
-        _model = new Model {
-            F0 = Field(0), F1 = Field(1), F2 = Field(2), F3 = Field(3),
-            F4 = Field(4), F5 = Field(5), F6 = Field(6), F7 = Field(7),
-            F8 = Field(8), F9 = Field(9), F10 = Field(10), F11 = Field(11),
+        _model = new Model
+        {
+            F0 = Field(0),
+            F1 = Field(1),
+            F2 = Field(2),
+            F3 = Field(3),
+            F4 = Field(4),
+            F5 = Field(5),
+            F6 = Field(6),
+            F7 = Field(7),
+            F8 = Field(8),
+            F9 = Field(9),
+            F10 = Field(10),
+            F11 = Field(11),
         };
     }
 
     [Benchmark(Baseline = true)]
-    public int Inline() {
+    public int Inline()
+    {
         _collector.Reset();
         var context = new ValidationContext(_collector);
         InlineValidator.Instance.Validate(ref context, _model);
@@ -63,7 +76,8 @@ public class EmissionShapeBenchmarks {
     }
 
     [Benchmark]
-    public int Split() {
+    public int Split()
+    {
         _collector.Reset();
         var context = new ValidationContext(_collector);
         SplitValidator.Instance.Validate(ref context, _model);
@@ -72,7 +86,8 @@ public class EmissionShapeBenchmarks {
     }
 
     [Benchmark]
-    public int Helper() {
+    public int Helper()
+    {
         _collector.Reset();
         var context = new ValidationContext(_collector);
         HelperValidator.Instance.Validate(ref context, _model);
@@ -81,7 +96,8 @@ public class EmissionShapeBenchmarks {
     }
 }
 
-public sealed record Model {
+public sealed record Model
+{
     public string? F0 { get; init; }
     public string? F1 { get; init; }
     public string? F2 { get; init; }
@@ -97,84 +113,138 @@ public sealed record Model {
 }
 
 /// <summary>Shape 1: comparison and message both emitted at every site.</summary>
-public sealed class InlineValidator : IValidatorFor<Model> {
+public sealed class InlineValidator : IValidatorFor<Model>
+{
     public static readonly InlineValidator Instance = new();
 
     private InlineValidator() { }
 
-    public ValidationFlow Validate(ref ValidationContext ctx, Model value) {
-        if (string.IsNullOrWhiteSpace(value.F0)) ctx.Report("f0", "required", "f0 is required.");
-        else if (value.F0.Length > 100) ctx.Report("f0", "string_length", "f0 must be at most 100 characters.");
-        if (string.IsNullOrWhiteSpace(value.F1)) ctx.Report("f1", "required", "f1 is required.");
-        else if (value.F1.Length > 100) ctx.Report("f1", "string_length", "f1 must be at most 100 characters.");
-        if (string.IsNullOrWhiteSpace(value.F2)) ctx.Report("f2", "required", "f2 is required.");
-        else if (value.F2.Length > 100) ctx.Report("f2", "string_length", "f2 must be at most 100 characters.");
-        if (string.IsNullOrWhiteSpace(value.F3)) ctx.Report("f3", "required", "f3 is required.");
-        else if (value.F3.Length > 100) ctx.Report("f3", "string_length", "f3 must be at most 100 characters.");
-        if (string.IsNullOrWhiteSpace(value.F4)) ctx.Report("f4", "required", "f4 is required.");
-        else if (value.F4.Length > 100) ctx.Report("f4", "string_length", "f4 must be at most 100 characters.");
-        if (string.IsNullOrWhiteSpace(value.F5)) ctx.Report("f5", "required", "f5 is required.");
-        else if (value.F5.Length > 100) ctx.Report("f5", "string_length", "f5 must be at most 100 characters.");
-        if (string.IsNullOrWhiteSpace(value.F6)) ctx.Report("f6", "required", "f6 is required.");
-        else if (value.F6.Length > 100) ctx.Report("f6", "string_length", "f6 must be at most 100 characters.");
-        if (string.IsNullOrWhiteSpace(value.F7)) ctx.Report("f7", "required", "f7 is required.");
-        else if (value.F7.Length > 100) ctx.Report("f7", "string_length", "f7 must be at most 100 characters.");
-        if (string.IsNullOrWhiteSpace(value.F8)) ctx.Report("f8", "required", "f8 is required.");
-        else if (value.F8.Length > 100) ctx.Report("f8", "string_length", "f8 must be at most 100 characters.");
-        if (string.IsNullOrWhiteSpace(value.F9)) ctx.Report("f9", "required", "f9 is required.");
-        else if (value.F9.Length > 100) ctx.Report("f9", "string_length", "f9 must be at most 100 characters.");
-        if (string.IsNullOrWhiteSpace(value.F10)) ctx.Report("f10", "required", "f10 is required.");
-        else if (value.F10.Length > 100) ctx.Report("f10", "string_length", "f10 must be at most 100 characters.");
-        if (string.IsNullOrWhiteSpace(value.F11)) ctx.Report("f11", "required", "f11 is required.");
-        else if (value.F11.Length > 100) ctx.Report("f11", "string_length", "f11 must be at most 100 characters.");
+    public ValidationFlow Validate(ref ValidationContext ctx, Model value)
+    {
+        if (string.IsNullOrWhiteSpace(value.F0))
+            ctx.Report("f0", "required", "f0 is required.");
+        else if (value.F0.Length > 100)
+            ctx.Report("f0", "string_length", "f0 must be at most 100 characters.");
+        if (string.IsNullOrWhiteSpace(value.F1))
+            ctx.Report("f1", "required", "f1 is required.");
+        else if (value.F1.Length > 100)
+            ctx.Report("f1", "string_length", "f1 must be at most 100 characters.");
+        if (string.IsNullOrWhiteSpace(value.F2))
+            ctx.Report("f2", "required", "f2 is required.");
+        else if (value.F2.Length > 100)
+            ctx.Report("f2", "string_length", "f2 must be at most 100 characters.");
+        if (string.IsNullOrWhiteSpace(value.F3))
+            ctx.Report("f3", "required", "f3 is required.");
+        else if (value.F3.Length > 100)
+            ctx.Report("f3", "string_length", "f3 must be at most 100 characters.");
+        if (string.IsNullOrWhiteSpace(value.F4))
+            ctx.Report("f4", "required", "f4 is required.");
+        else if (value.F4.Length > 100)
+            ctx.Report("f4", "string_length", "f4 must be at most 100 characters.");
+        if (string.IsNullOrWhiteSpace(value.F5))
+            ctx.Report("f5", "required", "f5 is required.");
+        else if (value.F5.Length > 100)
+            ctx.Report("f5", "string_length", "f5 must be at most 100 characters.");
+        if (string.IsNullOrWhiteSpace(value.F6))
+            ctx.Report("f6", "required", "f6 is required.");
+        else if (value.F6.Length > 100)
+            ctx.Report("f6", "string_length", "f6 must be at most 100 characters.");
+        if (string.IsNullOrWhiteSpace(value.F7))
+            ctx.Report("f7", "required", "f7 is required.");
+        else if (value.F7.Length > 100)
+            ctx.Report("f7", "string_length", "f7 must be at most 100 characters.");
+        if (string.IsNullOrWhiteSpace(value.F8))
+            ctx.Report("f8", "required", "f8 is required.");
+        else if (value.F8.Length > 100)
+            ctx.Report("f8", "string_length", "f8 must be at most 100 characters.");
+        if (string.IsNullOrWhiteSpace(value.F9))
+            ctx.Report("f9", "required", "f9 is required.");
+        else if (value.F9.Length > 100)
+            ctx.Report("f9", "string_length", "f9 must be at most 100 characters.");
+        if (string.IsNullOrWhiteSpace(value.F10))
+            ctx.Report("f10", "required", "f10 is required.");
+        else if (value.F10.Length > 100)
+            ctx.Report("f10", "string_length", "f10 must be at most 100 characters.");
+        if (string.IsNullOrWhiteSpace(value.F11))
+            ctx.Report("f11", "required", "f11 is required.");
+        else if (value.F11.Length > 100)
+            ctx.Report("f11", "string_length", "f11 must be at most 100 characters.");
 
         return ValidationFlow.Continue;
     }
 }
 
 /// <summary>Shape 2: comparison emitted, message composed by the runtime on failure only.</summary>
-public sealed class SplitValidator : IValidatorFor<Model> {
+public sealed class SplitValidator : IValidatorFor<Model>
+{
     public static readonly SplitValidator Instance = new();
 
     private SplitValidator() { }
 
-    public ValidationFlow Validate(ref ValidationContext ctx, Model value) {
-        if (string.IsNullOrWhiteSpace(value.F0)) Rules.ReportRequired(ref ctx, "f0");
-        else if (value.F0.Length > 100) Rules.ReportStringLength(ref ctx, "f0", 100);
-        if (string.IsNullOrWhiteSpace(value.F1)) Rules.ReportRequired(ref ctx, "f1");
-        else if (value.F1.Length > 100) Rules.ReportStringLength(ref ctx, "f1", 100);
-        if (string.IsNullOrWhiteSpace(value.F2)) Rules.ReportRequired(ref ctx, "f2");
-        else if (value.F2.Length > 100) Rules.ReportStringLength(ref ctx, "f2", 100);
-        if (string.IsNullOrWhiteSpace(value.F3)) Rules.ReportRequired(ref ctx, "f3");
-        else if (value.F3.Length > 100) Rules.ReportStringLength(ref ctx, "f3", 100);
-        if (string.IsNullOrWhiteSpace(value.F4)) Rules.ReportRequired(ref ctx, "f4");
-        else if (value.F4.Length > 100) Rules.ReportStringLength(ref ctx, "f4", 100);
-        if (string.IsNullOrWhiteSpace(value.F5)) Rules.ReportRequired(ref ctx, "f5");
-        else if (value.F5.Length > 100) Rules.ReportStringLength(ref ctx, "f5", 100);
-        if (string.IsNullOrWhiteSpace(value.F6)) Rules.ReportRequired(ref ctx, "f6");
-        else if (value.F6.Length > 100) Rules.ReportStringLength(ref ctx, "f6", 100);
-        if (string.IsNullOrWhiteSpace(value.F7)) Rules.ReportRequired(ref ctx, "f7");
-        else if (value.F7.Length > 100) Rules.ReportStringLength(ref ctx, "f7", 100);
-        if (string.IsNullOrWhiteSpace(value.F8)) Rules.ReportRequired(ref ctx, "f8");
-        else if (value.F8.Length > 100) Rules.ReportStringLength(ref ctx, "f8", 100);
-        if (string.IsNullOrWhiteSpace(value.F9)) Rules.ReportRequired(ref ctx, "f9");
-        else if (value.F9.Length > 100) Rules.ReportStringLength(ref ctx, "f9", 100);
-        if (string.IsNullOrWhiteSpace(value.F10)) Rules.ReportRequired(ref ctx, "f10");
-        else if (value.F10.Length > 100) Rules.ReportStringLength(ref ctx, "f10", 100);
-        if (string.IsNullOrWhiteSpace(value.F11)) Rules.ReportRequired(ref ctx, "f11");
-        else if (value.F11.Length > 100) Rules.ReportStringLength(ref ctx, "f11", 100);
+    public ValidationFlow Validate(ref ValidationContext ctx, Model value)
+    {
+        if (string.IsNullOrWhiteSpace(value.F0))
+            Rules.ReportRequired(ref ctx, "f0");
+        else if (value.F0.Length > 100)
+            Rules.ReportStringLength(ref ctx, "f0", 100);
+        if (string.IsNullOrWhiteSpace(value.F1))
+            Rules.ReportRequired(ref ctx, "f1");
+        else if (value.F1.Length > 100)
+            Rules.ReportStringLength(ref ctx, "f1", 100);
+        if (string.IsNullOrWhiteSpace(value.F2))
+            Rules.ReportRequired(ref ctx, "f2");
+        else if (value.F2.Length > 100)
+            Rules.ReportStringLength(ref ctx, "f2", 100);
+        if (string.IsNullOrWhiteSpace(value.F3))
+            Rules.ReportRequired(ref ctx, "f3");
+        else if (value.F3.Length > 100)
+            Rules.ReportStringLength(ref ctx, "f3", 100);
+        if (string.IsNullOrWhiteSpace(value.F4))
+            Rules.ReportRequired(ref ctx, "f4");
+        else if (value.F4.Length > 100)
+            Rules.ReportStringLength(ref ctx, "f4", 100);
+        if (string.IsNullOrWhiteSpace(value.F5))
+            Rules.ReportRequired(ref ctx, "f5");
+        else if (value.F5.Length > 100)
+            Rules.ReportStringLength(ref ctx, "f5", 100);
+        if (string.IsNullOrWhiteSpace(value.F6))
+            Rules.ReportRequired(ref ctx, "f6");
+        else if (value.F6.Length > 100)
+            Rules.ReportStringLength(ref ctx, "f6", 100);
+        if (string.IsNullOrWhiteSpace(value.F7))
+            Rules.ReportRequired(ref ctx, "f7");
+        else if (value.F7.Length > 100)
+            Rules.ReportStringLength(ref ctx, "f7", 100);
+        if (string.IsNullOrWhiteSpace(value.F8))
+            Rules.ReportRequired(ref ctx, "f8");
+        else if (value.F8.Length > 100)
+            Rules.ReportStringLength(ref ctx, "f8", 100);
+        if (string.IsNullOrWhiteSpace(value.F9))
+            Rules.ReportRequired(ref ctx, "f9");
+        else if (value.F9.Length > 100)
+            Rules.ReportStringLength(ref ctx, "f9", 100);
+        if (string.IsNullOrWhiteSpace(value.F10))
+            Rules.ReportRequired(ref ctx, "f10");
+        else if (value.F10.Length > 100)
+            Rules.ReportStringLength(ref ctx, "f10", 100);
+        if (string.IsNullOrWhiteSpace(value.F11))
+            Rules.ReportRequired(ref ctx, "f11");
+        else if (value.F11.Length > 100)
+            Rules.ReportStringLength(ref ctx, "f11", 100);
 
         return ValidationFlow.Continue;
     }
 }
 
 /// <summary>Shape 3: the runtime does the comparison too, so the call is unconditional.</summary>
-public sealed class HelperValidator : IValidatorFor<Model> {
+public sealed class HelperValidator : IValidatorFor<Model>
+{
     public static readonly HelperValidator Instance = new();
 
     private HelperValidator() { }
 
-    public ValidationFlow Validate(ref ValidationContext ctx, Model value) {
+    public ValidationFlow Validate(ref ValidationContext ctx, Model value)
+    {
         Rules.RequiredThenLength(ref ctx, "f0", value.F0, 100);
         Rules.RequiredThenLength(ref ctx, "f1", value.F1, 100);
         Rules.RequiredThenLength(ref ctx, "f2", value.F2, 100);
@@ -193,23 +263,36 @@ public sealed class HelperValidator : IValidatorFor<Model> {
 }
 
 /// <summary>The runtime primitives the two non-inline shapes call.</summary>
-public static class Rules {
-
+public static class Rules
+{
     public static void ReportRequired(ref ValidationContext ctx, string field) =>
         ctx.Report(field, "required", string.Concat(field, " is required."));
 
     public static void ReportStringLength(ref ValidationContext ctx, string field, int max) =>
-        ctx.Report(field, "string_length", string.Concat(field, " must be at most ", max.ToString(), " characters."));
+        ctx.Report(
+            field,
+            "string_length",
+            string.Concat(field, " must be at most ", max.ToString(), " characters.")
+        );
 
     /// <summary>
     /// One call covering both constraints on the field, so that the suppression rule survives -
     /// which is the whole reason this shape needs a combined method rather than two independent
     /// ones.
     /// </summary>
-    public static void RequiredThenLength(ref ValidationContext ctx, string field, string? value, int max) {
-        if (string.IsNullOrWhiteSpace(value)) {
+    public static void RequiredThenLength(
+        ref ValidationContext ctx,
+        string field,
+        string? value,
+        int max
+    )
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
             ReportRequired(ref ctx, field);
-        } else if (value.Length > max) {
+        }
+        else if (value.Length > max)
+        {
             ReportStringLength(ref ctx, field, max);
         }
     }

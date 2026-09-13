@@ -18,8 +18,8 @@ namespace ValidationModules;
 /// unconditional and can say what to do about it.
 /// </para>
 /// </remarks>
-public interface IDynamicValidator {
-
+public interface IDynamicValidator
+{
     /// <summary>The type this validates. The key it is registered under.</summary>
     Type ValidatedType { get; }
 

@@ -28,7 +28,8 @@ Constraints go on the model:
 using System.Text.RegularExpressions;
 using ValidationModules.Constraints;
 
-public sealed record Customer {
+public sealed record Customer
+{
     [Required]
     [StringLength(min: 1, max: 100)]
     public string? Name { get; init; }
@@ -43,7 +44,8 @@ public sealed record Customer {
     public IReadOnlyList<Contact> Contacts { get; init; } = [];
 }
 
-public static partial class CustomerPatterns {
+public static partial class CustomerPatterns
+{
     [GeneratedRegex("^[A-Z]{2}-[0-9]{6}$")]
     public static partial Regex AccountNumber();
 }
@@ -55,8 +57,10 @@ attribute can state:
 ```csharp
 using ValidationModules;
 
-public sealed class CustomerRules : IValidationRulesFor<Customer> {
-    public static void Describe(ValidationRules<Customer> rules, Customer x) {
+public sealed class CustomerRules : IValidationRulesFor<Customer>
+{
+    public static void Describe(ValidationRules<Customer> rules, Customer x)
+    {
         rules.Require(x.Name).Length(1, 100);
         rules.Pattern(x.AccountNumber, CustomerPatterns.AccountNumber);
         rules.Nested(x.BillingAddress);
@@ -79,12 +83,13 @@ The generator emits one validator per type and a single registration call for th
 ```csharp
 using ValidationModules;
 
-services.AddMyAppValidators();                 // named after your assembly
+services.AddMyAppValidators(); // named after your assembly
 
 var validator = provider.GetRequiredService<IValidatorFor<Customer>>();
 var result = validator.Validate(customer);
 
-foreach (var error in result.Errors) {
+foreach (var error in result.Errors)
+{
     Console.WriteLine($"{error.Field}: {error.Code}");
 }
 // name                       required
@@ -117,16 +122,19 @@ on either LTS release gets one built against its own framework.
 one rule read more than one field:
 
 ```csharp
-public sealed class OrderRules : IValidationRulesFor<Order> {
-    public static void Describe(ValidationRules<Order> rules, Order x) {
+public sealed class OrderRules : IValidationRulesFor<Order>
+{
+    public static void Describe(ValidationRules<Order> rules, Order x)
+    {
         rules.Require(x.Number).Length(4, 12);
 
-        if (x.International) {
+        if (x.International)
+        {
             rules.Require(x.CustomsCode);
         }
 
         var total = x.Lines?.Sum(l => l.Price * l.Qty) ?? 0m;
-        rules.Ensure(total <= x.CreditLimit);   // message: "total <= creditLimit."
+        rules.Ensure(total <= x.CreditLimit); // message: "total <= creditLimit."
     }
 }
 ```
@@ -180,8 +188,7 @@ AOT mode, because no part of the library generates code at runtime.
 ```csharp
 builder.Services.AddMyAppValidators();
 
-app.MapPost("/orders", (CreateOrder order) => Results.Ok())
-   .Validate<CreateOrder>();
+app.MapPost("/orders", (CreateOrder order) => Results.Ok()).Validate<CreateOrder>();
 ```
 
 A failed request gets an RFC 9457 response before the handler runs, carrying the field paths and the

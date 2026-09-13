@@ -8,8 +8,8 @@ namespace ValidationModules.Benchmarks;
 /// (<c>--anyCategories=component</c>) and a typo in an attribute silently produces an empty run
 /// rather than an error.
 /// </remarks>
-public static class BenchmarkCategories {
-
+public static class BenchmarkCategories
+{
     /// <summary>
     /// What a runtime primitive costs on its own: a push, an add, a collector reset. Read these
     /// when a number in <see cref="EndToEnd"/> looks wrong and you need to know which part owns it.

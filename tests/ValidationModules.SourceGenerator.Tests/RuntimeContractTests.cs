@@ -16,10 +16,11 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// would not help either - two definitions of one metadata name make
 /// <c>GetTypeByMetadataName</c> return null, which is the missing case, not the old one.
 /// </remarks>
-public class RuntimeContractTests {
-
+public class RuntimeContractTests
+{
     [Fact]
-    public void Probe_ReportsWhenRuntimeIsAbsent() {
+    public void Probe_ReportsWhenRuntimeIsAbsent()
+    {
         var diagnostic = EmitterContract.Probe(Compile(""));
 
         Assert.NotNull(diagnostic);
@@ -28,15 +29,19 @@ public class RuntimeContractTests {
     }
 
     [Fact]
-    public void Probe_ReportsWhenContractIsOlderThanRequired() {
-        var diagnostic = EmitterContract.Probe(Compile(MarkerWith(EmitterContract.RequiredRuntimeContract - 1)));
+    public void Probe_ReportsWhenContractIsOlderThanRequired()
+    {
+        var diagnostic = EmitterContract.Probe(
+            Compile(MarkerWith(EmitterContract.RequiredRuntimeContract - 1))
+        );
 
         Assert.NotNull(diagnostic);
         Assert.Equal("VM5001", diagnostic.Id);
     }
 
     [Fact]
-    public void Probe_NamesBothVersionsInTheMessage() {
+    public void Probe_NamesBothVersionsInTheMessage()
+    {
         var message = EmitterContract.Probe(Compile(MarkerWith(0)))!.GetMessage();
 
         Assert.Contains($"contract {EmitterContract.RequiredRuntimeContract} or later", message);
@@ -44,24 +49,32 @@ public class RuntimeContractTests {
     }
 
     [Fact]
-    public void Probe_PassesWhenContractMatchesExactly() {
-        Assert.Null(EmitterContract.Probe(Compile(MarkerWith(EmitterContract.RequiredRuntimeContract))));
+    public void Probe_PassesWhenContractMatchesExactly()
+    {
+        Assert.Null(
+            EmitterContract.Probe(Compile(MarkerWith(EmitterContract.RequiredRuntimeContract)))
+        );
     }
 
     [Fact]
-    public void Probe_PassesWhenContractIsNewerThanRequired() {
-        Assert.Null(EmitterContract.Probe(Compile(MarkerWith(EmitterContract.RequiredRuntimeContract + 5))));
+    public void Probe_PassesWhenContractIsNewerThanRequired()
+    {
+        Assert.Null(
+            EmitterContract.Probe(Compile(MarkerWith(EmitterContract.RequiredRuntimeContract + 5)))
+        );
     }
 
     [Fact]
-    public void ResolveRuntimeContract_TreatsAMarkerWithNoVersionFieldAsZero() {
+    public void ResolveRuntimeContract_TreatsAMarkerWithNoVersionFieldAsZero()
+    {
         var source = "namespace ValidationModules { public static class RuntimeContract { } }";
 
         Assert.Equal(0, EmitterContract.ResolveRuntimeContract(Compile(source)));
     }
 
     [Fact]
-    public void ResolveRuntimeContract_TreatsANonIntegerVersionAsZero() {
+    public void ResolveRuntimeContract_TreatsANonIntegerVersionAsZero()
+    {
         var source = """
             namespace ValidationModules {
                 public static class RuntimeContract { public const string Version = "1"; }
@@ -72,7 +85,8 @@ public class RuntimeContractTests {
     }
 
     [Fact]
-    public void ResolveRuntimeContract_IgnoresANonConstantVersion() {
+    public void ResolveRuntimeContract_IgnoresANonConstantVersion()
+    {
         var source = """
             namespace ValidationModules {
                 public static class RuntimeContract { public static readonly int Version = 9; }
@@ -88,8 +102,10 @@ public class RuntimeContractTests {
     /// rather than left to be implied by other tests passing.
     /// </summary>
     [Fact]
-    public void Generator_DoesNotReportVM5001AgainstTheRealRuntime() {
-        var result = GeneratorHarness.Run("""
+    public void Generator_DoesNotReportVM5001AgainstTheRealRuntime()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -98,7 +114,8 @@ public class RuntimeContractTests {
             public class Person {
                 [Required] public string? Name { get; set; }
             }
-            """);
+            """
+        );
 
         Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Id == "VM5001");
         Assert.Empty(result.CompilationErrors);
@@ -110,9 +127,12 @@ public class RuntimeContractTests {
     /// <c>RuntimeContract.Version</c> would ship a package that rejects its own sibling.
     /// </summary>
     [Fact]
-    public void RequiredContract_DoesNotExceedTheRuntimeInThisRepo() {
-        Assert.True(EmitterContract.RequiredRuntimeContract <= RuntimeContract.Version,
-            $"Emitter requires {EmitterContract.RequiredRuntimeContract}, runtime supplies {RuntimeContract.Version}.");
+    public void RequiredContract_DoesNotExceedTheRuntimeInThisRepo()
+    {
+        Assert.True(
+            EmitterContract.RequiredRuntimeContract <= RuntimeContract.Version,
+            $"Emitter requires {EmitterContract.RequiredRuntimeContract}, runtime supplies {RuntimeContract.Version}."
+        );
     }
 
     /// <summary>
@@ -120,23 +140,32 @@ public class RuntimeContractTests {
     /// and nothing but this test keeps them together.
     /// </summary>
     [Fact]
-    public void PropsContractVersion_MatchesTheRuntimeConstant() {
+    public void PropsContractVersion_MatchesTheRuntimeConstant()
+    {
         var path = Path.Combine(AppContext.BaseDirectory, "ValidationModules.Runtime.props");
-        Assert.True(File.Exists(path), $"Expected the runtime props to be copied to output at {path}.");
+        Assert.True(
+            File.Exists(path),
+            $"Expected the runtime props to be copied to output at {path}."
+        );
 
         var match = Regex.Match(
             File.ReadAllText(path),
-            @"<ValidationModulesRuntimeContract>\s*(\d+)\s*</ValidationModulesRuntimeContract>");
+            @"<ValidationModulesRuntimeContract>\s*(\d+)\s*</ValidationModulesRuntimeContract>"
+        );
 
-        Assert.True(match.Success, "ValidationModulesRuntimeContract is not declared in the runtime props.");
+        Assert.True(
+            match.Success,
+            "ValidationModulesRuntimeContract is not declared in the runtime props."
+        );
         Assert.Equal(RuntimeContract.Version, int.Parse(match.Groups[1].Value));
     }
 
-    private static string MarkerWith(int version) => $$"""
-        namespace ValidationModules {
-            public static class RuntimeContract { public const int Version = {{version}}; }
-        }
-        """;
+    private static string MarkerWith(int version) =>
+        $$"""
+            namespace ValidationModules {
+                public static class RuntimeContract { public const int Version = {{version}}; }
+            }
+            """;
 
     /// <summary>
     /// A compilation carrying only corlib, so the runtime this test project references cannot
@@ -147,5 +176,6 @@ public class RuntimeContractTests {
             "ContractProbeTests",
             new[] { CSharpSyntaxTree.ParseText(source) },
             new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) },
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
+        );
 }

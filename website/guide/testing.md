@@ -4,7 +4,8 @@ A generated validator is an ordinary class with a static `Instance`. Testing one
 
 ```csharp
 [Fact]
-public void Name_IsRequired() {
+public void Name_IsRequired()
+{
     var result = new PetValidator().Validate(new Pet { Name = null });
 
     var error = Assert.Single(result.Errors);
@@ -20,7 +21,8 @@ that may legitimately be reworded.
 
 ```csharp
 [Fact]
-public void WellFormedPet_IsValid() {
+public void WellFormedPet_IsValid()
+{
     Assert.True(new PetValidator().IsValid(ValidPet()));
 }
 ```
@@ -31,7 +33,8 @@ A builder that starts from a valid value and breaks one thing keeps each test ab
 private static Pet ValidPet(Action<PetBuilder>? mutate = null) { … }
 
 [Fact]
-public void Name_TooLong_IsRejected() {
+public void Name_TooLong_IsRejected()
+{
     var result = new PetValidator().Validate(ValidPet(p => p.Name = new string('a', 101)));
 
     Assert.Equal(ValidationCodes.StringLength, Assert.Single(result.Errors).Code);
@@ -47,14 +50,19 @@ Nested and collection errors are where a path assertion earns its place:
 
 ```csharp
 [Fact]
-public void NestedFailure_IsPathed() {
+public void NestedFailure_IsPathed()
+{
     var pet = ValidPet(p => p.Home = new Address { PostalCode = null });
 
-    Assert.Equal("home.postalCode", Assert.Single(new PetValidator().Validate(pet).Errors).Field);
+    Assert.Equal(
+        "home.postalCode",
+        Assert.Single(new PetValidator().Validate(pet).Errors).Field
+    );
 }
 
 [Fact]
-public void ElementFailure_CarriesItsIndex() {
+public void ElementFailure_CarriesItsIndex()
+{
     var pet = ValidPet(p => p.Toys = [new Toy { Name = "ok" }, new Toy { Name = null }]);
 
     Assert.Equal("toys[1].name", Assert.Single(new PetValidator().Validate(pet).Errors).Field);
@@ -71,7 +79,8 @@ Two semantics worth a test of their own, because they are easy to break and quie
 
 ```csharp
 [Fact]
-public void FailedRequired_SuppressesTheRestOfItsField() {
+public void FailedRequired_SuppressesTheRestOfItsField()
+{
     // Name carries [Required] and [StringLength(1, 100)]. A null value fails one of them, not both.
     var result = new PetValidator().Validate(ValidPet(p => p.Name = null));
 
@@ -79,8 +88,13 @@ public void FailedRequired_SuppressesTheRestOfItsField() {
 }
 
 [Fact]
-public void Errors_ArriveInDeclarationOrder() {
-    var pet = ValidPet(p => { p.Name = null; p.Age = 99; });
+public void Errors_ArriveInDeclarationOrder()
+{
+    var pet = ValidPet(p =>
+    {
+        p.Name = null;
+        p.Age = 99;
+    });
 
     Assert.Equal(["name", "age"], new PetValidator().Validate(pet).Errors.Select(e => e.Field));
 }
@@ -93,14 +107,19 @@ afterwards:
 
 ```csharp
 [Fact]
-public async Task DuplicateSku_IsReported() {
+public async Task DuplicateSku_IsReported()
+{
     var pets = Substitute.For<IPetRepository>();
     pets.ExistsAsync("ABC", Arg.Any<CancellationToken>()).Returns(true);
 
     var collector = new ValidationErrorCollector();
     var context = new ValidationContext(collector);
 
-    await new PetUniquenessValidator(pets).ValidateAsync(context, new Pet { Sku = "ABC" }, default);
+    await new PetUniquenessValidator(pets).ValidateAsync(
+        context,
+        new Pet { Sku = "ABC" },
+        default
+    );
 
     Assert.Equal("duplicate", Assert.Single(collector.ToResult().Errors).Code);
 }
@@ -110,9 +129,7 @@ To test the composition rather than one validator, construct a `ValidationRunner
 takes its validators as constructor arguments, so no container is needed:
 
 ```csharp
-var runner = new ValidationRunner<Pet>(
-    [new PetValidator()],
-    [new PetUniquenessValidator(pets)]);
+var runner = new ValidationRunner<Pet>([new PetValidator()], [new PetUniquenessValidator(pets)]);
 
 var result = await runner.ValidateAsync(pet);
 ```
@@ -124,10 +141,9 @@ validator was never called.
 
 ```csharp
 [Fact]
-public void GeneratedTable_RegistersAValidatorForEveryModel() {
-    var provider = new ServiceCollection()
-        .AddSampleValidators()
-        .BuildServiceProvider();
+public void GeneratedTable_RegistersAValidatorForEveryModel()
+{
+    var provider = new ServiceCollection().AddSampleValidators().BuildServiceProvider();
 
     Assert.NotNull(provider.GetService<IValidatorFor<Pet>>());
 }
@@ -136,9 +152,7 @@ public void GeneratedTable_RegistersAValidatorForEveryModel() {
 With DependencyModules, load the emitted module the same way the application does:
 
 ```csharp
-var provider = new ServiceCollection()
-    .AddModule<ValidationModule>()
-    .BuildServiceProvider();
+var provider = new ServiceCollection().AddModule<ValidationModule>().BuildServiceProvider();
 ```
 
 ## Testing the generator itself
@@ -151,16 +165,19 @@ own test suite.
 test project, so the only way to test a diagnostic is to run the generator over a source string:
 
 ```csharp
-var result = GeneratorHarness.Run("""
+var result = GeneratorHarness.Run(
+    """
     using ValidationModules.Constraints;
 
     namespace Sample;
 
-    public sealed record Pet {
+    public sealed record Pet
+    {
         [StringLength(1, 10)]
         public int Age { get; init; }
     }
-    """);
+    """
+);
 
 Assert.Single(result.Diagnostics, d => d.Id == "VM1001");
 ```
@@ -176,7 +193,8 @@ matters.
 
 ```csharp
 [Fact]
-public void FlatModel_EveryConstraintKind() {
+public void FlatModel_EveryConstraintKind()
+{
     Snapshot.Match(Emit(source));
 }
 ```

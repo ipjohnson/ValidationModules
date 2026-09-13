@@ -13,11 +13,12 @@ namespace ValidationModules.SourceGenerator.Impl;
 /// it restores the comparison the pipeline assumes it has.
 /// </remarks>
 public readonly struct EquatableArray<T> : IEquatable<EquatableArray<T>>, IEnumerable<T>
-    where T : IEquatable<T> {
-
+    where T : IEquatable<T>
+{
     private readonly ImmutableArray<T> _values;
 
-    public EquatableArray(ImmutableArray<T> values) {
+    public EquatableArray(ImmutableArray<T> values)
+    {
         _values = values;
     }
 
@@ -27,17 +28,22 @@ public readonly struct EquatableArray<T> : IEquatable<EquatableArray<T>>, IEnume
 
     public T this[int index] => _values[index];
 
-    public bool Equals(EquatableArray<T> other) {
-        if (_values.IsDefault || other._values.IsDefault) {
+    public bool Equals(EquatableArray<T> other)
+    {
+        if (_values.IsDefault || other._values.IsDefault)
+        {
             return _values.IsDefault && other._values.IsDefault;
         }
 
-        if (_values.Length != other._values.Length) {
+        if (_values.Length != other._values.Length)
+        {
             return false;
         }
 
-        for (var i = 0; i < _values.Length; i++) {
-            if (!_values[i].Equals(other._values[i])) {
+        for (var i = 0; i < _values.Length; i++)
+        {
+            if (!_values[i].Equals(other._values[i]))
+            {
                 return false;
             }
         }
@@ -47,13 +53,16 @@ public readonly struct EquatableArray<T> : IEquatable<EquatableArray<T>>, IEnume
 
     public override bool Equals(object? obj) => obj is EquatableArray<T> other && Equals(other);
 
-    public override int GetHashCode() {
-        if (_values.IsDefault) {
+    public override int GetHashCode()
+    {
+        if (_values.IsDefault)
+        {
             return 0;
         }
 
         var hash = 17;
-        for (var i = 0; i < _values.Length; i++) {
+        for (var i = 0; i < _values.Length; i++)
+        {
             hash = (hash * 31) + _values[i].GetHashCode();
         }
 
@@ -66,7 +75,8 @@ public readonly struct EquatableArray<T> : IEquatable<EquatableArray<T>>, IEnume
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }
 
-public static class EquatableArrayExtensions {
-    public static EquatableArray<T> ToEquatableArray<T>(this IEnumerable<T> source) where T : IEquatable<T> =>
-        new(source.ToImmutableArray());
+public static class EquatableArrayExtensions
+{
+    public static EquatableArray<T> ToEquatableArray<T>(this IEnumerable<T> source)
+        where T : IEquatable<T> => new(source.ToImmutableArray());
 }

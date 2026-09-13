@@ -11,8 +11,10 @@ The everyday shape is anchored chains, one rule per line, the whole class:
 ```csharp
 using ValidationModules;
 
-public sealed class PetRules : IValidationRulesFor<Pet> {
-    public static void Describe(ValidationRules<Pet> rules, Pet x) {
+public sealed class PetRules : IValidationRulesFor<Pet>
+{
+    public static void Describe(ValidationRules<Pet> rules, Pet x)
+    {
         rules.Require(x.Name).Length(1, 100);
         rules.Range(x.Age, 0, 30);
         rules.AllowedValues(x.Status, ["available", "pending", "sold"]);
@@ -28,17 +30,22 @@ and messages:
 ```csharp
 using ValidationModules;
 
-public sealed class BookingRules : IValidationRulesFor<Booking> {
-    public static void Describe(ValidationRules<Booking> rules, Booking x) {
+public sealed class BookingRules : IValidationRulesFor<Booking>
+{
+    public static void Describe(ValidationRules<Booking> rules, Booking x)
+    {
         rules.Require(x.Reference).Length(8, 8);
 
-        if (x.IsRecurring) {
+        if (x.IsRecurring)
+        {
             rules.RangeAtLeast(x.Occurrences, 2);
         }
 
-        rules.Ensure(x.Start < x.End,
+        rules.Ensure(
+            x.Start < x.End,
             code: "window_inverted",
-            message: "the booking must start before it ends");
+            message: "the booking must start before it ends"
+        );
 
         var half = x.Total * 0.5m;
         rules.Ensure(x.Deposit <= half, code: "deposit_too_large");
@@ -53,12 +60,15 @@ when you need the exact signature.
 
 ## The surface
 
+<!-- format:skip -->
 ```csharp
-public interface IValidationRulesFor<T> {
+public interface IValidationRulesFor<T>
+{
     static abstract void Describe(ValidationRules<T> rules, T x);
 }
 
-public sealed class ValidationRules<T> {
+public sealed class ValidationRules<T>
+{
     public IValidationContextReporter Context { get; }
 
     public PropertyRules<T, TValue> For<TValue>(TValue value, string? field = null);
@@ -107,8 +117,8 @@ An island's value must be a member path on the subject parameter. Nested paths a
 same spelling:
 
 ```csharp
-rules.Require(x.Name);                 // field "name"
-rules.Require(x.Home?.PostalCode);     // field "home.postalCode"
+rules.Require(x.Name); // field "name"
+rules.Require(x.Home?.PostalCode); // field "home.postalCode"
 rules.Require(x.Name, field: "petName");
 ```
 
@@ -123,9 +133,10 @@ A nullable member is passed as itself - every rule takes the nullable directly:
 ```csharp
 public decimal? BatteryKwh { get; init; }
 
-rules.Range(x.BatteryKwh, 10, 300);          // field "batteryKwh"; null passes, [Required] is
-                                             // the presence check
-rules.Range(x.BatteryKwh.Value, 10, 300);    // VM3104: drop .Value
+rules.Range(x.BatteryKwh, 10, 300); // field "batteryKwh"; null passes, [Required] is
+
+// the presence check
+rules.Range(x.BatteryKwh.Value, 10, 300); // VM3104: drop .Value
 ```
 
 Writing `.Value` is never needed and is [VM3104](/reference/diagnostics#vm3104): the reader
@@ -138,7 +149,7 @@ which repeats the same vocabulary without the value:
 
 ```csharp
 rules.Require(x.Name).Length(1, 100);
-rules.For(x.Name).Require().Length(1, 100);   // same thing, anchor stated
+rules.For(x.Name).Require().Length(1, 100); // same thing, anchor stated
 ```
 
 A chain is one statement, and one `if`/`else if` ladder in the region: **a failed `Require`
@@ -201,13 +212,17 @@ There is no `When`/`Unless`. Write `if`/`else`; conditions evaluate where writte
 time, inside the region:
 
 ```csharp
-if (x.IsExpedited) {
+if (x.IsExpedited)
+{
     rules.Require(x.Reason).Length(2, 500);
 }
 
-if (x.IsAuto) {
+if (x.IsAuto)
+{
     rules.Require(x.PlateNumber);
-} else {
+}
+else
+{
     rules.Require(x.Notes);
 }
 ```
@@ -243,9 +258,9 @@ so `x.Start < x.End` reports `start_less_than_end`, and `code:` pins it. See
 Free-form logic reports through a narrow view of the pass, typed `IValidationContextReporter`:
 
 ```csharp
-if (!Luhn.Validates(x.AccountNumber)) {
-    rules.Context.Report(nameof(x.AccountNumber), "checksum",
-        "account number failed its checksum");
+if (!Luhn.Validates(x.AccountNumber))
+{
+    rules.Context.Report(nameof(x.AccountNumber), "checksum", "account number failed its checksum");
 }
 ```
 
@@ -260,7 +275,9 @@ Any `static`, `void`, same-compilation method receiving the builder is followed 
 decomposition and reuse as method extraction, generics included:
 
 ```csharp
-public static void Standard<T>(ValidationRules<T> rules, T audited) where T : IAudited {
+public static void Standard<T>(ValidationRules<T> rules, T audited)
+    where T : IAudited
+{
     rules.Require(audited.CreatedBy);
     rules.RangeAtLeast(audited.Version, 1);
 }
@@ -273,7 +290,7 @@ See [the guide](/guide/rule-classes#fragments) for the rules: same compilation
 ## `As<TFacet>`
 
 ```csharp
-rules.As<IAudited>(x);   // validate x as its IAudited facet
+rules.As<IAudited>(x); // validate x as its IAudited facet
 ```
 
 Validates the subject as one of its facets. This is the route when shared rules ship as compiled

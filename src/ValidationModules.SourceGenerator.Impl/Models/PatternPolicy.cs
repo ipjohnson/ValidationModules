@@ -9,7 +9,8 @@ namespace ValidationModules.SourceGenerator.Impl.Models;
 /// for the same pattern reached through a consumer-declared [GeneratedRegex]. So this is not a
 /// correctness gate; it is a size one, and the message says so.
 /// </remarks>
-public enum PatternPolicy {
+public enum PatternPolicy
+{
     /// <summary>Reject the inline form when the project is AOT-facing, allow it otherwise.</summary>
     Auto,
 

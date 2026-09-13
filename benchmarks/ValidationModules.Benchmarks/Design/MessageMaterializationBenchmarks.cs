@@ -28,29 +28,52 @@ namespace ValidationModules.Benchmarks.Design;
 /// </remarks>
 [MemoryDiagnoser]
 [BenchmarkCategory(BenchmarkCategories.Design)]
-public class MessageMaterializationBenchmarks {
+public class MessageMaterializationBenchmarks
+{
     private const int Errors = 12;
 
     private static readonly string[] Fields =
-        ["f0", "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11"];
+    [
+        "f0",
+        "f1",
+        "f2",
+        "f3",
+        "f4",
+        "f5",
+        "f6",
+        "f7",
+        "f8",
+        "f9",
+        "f10",
+        "f11",
+    ];
 
-    private static readonly string[] Literals = [
-        "f0 must be at most 100 characters.", "f1 must be at most 100 characters.",
-        "f2 must be at most 100 characters.", "f3 must be at most 100 characters.",
-        "f4 must be at most 100 characters.", "f5 must be at most 100 characters.",
-        "f6 must be at most 100 characters.", "f7 must be at most 100 characters.",
-        "f8 must be at most 100 characters.", "f9 must be at most 100 characters.",
-        "f10 must be at most 100 characters.", "f11 must be at most 100 characters.",
+    private static readonly string[] Literals =
+    [
+        "f0 must be at most 100 characters.",
+        "f1 must be at most 100 characters.",
+        "f2 must be at most 100 characters.",
+        "f3 must be at most 100 characters.",
+        "f4 must be at most 100 characters.",
+        "f5 must be at most 100 characters.",
+        "f6 must be at most 100 characters.",
+        "f7 must be at most 100 characters.",
+        "f8 must be at most 100 characters.",
+        "f9 must be at most 100 characters.",
+        "f10 must be at most 100 characters.",
+        "f11 must be at most 100 characters.",
     ];
 
     private readonly List<EagerError> _eager = new(Errors);
     private readonly List<DeferredError> _deferred = new(Errors);
 
     [Benchmark(Baseline = true, Description = "Literal: emitter puts the message in metadata")]
-    public int Literal_Add() {
+    public int Literal_Add()
+    {
         _eager.Clear();
 
-        for (var i = 0; i < Errors; i++) {
+        for (var i = 0; i < Errors; i++)
+        {
             _eager.Add(new EagerError(Fields[i], "string_length", Literals[i]));
         }
 
@@ -58,24 +81,31 @@ public class MessageMaterializationBenchmarks {
     }
 
     [Benchmark(Description = "Eager: helper composes the message on Add")]
-    public int Eager_Add() {
+    public int Eager_Add()
+    {
         _eager.Clear();
 
-        for (var i = 0; i < Errors; i++) {
-            _eager.Add(new EagerError(
-                Fields[i],
-                "string_length",
-                string.Concat(Fields[i], " must be at most ", 100.ToString(), " characters.")));
+        for (var i = 0; i < Errors; i++)
+        {
+            _eager.Add(
+                new EagerError(
+                    Fields[i],
+                    "string_length",
+                    string.Concat(Fields[i], " must be at most ", 100.ToString(), " characters.")
+                )
+            );
         }
 
         return _eager.Count;
     }
 
     [Benchmark(Description = "Deferred: store the pieces, never read the message")]
-    public int Deferred_Add() {
+    public int Deferred_Add()
+    {
         _deferred.Clear();
 
-        for (var i = 0; i < Errors; i++) {
+        for (var i = 0; i < Errors; i++)
+        {
             _deferred.Add(new DeferredError(Fields[i], ValidationCode.StringLength, 100));
         }
 
@@ -83,11 +113,13 @@ public class MessageMaterializationBenchmarks {
     }
 
     [Benchmark(Description = "Literal + read every message (the 400-response path)")]
-    public int Literal_AddAndRead() {
+    public int Literal_AddAndRead()
+    {
         Literal_Add();
 
         var total = 0;
-        for (var i = 0; i < _eager.Count; i++) {
+        for (var i = 0; i < _eager.Count; i++)
+        {
             total += _eager[i].Message.Length;
         }
 
@@ -95,11 +127,13 @@ public class MessageMaterializationBenchmarks {
     }
 
     [Benchmark(Description = "Eager + read every message")]
-    public int Eager_AddAndRead() {
+    public int Eager_AddAndRead()
+    {
         Eager_Add();
 
         var total = 0;
-        for (var i = 0; i < _eager.Count; i++) {
+        for (var i = 0; i < _eager.Count; i++)
+        {
             total += _eager[i].Message.Length;
         }
 
@@ -107,11 +141,13 @@ public class MessageMaterializationBenchmarks {
     }
 
     [Benchmark(Description = "Deferred + read every message")]
-    public int Deferred_AddAndRead() {
+    public int Deferred_AddAndRead()
+    {
         Deferred_Add();
 
         var total = 0;
-        for (var i = 0; i < _deferred.Count; i++) {
+        for (var i = 0; i < _deferred.Count; i++)
+        {
             total += _deferred[i].Message.Length;
         }
 
@@ -133,12 +169,20 @@ public readonly record struct EagerError(string Field, string Code, string Messa
 /// AllowedValues needs. Anything richer than that starts boxing, at which point the allocation is
 /// back and the complexity has bought nothing.
 /// </remarks>
-public readonly struct DeferredError {
+public readonly struct DeferredError
+{
     private readonly long _arg0;
     private readonly long _arg1;
     private readonly object? _reference;
 
-    public DeferredError(string field, ValidationCode code, long arg0 = 0, long arg1 = 0, object? reference = null) {
+    public DeferredError(
+        string field,
+        ValidationCode code,
+        long arg0 = 0,
+        long arg1 = 0,
+        object? reference = null
+    )
+    {
         Field = field;
         Code = code;
         _arg0 = arg0;
@@ -150,17 +194,37 @@ public readonly struct DeferredError {
 
     public ValidationCode Code { get; }
 
-    public string Message => Code switch {
-        ValidationCode.Required => string.Concat(Field, " is required."),
-        ValidationCode.StringLength => string.Concat(Field, " must be at most ", _arg0.ToString(), " characters."),
-        ValidationCode.Range => string.Concat(Field, " must be between ", _arg0.ToString(), " and ", _arg1.ToString(), "."),
-        ValidationCode.Pattern => string.Concat(Field, " is not in the required format."),
-        ValidationCode.ArrayBounds => string.Concat(Field, " must contain at least ", _arg0.ToString(), " items."),
-        _ => _reference as string ?? Field,
-    };
+    public string Message =>
+        Code switch
+        {
+            ValidationCode.Required => string.Concat(Field, " is required."),
+            ValidationCode.StringLength => string.Concat(
+                Field,
+                " must be at most ",
+                _arg0.ToString(),
+                " characters."
+            ),
+            ValidationCode.Range => string.Concat(
+                Field,
+                " must be between ",
+                _arg0.ToString(),
+                " and ",
+                _arg1.ToString(),
+                "."
+            ),
+            ValidationCode.Pattern => string.Concat(Field, " is not in the required format."),
+            ValidationCode.ArrayBounds => string.Concat(
+                Field,
+                " must contain at least ",
+                _arg0.ToString(),
+                " items."
+            ),
+            _ => _reference as string ?? Field,
+        };
 }
 
-public enum ValidationCode {
+public enum ValidationCode
+{
     Required = 0,
     StringLength = 1,
     Range = 2,

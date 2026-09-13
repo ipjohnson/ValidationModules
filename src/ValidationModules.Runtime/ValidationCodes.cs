@@ -12,8 +12,8 @@ namespace ValidationModules;
 /// The values are Hardened's existing wire codes verbatim, so retargeting it onto this library
 /// changes no 400-response body.
 /// </remarks>
-public static class ValidationCodes {
-
+public static class ValidationCodes
+{
     /// <summary>A required value was missing.</summary>
     public const string Required = "required";
 

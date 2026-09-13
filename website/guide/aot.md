@@ -67,7 +67,8 @@ patterns follow, and the trimmer cannot remove it.
 Declare the pattern with `[GeneratedRegex]` and point at it:
 
 ```csharp
-public static partial class PetPatterns {
+public static partial class PetPatterns
+{
     [GeneratedRegex("^[A-Z]{3}$")]
     public static partial Regex Sku();
 }

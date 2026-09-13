@@ -13,24 +13,27 @@ namespace SutProject.Tests;
 /// <c>ReservationRules_Rules.Describe</c>, and called by <c>ReservationValidator</c>; nothing here
 /// is a golden file, so what these assert is the emitted code's behaviour, ordering included.
 /// </remarks>
-public class RulesClassTests {
-
+public class RulesClassTests
+{
     private static readonly IValidatorFor<Reservation> Validator = new ReservationValidator();
 
-    private static Reservation Valid() => new() {
-        Guest = "Ada",
-        Reference = "AB-123456",
-        Nights = 3,
-        Start = new DateOnly(2026, 1, 1),
-        End = new DateOnly(2026, 1, 4),
-        Notes = null,
-        Guests = 2,
-        Deposit = 1.50m,
-        Rooms = ["101", "102"],
-    };
+    private static Reservation Valid() =>
+        new()
+        {
+            Guest = "Ada",
+            Reference = "AB-123456",
+            Nights = 3,
+            Start = new DateOnly(2026, 1, 1),
+            End = new DateOnly(2026, 1, 4),
+            Notes = null,
+            Guests = 2,
+            Deposit = 1.50m,
+            Rooms = ["101", "102"],
+        };
 
     [Fact]
-    public void Validate_OnAValidValue_ReportsNothing() {
+    public void Validate_OnAValidValue_ReportsNothing()
+    {
         Assert.True(Validator.Validate(Valid()).IsValid);
     }
 
@@ -39,7 +42,8 @@ public class RulesClassTests {
     /// uniqueness - expand through the same check writer the attributes use.
     /// </summary>
     [Fact]
-    public void Validate_EnforcesTheOneSidedRangeTheMultipleAndTheUniqueness() {
+    public void Validate_EnforcesTheOneSidedRangeTheMultipleAndTheUniqueness()
+    {
         Assert.True(Validator.Validate(Valid() with { Guests = 1 }).IsValid);
         Assert.False(Validator.Validate(Valid() with { Guests = 0 }).IsValid);
 
@@ -51,7 +55,8 @@ public class RulesClassTests {
     }
 
     [Fact]
-    public void Validate_RendersAnEnsureAsItsOwnMessageAndCode() {
+    public void Validate_RendersAnEnsureAsItsOwnMessageAndCode()
+    {
         var result = Validator.Validate(Valid() with { End = new DateOnly(2025, 1, 1) });
 
         var error = Assert.Single(result.Errors);
@@ -61,22 +66,29 @@ public class RulesClassTests {
     }
 
     [Fact]
-    public void ADerivedCode_TranslatesOneRuleWithoutTouchingTheOthers() {
+    public void ADerivedCode_TranslatesOneRuleWithoutTouchingTheOthers()
+    {
         // What deriving a code is for. Every Ensure used to report "predicate", so a catalogue
         // keyed by code could not translate one predicate without translating all of them.
-        var french = new ValidationMessageMap()
-            .Map("start_less_than_end",
-                static (in ValidationError _) => "la date de début doit précéder la date de fin.");
+        var french = new ValidationMessageMap().Map(
+            "start_less_than_end",
+            static (in ValidationError _) => "la date de début doit précéder la date de fin."
+        );
 
-        var derived = Assert.Single(Validator.Validate(Valid() with { End = new DateOnly(2025, 1, 1) }).Errors);
-        var other = Assert.Single(Validator.Validate(Valid() with { Nights = 20, Notes = null }).Errors);
+        var derived = Assert.Single(
+            Validator.Validate(Valid() with { End = new DateOnly(2025, 1, 1) }).Errors
+        );
+        var other = Assert.Single(
+            Validator.Validate(Valid() with { Nights = 20, Notes = null }).Errors
+        );
 
         Assert.Equal("la date de début doit précéder la date de fin.", derived.ToMessage(french));
         Assert.Equal(other.Message, other.ToMessage(french));
     }
 
     [Fact]
-    public void Validate_OnAnEnsureWithANamedCode_UsesIt() {
+    public void Validate_OnAnEnsureWithANamedCode_UsesIt()
+    {
         var result = Validator.Validate(Valid() with { Nights = 20, Notes = null });
 
         var error = Assert.Single(result.Errors);
@@ -84,7 +96,8 @@ public class RulesClassTests {
     }
 
     [Fact]
-    public void Validate_RunsAnEnsureEvenWhenAnotherRuleOnTheSameFieldFailed() {
+    public void Validate_RunsAnEnsureEvenWhenAnotherRuleOnTheSameFieldFailed()
+    {
         // Separate statements report independently: the Range on nights and the Ensure anchored to
         // nights are two statements, and an Ensure may read fields other than its anchor - so a
         // failure on the anchor says nothing about it.
@@ -92,11 +105,13 @@ public class RulesClassTests {
 
         Assert.Equal(
             [ValidationCodes.Range, "long_stay_needs_notes"],
-            result.Errors.Select(error => error.Code));
+            result.Errors.Select(error => error.Code)
+        );
     }
 
     [Fact]
-    public void Validate_AppliesAHandWrittenRuleLast() {
+    public void Validate_AppliesAHandWrittenRuleLast()
+    {
         var result = Validator.Validate(Valid() with { Guest = "Zed" });
 
         var error = Assert.Single(result.Errors);
@@ -104,7 +119,8 @@ public class RulesClassTests {
     }
 
     [Fact]
-    public void Validate_WhenRequireFails_SuppressesTheRestOfItsChain() {
+    public void Validate_WhenRequireFails_SuppressesTheRestOfItsChain()
+    {
         // Chain-scoped suppression: the Length chained after Require never reports on a missing
         // guest. The applied rule reports against `reference` and is meant to survive.
         var result = Validator.Validate(Valid() with { Guest = "  " });
@@ -118,7 +134,8 @@ public class RulesClassTests {
     /// order, chains suppressed, null-guarded checks skipped, the applied rule last.
     /// </summary>
     [Fact]
-    public void Validate_ReportsInBodyOrder() {
+    public void Validate_ReportsInBodyOrder()
+    {
         Assert.Equal(
             [
                 ("guest", ValidationCodes.Required),
@@ -126,7 +143,8 @@ public class RulesClassTests {
                 ("guests", ValidationCodes.Range),
                 ("start", "start_less_than_end"),
             ],
-            Validator.Validate(new Reservation()).Errors.Select(error => (error.Field, error.Code)));
+            Validator.Validate(new Reservation()).Errors.Select(error => (error.Field, error.Code))
+        );
 
         Assert.Equal(
             [
@@ -136,8 +154,10 @@ public class RulesClassTests {
                 ("nights", "long_stay_needs_notes"),
                 ("reference", "guest_initial"),
             ],
-            Validator.Validate(Valid() with { Guest = "A", Reference = "nope", Nights = 99 })
-                .Errors.Select(error => (error.Field, error.Code)));
+            Validator
+                .Validate(Valid() with { Guest = "A", Reference = "nope", Nights = 99 })
+                .Errors.Select(error => (error.Field, error.Code))
+        );
     }
 
     /// <summary>
@@ -146,8 +166,14 @@ public class RulesClassTests {
     /// collapse them onto the first one's name.
     /// </summary>
     [Fact]
-    public void Ensure_WithAnExplicitField_ReportsUnderThatField() {
-        var filing = new Filing { Reference = "R-1", Attachment = null, DaysLate = 0 };
+    public void Ensure_WithAnExplicitField_ReportsUnderThatField()
+    {
+        var filing = new Filing
+        {
+            Reference = "R-1",
+            Attachment = null,
+            DaysLate = 0,
+        };
 
         var result = new FilingValidator().Validate(filing);
 
@@ -161,8 +187,14 @@ public class RulesClassTests {
     /// transcribed Ensure.
     /// </summary>
     [Fact]
-    public void Ensure_WithAWarning_SurfacesWithoutFailingTheValue() {
-        var filing = new Filing { Reference = "R-1", Attachment = "a.pdf", DaysLate = 45 };
+    public void Ensure_WithAWarning_SurfacesWithoutFailingTheValue()
+    {
+        var filing = new Filing
+        {
+            Reference = "R-1",
+            Attachment = "a.pdf",
+            DaysLate = 45,
+        };
 
         var result = new FilingValidator().Validate(filing);
 
@@ -180,8 +212,16 @@ public class RulesClassTests {
     /// </summary>
     [Fact]
     public void IsValid_IgnoresAWarning() =>
-        Assert.True(new FilingValidator().IsValid(
-            new Filing { Reference = "R-1", Attachment = "a.pdf", DaysLate = 45 }));
+        Assert.True(
+            new FilingValidator().IsValid(
+                new Filing
+                {
+                    Reference = "R-1",
+                    Attachment = "a.pdf",
+                    DaysLate = 45,
+                }
+            )
+        );
 
     // ---- [EnumDefined] ----------------------------------------------------------------------
 
@@ -190,10 +230,11 @@ public class RulesClassTests {
     /// switching on it falls through every case it was written for. Nothing used to say so.
     /// </summary>
     [Fact]
-    public void EnumDefined_RejectsAValueTheEnumDoesNotDeclare() {
-        var result = new SutProject.Nesting.PaymentValidator().Validate(new SutProject.Nesting.Payment {
-            Method = (SutProject.Nesting.PaymentMethod)99,
-        });
+    public void EnumDefined_RejectsAValueTheEnumDoesNotDeclare()
+    {
+        var result = new SutProject.Nesting.PaymentValidator().Validate(
+            new SutProject.Nesting.Payment { Method = (SutProject.Nesting.PaymentMethod)99 }
+        );
 
         var error = Assert.Single(result.Errors);
         Assert.Equal("method", error.Field);
@@ -202,10 +243,15 @@ public class RulesClassTests {
     }
 
     [Fact]
-    public void EnumDefined_AcceptsEveryDeclaredMember() {
-        foreach (var method in Enum.GetValues<SutProject.Nesting.PaymentMethod>()) {
-            Assert.True(new SutProject.Nesting.PaymentValidator().IsValid(
-                new SutProject.Nesting.Payment { Method = method }));
+    public void EnumDefined_AcceptsEveryDeclaredMember()
+    {
+        foreach (var method in Enum.GetValues<SutProject.Nesting.PaymentMethod>())
+        {
+            Assert.True(
+                new SutProject.Nesting.PaymentValidator().IsValid(
+                    new SutProject.Nesting.Payment { Method = method }
+                )
+            );
         }
     }
 
@@ -214,15 +260,19 @@ public class RulesClassTests {
     /// express. The test is whether any bit outside the declared ones is set.
     /// </summary>
     [Fact]
-    public void EnumDefined_OnFlags_AcceptsACombinationAndRejectsAnUndeclaredBit() {
-        var combination = new SutProject.Nesting.Payment {
+    public void EnumDefined_OnFlags_AcceptsACombinationAndRejectsAnUndeclaredBit()
+    {
+        var combination = new SutProject.Nesting.Payment
+        {
             Rights = SutProject.Nesting.Access.Read | SutProject.Nesting.Access.Delete,
         };
 
         Assert.True(new SutProject.Nesting.PaymentValidator().IsValid(combination));
 
         var undeclared = new SutProject.Nesting.Payment { Rights = (SutProject.Nesting.Access)64 };
-        var error = Assert.Single(new SutProject.Nesting.PaymentValidator().Validate(undeclared).Errors);
+        var error = Assert.Single(
+            new SutProject.Nesting.PaymentValidator().Validate(undeclared).Errors
+        );
 
         Assert.Equal("rights", error.Field);
         Assert.Contains("combination of", error.Message);
@@ -230,11 +280,18 @@ public class RulesClassTests {
 
     /// <summary>Absent is not undefined: [EnumDefined] does not imply [Required].</summary>
     [Fact]
-    public void EnumDefined_OnANullable_AcceptsNullAndChecksAValue() {
-        Assert.True(new SutProject.Nesting.PaymentValidator().IsValid(
-            new SutProject.Nesting.Payment { Fallback = null }));
+    public void EnumDefined_OnANullable_AcceptsNullAndChecksAValue()
+    {
+        Assert.True(
+            new SutProject.Nesting.PaymentValidator().IsValid(
+                new SutProject.Nesting.Payment { Fallback = null }
+            )
+        );
 
-        Assert.False(new SutProject.Nesting.PaymentValidator().IsValid(
-            new SutProject.Nesting.Payment { Fallback = (SutProject.Nesting.PaymentMethod)77 }));
+        Assert.False(
+            new SutProject.Nesting.PaymentValidator().IsValid(
+                new SutProject.Nesting.Payment { Fallback = (SutProject.Nesting.PaymentMethod)77 }
+            )
+        );
     }
 }

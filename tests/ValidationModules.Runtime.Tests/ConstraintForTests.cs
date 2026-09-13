@@ -8,18 +8,23 @@ namespace ValidationModules.Runtime.Tests;
 /// with the terse custom default when it does not. The knobs are the contract under test - they
 /// are what makes <c>Code</c> and <c>Message</c> behave identically across every custom shape.
 /// </summary>
-public class ConstraintForTests {
-
-    private sealed class BareEvenAttribute : Attribute, IConstraintFor<int> {
+public class ConstraintForTests
+{
+    private sealed class BareEvenAttribute : Attribute, IConstraintFor<int>
+    {
         public bool IsValid(int value) => value % 2 == 0;
     }
 
-    private sealed class KnobbedEvenAttribute : Constraints.ValidationConstraintAttribute, IConstraintFor<int> {
+    private sealed class KnobbedEvenAttribute
+        : Constraints.ValidationConstraintAttribute,
+            IConstraintFor<int>
+    {
         public bool IsValid(int value) => value % 2 == 0;
     }
 
     [Fact]
-    public void DefaultValidate_PassingValue_ReportsNothingAndContinues() {
+    public void DefaultValidate_PassingValue_ReportsNothingAndContinues()
+    {
         var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
         IConstraintFor<int> even = new BareEvenAttribute();
@@ -31,7 +36,8 @@ public class ConstraintForTests {
     }
 
     [Fact]
-    public void DefaultValidate_ReportsTheCustomCodeAndTerseMessage() {
+    public void DefaultValidate_ReportsTheCustomCodeAndTerseMessage()
+    {
         var error = Single(new BareEvenAttribute(), 3);
 
         Assert.Equal(ValidationCodes.Custom, error.Code);
@@ -40,7 +46,8 @@ public class ConstraintForTests {
     }
 
     [Fact]
-    public void DefaultValidate_HonoursACodeFromTheConstraintBase() {
+    public void DefaultValidate_HonoursACodeFromTheConstraintBase()
+    {
         var error = Single(new KnobbedEvenAttribute { Code = "pair" }, 3);
 
         Assert.Equal("pair", error.Code);
@@ -48,7 +55,8 @@ public class ConstraintForTests {
     }
 
     [Fact]
-    public void DefaultValidate_HonoursAMessageAndSubstitutesTheField() {
+    public void DefaultValidate_HonoursAMessageAndSubstitutesTheField()
+    {
         // Substituted when the failure is reported rather than at generation time: the instance is
         // shared across every field it is declared on, so the message cannot be baked to one.
         var error = Single(new KnobbedEvenAttribute { Message = "{field} must come in pairs" }, 3);
@@ -58,14 +66,16 @@ public class ConstraintForTests {
     }
 
     [Fact]
-    public void DefaultValidate_HonoursBothKnobsTogether() {
+    public void DefaultValidate_HonoursBothKnobsTogether()
+    {
         var error = Single(new KnobbedEvenAttribute { Code = "pair", Message = "unpaired" }, 3);
 
         Assert.Equal("pair", error.Code);
         Assert.Equal("unpaired", error.Message);
     }
 
-    private static ValidationError Single(IConstraintFor<int> constraint, int value) {
+    private static ValidationError Single(IConstraintFor<int> constraint, int value)
+    {
         var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
 

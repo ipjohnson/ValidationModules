@@ -10,8 +10,8 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// field for a per-check construction that VM1603 prices, and every wrong shape caught at build
 /// time as VM1602.
 /// </summary>
-public class ConstraintInterfaceTests {
-
+public class ConstraintInterfaceTests
+{
     private const string SkuCheckAttribute = """
         using System;
         using ValidationModules;
@@ -27,14 +27,18 @@ public class ConstraintInterfaceTests {
         """;
 
     [Fact]
-    public void InterfaceConstraint_HoistsOneInstanceAndCallsItDirectly() {
-        var result = GeneratorHarness.Run(SkuCheckAttribute + """
+    public void InterfaceConstraint_HoistsOneInstanceAndCallsItDirectly()
+    {
+        var result = GeneratorHarness.Run(
+            SkuCheckAttribute
+                + """
 
-            public record Product {
-                [SkuCheck]
-                public string? Code { get; init; }
-            }
-            """);
+                public record Product {
+                    [SkuCheck]
+                    public string? Code { get; init; }
+                }
+                """
+        );
 
         Assert.Empty(result.Diagnostics);
 
@@ -44,21 +48,25 @@ public class ConstraintInterfaceTests {
         // interface dispatch anywhere the author implemented implicitly.
         Assert.Contains(
             "private static readonly global::Sample.SkuCheckAttribute CodeConstraint0 = new global::Sample.SkuCheckAttribute();",
-            emitted);
+            emitted
+        );
 
         // Null skips, like every structural constraint - the interface's contract says null
         // never arrives.
         Assert.Contains(
             "value.Code is not null && CodeConstraint0.Validate(ref ctx, value.Code, \"code\").ShouldStop",
-            emitted);
+            emitted
+        );
         Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
-    public void InterfaceConstraint_DefaultValidate_GoesThroughTheInterface() {
+    public void InterfaceConstraint_DefaultValidate_GoesThroughTheInterface()
+    {
         // Only IsValid is implemented; Validate is the interface's default implementation, which
         // no method on the class can bind - so that one call casts, and IsValid stays direct.
-        var result = GeneratorHarness.Run("""
+        var result = GeneratorHarness.Run(
+            """
             using System;
             using ValidationModules;
 
@@ -72,7 +80,8 @@ public class ConstraintInterfaceTests {
                 [BareSku]
                 public string? Code { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.Diagnostics);
 
@@ -80,14 +89,17 @@ public class ConstraintInterfaceTests {
 
         Assert.Contains(
             "((global::ValidationModules.IConstraintFor<string>)CodeConstraint0).Validate(ref ctx, value.Code, \"code\")",
-            emitted);
+            emitted
+        );
         Assert.Contains("!CodeConstraint0.IsValid(value.Code)", emitted);
         Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
-    public void InterfaceConstraint_ConstructorArgumentsRideIntoTheConstruction() {
-        var result = GeneratorHarness.Run("""
+    public void InterfaceConstraint_ConstructorArgumentsRideIntoTheConstruction()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using System;
             using ValidationModules;
 
@@ -108,7 +120,8 @@ public class ConstraintInterfaceTests {
                 [OneOf("email", "sms")]
                 public string? Channel { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.Diagnostics);
 
@@ -116,13 +129,16 @@ public class ConstraintInterfaceTests {
         // them is the reason to choose this shape over a static check.
         Assert.Contains(
             "= new global::Sample.OneOfAttribute(new string[] { \"email\", \"sms\" });",
-            result.Sources["Sample.ProductValidator.g.cs"]);
+            result.Sources["Sample.ProductValidator.g.cs"]
+        );
         Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
-    public void InterfaceConstraint_NullableValueTypeMember_IsGuardedAndUnwrapped() {
-        var result = GeneratorHarness.Run("""
+    public void InterfaceConstraint_NullableValueTypeMember_IsGuardedAndUnwrapped()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using System;
             using ValidationModules;
 
@@ -139,7 +155,8 @@ public class ConstraintInterfaceTests {
                 [Even]
                 public int? Count { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.Diagnostics);
 
@@ -147,19 +164,24 @@ public class ConstraintInterfaceTests {
         // so the author's check reads the value type it declared, unboxed.
         Assert.Contains(
             "value.Count is not null && CountConstraint0.Validate(ref ctx, value.Count.Value, \"count\").ShouldStop",
-            result.Sources["Sample.ProductValidator.g.cs"]);
+            result.Sources["Sample.ProductValidator.g.cs"]
+        );
         Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
-    public void InterfaceConstraint_ParticipatesInTheBooleanFastPath() {
-        var result = GeneratorHarness.Run(SkuCheckAttribute + """
+    public void InterfaceConstraint_ParticipatesInTheBooleanFastPath()
+    {
+        var result = GeneratorHarness.Run(
+            SkuCheckAttribute
+                + """
 
-            public record Product {
-                [SkuCheck]
-                public string? Code { get; init; }
-            }
-            """);
+                public record Product {
+                    [SkuCheck]
+                    public string? Code { get; init; }
+                }
+                """
+        );
 
         var emitted = result.Sources["Sample.ProductValidator.g.cs"];
         var fastPath = emitted.Substring(emitted.IndexOf("public bool IsValid"));
@@ -170,8 +192,10 @@ public class ConstraintInterfaceTests {
     }
 
     [Fact]
-    public void InterfaceConstraint_PerValidationInstance_ConstructsAtTheCheckAndSaysSo() {
-        var result = GeneratorHarness.Run("""
+    public void InterfaceConstraint_PerValidationInstance_ConstructsAtTheCheckAndSaysSo()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using System;
             using ValidationModules;
             using ValidationModules.Constraints;
@@ -190,7 +214,8 @@ public class ConstraintInterfaceTests {
                 [Stamp]
                 public string? Code { get; init; }
             }
-            """);
+            """
+        );
 
         var emitted = result.Sources["Sample.ProductValidator.g.cs"];
 
@@ -198,7 +223,9 @@ public class ConstraintInterfaceTests {
         // cost is stated as an Info at the site that pays it.
         Assert.DoesNotContain("private static readonly global::Sample.StampAttribute", emitted);
         Assert.Contains(
-            "new global::Sample.StampAttribute().Validate(ref ctx, value.Code, \"code\")", emitted);
+            "new global::Sample.StampAttribute().Validate(ref ctx, value.Code, \"code\")",
+            emitted
+        );
         Assert.Contains("!new global::Sample.StampAttribute().IsValid(value.Code)", emitted);
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1603");
@@ -208,11 +235,13 @@ public class ConstraintInterfaceTests {
     }
 
     [Fact]
-    public void InterfaceConstraint_TheConstraintBaseKnobsWork() {
+    public void InterfaceConstraint_TheConstraintBaseKnobsWork()
+    {
         // Deriving from ValidationConstraintAttribute is optional; when the author does, When and
         // Unless weave as generator-enforced conditions, and Code and Message ride into the
         // instance for the default Validate to honour.
-        var result = GeneratorHarness.Run("""
+        var result = GeneratorHarness.Run(
+            """
             using System;
             using ValidationModules;
             using ValidationModules.Constraints;
@@ -229,7 +258,8 @@ public class ConstraintInterfaceTests {
                 [Tier(Code = "tier", Message = "{field} is not a tier", When = nameof(IsCatalogued))]
                 public string? Tier { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.Diagnostics);
 
@@ -244,11 +274,13 @@ public class ConstraintInterfaceTests {
     }
 
     [Fact]
-    public void InterfaceConstraint_WinsOverAValidationAttributeBase() {
+    public void InterfaceConstraint_WinsOverAValidationAttributeBase()
+    {
         // One class, both worlds: under MVC and TryValidateObject it is a ValidationAttribute;
         // here the interface takes precedence and nothing goes through the bridge - no context,
         // no box, no VM2002.
-        var result = GeneratorHarness.Run("""
+        var result = GeneratorHarness.Run(
+            """
             using System;
             using System.ComponentModel.DataAnnotations;
             using ValidationModules;
@@ -272,7 +304,8 @@ public class ConstraintInterfaceTests {
                 [Sku]
                 public string? Code { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.Diagnostics);
 
@@ -284,10 +317,12 @@ public class ConstraintInterfaceTests {
     }
 
     [Fact]
-    public void InterfaceConstraint_ExactInstantiationBeatsAssignableOnes() {
+    public void InterfaceConstraint_ExactInstantiationBeatsAssignableOnes()
+    {
         // Implements both the member's own type and object; the member's own type runs. The cast
         // in the emitted call is where the choice is visible.
-        var result = GeneratorHarness.Run("""
+        var result = GeneratorHarness.Run(
+            """
             using System;
             using ValidationModules;
 
@@ -303,20 +338,24 @@ public class ConstraintInterfaceTests {
                 [Wide]
                 public string? Code { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.Diagnostics);
         Assert.Contains(
             "((global::ValidationModules.IConstraintFor<string>)CodeConstraint0).Validate",
-            result.Sources["Sample.ProductValidator.g.cs"]);
+            result.Sources["Sample.ProductValidator.g.cs"]
+        );
         Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
-    public void InterfaceConstraint_AUniqueAssignableInstantiation_Matches() {
+    public void InterfaceConstraint_AUniqueAssignableInstantiation_Matches()
+    {
         // No exact instantiation, one the member converts to: an IComparable check runs against a
         // string member, the way AcceptsMember already reads a static check's first parameter.
-        var result = GeneratorHarness.Run("""
+        var result = GeneratorHarness.Run(
+            """
             using System;
             using ValidationModules;
 
@@ -333,35 +372,45 @@ public class ConstraintInterfaceTests {
                 [Ordered]
                 public string? Code { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.Diagnostics);
         Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
-    public void InterfaceConstraint_OnABaseProperty_ReachesTheDerivedValidator() {
-        var result = GeneratorHarness.Run(SkuCheckAttribute + """
+    public void InterfaceConstraint_OnABaseProperty_ReachesTheDerivedValidator()
+    {
+        var result = GeneratorHarness.Run(
+            SkuCheckAttribute
+                + """
 
-            public abstract record Item {
-                [SkuCheck]
-                public string? Code { get; init; }
-            }
+                public abstract record Item {
+                    [SkuCheck]
+                    public string? Code { get; init; }
+                }
 
-            public record Product : Item;
-            """);
+                public record Product : Item;
+                """
+        );
 
         Assert.Contains(
             "CodeConstraint0.Validate(ref ctx, value.Code, \"code\")",
-            result.Sources["Sample.ProductValidator.g.cs"]);
+            result.Sources["Sample.ProductValidator.g.cs"]
+        );
     }
 
     [Fact]
-    public void InterfaceConstraint_OnARecordParameter_IsVM1008LikeAnyConstraint() {
-        var result = GeneratorHarness.Run(SkuCheckAttribute + """
+    public void InterfaceConstraint_OnARecordParameter_IsVM1008LikeAnyConstraint()
+    {
+        var result = GeneratorHarness.Run(
+            SkuCheckAttribute
+                + """
 
-            public record Product([SkuCheck] string? Code);
-            """);
+                public record Product([SkuCheck] string? Code);
+                """
+        );
 
         Assert.Single(result.Diagnostics, d => d.Id == "VM1008");
     }
@@ -369,8 +418,10 @@ public class ConstraintInterfaceTests {
     // VM1602 — every wrong shape is a build error naming the fix.
 
     [Fact]
-    public void InterfaceConstraint_NoInstantiationFitsTheMember_IsVM1602() {
-        var result = GeneratorHarness.Run("""
+    public void InterfaceConstraint_NoInstantiationFitsTheMember_IsVM1602()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using System;
             using ValidationModules;
 
@@ -384,7 +435,8 @@ public class ConstraintInterfaceTests {
                 [Even]
                 public string? Code { get; init; }
             }
-            """);
+            """
+        );
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1602");
 
@@ -394,10 +446,12 @@ public class ConstraintInterfaceTests {
     }
 
     [Fact]
-    public void InterfaceConstraint_AmbiguousInstantiations_IsVM1602() {
+    public void InterfaceConstraint_AmbiguousInstantiations_IsVM1602()
+    {
         // string is both an object and an IComparable, and implements neither instantiation
         // exactly - refusing beats picking one and silently running the other author's intent.
-        var result = GeneratorHarness.Run("""
+        var result = GeneratorHarness.Run(
+            """
             using System;
             using ValidationModules;
 
@@ -413,7 +467,8 @@ public class ConstraintInterfaceTests {
                 [Loose]
                 public string? Code { get; init; }
             }
-            """);
+            """
+        );
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1602");
 
@@ -422,8 +477,10 @@ public class ConstraintInterfaceTests {
     }
 
     [Fact]
-    public void InterfaceConstraint_MixedWithTheStaticShape_IsVM1602() {
-        var result = GeneratorHarness.Run("""
+    public void InterfaceConstraint_MixedWithTheStaticShape_IsVM1602()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using System;
             using ValidationModules;
             using ValidationModules.Constraints;
@@ -438,16 +495,20 @@ public class ConstraintInterfaceTests {
                 [Torn]
                 public string? Code { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Contains(
             "pick one",
-            Assert.Single(result.Diagnostics, d => d.Id == "VM1602").GetMessage());
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1602").GetMessage()
+        );
     }
 
     [Fact]
-    public void InterfaceConstraint_AGenericAttributeClass_IsVM1602() {
-        var result = GeneratorHarness.Run("""
+    public void InterfaceConstraint_AGenericAttributeClass_IsVM1602()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using System;
             using ValidationModules;
 
@@ -461,10 +522,12 @@ public class ConstraintInterfaceTests {
                 [Typed<int>]
                 public string? Code { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Contains(
             "generic attribute class",
-            Assert.Single(result.Diagnostics, d => d.Id == "VM1602").GetMessage());
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1602").GetMessage()
+        );
     }
 }

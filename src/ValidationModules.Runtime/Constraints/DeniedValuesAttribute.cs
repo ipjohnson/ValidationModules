@@ -16,13 +16,14 @@ namespace ValidationModules.Constraints;
 /// [DeniedValues("admin", "root", "system")] public string? Username { get; init; }
 /// </code>
 /// </example>
-public sealed class DeniedValuesAttribute : ValidationConstraintAttribute {
-
+public sealed class DeniedValuesAttribute : ValidationConstraintAttribute
+{
     /// <summary>
     /// The rejected values. Must be compile-time constants of the property's type.
     /// </summary>
     /// <param name="values">The rejected values.</param>
-    public DeniedValuesAttribute(params object[] values) {
+    public DeniedValuesAttribute(params object[] values)
+    {
         ArgumentNullException.ThrowIfNull(values);
 
         Values = values;

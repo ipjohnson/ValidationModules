@@ -25,7 +25,8 @@ namespace ValidationModules.Benchmarks.Components;
 /// </remarks>
 [MemoryDiagnoser]
 [BenchmarkCategory(BenchmarkCategories.Component)]
-public class SuppressionBenchmarks {
+public class SuppressionBenchmarks
+{
     private readonly ValidationErrorCollector _collector = new();
 
     private string[] _fields = [];
@@ -35,21 +36,25 @@ public class SuppressionBenchmarks {
     public int FailedFields { get; set; }
 
     [GlobalSetup]
-    public void Setup() {
+    public void Setup()
+    {
         // Composed once. Building a field name inside the benchmark would price string formatting
         // rather than the scan.
         _fields = new string[FailedFields];
-        for (var i = 0; i < FailedFields; i++) {
+        for (var i = 0; i < FailedFields; i++)
+        {
             _fields[i] = $"field{i}";
         }
     }
 
     [Benchmark(Baseline = true, Description = "N fields fail Required")]
-    public int RequiredFailures() {
+    public int RequiredFailures()
+    {
         _collector.Reset();
 
         var context = new ValidationContext(_collector);
-        for (var i = 0; i < _fields.Length; i++) {
+        for (var i = 0; i < _fields.Length; i++)
+        {
             context.ReportRequired(_fields[i]);
         }
 
@@ -62,15 +67,18 @@ public class SuppressionBenchmarks {
     /// price of the rule, with none of the storage.
     /// </summary>
     [Benchmark(Description = "N fields fail Required, then N suppressed adds")]
-    public int RequiredFailures_ThenSuppressed() {
+    public int RequiredFailures_ThenSuppressed()
+    {
         _collector.Reset();
 
         var context = new ValidationContext(_collector);
-        for (var i = 0; i < _fields.Length; i++) {
+        for (var i = 0; i < _fields.Length; i++)
+        {
             context.ReportRequired(_fields[i]);
         }
 
-        for (var i = 0; i < _fields.Length; i++) {
+        for (var i = 0; i < _fields.Length; i++)
+        {
             context.ReportPattern(_fields[i]);
         }
 
@@ -82,11 +90,13 @@ public class SuppressionBenchmarks {
     /// scans anything. The floor: what the same number of errors costs with the rule switched off.
     /// </summary>
     [Benchmark(Description = "N non-Required failures - no list, no scan")]
-    public int NonRequiredFailures() {
+    public int NonRequiredFailures()
+    {
         _collector.Reset();
 
         var context = new ValidationContext(_collector);
-        for (var i = 0; i < _fields.Length; i++) {
+        for (var i = 0; i < _fields.Length; i++)
+        {
             context.ReportPattern(_fields[i]);
         }
 

@@ -47,7 +47,8 @@ public sealed record ValidatedTypeModel(
     EquatableArray<string> AppliedRules = default,
     bool IsPublic = true,
     bool ImplementsValidatableObject = false,
-    EquatableArray<RegionModel> Regions = default) : IEquatable<ValidatedTypeModel>;
+    EquatableArray<RegionModel> Regions = default
+) : IEquatable<ValidatedTypeModel>;
 
 /// <summary>
 /// One transcribed rules-class region: where its method lives and which of the validator's
@@ -56,10 +57,12 @@ public sealed record ValidatedTypeModel(
 public sealed record RegionModel(
     string CompanionQualifiedName,
     string MethodName,
-    EquatableArray<string> ValidatorAccessors = default) : IEquatable<RegionModel>;
+    EquatableArray<string> ValidatorAccessors = default
+) : IEquatable<RegionModel>;
 
 /// <summary>Which registration shape the assembly gets. See plan §7.3.</summary>
-public enum RegistrationMode {
+public enum RegistrationMode
+{
     /// <summary>Emit a complete IDependencyModule.</summary>
     DependencyModules,
 

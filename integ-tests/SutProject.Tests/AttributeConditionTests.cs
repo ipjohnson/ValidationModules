@@ -7,20 +7,22 @@ namespace SutProject.Tests;
 /// <summary>
 /// <c>When</c> and <c>Unless</c> on constraint attributes, against really-compiled generated code.
 /// </summary>
-public class AttributeConditionTests {
-
+public class AttributeConditionTests
+{
     private static readonly ClaimValidator Validator = new();
 
     /// <summary>Everything the conditions guard is satisfied or switched off.</summary>
     private static Claim Quiet() => new() { Reference = "R-1" };
 
     [Fact]
-    public void ConditionFalse_SkipsTheConstraint() {
+    public void ConditionFalse_SkipsTheConstraint()
+    {
         Assert.True(Validator.Validate(Quiet()).IsValid);
     }
 
     [Fact]
-    public void ConditionTrue_EnforcesTheConstraint() {
+    public void ConditionTrue_EnforcesTheConstraint()
+    {
         var errors = Validator.Validate(Quiet() with { IsAuto = true }).Errors;
 
         Assert.Contains(errors, error => error.Field == "plateNumber");
@@ -28,14 +30,17 @@ public class AttributeConditionTests {
     }
 
     [Fact]
-    public void Unless_IsTheNegation() {
+    public void Unless_IsTheNegation()
+    {
         Assert.Contains(
             Validator.Validate(new Claim()).Errors,
-            error => error.Field == "reference");
+            error => error.Field == "reference"
+        );
 
         Assert.DoesNotContain(
             Validator.Validate(new Claim { IsDraft = true }).Errors,
-            error => error.Field == "reference");
+            error => error.Field == "reference"
+        );
     }
 
     /// <summary>
@@ -43,43 +48,57 @@ public class AttributeConditionTests {
     /// nothing, so the unguarded length check on the same field still reports.
     /// </summary>
     [Fact]
-    public void GuardedRequiredThatDoesNotRun_SuppressesNothing() {
+    public void GuardedRequiredThatDoesNotRun_SuppressesNothing()
+    {
         var errors = Validator.Validate(Quiet() with { PolicyNumber = "X" }).Errors;
 
         Assert.Equal(
             ValidationCodes.StringLength,
-            Assert.Single(errors, error => error.Field == "policyNumber").Code);
+            Assert.Single(errors, error => error.Field == "policyNumber").Code
+        );
     }
 
     /// <summary>
     /// And when it does run and fails, it suppresses the rest of its field as always.
     /// </summary>
     [Fact]
-    public void GuardedRequiredThatRunsAndFails_SuppressesItsField() {
+    public void GuardedRequiredThatRunsAndFails_SuppressesItsField()
+    {
         var errors = Validator.Validate(Quiet() with { IsAuto = true, PolicyNumber = null }).Errors;
 
         Assert.Equal(
             ValidationCodes.Required,
-            Assert.Single(errors, error => error.Field == "policyNumber").Code);
+            Assert.Single(errors, error => error.Field == "policyNumber").Code
+        );
     }
 
     [Fact]
-    public void GuardedDescent_DoesNotRecurseWhenTheConditionIsFalse() {
+    public void GuardedDescent_DoesNotRecurseWhenTheConditionIsFalse()
+    {
         // A nested value that is invalid on its own terms, reached only when the discriminator says
         // this half of the model is the meaningful one.
-        var claim = Quiet() with { Auto = new AutoDetail() };
+        var claim = Quiet() with
+        {
+            Auto = new AutoDetail(),
+        };
 
         Assert.True(Validator.Validate(claim).IsValid);
 
         // Switching the discriminator on satisfies the other two conditions as well, so those are
         // supplied rather than left to report alongside the descent.
-        var auto = claim with { IsAuto = true, PlateNumber = "AB-123", PolicyNumber = "P-1234" };
+        var auto = claim with
+        {
+            IsAuto = true,
+            PlateNumber = "AB-123",
+            PolicyNumber = "P-1234",
+        };
 
         Assert.Equal("auto.vin", Assert.Single(Validator.Validate(auto).Errors).Field);
     }
 
     [Fact]
-    public void IsValid_AgreesWithValidateUnderConditions() {
+    public void IsValid_AgreesWithValidateUnderConditions()
+    {
         Assert.True(Validator.IsValid(Quiet()));
         Assert.False(Validator.IsValid(Quiet() with { IsAuto = true }));
     }
@@ -92,7 +111,8 @@ public class AttributeConditionTests {
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void ConditionIsEvaluatedExactlyOncePerPass(bool gate) {
+    public void ConditionIsEvaluatedExactlyOncePerPass(bool gate)
+    {
         var validator = new CountedValidator();
 
         Counted.Evaluations = 0;
@@ -102,7 +122,8 @@ public class AttributeConditionTests {
     }
 
     [Fact]
-    public void ConditionIsEvaluatedExactlyOncePerPass_OnTheBooleanPathToo() {
+    public void ConditionIsEvaluatedExactlyOncePerPass_OnTheBooleanPathToo()
+    {
         var validator = new CountedValidator();
 
         Counted.Evaluations = 0;

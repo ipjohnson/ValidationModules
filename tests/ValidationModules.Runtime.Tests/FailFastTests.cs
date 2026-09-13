@@ -19,30 +19,36 @@ namespace ValidationModules.Runtime.Tests;
 /// Real generated validators are covered by the integ-tests' own fail-fast suite.
 /// </para>
 /// </remarks>
-public class FailFastTests {
-
-    private sealed record Order {
+public class FailFastTests
+{
+    private sealed record Order
+    {
         public string? Reference { get; init; }
         public string? Customer { get; init; }
         public Address? ShipTo { get; init; }
     }
 
-    private sealed record Address {
+    private sealed record Address
+    {
         public string? Line1 { get; init; }
         public string? PostalCode { get; init; }
     }
 
     private static int _evaluated;
 
-    private sealed class AddressValidator : IValidatorFor<Address> {
+    private sealed class AddressValidator : IValidatorFor<Address>
+    {
         public static readonly AddressValidator Instance = new();
 
-        public ValidationFlow Validate(ref ValidationContext context, Address value) {
-            if (value.Line1 is null && context.ReportRequired("line1").ShouldStop) {
+        public ValidationFlow Validate(ref ValidationContext context, Address value)
+        {
+            if (value.Line1 is null && context.ReportRequired("line1").ShouldStop)
+            {
                 return ValidationFlow.Stop;
             }
 
-            if (value.PostalCode is null && context.ReportRequired("postalCode").ShouldStop) {
+            if (value.PostalCode is null && context.ReportRequired("postalCode").ShouldStop)
+            {
                 return ValidationFlow.Stop;
             }
 
@@ -50,22 +56,34 @@ public class FailFastTests {
         }
     }
 
-    private sealed class OrderValidator : IValidatorFor<Order> {
+    private sealed class OrderValidator : IValidatorFor<Order>
+    {
         public static readonly OrderValidator Instance = new();
 
-        public ValidationFlow Validate(ref ValidationContext context, Order value) {
-            if (string.IsNullOrWhiteSpace(value.Reference) && context.ReportRequired("reference").ShouldStop) {
+        public ValidationFlow Validate(ref ValidationContext context, Order value)
+        {
+            if (
+                string.IsNullOrWhiteSpace(value.Reference)
+                && context.ReportRequired("reference").ShouldStop
+            )
+            {
                 return ValidationFlow.Stop;
             }
 
-            if (string.IsNullOrWhiteSpace(value.Customer) && context.ReportRequired("customer").ShouldStop) {
+            if (
+                string.IsNullOrWhiteSpace(value.Customer)
+                && context.ReportRequired("customer").ShouldStop
+            )
+            {
                 return ValidationFlow.Stop;
             }
 
-            if (value.ShipTo is { } shipTo) {
+            if (value.ShipTo is { } shipTo)
+            {
                 var nested = context.Push("shipTo");
 
-                if (AddressValidator.Instance.Validate(ref nested, shipTo).ShouldStop) {
+                if (AddressValidator.Instance.Validate(ref nested, shipTo).ShouldStop)
+                {
                     return ValidationFlow.Stop;
                 }
             }
@@ -74,7 +92,8 @@ public class FailFastTests {
         }
     }
 
-    private static ValidationResult Run(Order order, ValidationStopMode mode) {
+    private static ValidationResult Run(Order order, ValidationStopMode mode)
+    {
         var collector = new ValidationErrorCollector { StopMode = mode };
 
         OrderValidator.Instance.ValidateInto(collector, order);
@@ -89,14 +108,16 @@ public class FailFastTests {
         Assert.Equal(ValidationStopMode.CollectAll, new ValidationErrorCollector().StopMode);
 
     [Fact]
-    public void CollectAll_ReportsEveryFailure() {
+    public void CollectAll_ReportsEveryFailure()
+    {
         var result = Run(new Order(), ValidationStopMode.CollectAll);
 
         Assert.Equal(2, result.Errors.Count);
     }
 
     [Fact]
-    public void StopOnFirstError_ReportsOnlyTheFirst() {
+    public void StopOnFirstError_ReportsOnlyTheFirst()
+    {
         var result = Run(new Order(), ValidationStopMode.StopOnFirstError);
 
         Assert.Equal("reference", Assert.Single(result.Errors).Field);
@@ -106,10 +127,14 @@ public class FailFastTests {
     /// The one that separates this from filtering a full result: the second rule never ran.
     /// </summary>
     [Fact]
-    public void StopOnFirstError_DoesNotEvaluateLaterRules() {
+    public void StopOnFirstError_DoesNotEvaluateLaterRules()
+    {
         _evaluated = 0;
 
-        var collector = new ValidationErrorCollector { StopMode = ValidationStopMode.StopOnFirstError };
+        var collector = new ValidationErrorCollector
+        {
+            StopMode = ValidationStopMode.StopOnFirstError,
+        };
 
         CountingValidator.Instance.ValidateInto(collector, new Order());
 
@@ -117,7 +142,8 @@ public class FailFastTests {
     }
 
     [Fact]
-    public void CollectAll_EvaluatesLaterRules() {
+    public void CollectAll_EvaluatesLaterRules()
+    {
         _evaluated = 0;
 
         CountingValidator.Instance.Validate(new Order());
@@ -125,24 +151,33 @@ public class FailFastTests {
         Assert.Equal(2, _evaluated);
     }
 
-    private sealed class CountingValidator : IValidatorFor<Order> {
+    private sealed class CountingValidator : IValidatorFor<Order>
+    {
         public static readonly CountingValidator Instance = new();
 
-        public ValidationFlow Validate(ref ValidationContext context, Order value) {
-            if (!(Count() && value.Reference is not null) &&
-                context.Report("reference", "first", "reference is set.").ShouldStop) {
+        public ValidationFlow Validate(ref ValidationContext context, Order value)
+        {
+            if (
+                !(Count() && value.Reference is not null)
+                && context.Report("reference", "first", "reference is set.").ShouldStop
+            )
+            {
                 return ValidationFlow.Stop;
             }
 
-            if (!(Count() && value.Customer is not null) &&
-                context.Report("customer", "second", "customer is set.").ShouldStop) {
+            if (
+                !(Count() && value.Customer is not null)
+                && context.Report("customer", "second", "customer is set.").ShouldStop
+            )
+            {
                 return ValidationFlow.Stop;
             }
 
             return ValidationFlow.Continue;
         }
 
-        private static bool Count() {
+        private static bool Count()
+        {
             _evaluated++;
 
             return true;
@@ -153,11 +188,13 @@ public class FailFastTests {
 
     /// <summary>A nested failure stops the parent, which is what makes the tree walk cheap.</summary>
     [Fact]
-    public void StopOnFirstError_StopsDescendingAfterANestedFailure() {
-        var order = new Order {
+    public void StopOnFirstError_StopsDescendingAfterANestedFailure()
+    {
+        var order = new Order
+        {
             Reference = "ORD-1",
             Customer = "Ada",
-            ShipTo = new Address()
+            ShipTo = new Address(),
         };
 
         var result = Run(order, ValidationStopMode.StopOnFirstError);
@@ -171,8 +208,12 @@ public class FailFastTests {
     /// A warning does not make a value invalid, so stopping on one would hide the error behind it.
     /// </summary>
     [Fact]
-    public void AWarning_DoesNotStopThePass() {
-        var collector = new ValidationErrorCollector { StopMode = ValidationStopMode.StopOnFirstError };
+    public void AWarning_DoesNotStopThePass()
+    {
+        var collector = new ValidationErrorCollector
+        {
+            StopMode = ValidationStopMode.StopOnFirstError,
+        };
         var context = new ValidationContext(collector);
 
         var afterWarning = context.Report("a", "advisory", "x", ValidationSeverity.Warning);
@@ -183,7 +224,8 @@ public class FailFastTests {
     }
 
     [Fact]
-    public void CollectAll_NeverStops() {
+    public void CollectAll_NeverStops()
+    {
         var context = new ValidationContext(new ValidationErrorCollector());
 
         Assert.False(context.Report("a", "blocked", "x").ShouldStop);
@@ -192,8 +234,12 @@ public class FailFastTests {
     // -- Reset keeps the mode, as it keeps PathMode and Services ---------------------------------
 
     [Fact]
-    public void Reset_KeepsTheStopMode() {
-        var collector = new ValidationErrorCollector { StopMode = ValidationStopMode.StopOnFirstError };
+    public void Reset_KeepsTheStopMode()
+    {
+        var collector = new ValidationErrorCollector
+        {
+            StopMode = ValidationStopMode.StopOnFirstError,
+        };
 
         new ValidationContext(collector).Report("a", "blocked", "x");
         collector.Reset();
@@ -204,18 +250,21 @@ public class FailFastTests {
     // -- the entry point -------------------------------------------------------------------------
 
     [Fact]
-    public void ValidateFirst_ReturnsAtMostOneError() {
+    public void ValidateFirst_ReturnsAtMostOneError()
+    {
         var result = OrderValidator.Instance.ValidateFirst(new Order());
 
         Assert.Single(result.Errors);
     }
 
     [Fact]
-    public void ValidateFirst_OnAValidValue_IsValid() {
-        var order = new Order {
+    public void ValidateFirst_OnAValidValue_IsValid()
+    {
+        var order = new Order
+        {
             Reference = "ORD-1",
             Customer = "Ada",
-            ShipTo = new Address { Line1 = "12 Analytical Engine Way", PostalCode = "12345" }
+            ShipTo = new Address { Line1 = "12 Analytical Engine Way", PostalCode = "12345" },
         };
 
         Assert.True(OrderValidator.Instance.ValidateFirst(order).IsValid);
@@ -234,8 +283,12 @@ public class FailFastTests {
     /// <see cref="IAsyncValidatorFor{T}"/>, neither of which the emitter controls.
     /// </remarks>
     [Fact]
-    public void StopOnFirstError_HoldsForAValidatorThatIgnoresTheFlow() {
-        var collector = new ValidationErrorCollector { StopMode = ValidationStopMode.StopOnFirstError };
+    public void StopOnFirstError_HoldsForAValidatorThatIgnoresTheFlow()
+    {
+        var collector = new ValidationErrorCollector
+        {
+            StopMode = ValidationStopMode.StopOnFirstError,
+        };
 
         IgnoresTheFlow.Instance.ValidateInto(collector, new Order());
 
@@ -243,7 +296,8 @@ public class FailFastTests {
     }
 
     [Fact]
-    public void CollectAll_ForTheSameValidator_ReportsAll() {
+    public void CollectAll_ForTheSameValidator_ReportsAll()
+    {
         var collector = new ValidationErrorCollector();
 
         IgnoresTheFlow.Instance.ValidateInto(collector, new Order());
@@ -253,8 +307,12 @@ public class FailFastTests {
 
     /// <summary>A warning before the failure is kept; it is not what closes the pass.</summary>
     [Fact]
-    public void StopOnFirstError_KeepsAWarningRecordedBeforeTheFailure() {
-        var collector = new ValidationErrorCollector { StopMode = ValidationStopMode.StopOnFirstError };
+    public void StopOnFirstError_KeepsAWarningRecordedBeforeTheFailure()
+    {
+        var collector = new ValidationErrorCollector
+        {
+            StopMode = ValidationStopMode.StopOnFirstError,
+        };
         var context = new ValidationContext(collector);
 
         context.Report("w", "advisory", "x", ValidationSeverity.Warning);
@@ -264,10 +322,12 @@ public class FailFastTests {
         Assert.Equal(["w", "e"], collector.ToResult().Errors.Select(error => error.Field));
     }
 
-    private sealed class IgnoresTheFlow : IValidatorFor<Order> {
+    private sealed class IgnoresTheFlow : IValidatorFor<Order>
+    {
         public static readonly IgnoresTheFlow Instance = new();
 
-        public ValidationFlow Validate(ref ValidationContext context, Order value) {
+        public ValidationFlow Validate(ref ValidationContext context, Order value)
+        {
             context.Report("a", "blocked", "x");
             context.Report("b", "blocked", "x");
             context.Report("c", "blocked", "x");
@@ -279,13 +339,15 @@ public class FailFastTests {
     // -- ValidationFlow --------------------------------------------------------------------------
 
     [Fact]
-    public void DefaultFlow_Continues() {
+    public void DefaultFlow_Continues()
+    {
         Assert.False(default(ValidationFlow).ShouldStop);
         Assert.Equal(ValidationFlow.Continue, default);
     }
 
     [Fact]
-    public void Stop_AndContinue_AreDistinct() {
+    public void Stop_AndContinue_AreDistinct()
+    {
         Assert.True(ValidationFlow.Stop.ShouldStop);
         Assert.NotEqual(ValidationFlow.Continue, ValidationFlow.Stop);
     }

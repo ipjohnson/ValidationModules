@@ -22,8 +22,8 @@ namespace ValidationModules.Benchmarks.EndToEnd;
 /// </remarks>
 [MemoryDiagnoser]
 [BenchmarkCategory(BenchmarkCategories.EndToEnd)]
-public class ValidationPassBenchmarks {
-
+public class ValidationPassBenchmarks
+{
     // Hoisted: constructing per invocation would put an allocation on the measured path.
     private static readonly CustomerValidator CustomerValidatorShared = new();
     private static readonly OrderValidator OrderValidatorShared = new();
@@ -36,7 +36,8 @@ public class ValidationPassBenchmarks {
     private Order _invalidOrder = null!;
 
     [GlobalSetup]
-    public void Setup() {
+    public void Setup()
+    {
         _validCustomer = SampleData.ValidCustomer();
         _oneFailure = SampleData.CustomerWithOneFailure();
         _invalidCustomer = SampleData.InvalidCustomer();
@@ -50,10 +51,12 @@ public class ValidationPassBenchmarks {
     public bool Flat_Clean_IsValid() => CustomerValidatorShared.IsValid(_validCustomer);
 
     [Benchmark(Description = "Flat, clean, Validate - materializes a result")]
-    public ValidationResult Flat_Clean_Validate() => CustomerValidatorShared.Validate(_validCustomer);
+    public ValidationResult Flat_Clean_Validate() =>
+        CustomerValidatorShared.Validate(_validCustomer);
 
     [Benchmark(Description = "Flat, clean, ValidateInto a pooled collector")]
-    public bool Flat_Clean_ValidateInto() {
+    public bool Flat_Clean_ValidateInto()
+    {
         _pooled.Reset();
 
         CustomerValidatorShared.ValidateInto(_pooled, _validCustomer);
@@ -66,10 +69,12 @@ public class ValidationPassBenchmarks {
     /// failure cost, as against the worst case below.
     /// </summary>
     [Benchmark(Description = "Flat, 1 failure, Validate")]
-    public ValidationResult Flat_OneFailure_Validate() => CustomerValidatorShared.Validate(_oneFailure);
+    public ValidationResult Flat_OneFailure_Validate() =>
+        CustomerValidatorShared.Validate(_oneFailure);
 
     [Benchmark(Description = "Flat, 8 failures, Validate - the worst case")]
-    public ValidationResult Flat_AllFailing_Validate() => CustomerValidatorShared.Validate(_invalidCustomer);
+    public ValidationResult Flat_AllFailing_Validate() =>
+        CustomerValidatorShared.Validate(_invalidCustomer);
 
     // ---- Nested model: an object, an address, and three collection elements ---------------------
 
@@ -80,7 +85,8 @@ public class ValidationPassBenchmarks {
     public ValidationResult Nested_Clean_Validate() => OrderValidatorShared.Validate(_validOrder);
 
     [Benchmark(Description = "Nested, clean, ValidateInto a pooled collector")]
-    public bool Nested_Clean_ValidateInto() {
+    public bool Nested_Clean_ValidateInto()
+    {
         _pooled.Reset();
 
         OrderValidatorShared.ValidateInto(_pooled, _validOrder);
@@ -94,7 +100,8 @@ public class ValidationPassBenchmarks {
     /// a string. The path machinery's real cost, rather than its cost at depth 1.
     /// </summary>
     [Benchmark(Description = "Nested, 1 failure per level, Validate")]
-    public ValidationResult Nested_Failing_Validate() => OrderValidatorShared.Validate(_invalidOrder);
+    public ValidationResult Nested_Failing_Validate() =>
+        OrderValidatorShared.Validate(_invalidOrder);
 
     /// <summary>
     /// The same failing payload read all the way out to its error list, which is what a handler
@@ -102,11 +109,13 @@ public class ValidationPassBenchmarks {
     /// and touching every message costs.
     /// </summary>
     [Benchmark(Description = "Nested, failing, then read every error - the 400 path")]
-    public int Nested_Failing_ReadErrors() {
+    public int Nested_Failing_ReadErrors()
+    {
         var result = OrderValidatorShared.Validate(_invalidOrder);
 
         var total = 0;
-        for (var i = 0; i < result.Errors.Count; i++) {
+        for (var i = 0; i < result.Errors.Count; i++)
+        {
             total += result.Errors[i].Field.Length + result.Errors[i].Message.Length;
         }
 

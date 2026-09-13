@@ -28,8 +28,8 @@ namespace ValidationModules;
 /// own.
 /// </para>
 /// </remarks>
-public sealed class ValidationMessageMap : ValidationMessageFormatter {
-
+public sealed class ValidationMessageMap : ValidationMessageFormatter
+{
     /// <summary>Renders one mapped code. Return the finished message.</summary>
     /// <param name="error">The error to render.</param>
     public delegate string MessageRenderer(in ValidationError error);
@@ -43,7 +43,8 @@ public sealed class ValidationMessageMap : ValidationMessageFormatter {
     /// <param name="code">The <see cref="ValidationError.Code"/> to intercept.</param>
     /// <param name="renderer">Builds the message for every error carrying that code.</param>
     /// <returns>This map, for chaining.</returns>
-    public ValidationMessageMap Map(string code, MessageRenderer renderer) {
+    public ValidationMessageMap Map(string code, MessageRenderer renderer)
+    {
         ArgumentNullException.ThrowIfNull(code);
         ArgumentNullException.ThrowIfNull(renderer);
 
@@ -57,7 +58,5 @@ public sealed class ValidationMessageMap : ValidationMessageFormatter {
     /// </summary>
     /// <param name="error">The error to render.</param>
     public override string Format(in ValidationError error) =>
-        _renderers.TryGetValue(error.Code, out var renderer)
-            ? renderer(in error)
-            : error.Message;
+        _renderers.TryGetValue(error.Code, out var renderer) ? renderer(in error) : error.Message;
 }

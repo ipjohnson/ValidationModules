@@ -9,8 +9,8 @@ namespace Microsoft.AspNetCore.Builder;
 /// <summary>
 /// Attaches validation to an endpoint.
 /// </summary>
-public static class ValidationModulesEndpointExtensions {
-
+public static class ValidationModulesEndpointExtensions
+{
     /// <summary>
     /// Validates the <typeparamref name="T"/> argument before the handler runs, answering with a
     /// problem response instead if it fails.
@@ -43,10 +43,16 @@ public static class ValidationModulesEndpointExtensions {
     /// <exception cref="InvalidOperationException">
     /// The handler has no parameter that could hold a <typeparamref name="T"/>.
     /// </exception>
-    public static RouteHandlerBuilder Validate<T>(this RouteHandlerBuilder builder, int? statusCode = null) {
+    public static RouteHandlerBuilder Validate<T>(
+        this RouteHandlerBuilder builder,
+        int? statusCode = null
+    )
+    {
         ArgumentNullException.ThrowIfNull(builder);
 
-        builder.AddEndpointFilterFactory(ValidationEndpointFilterFactory.For<T>(strict: true, statusCode));
+        builder.AddEndpointFilterFactory(
+            ValidationEndpointFilterFactory.For<T>(strict: true, statusCode)
+        );
 
         return builder;
     }
@@ -74,10 +80,16 @@ public static class ValidationModulesEndpointExtensions {
     /// <param name="statusCode">
     /// The status a failure in this group answers with. See the single-endpoint overload.
     /// </param>
-    public static RouteGroupBuilder Validate<T>(this RouteGroupBuilder builder, int? statusCode = null) {
+    public static RouteGroupBuilder Validate<T>(
+        this RouteGroupBuilder builder,
+        int? statusCode = null
+    )
+    {
         ArgumentNullException.ThrowIfNull(builder);
 
-        builder.AddEndpointFilterFactory(ValidationEndpointFilterFactory.For<T>(strict: false, statusCode));
+        builder.AddEndpointFilterFactory(
+            ValidationEndpointFilterFactory.For<T>(strict: false, statusCode)
+        );
 
         return builder;
     }

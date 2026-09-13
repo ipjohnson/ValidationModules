@@ -22,19 +22,22 @@ using AccountValidator = SutProject.Dm.AccountValidator;
 /// DependencyModules' attribute stages - if it derived from BaseSourceGenerator, [DependencyModule]
 /// would be processed twice here and the module would be emitted twice (plan §7.2).
 /// </remarks>
-public class CustomValidatorCompositionTests {
-
+public class CustomValidatorCompositionTests
+{
     [Fact]
-    public void GeneratedModule_RegistersTheGeneratedValidator() {
+    public void GeneratedModule_RegistersTheGeneratedValidator()
+    {
         using var provider = BuildProvider();
 
         Assert.Contains(
             provider.GetServices<IValidatorFor<Account>>(),
-            validator => validator is AccountValidator);
+            validator => validator is AccountValidator
+        );
     }
 
     [Fact]
-    public void CustomStructuralValidator_IsRegisteredAlongsideIt() {
+    public void CustomStructuralValidator_IsRegisteredAlongsideIt()
+    {
         using var provider = BuildProvider();
 
         var validators = provider.GetServices<IValidatorFor<Account>>().ToArray();
@@ -44,11 +47,14 @@ public class CustomValidatorCompositionTests {
     }
 
     [Fact]
-    public void Runner_MergesGeneratedAndHandWrittenStructuralErrors() {
+    public void Runner_MergesGeneratedAndHandWrittenStructuralErrors()
+    {
         // "admin" satisfies every generated constraint and fails the hand-written one. Both
         // validators run and neither replaces the other.
         using var provider = BuildProvider();
-        var runner = provider.CreateScope().ServiceProvider.GetRequiredService<ValidationRunner<Account>>();
+        var runner = provider
+            .CreateScope()
+            .ServiceProvider.GetRequiredService<ValidationRunner<Account>>();
 
         var result = runner.Validate(new Account { Handle = "admin", Age = 30 });
 
@@ -56,57 +62,71 @@ public class CustomValidatorCompositionTests {
     }
 
     [Fact]
-    public void Runner_KeepsStructuralErrorsWhenAHandWrittenValidatorAlsoFails() {
+    public void Runner_KeepsStructuralErrorsWhenAHandWrittenValidatorAlsoFails()
+    {
         using var provider = BuildProvider();
-        var runner = provider.CreateScope().ServiceProvider.GetRequiredService<ValidationRunner<Account>>();
+        var runner = provider
+            .CreateScope()
+            .ServiceProvider.GetRequiredService<ValidationRunner<Account>>();
 
         var result = runner.Validate(new Account { Handle = "ad", Age = 200 });
 
         // Generated string_length and range both survive; a hand-written validator cannot make a
         // structural constraint disappear.
-        Assert.Equal(
-            new[] { "string_length", "range" },
-            result.Errors.Select(error => error.Code));
+        Assert.Equal(new[] { "string_length", "range" }, result.Errors.Select(error => error.Code));
     }
 
     [Fact]
-    public async Task Runner_RunsTheAsyncValidatorWithItsInjectedDependency() {
+    public async Task Runner_RunsTheAsyncValidatorWithItsInjectedDependency()
+    {
         using var provider = BuildProvider();
-        var runner = provider.CreateScope().ServiceProvider.GetRequiredService<ValidationRunner<Account>>();
+        var runner = provider
+            .CreateScope()
+            .ServiceProvider.GetRequiredService<ValidationRunner<Account>>();
 
         var result = await runner.ValidateAsync(
             new Account { Handle = "taken", Age = 30 },
-            cancellationToken: TestContext.Current.CancellationToken);
+            cancellationToken: TestContext.Current.CancellationToken
+        );
 
         Assert.Equal("duplicate", Assert.Single(result.Errors).Code);
     }
 
     [Fact]
-    public async Task Runner_SkipsTheAsyncValidatorWhenStructuralValidationFailed() {
+    public async Task Runner_SkipsTheAsyncValidatorWhenStructuralValidationFailed()
+    {
         // The gate: a uniqueness lookup must not reach its dependency for a handle that is missing.
         using var provider = BuildProvider();
-        var runner = provider.CreateScope().ServiceProvider.GetRequiredService<ValidationRunner<Account>>();
+        var runner = provider
+            .CreateScope()
+            .ServiceProvider.GetRequiredService<ValidationRunner<Account>>();
 
         var result = await runner.ValidateAsync(
             new Account { Handle = null, Age = 30 },
-            cancellationToken: TestContext.Current.CancellationToken);
+            cancellationToken: TestContext.Current.CancellationToken
+        );
 
         Assert.Equal("required", Assert.Single(result.Errors).Code);
     }
 
     [Fact]
-    public async Task Runner_CleanValue_PassesBothSides() {
+    public async Task Runner_CleanValue_PassesBothSides()
+    {
         using var provider = BuildProvider();
-        var runner = provider.CreateScope().ServiceProvider.GetRequiredService<ValidationRunner<Account>>();
+        var runner = provider
+            .CreateScope()
+            .ServiceProvider.GetRequiredService<ValidationRunner<Account>>();
 
         var result = await runner.ValidateAsync(
             new Account { Handle = "ada", Age = 36 },
-            cancellationToken: TestContext.Current.CancellationToken);
+            cancellationToken: TestContext.Current.CancellationToken
+        );
 
         Assert.True(result.IsValid);
     }
 
-    private static ServiceProvider BuildProvider() {
+    private static ServiceProvider BuildProvider()
+    {
         var services = new ServiceCollection();
 
         // The application's own module brings the hand-written validators in through DM's

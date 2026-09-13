@@ -20,8 +20,8 @@ namespace ValidationModules.SourceGenerator.Impl.FrontEnds;
 /// than <c>[Required]</c> behaving differently depending on which namespace it came from.
 /// </para>
 /// </remarks>
-public static class MemberWalk {
-
+public static class MemberWalk
+{
     /// <summary>
     /// One property to check, and where its constraints come from.
     /// </summary>
@@ -46,7 +46,8 @@ public static class MemberWalk {
         IPropertySymbol Property,
         ImmutableArray<IPropertySymbol> Sources,
         bool Inherited,
-        IPropertySymbol? Hidden);
+        IPropertySymbol? Hidden
+    );
 
     /// <summary>
     /// Walks <paramref name="type"/>'s base chain and interfaces.
@@ -65,17 +66,21 @@ public static class MemberWalk {
     public static ImmutableArray<Member> PropertiesOf(
         INamedTypeSymbol type,
         Compilation compilation,
-        Func<IPropertySymbol, bool> carriesConstraints) {
-
+        Func<IPropertySymbol, bool> carriesConstraints
+    )
+    {
         // Root-most base first, down the chain, then the type's own members. This satisfies the
         // declaration-order guarantee naturally: a shared base's
         // fields report before the fields of the type that extends it, which is the order someone
         // reading the two declarations top to bottom would expect.
         var chain = new List<INamedTypeSymbol>();
 
-        for (var current = type;
-             current is not null && current.SpecialType != SpecialType.System_Object;
-             current = current.BaseType) {
+        for (
+            var current = type;
+            current is not null && current.SpecialType != SpecialType.System_Object;
+            current = current.BaseType
+        )
+        {
             chain.Add(current);
         }
 
@@ -84,11 +89,20 @@ public static class MemberWalk {
         var order = new List<string>();
         var declarations = new Dictionary<string, IPropertySymbol>(StringComparer.Ordinal);
         var hidden = new Dictionary<string, IPropertySymbol>(StringComparer.Ordinal);
-        var inheritedAttributes = new Dictionary<string, List<IPropertySymbol>>(StringComparer.Ordinal);
+        var inheritedAttributes = new Dictionary<string, List<IPropertySymbol>>(
+            StringComparer.Ordinal
+        );
 
-        foreach (var declaring in chain) {
-            foreach (var member in declaring.GetMembers()) {
-                if (member is not IPropertySymbol property || property.IsStatic || property.IsIndexer) {
+        foreach (var declaring in chain)
+        {
+            foreach (var member in declaring.GetMembers())
+            {
+                if (
+                    member is not IPropertySymbol property
+                    || property.IsStatic
+                    || property.IsIndexer
+                )
+                {
                     continue;
                 }
 
@@ -101,30 +115,39 @@ public static class MemberWalk {
                 // VM1007, and dropping it silently is what VM1007 exists to prevent.
                 var own = SymbolEqualityComparer.Default.Equals(declaring, type);
 
-                if (!own && !IsReadableFrom(property, type, compilation)) {
+                if (!own && !IsReadableFrom(property, type, compilation))
+                {
                     continue;
                 }
 
-                if (declarations.TryGetValue(property.Name, out var displaced)) {
-                    if (Overrides(property, displaced)) {
+                if (declarations.TryGetValue(property.Name, out var displaced))
+                {
+                    if (Overrides(property, displaced))
+                    {
                         // An override is one property with two declarations, not two properties.
                         // ValidationConstraintAttribute is declared Inherited = true, so an
                         // override that says nothing inherits what the base said - and one that
                         // adds a constraint adds to it. Accumulated most-derived first, so the
                         // chain reads the way the declarations do.
-                        if (!inheritedAttributes.TryGetValue(property.Name, out var overrides)) {
-                            inheritedAttributes[property.Name] = overrides = new List<IPropertySymbol>();
+                        if (!inheritedAttributes.TryGetValue(property.Name, out var overrides))
+                        {
+                            inheritedAttributes[property.Name] = overrides =
+                                new List<IPropertySymbol>();
                         }
 
                         overrides.Insert(0, displaced);
-                    } else if (carriesConstraints(displaced)) {
+                    }
+                    else if (carriesConstraints(displaced))
+                    {
                         // Two separate properties that share a name. Most-derived wins entirely,
                         // never merged: two [StringLength] bounds on one field is ambiguous and
                         // would report twice. Remembered rather than discarded so VM1009 can say
                         // what was dropped.
                         hidden[property.Name] = displaced;
                     }
-                } else {
+                }
+                else
+                {
                     order.Add(property.Name);
                 }
 
@@ -141,24 +164,40 @@ public static class MemberWalk {
         // emits members in a different order between runs invalidates downstream caches for nothing.
         var extra = new Dictionary<string, List<IPropertySymbol>>(StringComparer.Ordinal);
 
-        foreach (var contract in type.AllInterfaces.OrderBy(i => i.ToDisplayString(), StringComparer.Ordinal)) {
-            foreach (var member in contract.GetMembers()) {
-                if (member is not IPropertySymbol declared || !carriesConstraints(declared)) {
+        foreach (
+            var contract in type.AllInterfaces.OrderBy(
+                i => i.ToDisplayString(),
+                StringComparer.Ordinal
+            )
+        )
+        {
+            foreach (var member in contract.GetMembers())
+            {
+                if (member is not IPropertySymbol declared || !carriesConstraints(declared))
+                {
                     continue;
                 }
 
-                if (type.FindImplementationForInterfaceMember(declared) is not IPropertySymbol implementation) {
+                if (
+                    type.FindImplementationForInterfaceMember(declared)
+                    is not IPropertySymbol implementation
+                )
+                {
                     continue;
                 }
 
                 // An explicit implementation is private, so it never made the walk above; there is
                 // nothing to hang the constraint on and nothing the validator could read.
-                if (!declarations.TryGetValue(implementation.Name, out var target)
-                    || !SymbolEqualityComparer.Default.Equals(target, implementation)) {
+                if (
+                    !declarations.TryGetValue(implementation.Name, out var target)
+                    || !SymbolEqualityComparer.Default.Equals(target, implementation)
+                )
+                {
                     continue;
                 }
 
-                if (!extra.TryGetValue(implementation.Name, out var list)) {
+                if (!extra.TryGetValue(implementation.Name, out var list))
+                {
                     extra[implementation.Name] = list = new List<IPropertySymbol>();
                 }
 
@@ -168,25 +207,34 @@ public static class MemberWalk {
 
         var members = ImmutableArray.CreateBuilder<Member>(order.Count);
 
-        foreach (var name in order) {
+        foreach (var name in order)
+        {
             var property = declarations[name];
 
             var sources = ImmutableArray.CreateBuilder<IPropertySymbol>();
             sources.Add(property);
 
-            if (inheritedAttributes.TryGetValue(name, out var overridden)) {
+            if (inheritedAttributes.TryGetValue(name, out var overridden))
+            {
                 sources.AddRange(overridden);
             }
 
-            if (extra.TryGetValue(name, out var interfaces)) {
+            if (extra.TryGetValue(name, out var interfaces))
+            {
                 sources.AddRange(interfaces);
             }
 
-            members.Add(new Member(
-                property,
-                sources.ToImmutable(),
-                Inherited: !SymbolEqualityComparer.Default.Equals(property.ContainingType, type),
-                Hidden: hidden.TryGetValue(name, out var displaced) ? displaced : null));
+            members.Add(
+                new Member(
+                    property,
+                    sources.ToImmutable(),
+                    Inherited: !SymbolEqualityComparer.Default.Equals(
+                        property.ContainingType,
+                        type
+                    ),
+                    Hidden: hidden.TryGetValue(name, out var displaced) ? displaced : null
+                )
+            );
         }
 
         return members.ToImmutable();
@@ -199,11 +247,16 @@ public static class MemberWalk {
     /// Walked rather than compared one level deep, so that a three-level chain where the middle
     /// level also overrides still resolves to one property rather than reading as a hide.
     /// </remarks>
-    private static bool Overrides(IPropertySymbol property, IPropertySymbol candidate) {
-        for (var current = property.OverriddenProperty;
-             current is not null;
-             current = current.OverriddenProperty) {
-            if (SymbolEqualityComparer.Default.Equals(current, candidate)) {
+    private static bool Overrides(IPropertySymbol property, IPropertySymbol candidate)
+    {
+        for (
+            var current = property.OverriddenProperty;
+            current is not null;
+            current = current.OverriddenProperty
+        )
+        {
+            if (SymbolEqualityComparer.Default.Equals(current, candidate))
+            {
                 return true;
             }
         }
@@ -216,9 +269,13 @@ public static class MemberWalk {
     /// read <paramref name="property"/>.
     /// </summary>
     private static bool IsReadableFrom(
-        IPropertySymbol property, INamedTypeSymbol type, Compilation compilation) {
-
-        if (property.GetMethod is not { } getter) {
+        IPropertySymbol property,
+        INamedTypeSymbol type,
+        Compilation compilation
+    )
+    {
+        if (property.GetMethod is not { } getter)
+        {
             return false;
         }
 

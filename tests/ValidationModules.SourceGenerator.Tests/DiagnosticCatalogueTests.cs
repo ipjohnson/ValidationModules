@@ -13,8 +13,8 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// finding it in the reference has every reason to expect it to fire. Nothing in Roslyn checks that
 /// a descriptor is ever reported, so that is checked here.
 /// </remarks>
-public class DiagnosticCatalogueTests {
-
+public class DiagnosticCatalogueTests
+{
     private static readonly IReadOnlyList<DiagnosticDescriptor> Declared =
         typeof(ValidationModules.SourceGenerator.Impl.ValidationDiagnostics)
             .GetFields(BindingFlags.Public | BindingFlags.Static)
@@ -40,7 +40,8 @@ public class DiagnosticCatalogueTests {
     private static readonly HashSet<string> NeverReported = [];
 
     [Fact]
-    public void EveryDescriptor_HasATestReferencingItsId() {
+    public void EveryDescriptor_HasATestReferencingItsId()
+    {
         // The coverage gate. A new descriptor with no test fails here rather than shipping unproven.
         var covered = TestSourceIds();
 
@@ -54,7 +55,8 @@ public class DiagnosticCatalogueTests {
     }
 
     [Fact]
-    public void DescriptorsThatAreNeverReported_AreExactlyTheOnesRecordedAsSuch() {
+    public void DescriptorsThatAreNeverReported_AreExactlyTheOnesRecordedAsSuch()
+    {
         // Fails in both directions: implementing a recorded gap without deleting its entry here
         // fails, and letting a new descriptor go unreported fails too. With the list empty, the
         // second direction is the whole test - every descriptor must have a report site.
@@ -66,11 +68,15 @@ public class DiagnosticCatalogueTests {
             .OrderBy(id => id, StringComparer.Ordinal)
             .ToList();
 
-        Assert.Equal(NeverReported.OrderBy(id => id, StringComparer.Ordinal).ToList(), actuallyDead);
+        Assert.Equal(
+            NeverReported.OrderBy(id => id, StringComparer.Ordinal).ToList(),
+            actuallyDead
+        );
     }
 
     [Fact]
-    public void EveryDescriptor_AppearsInAReleaseFile() {
+    public void EveryDescriptor_AppearsInAReleaseFile()
+    {
         // RS2008's requirement, checked here too because the analyzer only runs on the generator
         // project and a drifted file is invisible until someone tries to ship a release.
         //
@@ -82,8 +88,11 @@ public class DiagnosticCatalogueTests {
     }
 
     [Fact]
-    public void ReleaseFiles_DeclareNothingThatDoesNotExist() {
-        var declaredIds = Declared.Select(descriptor => descriptor.Id).ToHashSet(StringComparer.Ordinal);
+    public void ReleaseFiles_DeclareNothingThatDoesNotExist()
+    {
+        var declaredIds = Declared
+            .Select(descriptor => descriptor.Id)
+            .ToHashSet(StringComparer.Ordinal);
 
         var orphans = ReleasedIds()
             .Where(id => !declaredIds.Contains(id))
@@ -94,7 +103,8 @@ public class DiagnosticCatalogueTests {
     }
 
     [Fact]
-    public void EveryShippedId_IsStillDeclared() {
+    public void EveryShippedId_IsStillDeclared()
+    {
         // RS2004's job, which this repository has to do itself: RS2000 and RS2008 sit in NoWarn on
         // both generator projects, for the DM#### rules that arrive with DependencyModules' source
         // import, so Roslyn's release tracking is not the guard here.
@@ -105,42 +115,62 @@ public class DiagnosticCatalogueTests {
         // else. Renumbering the catalogue was free exactly once, before anything shipped stable.
         //
         // Vacuous until the first stable release records ids here, and load-bearing from then on.
-        var declaredIds = Declared.Select(descriptor => descriptor.Id).ToHashSet(StringComparer.Ordinal);
+        var declaredIds = Declared
+            .Select(descriptor => descriptor.Id)
+            .ToHashSet(StringComparer.Ordinal);
 
         var retired = IdsIn(ShippedReleaseFile())
             .Where(id => !declaredIds.Contains(id))
             .OrderBy(id => id, StringComparer.Ordinal)
             .ToList();
 
-        Assert.True(retired.Count == 0,
-            "These ids were shipped in a stable release and no longer exist in the catalogue. " +
-            "An id is a published promise: retiring one breaks a consumer's suppression and reusing " +
-            "one silently repoints it. Restore them, or accept a major version." +
-            Environment.NewLine + "  " + string.Join(Environment.NewLine + "  ", retired));
+        Assert.True(
+            retired.Count == 0,
+            "These ids were shipped in a stable release and no longer exist in the catalogue. "
+                + "An id is a published promise: retiring one breaks a consumer's suppression and reusing "
+                + "one silently repoints it. Restore them, or accept a major version."
+                + Environment.NewLine
+                + "  "
+                + string.Join(Environment.NewLine + "  ", retired)
+        );
     }
 
     [Fact]
-    public void DocumentationClaimsOfNeverReported_MatchTheRecordedSet() {
+    public void DocumentationClaimsOfNeverReported_MatchTheRecordedSet()
+    {
         // The class of bug this pins: guide/nesting.md said VM1501 was "never reported" while
         // guide/troubleshooting.md documented it firing - and the report site existed all along.
         // NeverReported above is the authority, so a doc paragraph may make that claim only about
         // an id recorded there. With the set empty, the claim is banned outright.
         var claim = new System.Text.RegularExpressions.Regex(
             @"never\s+(reported|fires)|not\s+reported|nothing\s+in\s+the\s+product\s+reports",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase
+        );
         var id = new System.Text.RegularExpressions.Regex(@"VM\d{4}");
         var offending = new List<string>();
 
-        foreach (var file in Directory.EnumerateFiles(
-                     Path.Combine(RepositoryRoot(), "website"), "*.md", SearchOption.AllDirectories)) {
-            foreach (var paragraph in File.ReadAllText(file).Split("\n\n")) {
-                if (!claim.IsMatch(paragraph)) {
+        foreach (
+            var file in Directory.EnumerateFiles(
+                Path.Combine(RepositoryRoot(), "website"),
+                "*.md",
+                SearchOption.AllDirectories
+            )
+        )
+        {
+            foreach (var paragraph in File.ReadAllText(file).Split("\n\n"))
+            {
+                if (!claim.IsMatch(paragraph))
+                {
                     continue;
                 }
 
-                foreach (System.Text.RegularExpressions.Match match in id.Matches(paragraph)) {
-                    if (!NeverReported.Contains(match.Value)) {
-                        offending.Add($"{Path.GetFileName(file)}: claims {match.Value} is never reported");
+                foreach (System.Text.RegularExpressions.Match match in id.Matches(paragraph))
+                {
+                    if (!NeverReported.Contains(match.Value))
+                    {
+                        offending.Add(
+                            $"{Path.GetFileName(file)}: claims {match.Value} is never reported"
+                        );
                     }
                 }
             }
@@ -150,7 +180,8 @@ public class DiagnosticCatalogueTests {
     }
 
     [Fact]
-    public void EveryDescriptor_SharesTheOneCategory() {
+    public void EveryDescriptor_SharesTheOneCategory()
+    {
         // The category is what an IDE groups by and what a report filters on, and it is the only
         // handle on the set as a whole, so a stray one hides that descriptor from all of it.
         //
@@ -159,25 +190,35 @@ public class DiagnosticCatalogueTests {
         // descriptor except ValidateTargetHasNoValidator is reported by the generator rather than by
         // an analyzer, so the blanket rule reaches exactly one of them. verify-packages.sh pins that,
         // and reference/diagnostics.md documents silencing by id instead.
-        Assert.All(Declared, descriptor => Assert.Equal("ValidationModules.Usage", descriptor.Category));
+        Assert.All(
+            Declared,
+            descriptor => Assert.Equal("ValidationModules.Usage", descriptor.Category)
+        );
     }
 
     [Fact]
-    public void EveryDescriptor_IsEnabledByDefault() {
+    public void EveryDescriptor_IsEnabledByDefault()
+    {
         Assert.All(Declared, descriptor => Assert.True(descriptor.IsEnabledByDefault));
     }
 
     [Fact]
-    public void EveryDescriptor_HasATitleAndAMessageThatSaysMoreThanTheTitle() {
-        Assert.All(Declared, descriptor => {
-            Assert.False(string.IsNullOrWhiteSpace(descriptor.Title.ToString()));
-            Assert.False(string.IsNullOrWhiteSpace(descriptor.MessageFormat.ToString()));
-            Assert.NotEqual(descriptor.Title.ToString(), descriptor.MessageFormat.ToString());
-        });
+    public void EveryDescriptor_HasATitleAndAMessageThatSaysMoreThanTheTitle()
+    {
+        Assert.All(
+            Declared,
+            descriptor =>
+            {
+                Assert.False(string.IsNullOrWhiteSpace(descriptor.Title.ToString()));
+                Assert.False(string.IsNullOrWhiteSpace(descriptor.MessageFormat.ToString()));
+                Assert.NotEqual(descriptor.Title.ToString(), descriptor.MessageFormat.ToString());
+            }
+        );
     }
 
     [Fact]
-    public void DescriptorIds_AreUnique() {
+    public void DescriptorIds_AreUnique()
+    {
         var duplicates = Declared
             .GroupBy(descriptor => descriptor.Id, StringComparer.Ordinal)
             .Where(group => group.Count() > 1)
@@ -189,31 +230,55 @@ public class DiagnosticCatalogueTests {
 
     private static HashSet<string> TestSourceIds() => IdsUnder(RepositoryRoot(), "tests");
 
-    private static HashSet<string> ProductSourceIds() {
+    private static HashSet<string> ProductSourceIds()
+    {
         // Every id mentioned in the product outside the descriptor declarations themselves, which
         // is what "is reported somewhere" reduces to once the descriptors are looked up by name.
         var reported = new HashSet<string>(StringComparer.Ordinal);
-        var declarations = Path.Combine(RepositoryRoot(), "src",
-            "ValidationModules.SourceGenerator.Impl", "ValidationDiagnostics.cs");
+        var declarations = Path.Combine(
+            RepositoryRoot(),
+            "src",
+            "ValidationModules.SourceGenerator.Impl",
+            "ValidationDiagnostics.cs"
+        );
 
         var byName = typeof(ValidationModules.SourceGenerator.Impl.ValidationDiagnostics)
             .GetFields(BindingFlags.Public | BindingFlags.Static)
             .Where(field => field.FieldType == typeof(DiagnosticDescriptor))
-            .ToDictionary(field => field.Name, field => ((DiagnosticDescriptor)field.GetValue(null)!).Id);
+            .ToDictionary(
+                field => field.Name,
+                field => ((DiagnosticDescriptor)field.GetValue(null)!).Id
+            );
 
-        foreach (var file in Directory.EnumerateFiles(Path.Combine(RepositoryRoot(), "src"), "*.cs",
-                     SearchOption.AllDirectories)) {
-
-            if (string.Equals(file, declarations, StringComparison.Ordinal) ||
-                file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
-                file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)) {
+        foreach (
+            var file in Directory.EnumerateFiles(
+                Path.Combine(RepositoryRoot(), "src"),
+                "*.cs",
+                SearchOption.AllDirectories
+            )
+        )
+        {
+            if (
+                string.Equals(file, declarations, StringComparison.Ordinal)
+                || file.Contains(
+                    $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                    StringComparison.Ordinal
+                )
+                || file.Contains(
+                    $"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                    StringComparison.Ordinal
+                )
+            )
+            {
                 continue;
             }
 
             var text = File.ReadAllText(file);
 
-            foreach (var pair in byName) {
-                if (text.Contains($"ValidationDiagnostics.{pair.Key}", StringComparison.Ordinal)) {
+            foreach (var pair in byName)
+            {
+                if (text.Contains($"ValidationDiagnostics.{pair.Key}", StringComparison.Ordinal))
+                {
                     reported.Add(pair.Value);
                 }
             }
@@ -222,17 +287,39 @@ public class DiagnosticCatalogueTests {
         return reported;
     }
 
-    private static HashSet<string> IdsUnder(string root, string folder) {
+    private static HashSet<string> IdsUnder(string root, string folder)
+    {
         var ids = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var file in Directory.EnumerateFiles(Path.Combine(root, folder), "*.cs", SearchOption.AllDirectories)) {
-            if (file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
-                file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)) {
+        foreach (
+            var file in Directory.EnumerateFiles(
+                Path.Combine(root, folder),
+                "*.cs",
+                SearchOption.AllDirectories
+            )
+        )
+        {
+            if (
+                file.Contains(
+                    $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                    StringComparison.Ordinal
+                )
+                || file.Contains(
+                    $"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                    StringComparison.Ordinal
+                )
+            )
+            {
                 continue;
             }
 
-            foreach (System.Text.RegularExpressions.Match match in
-                     System.Text.RegularExpressions.Regex.Matches(File.ReadAllText(file), @"VM\d{4}")) {
+            foreach (
+                System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(
+                    File.ReadAllText(file),
+                    @"VM\d{4}"
+                )
+            )
+            {
                 ids.Add(match.Value);
             }
         }
@@ -240,13 +327,24 @@ public class DiagnosticCatalogueTests {
         return ids;
     }
 
-    private static string UnshippedReleaseFile() => Path.Combine(RepositoryRoot(), "src",
-        "ValidationModules.SourceGenerator.Impl", "AnalyzerReleases.Unshipped.md");
+    private static string UnshippedReleaseFile() =>
+        Path.Combine(
+            RepositoryRoot(),
+            "src",
+            "ValidationModules.SourceGenerator.Impl",
+            "AnalyzerReleases.Unshipped.md"
+        );
 
-    private static string ShippedReleaseFile() => Path.Combine(RepositoryRoot(), "src",
-        "ValidationModules.SourceGenerator.Impl", "AnalyzerReleases.Shipped.md");
+    private static string ShippedReleaseFile() =>
+        Path.Combine(
+            RepositoryRoot(),
+            "src",
+            "ValidationModules.SourceGenerator.Impl",
+            "AnalyzerReleases.Shipped.md"
+        );
 
-    private static HashSet<string> ReleasedIds() {
+    private static HashSet<string> ReleasedIds()
+    {
         var ids = IdsIn(UnshippedReleaseFile());
         ids.UnionWith(IdsIn(ShippedReleaseFile()));
 
@@ -254,20 +352,30 @@ public class DiagnosticCatalogueTests {
     }
 
     private static HashSet<string> IdsIn(string file) =>
-        System.Text.RegularExpressions.Regex
-            .Matches(File.ReadAllText(file), @"^VM\d{4}",
-                System.Text.RegularExpressions.RegexOptions.Multiline)
+        System
+            .Text.RegularExpressions.Regex.Matches(
+                File.ReadAllText(file),
+                @"^VM\d{4}",
+                System.Text.RegularExpressions.RegexOptions.Multiline
+            )
             .Select(match => match.Value)
             .ToHashSet(StringComparer.Ordinal);
 
-    private static string RepositoryRoot() {
+    private static string RepositoryRoot()
+    {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
 
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "ValidationModules.sln"))) {
+        while (
+            directory is not null
+            && !File.Exists(Path.Combine(directory.FullName, "ValidationModules.sln"))
+        )
+        {
             directory = directory.Parent;
         }
 
         return directory?.FullName
-            ?? throw new InvalidOperationException("Could not locate the repository root from " + AppContext.BaseDirectory);
+            ?? throw new InvalidOperationException(
+                "Could not locate the repository root from " + AppContext.BaseDirectory
+            );
     }
 }

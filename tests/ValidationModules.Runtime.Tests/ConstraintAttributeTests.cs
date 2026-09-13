@@ -22,10 +22,11 @@ namespace ValidationModules.Runtime.Tests;
 /// and the front end reads these same defaults out of metadata.
 /// </para>
 /// </remarks>
-public class ConstraintAttributeTests {
-
+public class ConstraintAttributeTests
+{
     [Fact]
-    public void StringLength_PositionalConstructor_TakesMinThenMax() {
+    public void StringLength_PositionalConstructor_TakesMinThenMax()
+    {
         var attribute = new StringLengthAttribute(1, 100);
 
         Assert.Equal(1, attribute.Min);
@@ -33,7 +34,8 @@ public class ConstraintAttributeTests {
     }
 
     [Fact]
-    public void StringLength_Parameterless_IsUnboundedUntilOneBoundIsNamed() {
+    public void StringLength_Parameterless_IsUnboundedUntilOneBoundIsNamed()
+    {
         // What makes [StringLength(Max = 500)] readable: the other bound stays out of the way.
         var attribute = new StringLengthAttribute();
 
@@ -42,13 +44,15 @@ public class ConstraintAttributeTests {
     }
 
     [Fact]
-    public void StringLength_NamedBoundsOverrideTheDefaults() {
+    public void StringLength_NamedBoundsOverrideTheDefaults()
+    {
         Assert.Equal(500, new StringLengthAttribute { Max = 500 }.Max);
         Assert.Equal(0, new StringLengthAttribute { Max = 500 }.Min);
     }
 
     [Fact]
-    public void ItemCount_HasTheSameBoundDefaultsAsStringLength() {
+    public void ItemCount_HasTheSameBoundDefaultsAsStringLength()
+    {
         // Deliberately identical: the two constraints differ in what they count, not in how bounds
         // are written, and a reader who has learnt one should not have to re-learn the other.
         var attribute = new ItemCountAttribute();
@@ -60,7 +64,8 @@ public class ConstraintAttributeTests {
     }
 
     [Fact]
-    public void Required_DoesNotAllowEmptyStringsByDefault() {
+    public void Required_DoesNotAllowEmptyStringsByDefault()
+    {
         // Plan §12 Q5 — still open as policy, pinned here as behaviour so a change is deliberate.
         Assert.False(new RequiredAttribute().AllowEmptyStrings);
         Assert.True(new RequiredAttribute { AllowEmptyStrings = true }.AllowEmptyStrings);
@@ -69,7 +74,8 @@ public class ConstraintAttributeTests {
     [Theory]
     [InlineData(0, 30)]
     [InlineData(int.MinValue, int.MaxValue)]
-    public void Range_IntegralOverload_KeepsBothBounds(int min, int max) {
+    public void Range_IntegralOverload_KeepsBothBounds(int min, int max)
+    {
         var attribute = new RangeAttribute(min, max);
 
         Assert.Equal(min, attribute.Min);
@@ -77,7 +83,8 @@ public class ConstraintAttributeTests {
     }
 
     [Fact]
-    public void Range_HasAnOverloadPerConstantForm() {
+    public void Range_HasAnOverloadPerConstantForm()
+    {
         // int, long, double and string, because a constant of the remaining useful types cannot be
         // written in metadata at all. The string overload is the one RangeStringBoundsTests in the
         // generator project records as unimplemented downstream.
@@ -88,7 +95,8 @@ public class ConstraintAttributeTests {
     }
 
     [Fact]
-    public void Range_BoundsAreInclusiveUnlessMadeExclusive() {
+    public void Range_BoundsAreInclusiveUnlessMadeExclusive()
+    {
         Assert.False(new RangeAttribute(0, 30).ExclusiveMin);
         Assert.False(new RangeAttribute(0, 30).ExclusiveMax);
         Assert.True(new RangeAttribute(0.0, 1.0) { ExclusiveMax = true }.ExclusiveMax);
@@ -99,7 +107,8 @@ public class ConstraintAttributeTests {
     /// type's extreme in a composed message.
     /// </summary>
     [Fact]
-    public void Range_Parameterless_LeavesBothBoundsUnset() {
+    public void Range_Parameterless_LeavesBothBoundsUnset()
+    {
         var attribute = new RangeAttribute();
 
         Assert.Null(attribute.Min);
@@ -107,7 +116,8 @@ public class ConstraintAttributeTests {
     }
 
     [Fact]
-    public void Range_NamedBoundsStandAlone() {
+    public void Range_NamedBoundsStandAlone()
+    {
         Assert.Equal(1, new RangeAttribute { Min = 1 }.Min);
         Assert.Null(new RangeAttribute { Min = 1 }.Max);
         Assert.Equal(99, new RangeAttribute { Max = 99 }.Max);
@@ -115,7 +125,8 @@ public class ConstraintAttributeTests {
     }
 
     [Fact]
-    public void MultipleOf_HasAnOverloadPerConstantForm() {
+    public void MultipleOf_HasAnOverloadPerConstantForm()
+    {
         // The string overload is decimal's, which has no constant form in metadata - the same
         // arrangement [Range] has and for the same reason.
         Assert.Equal(5, new MultipleOfAttribute(5).Divisor);
@@ -125,13 +136,15 @@ public class ConstraintAttributeTests {
     }
 
     [Fact]
-    public void UniqueItems_TakesNoArguments() {
+    public void UniqueItems_TakesNoArguments()
+    {
         // Presence is the constraint; there is nothing for a reader to read but the type.
         Assert.Empty(typeof(UniqueItemsAttribute).GetConstructors()[0].GetParameters());
     }
 
     [Fact]
-    public void Pattern_InlineForm_CarriesThePatternAndNoProvider() {
+    public void Pattern_InlineForm_CarriesThePatternAndNoProvider()
+    {
         var attribute = new PatternAttribute("^[A-Z]{3}$");
 
         Assert.Equal("^[A-Z]{3}$", attribute.Pattern);
@@ -140,7 +153,8 @@ public class ConstraintAttributeTests {
     }
 
     [Fact]
-    public void Pattern_ReferenceForm_CarriesTheProviderAndNoPattern() {
+    public void Pattern_ReferenceForm_CarriesTheProviderAndNoPattern()
+    {
         // The AOT-clean form: it resolves to a member the consumer declared with [GeneratedRegex],
         // so the regex parser is never rooted.
         var attribute = new PatternAttribute(typeof(SamplePatterns), nameof(SamplePatterns.Sku));
@@ -151,12 +165,14 @@ public class ConstraintAttributeTests {
     }
 
     [Fact]
-    public void Pattern_HasNoRegexOptionsByDefault() {
+    public void Pattern_HasNoRegexOptionsByDefault()
+    {
         Assert.Equal(default, new PatternAttribute("^a$").Options);
     }
 
     [Fact]
-    public void AllowedValues_KeepsItsValuesInDeclarationOrder() {
+    public void AllowedValues_KeepsItsValuesInDeclarationOrder()
+    {
         // Order is what the message renders, so it is part of what a caller reads back.
         var attribute = new AllowedValuesAttribute("available", "pending", "sold");
 
@@ -164,40 +180,65 @@ public class ConstraintAttributeTests {
     }
 
     [Fact]
-    public void AllowedValues_ComparesOrdinallyByDefault() {
+    public void AllowedValues_ComparesOrdinallyByDefault()
+    {
         Assert.Equal(StringComparison.Ordinal, new AllowedValuesAttribute("a").Comparison);
     }
 
     [Fact]
-    public void EveryConstraintAttribute_TargetsPropertiesAndParameters() {
+    public void EveryConstraintAttribute_TargetsPropertiesAndParameters()
+    {
         // The property target is what a record's positional parameter needs to reach — and the
         // reason [property: Required] is required there rather than optional.
-        foreach (var type in new[] {
-                     typeof(RequiredAttribute), typeof(StringLengthAttribute), typeof(RangeAttribute),
-                     typeof(PatternAttribute), typeof(AllowedValuesAttribute), typeof(ItemCountAttribute),
-                     typeof(ValidateNestedAttribute),
-                 }) {
-
-            var usage = (AttributeUsageAttribute?)Attribute.GetCustomAttribute(type, typeof(AttributeUsageAttribute));
+        foreach (
+            var type in new[]
+            {
+                typeof(RequiredAttribute),
+                typeof(StringLengthAttribute),
+                typeof(RangeAttribute),
+                typeof(PatternAttribute),
+                typeof(AllowedValuesAttribute),
+                typeof(ItemCountAttribute),
+                typeof(ValidateNestedAttribute),
+            }
+        )
+        {
+            var usage = (AttributeUsageAttribute?)
+                Attribute.GetCustomAttribute(type, typeof(AttributeUsageAttribute));
 
             Assert.NotNull(usage);
-            Assert.True(usage.ValidOn.HasFlag(AttributeTargets.Property), $"{type.Name} does not target properties");
+            Assert.True(
+                usage.ValidOn.HasFlag(AttributeTargets.Property),
+                $"{type.Name} does not target properties"
+            );
         }
     }
 
     [Fact]
-    public void EveryConstraintAttribute_DerivesFromTheSharedBase() {
+    public void EveryConstraintAttribute_DerivesFromTheSharedBase()
+    {
         // The base is how the front end recognises the vocabulary without naming each attribute.
-        foreach (var type in new[] {
-                     typeof(RequiredAttribute), typeof(StringLengthAttribute), typeof(RangeAttribute),
-                     typeof(PatternAttribute), typeof(AllowedValuesAttribute), typeof(ItemCountAttribute),
-                 }) {
-
-            Assert.True(typeof(ValidationConstraintAttribute).IsAssignableFrom(type), $"{type.Name} does not");
+        foreach (
+            var type in new[]
+            {
+                typeof(RequiredAttribute),
+                typeof(StringLengthAttribute),
+                typeof(RangeAttribute),
+                typeof(PatternAttribute),
+                typeof(AllowedValuesAttribute),
+                typeof(ItemCountAttribute),
+            }
+        )
+        {
+            Assert.True(
+                typeof(ValidationConstraintAttribute).IsAssignableFrom(type),
+                $"{type.Name} does not"
+            );
         }
     }
 
-    private static class SamplePatterns {
+    private static class SamplePatterns
+    {
         public static Regex Sku() => new("^[A-Z]{3}$");
     }
 }

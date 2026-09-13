@@ -10,14 +10,15 @@ namespace ValidationModules;
 /// at the same <see cref="ValidationResult"/>, so a framework needs one mapper rather than two
 /// shapes that agree by duplication.
 /// </remarks>
-public sealed class ValidationException : Exception {
-
+public sealed class ValidationException : Exception
+{
     /// <summary>
     /// Creates an exception carrying the failures that caused it.
     /// </summary>
     /// <param name="result">The failed result. Must not be valid.</param>
     public ValidationException(ValidationResult result)
-        : base(BuildMessage(result)) {
+        : base(BuildMessage(result))
+    {
         ArgumentNullException.ThrowIfNull(result);
 
         Result = result;
@@ -28,8 +29,10 @@ public sealed class ValidationException : Exception {
     /// </summary>
     public ValidationResult Result { get; }
 
-    private static string BuildMessage(ValidationResult result) {
-        if (result is null || result.Errors.Count == 0) {
+    private static string BuildMessage(ValidationResult result)
+    {
+        if (result is null || result.Errors.Count == 0)
+        {
             return "Validation failed.";
         }
 

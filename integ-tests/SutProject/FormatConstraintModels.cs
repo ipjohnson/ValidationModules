@@ -7,7 +7,8 @@ namespace SutProject;
 /// using is <c>ValidationModules.Constraints</c> - which is the point: the rc1013 trial's CS0104
 /// storms all started with a model file importing the second namespace to reach one of these.
 /// </summary>
-public sealed record Registration {
+public sealed record Registration
+{
     [EmailAddress]
     public string? Email { get; init; }
 

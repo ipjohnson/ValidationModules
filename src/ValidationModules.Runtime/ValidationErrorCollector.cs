@@ -33,8 +33,8 @@ namespace ValidationModules;
 /// the results - which measured faster than sharing one under a lock in any case.
 /// </para>
 /// </remarks>
-public sealed class ValidationErrorCollector {
-
+public sealed class ValidationErrorCollector
+{
     /// <summary>
     /// How deep validation may nest before it is treated as a cycle.
     /// </summary>
@@ -58,7 +58,8 @@ public sealed class ValidationErrorCollector {
     /// One recorded failure, and the link to the one recorded before it. A class rather than an
     /// array slot so that adding never resizes and never copies what is already there.
     /// </summary>
-    private sealed class ErrorNode {
+    private sealed class ErrorNode
+    {
         public ValidationError Error;
         public ErrorNode? Next;
     }
@@ -87,16 +88,20 @@ public sealed class ValidationErrorCollector {
     /// <summary>
     /// Creates an unsynchronized collector.
     /// </summary>
-    public ValidationErrorCollector() : this(ValidationPathMode.Bounded) { }
+    public ValidationErrorCollector()
+        : this(ValidationPathMode.Bounded) { }
 
     /// <summary>Creates a collector that renders error paths the given way.</summary>
-    public ValidationErrorCollector(ValidationPathMode pathMode) : this(null, pathMode) { }
+    public ValidationErrorCollector(ValidationPathMode pathMode)
+        : this(null, pathMode) { }
 
     /// <summary>Creates a collector carrying the services this unit of work should reach.</summary>
-    public ValidationErrorCollector(IServiceProvider? services) : this(services, ValidationPathMode.Bounded) { }
+    public ValidationErrorCollector(IServiceProvider? services)
+        : this(services, ValidationPathMode.Bounded) { }
 
     /// <summary>Creates a collector carrying services and a path rendering.</summary>
-    public ValidationErrorCollector(IServiceProvider? services, ValidationPathMode pathMode) {
+    public ValidationErrorCollector(IServiceProvider? services, ValidationPathMode pathMode)
+    {
         Services = services;
         PathMode = pathMode;
     }
@@ -175,10 +180,13 @@ public sealed class ValidationErrorCollector {
     /// would cost are not worth charging to every clean pass. Snapshotting it around a block, which
     /// is what this is for, stays cheap for the same reason.
     /// </remarks>
-    public int Count {
-        get {
+    public int Count
+    {
+        get
+        {
             var count = 0;
-            for (var node = _head; node is not null; node = node.Next) {
+            for (var node = _head; node is not null; node = node.Next)
+            {
                 count++;
             }
 
@@ -198,10 +206,14 @@ public sealed class ValidationErrorCollector {
     /// "valid" means - a warning is surfaced but the value is accepted. Stops at the first one, and
     /// on a clean pass never leaves the null check.
     /// </summary>
-    internal bool HasBlockingErrors {
-        get {
-            for (var node = _head; node is not null; node = node.Next) {
-                if (node.Error.Severity == ValidationSeverity.Error) {
+    internal bool HasBlockingErrors
+    {
+        get
+        {
+            for (var node = _head; node is not null; node = node.Next)
+            {
+                if (node.Error.Severity == ValidationSeverity.Error)
+                {
                     return true;
                 }
             }
@@ -223,8 +235,10 @@ public sealed class ValidationErrorCollector {
     /// path-keyed rule here silenced sibling errors. A chained statement short-circuits through the
     /// <c>else if</c> the generator emits instead.
     /// </summary>
-    internal ValidationFlow AddDirect(in ValidationError error) {
-        if (Finished) {
+    internal ValidationFlow AddDirect(in ValidationError error)
+    {
+        if (Finished)
+        {
             return ValidationFlow.Stop;
         }
 
@@ -237,8 +251,10 @@ public sealed class ValidationErrorCollector {
     /// Adds an error whose field path is already resolved. Used by adapters that receive a flat
     /// field name from another engine rather than walking a path.
     /// </summary>
-    public ValidationFlow Add(in ValidationError error) {
-        if (Finished) {
+    public ValidationFlow Add(in ValidationError error)
+    {
+        if (Finished)
+        {
             return ValidationFlow.Stop;
         }
 
@@ -256,14 +272,17 @@ public sealed class ValidationErrorCollector {
     /// oldest and <see cref="ValidationResult.Errors"/> is declaration order. Two walks over a
     /// handful of nodes, against a list that would have grown its backing array underneath.
     /// </remarks>
-    public ValidationResult ToResult() {
-        if (_head is null) {
+    public ValidationResult ToResult()
+    {
+        if (_head is null)
+        {
             return ValidationResult.Valid;
         }
 
         var errors = new ValidationError[Count];
         var i = errors.Length;
-        for (var node = _head; node is not null; node = node.Next) {
+        for (var node = _head; node is not null; node = node.Next)
+        {
             errors[--i] = node.Error;
         }
 
@@ -279,7 +298,8 @@ public sealed class ValidationErrorCollector {
     /// a fresh collector is cheap enough that constructing one per validation is the simpler
     /// default. Reuse is still supported; it just no longer recycles.
     /// </remarks>
-    public void Reset() {
+    public void Reset()
+    {
         _head = null;
         _requiredFields?.Clear();
     }
@@ -315,8 +335,10 @@ public sealed class ValidationErrorCollector {
     /// list that distinguishes two positions its own paths cannot distinguish would be stranger.
     /// </para>
     /// </remarks>
-    private void AddCore(in ValidationError error) {
-        if (_requiredFields is { Count: > 0 } && IsSuppressed(error.Field)) {
+    private void AddCore(in ValidationError error)
+    {
+        if (_requiredFields is { Count: > 0 } && IsSuppressed(error.Field))
+        {
             return;
         }
 
@@ -324,8 +346,11 @@ public sealed class ValidationErrorCollector {
 
         // Only a real failure suppresses. A Required reported as a warning is advisory, and
         // silencing the rest of the field on the strength of it would be wrong.
-        if (error.Severity == ValidationSeverity.Error &&
-            string.Equals(error.Code, ValidationCodes.Required, StringComparison.Ordinal)) {
+        if (
+            error.Severity == ValidationSeverity.Error
+            && string.Equals(error.Code, ValidationCodes.Required, StringComparison.Ordinal)
+        )
+        {
             (_requiredFields ??= []).Add(error.Field);
         }
     }
@@ -374,8 +399,8 @@ public sealed class ValidationErrorCollector {
     /// </para>
     /// </remarks>
     private ValidationFlow Flow(in ValidationError error) =>
-        StopMode == ValidationStopMode.StopOnFirstError &&
-        error.Severity == ValidationSeverity.Error
+        StopMode == ValidationStopMode.StopOnFirstError
+        && error.Severity == ValidationSeverity.Error
             ? ValidationFlow.Stop
             : ValidationFlow.Continue;
 
@@ -386,11 +411,14 @@ public sealed class ValidationErrorCollector {
     private void Record(in ValidationError error) =>
         _head = new ErrorNode { Error = error, Next = _head };
 
-    private bool IsSuppressed(string field) {
+    private bool IsSuppressed(string field)
+    {
         var fields = _requiredFields!;
 
-        for (var i = 0; i < fields.Count; i++) {
-            if (string.Equals(fields[i], field, StringComparison.Ordinal)) {
+        for (var i = 0; i < fields.Count; i++)
+        {
+            if (string.Equals(fields[i], field, StringComparison.Ordinal))
+            {
                 return true;
             }
         }

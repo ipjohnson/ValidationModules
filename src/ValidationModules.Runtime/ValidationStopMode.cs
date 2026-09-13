@@ -1,8 +1,8 @@
 namespace ValidationModules;
 
 /// <summary>When a validation pass stops.</summary>
-public enum ValidationStopMode {
-
+public enum ValidationStopMode
+{
     /// <summary>
     /// Evaluate every rule and report everything that failed. The default, and what a caller
     /// rendering a form or a 400 body wants: one round trip listing all the problems.
@@ -26,5 +26,5 @@ public enum ValidationStopMode {
     /// <see cref="IValidatorFor{T}.IsValid"/>.
     /// </para>
     /// </remarks>
-    StopOnFirstError = 1
+    StopOnFirstError = 1,
 }

@@ -8,13 +8,14 @@ namespace ValidationModules;
 /// read happens per render, which is what lets <c>CurrentUICulture</c> and the satellite fallback
 /// chain do their work.
 /// </summary>
-public sealed class DelegateMessageProvider : IValidationMessageProvider {
-
+public sealed class DelegateMessageProvider : IValidationMessageProvider
+{
     private readonly Func<string> _template;
 
     /// <summary>Wraps the accessor whose value is the template.</summary>
     /// <param name="template">Read once per render. A <c>static</c> lambda over a resx property is the intended shape.</param>
-    public DelegateMessageProvider(Func<string> template) {
+    public DelegateMessageProvider(Func<string> template)
+    {
         ArgumentNullException.ThrowIfNull(template);
 
         _template = template;

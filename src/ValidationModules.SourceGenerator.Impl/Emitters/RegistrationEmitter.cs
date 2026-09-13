@@ -43,30 +43,45 @@ namespace ValidationModules.SourceGenerator.Impl.Emitters;
 /// would consider it.
 /// </para>
 /// </remarks>
-public sealed class RegistrationEmitter {
-
+public sealed class RegistrationEmitter
+{
     private const string DependencyInjection = "Microsoft.Extensions.DependencyInjection";
 
-    private static readonly ITypeDefinition ServiceCollection =
-        TypeDefinition.Get(TypeDefinitionEnum.InterfaceDefinition, DependencyInjection, "IServiceCollection");
+    private static readonly ITypeDefinition ServiceCollection = TypeDefinition.Get(
+        TypeDefinitionEnum.InterfaceDefinition,
+        DependencyInjection,
+        "IServiceCollection"
+    );
 
     /// <summary>Declares the <c>AddSingleton</c> family.</summary>
-    private static readonly ITypeDefinition ServiceExtensions =
-        TypeDefinition.Get(DependencyInjection, "ServiceCollectionServiceExtensions");
+    private static readonly ITypeDefinition ServiceExtensions = TypeDefinition.Get(
+        DependencyInjection,
+        "ServiceCollectionServiceExtensions"
+    );
 
     /// <summary>Declares the <c>TryAdd</c> family.</summary>
-    private static readonly ITypeDefinition DescriptorExtensions =
-        TypeDefinition.Get(DependencyInjection + ".Extensions", "ServiceCollectionDescriptorExtensions");
+    private static readonly ITypeDefinition DescriptorExtensions = TypeDefinition.Get(
+        DependencyInjection + ".Extensions",
+        "ServiceCollectionDescriptorExtensions"
+    );
 
     /// <summary>Declares <c>AddValidationRunner</c>; the runtime puts it in the DI namespace.</summary>
-    private static readonly ITypeDefinition RunnerExtensions =
-        TypeDefinition.Get(DependencyInjection, "ValidationModulesServiceCollectionExtensions");
+    private static readonly ITypeDefinition RunnerExtensions = TypeDefinition.Get(
+        DependencyInjection,
+        "ValidationModulesServiceCollectionExtensions"
+    );
 
-    private static readonly ITypeDefinition LanguagePack =
-        TypeDefinition.Get(TypeDefinitionEnum.InterfaceDefinition, "ValidationModules", "IValidationLanguagePack");
+    private static readonly ITypeDefinition LanguagePack = TypeDefinition.Get(
+        TypeDefinitionEnum.InterfaceDefinition,
+        "ValidationModules",
+        "IValidationLanguagePack"
+    );
 
-    private static readonly ITypeDefinition DynamicValidator =
-        TypeDefinition.Get(TypeDefinitionEnum.InterfaceDefinition, "ValidationModules", "IDynamicValidator");
+    private static readonly ITypeDefinition DynamicValidator = TypeDefinition.Get(
+        TypeDefinitionEnum.InterfaceDefinition,
+        "ValidationModules",
+        "IDynamicValidator"
+    );
 
     /// <param name="models">The validated types, already ordered.</param>
     /// <param name="mode">Which wrapper to emit around the shared body.</param>
@@ -83,13 +98,15 @@ public sealed class RegistrationEmitter {
         string? fieldNamer = null,
         bool withDynamicAdapters = false,
         BraceStyle style = BraceStyle.Allman,
-        IReadOnlyList<LanguagePackModel>? languagePacks = null) {
-
+        IReadOnlyList<LanguagePackModel>? languagePacks = null
+    )
+    {
         var packs = languagePacks ?? Array.Empty<LanguagePackModel>();
 
         // A pack-only assembly - five languages, zero validated types - still earns the extension;
         // language packs are a legitimate reason for it to exist.
-        if ((models.Count == 0 && packs.Count == 0) || mode == RegistrationMode.None) {
+        if ((models.Count == 0 && packs.Count == 0) || mode == RegistrationMode.None)
+        {
             return null;
         }
 
@@ -105,7 +122,8 @@ public sealed class RegistrationEmitter {
         file.AddComponent(di);
         EmitExtension(di, models, assemblyNamespace, fieldNamer, withDynamicAdapters, packs);
 
-        if (mode == RegistrationMode.DependencyModules) {
+        if (mode == RegistrationMode.DependencyModules)
+        {
             var consumer = new NamespaceDefinition(assemblyNamespace);
 
             file.AddComponent(consumer);
@@ -121,8 +139,9 @@ public sealed class RegistrationEmitter {
         string ns,
         string? fieldNamer,
         bool withDynamicAdapters,
-        IReadOnlyList<LanguagePackModel> languagePacks) {
-
+        IReadOnlyList<LanguagePackModel> languagePacks
+    )
+    {
         var extensions = di.AddClass($"{Identifier(ns)}ValidationExtensions");
 
         extensions.Modifiers = ComponentModifier.Public | ComponentModifier.Static;
@@ -132,28 +151,33 @@ public sealed class RegistrationEmitter {
 
         add.Modifiers = ComponentModifier.Public | ComponentModifier.Static;
         add.Comment =
-            "Adds this assembly's generated validators, and a validation runner for each\n" +
-            "validated type.\n" +
-            "\n" +
-            "Not idempotent. Calling this twice registers every validator twice, and a\n" +
-            "runner merges every registered validator for a type - so each error would be\n" +
-            "reported twice. Add rather than TryAdd is deliberate: registering a second\n" +
-            "validator for one type is how a hand-written rule composes with the generated\n" +
-            "one, so this cannot dedupe without breaking that.";
+            "Adds this assembly's generated validators, and a validation runner for each\n"
+            + "validated type.\n"
+            + "\n"
+            + "Not idempotent. Calling this twice registers every validator twice, and a\n"
+            + "runner merges every registered validator for a type - so each error would be\n"
+            + "reported twice. Add rather than TryAdd is deliberate: registering a second\n"
+            + "validator for one type is how a hand-written rule composes with the generated\n"
+            + "one, so this cannot dedupe without breaking that.";
         add.SetReturnType(ServiceCollection);
 
         var services = add.AddParameter(ServiceCollection, "services");
 
         services.This = true;
 
-        foreach (var model in models) {
+        foreach (var model in models)
+        {
             // The container constructs it and owns its lifetime, and injects whatever validates
             // each nested type. Closed generics, so the trimmer keeps the constructor and nothing
             // resolves reflectively at run time.
-            add.AddIndentedStatement(InvokeGeneric(
-                ServiceExtensions, "AddSingleton",
-                new[] { ValidatorFor(TypeRef(model.QualifiedTypeName)), ValidatorType(model) },
-                services));
+            add.AddIndentedStatement(
+                InvokeGeneric(
+                    ServiceExtensions,
+                    "AddSingleton",
+                    new[] { ValidatorFor(TypeRef(model.QualifiedTypeName)), ValidatorType(model) },
+                    services
+                )
+            );
         }
 
         BlankLine(add);
@@ -163,83 +187,132 @@ public sealed class RegistrationEmitter {
         // registration roots its adapter, so charging every consumer for a mode most never use is
         // not free. Within a dispatching assembly the set is complete, so a registry miss means
         // "that assembly never registered" and never "that type had no rules".
-        if (withDynamicAdapters) {
-            foreach (var model in models) {
-                add.AddIndentedStatement(InvokeGeneric(
-                    ServiceExtensions, "AddSingleton",
-                    new[] { DynamicValidator, AdapterType(model) },
-                    services));
+        if (withDynamicAdapters)
+        {
+            foreach (var model in models)
+            {
+                add.AddIndentedStatement(
+                    InvokeGeneric(
+                        ServiceExtensions,
+                        "AddSingleton",
+                        new[] { DynamicValidator, AdapterType(model) },
+                        services
+                    )
+                );
             }
 
             BlankLine(add);
             add.AddLineComment(
-                "TryAdd and a factory: every assembly's registration wants the same registry,\n" +
-                "built once over whatever adapters all of them contributed. A factory rather\n" +
-                "than a type so nothing is constructed reflectively under Native AOT.");
-            add.AddIndentedStatement(Invoke(DescriptorExtensions, "TryAddSingleton", services, Registry()));
+                "TryAdd and a factory: every assembly's registration wants the same registry,\n"
+                    + "built once over whatever adapters all of them contributed. A factory rather\n"
+                    + "than a type so nothing is constructed reflectively under Native AOT."
+            );
+            add.AddIndentedStatement(
+                Invoke(DescriptorExtensions, "TryAddSingleton", services, Registry())
+            );
             BlankLine(add);
         }
 
         // Closed per type rather than an open generic: AddScoped(typeof(ValidationRunner<>)) would
         // have MS.DI construct it reflectively, which a Native AOT publish cannot do.
-        foreach (var model in models) {
-            add.AddIndentedStatement(InvokeGeneric(
-                RunnerExtensions, "AddValidationRunner",
-                new[] { TypeRef(model.QualifiedTypeName) },
-                services));
+        foreach (var model in models)
+        {
+            add.AddIndentedStatement(
+                InvokeGeneric(
+                    RunnerExtensions,
+                    "AddValidationRunner",
+                    new[] { TypeRef(model.QualifiedTypeName) },
+                    services
+                )
+            );
         }
 
         BlankLine(add);
         add.AddLineComment(
-            "Element-wise validation for collection bodies - List<T> and T[] - so a batch\n" +
-            "endpoint's .Validate<List<T>>() resolves a validator that walks the elements\n" +
-            "with indexed paths. Closed per type, for the AOT reason above.");
+            "Element-wise validation for collection bodies - List<T> and T[] - so a batch\n"
+                + "endpoint's .Validate<List<T>>() resolves a validator that walks the elements\n"
+                + "with indexed paths. Closed per type, for the AOT reason above."
+        );
 
-        foreach (var model in models) {
-            add.AddIndentedStatement(InvokeGeneric(
-                RunnerExtensions, "AddCollectionValidatorsFor",
-                new[] { TypeRef(model.QualifiedTypeName) },
-                services));
+        foreach (var model in models)
+        {
+            add.AddIndentedStatement(
+                InvokeGeneric(
+                    RunnerExtensions,
+                    "AddCollectionValidatorsFor",
+                    new[] { TypeRef(model.QualifiedTypeName) },
+                    services
+                )
+            );
         }
 
-        if (languagePacks.Count > 0) {
+        if (languagePacks.Count > 0)
+        {
             BlankLine(add);
             add.AddLineComment(
-                "The language packs this assembly compiled, in additional-files order - which\n" +
-                "is what makes the layering rule hold: MSBuild adds package-delivered files\n" +
-                "before project items, so an app-local file registers later and wins per key.");
+                "The language packs this assembly compiled, in additional-files order - which\n"
+                    + "is what makes the layering rule hold: MSBuild adds package-delivered files\n"
+                    + "before project items, so an app-local file registers later and wins per key."
+            );
 
-            foreach (var pack in languagePacks) {
-                add.AddIndentedStatement(InvokeGeneric(
-                    ServiceExtensions, "AddSingleton",
-                    new[] { LanguagePack, NamedType(ns, pack.ClassName) },
-                    services));
+            foreach (var pack in languagePacks)
+            {
+                add.AddIndentedStatement(
+                    InvokeGeneric(
+                        ServiceExtensions,
+                        "AddSingleton",
+                        new[] { LanguagePack, NamedType(ns, pack.ClassName) },
+                        services
+                    )
+                );
             }
 
             BlankLine(add);
             add.AddLineComment(
-                "TryAdd and a factory: every assembly contributes packs, one formatter reads\n" +
-                "them all, and an app that installed its own formatter first keeps it.");
-            add.AddIndentedStatement(InvokeGeneric(
-                DescriptorExtensions, "TryAddSingleton",
-                new[] { (ITypeDefinition)TypeDefinition.Get("ValidationModules", "ValidationMessageFormatter") },
-                services,
-                PackFormatter()));
+                "TryAdd and a factory: every assembly contributes packs, one formatter reads\n"
+                    + "them all, and an app that installed its own formatter first keeps it."
+            );
+            add.AddIndentedStatement(
+                InvokeGeneric(
+                    DescriptorExtensions,
+                    "TryAddSingleton",
+                    new[]
+                    {
+                        (ITypeDefinition)
+                            TypeDefinition.Get("ValidationModules", "ValidationMessageFormatter"),
+                    },
+                    services,
+                    PackFormatter()
+                )
+            );
         }
 
         BlankLine(add);
         add.AddLineComment(
-            "TryAdd, so a namer the consumer registered first survives. The policy here is\n" +
-            "the one the literals above were emitted with, so the engines that resolve a\n" +
-            "namer at run time agree with the generated code by default.");
-        add.AddIndentedStatement(InvokeGeneric(
-            DescriptorExtensions, "TryAddSingleton",
-            new[] {
-                (ITypeDefinition)TypeDefinition.Get(
-                    TypeDefinitionEnum.InterfaceDefinition, "ValidationModules.Naming", "IValidationFieldNamer"),
-            },
-            services,
-            Property(TypeDefinition.Get("ValidationModules.Naming", NamerFor(fieldNamer)), "Instance")));
+            "TryAdd, so a namer the consumer registered first survives. The policy here is\n"
+                + "the one the literals above were emitted with, so the engines that resolve a\n"
+                + "namer at run time agree with the generated code by default."
+        );
+        add.AddIndentedStatement(
+            InvokeGeneric(
+                DescriptorExtensions,
+                "TryAddSingleton",
+                new[]
+                {
+                    (ITypeDefinition)
+                        TypeDefinition.Get(
+                            TypeDefinitionEnum.InterfaceDefinition,
+                            "ValidationModules.Naming",
+                            "IValidationFieldNamer"
+                        ),
+                },
+                services,
+                Property(
+                    TypeDefinition.Get("ValidationModules.Naming", NamerFor(fieldNamer)),
+                    "Instance"
+                )
+            )
+        );
         BlankLine(add);
         add.Return(services);
     }
@@ -249,28 +322,50 @@ public sealed class RegistrationEmitter {
     /// with every name written in full because the lambda is an expression the type model cannot
     /// carry whole.
     /// </summary>
-    private static IOutputComponent Registry() {
+    private static IOutputComponent Registry()
+    {
         var resolve = InvokeGeneric(
             TypeDefinition.Get(DependencyInjection, "ServiceProviderServiceExtensions"),
-            "GetServices", new[] { DynamicValidator }, "provider");
+            "GetServices",
+            new[] { DynamicValidator },
+            "provider"
+        );
 
-        var construct = New(TypeDefinition.Get("ValidationModules", "DynamicValidatorRegistry"), resolve);
+        var construct = New(
+            TypeDefinition.Get("ValidationModules", "DynamicValidatorRegistry"),
+            resolve
+        );
 
-        return new WrapStatement(construct, new CodeOutputComponent("provider => ") { Indented = false }, null);
+        return new WrapStatement(
+            construct,
+            new CodeOutputComponent("provider => ") { Indented = false },
+            null
+        );
     }
 
     /// <summary>
     /// The formatter factory: <c>provider =&gt; new LanguagePackFormatter(GetServices…)</c>, the
     /// same closed-type shape as <see cref="Registry"/> so nothing constructs reflectively.
     /// </summary>
-    private static IOutputComponent PackFormatter() {
+    private static IOutputComponent PackFormatter()
+    {
         var resolve = InvokeGeneric(
             TypeDefinition.Get(DependencyInjection, "ServiceProviderServiceExtensions"),
-            "GetServices", new[] { LanguagePack }, "provider");
+            "GetServices",
+            new[] { LanguagePack },
+            "provider"
+        );
 
-        var construct = New(TypeDefinition.Get("ValidationModules", "LanguagePackFormatter"), resolve);
+        var construct = New(
+            TypeDefinition.Get("ValidationModules", "LanguagePackFormatter"),
+            resolve
+        );
 
-        return new WrapStatement(construct, new CodeOutputComponent("provider => ") { Indented = false }, null);
+        return new WrapStatement(
+            construct,
+            new CodeOutputComponent("provider => ") { Indented = false },
+            null
+        );
     }
 
     /// <summary>
@@ -282,22 +377,31 @@ public sealed class RegistrationEmitter {
     /// <c>IDependencyModule</c> has exactly one member without a default implementation, so there is
     /// nothing left to complete.
     /// </remarks>
-    private static void EmitModule(NamespaceDefinition consumer, string ns) {
+    private static void EmitModule(NamespaceDefinition consumer, string ns)
+    {
         var module = consumer.AddClass("ValidationModule");
 
         module.Modifiers = ComponentModifier.Public | ComponentModifier.Sealed;
         module.Comment = "Registers every validator this assembly generated.";
-        module.AddBaseType(TypeDefinition.Get(
-            TypeDefinitionEnum.InterfaceDefinition, "DependencyModules.Runtime.Interfaces", "IDependencyModule"));
+        module.AddBaseType(
+            TypeDefinition.Get(
+                TypeDefinitionEnum.InterfaceDefinition,
+                "DependencyModules.Runtime.Interfaces",
+                "IDependencyModule"
+            )
+        );
 
         var populate = module.AddMethod("PopulateServiceCollection");
 
         populate.AddParameter(ServiceCollection, "services");
         populate.LambdaSyntax = true;
-        populate.AddIndentedStatement(Invoke(
-            TypeDefinition.Get(DependencyInjection, $"{Identifier(ns)}ValidationExtensions"),
-            $"Add{Identifier(ns)}Validators",
-            "services"));
+        populate.AddIndentedStatement(
+            Invoke(
+                TypeDefinition.Get(DependencyInjection, $"{Identifier(ns)}ValidationExtensions"),
+                $"Add{Identifier(ns)}Validators",
+                "services"
+            )
+        );
     }
 
     /// <summary>

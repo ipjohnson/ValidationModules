@@ -16,8 +16,8 @@ namespace ValidationModules;
 /// </para>
 /// </remarks>
 /// <typeparam name="T">The type being validated.</typeparam>
-public interface IValidatorFor<in T> {
-
+public interface IValidatorFor<in T>
+{
     /// <summary>
     /// Validates <paramref name="value"/>, reporting any failures to <paramref name="context"/>,
     /// and answers whether the pass carries on.
@@ -56,19 +56,23 @@ public interface IValidatorFor<in T> {
     /// Warnings do not make a value invalid, here or anywhere else in the error model.
     /// </para>
     /// </remarks>
-    bool IsValid(T value) {
+    bool IsValid(T value)
+    {
         var collector = new ValidationErrorCollector();
         var path = System.Buffers.ArrayPool<PathSegment>.Shared.Rent(
-            ValidationErrorCollector.DefaultDepthLimit);
+            ValidationErrorCollector.DefaultDepthLimit
+        );
 
-        try {
+        try
+        {
             var context = new ValidationContext(collector, path);
 
             Validate(ref context, value);
 
             return !collector.HasBlockingErrors;
         }
-        finally {
+        finally
+        {
             System.Buffers.ArrayPool<PathSegment>.Shared.Return(path);
         }
     }

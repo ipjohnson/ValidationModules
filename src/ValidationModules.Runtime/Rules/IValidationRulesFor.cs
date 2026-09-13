@@ -23,8 +23,8 @@ namespace ValidationModules;
 /// </para>
 /// </remarks>
 /// <typeparam name="T">The type these rules apply to.</typeparam>
-public interface IValidationRulesFor<T> {
-
+public interface IValidationRulesFor<T>
+{
     /// <summary>
     /// Declares the rules. Read by the source generator, never called.
     /// </summary>

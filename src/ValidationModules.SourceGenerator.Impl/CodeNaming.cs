@@ -20,8 +20,8 @@ namespace ValidationModules.SourceGenerator.Impl;
 /// the separator a .NET audience already reads as namespacing.
 /// </para>
 /// </remarks>
-internal static class CodeNaming {
-
+internal static class CodeNaming
+{
     /// <summary>The MSBuild property, spelled once.</summary>
     public const string BuildProperty = "build_property.ValidationModules_CodeNamespace";
 
@@ -29,8 +29,10 @@ internal static class CodeNaming {
     /// <paramref name="code"/> under <paramref name="codeNamespace"/>, or unchanged when no
     /// namespace was set or the code already carries it.
     /// </summary>
-    public static string? Apply(string? codeNamespace, string? code) {
-        if (code is null || string.IsNullOrWhiteSpace(codeNamespace)) {
+    public static string? Apply(string? codeNamespace, string? code)
+    {
+        if (code is null || string.IsNullOrWhiteSpace(codeNamespace))
+        {
             return code;
         }
 

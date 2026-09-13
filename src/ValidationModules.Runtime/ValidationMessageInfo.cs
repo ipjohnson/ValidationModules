@@ -41,8 +41,8 @@ namespace ValidationModules;
 /// installed <see cref="ValidationMessageFormatter"/>, not to the default.
 /// </para>
 /// </remarks>
-public sealed class ValidationMessageInfo {
-
+public sealed class ValidationMessageInfo
+{
     private static readonly object[] None = [];
 
     private readonly object[] _args;
@@ -55,7 +55,8 @@ public sealed class ValidationMessageInfo {
     /// The constraint's arguments in hole order - bounds, a divisor, a joined permitted set.
     /// Constants at every generated site, so the boxing happens once, at static initialization.
     /// </param>
-    public ValidationMessageInfo(string template, params object[]? args) {
+    public ValidationMessageInfo(string template, params object[]? args)
+    {
         ArgumentNullException.ThrowIfNull(template);
 
         Template = template;
@@ -83,10 +84,14 @@ public sealed class ValidationMessageInfo {
     public bool DataAnnotationsHoles { get; init; }
 
     /// <summary>Shared info for <c>[Required]</c>.</summary>
-    public static readonly ValidationMessageInfo Required = new(ValidationMessageTemplates.Required);
+    public static readonly ValidationMessageInfo Required = new(
+        ValidationMessageTemplates.Required
+    );
 
     /// <summary>Shared info for <c>[UniqueItems]</c>.</summary>
-    public static readonly ValidationMessageInfo UniqueItems = new(ValidationMessageTemplates.UniqueItems);
+    public static readonly ValidationMessageInfo UniqueItems = new(
+        ValidationMessageTemplates.UniqueItems
+    );
 
     /// <summary>Shared info for <c>[Pattern]</c>. The pattern is deliberately not an argument.</summary>
     public static readonly ValidationMessageInfo Pattern = new(ValidationMessageTemplates.Pattern);
@@ -101,7 +106,9 @@ public sealed class ValidationMessageInfo {
     public static readonly ValidationMessageInfo Url = new(ValidationMessageTemplates.Url);
 
     /// <summary>Shared info for <c>[CreditCard]</c>.</summary>
-    public static readonly ValidationMessageInfo CreditCard = new(ValidationMessageTemplates.CreditCard);
+    public static readonly ValidationMessageInfo CreditCard = new(
+        ValidationMessageTemplates.CreditCard
+    );
 
     /// <summary>Shared info for <c>[Base64String]</c>.</summary>
     public static readonly ValidationMessageInfo Base64 = new(ValidationMessageTemplates.Base64);
@@ -119,12 +126,17 @@ public sealed class ValidationMessageInfo {
     /// the default <see cref="ValidationError.Message"/> read passes - a default message is closer
     /// to a wire format than to prose, and two machines reading one log agree on it.
     /// </param>
-    public string Render(in ValidationError error, IFormatProvider? formatProvider = null) {
+    public string Render(in ValidationError error, IFormatProvider? formatProvider = null)
+    {
         var template = Provider?.Template(in error) ?? Template;
 
         return RenderTemplate(
-            template, Leaf(error.Field), _args, DataAnnotationsHoles,
-            formatProvider ?? CultureInfo.InvariantCulture);
+            template,
+            Leaf(error.Field),
+            _args,
+            DataAnnotationsHoles,
+            formatProvider ?? CultureInfo.InvariantCulture
+        );
     }
 
     /// <summary>
@@ -136,12 +148,21 @@ public sealed class ValidationMessageInfo {
     /// <param name="error">The error being rendered. Its field fills <c>{field}</c>.</param>
     /// <param name="template">The replacement template, holes included.</param>
     /// <param name="formatProvider">Formats the arguments; null means invariant.</param>
-    public string Render(in ValidationError error, string template, IFormatProvider? formatProvider = null) {
+    public string Render(
+        in ValidationError error,
+        string template,
+        IFormatProvider? formatProvider = null
+    )
+    {
         ArgumentNullException.ThrowIfNull(template);
 
         return RenderTemplate(
-            template, Leaf(error.Field), _args, daHoles: false,
-            formatProvider ?? CultureInfo.InvariantCulture);
+            template,
+            Leaf(error.Field),
+            _args,
+            daHoles: false,
+            formatProvider ?? CultureInfo.InvariantCulture
+        );
     }
 
     /// <summary>
@@ -149,8 +170,18 @@ public sealed class ValidationMessageInfo {
     /// pack matched at the code level. Only <c>{field}</c> can be filled; argument holes render
     /// verbatim, per the tolerant-renderer rule.
     /// </summary>
-    internal static string RenderStandalone(string template, string field, IFormatProvider? formatProvider = null) =>
-        RenderTemplate(template, Leaf(field), None, daHoles: false, formatProvider ?? CultureInfo.InvariantCulture);
+    internal static string RenderStandalone(
+        string template,
+        string field,
+        IFormatProvider? formatProvider = null
+    ) =>
+        RenderTemplate(
+            template,
+            Leaf(field),
+            None,
+            daHoles: false,
+            formatProvider ?? CultureInfo.InvariantCulture
+        );
 
     /// <summary>
     /// The last segment of a field path: <c>toys[3].name</c> renders as "name must …", never
@@ -159,7 +190,8 @@ public sealed class ValidationMessageInfo {
     /// path already lives in <see cref="ValidationError.Field"/> and repeating it in prose reads
     /// like an address label, not a sentence.
     /// </summary>
-    private static string Leaf(string field) {
+    private static string Leaf(string field)
+    {
         var dot = field.LastIndexOf('.');
 
         return dot < 0 ? field : field.Substring(dot + 1);
@@ -173,52 +205,97 @@ public sealed class ValidationMessageInfo {
     /// render that cost several times that would have moved the price rather than deferred it.
     /// </summary>
     private static string RenderTemplate(
-        string template, string field, object[] args, bool daHoles, IFormatProvider formatProvider) {
+        string template,
+        string field,
+        object[] args,
+        bool daHoles,
+        IFormatProvider formatProvider
+    )
+    {
         // Pass 1: locate and resolve the holes into locals. Every template this library writes
         // carries at most three substitutions ({field} and two arguments), so four slots cover the
         // realistic shapes without touching the heap; a hand-written template beyond that takes
         // the builder fallback and merely costs more.
         var count = 0;
-        int start0 = 0, length0 = 0, start1 = 0, length1 = 0, start2 = 0, length2 = 0, start3 = 0, length3 = 0;
-        string? replacement0 = null, replacement1 = null, replacement2 = null, replacement3 = null;
+        int start0 = 0,
+            length0 = 0,
+            start1 = 0,
+            length1 = 0,
+            start2 = 0,
+            length2 = 0,
+            start3 = 0,
+            length3 = 0;
+        string? replacement0 = null,
+            replacement1 = null,
+            replacement2 = null,
+            replacement3 = null;
 
-        for (var i = 0; i < template.Length; i++) {
+        for (var i = 0; i < template.Length; i++)
+        {
             var current = template[i];
             int holeLength;
             string replacement;
 
-            if (current == '{' && i + 1 < template.Length && template[i + 1] == '{') {
+            if (current == '{' && i + 1 < template.Length && template[i + 1] == '{')
+            {
                 (holeLength, replacement) = (2, "{");
             }
-            else if (current == '}' && i + 1 < template.Length && template[i + 1] == '}') {
+            else if (current == '}' && i + 1 < template.Length && template[i + 1] == '}')
+            {
                 (holeLength, replacement) = (2, "}");
             }
-            else if (current == '{' && template.IndexOf('}', i + 1) is var close && close >= 0 &&
-                Resolve(template.AsSpan(i + 1, close - i - 1), field, args, daHoles, formatProvider) is { } resolved) {
+            else if (
+                current == '{'
+                && template.IndexOf('}', i + 1) is var close
+                && close >= 0
+                && Resolve(
+                    template.AsSpan(i + 1, close - i - 1),
+                    field,
+                    args,
+                    daHoles,
+                    formatProvider
+                )
+                    is { } resolved
+            )
+            {
                 (holeLength, replacement) = (close - i + 1, resolved);
             }
-            else {
+            else
+            {
                 continue;
             }
 
-            switch (count) {
-                case 0: (start0, length0, replacement0) = (i, holeLength, replacement); break;
-                case 1: (start1, length1, replacement1) = (i, holeLength, replacement); break;
-                case 2: (start2, length2, replacement2) = (i, holeLength, replacement); break;
-                case 3: (start3, length3, replacement3) = (i, holeLength, replacement); break;
-                default: return RenderSlow(template, field, args, daHoles, formatProvider);
+            switch (count)
+            {
+                case 0:
+                    (start0, length0, replacement0) = (i, holeLength, replacement);
+                    break;
+                case 1:
+                    (start1, length1, replacement1) = (i, holeLength, replacement);
+                    break;
+                case 2:
+                    (start2, length2, replacement2) = (i, holeLength, replacement);
+                    break;
+                case 3:
+                    (start3, length3, replacement3) = (i, holeLength, replacement);
+                    break;
+                default:
+                    return RenderSlow(template, field, args, daHoles, formatProvider);
             }
 
             count++;
             i += holeLength - 1;
         }
 
-        if (count == 0) {
+        if (count == 0)
+        {
             return template;
         }
 
-        var length = template.Length
-            + replacement0!.Length - length0
+        var length =
+            template.Length
+            + replacement0!.Length
+            - length0
             + (count > 1 ? replacement1!.Length - length1 : 0)
             + (count > 2 ? replacement2!.Length - length2 : 0)
             + (count > 3 ? replacement3!.Length - length3 : 0);
@@ -227,32 +304,90 @@ public sealed class ValidationMessageInfo {
         // captured, so the whole render allocates the argument strings and this result.
         return string.Create(
             length,
-            (template, count, start0, length0, replacement0, start1, length1, replacement1,
-                start2, length2, replacement2, start3, length3, replacement3),
-            static (span, state) => {
+            (
+                template,
+                count,
+                start0,
+                length0,
+                replacement0,
+                start1,
+                length1,
+                replacement1,
+                start2,
+                length2,
+                replacement2,
+                start3,
+                length3,
+                replacement3
+            ),
+            static (span, state) =>
+            {
                 var read = 0;
                 var written = 0;
 
-                Fill(span, state.template, state.start0, state.length0, state.replacement0!, ref read, ref written);
-                if (state.count > 1) {
-                    Fill(span, state.template, state.start1, state.length1, state.replacement1!, ref read, ref written);
+                Fill(
+                    span,
+                    state.template,
+                    state.start0,
+                    state.length0,
+                    state.replacement0!,
+                    ref read,
+                    ref written
+                );
+                if (state.count > 1)
+                {
+                    Fill(
+                        span,
+                        state.template,
+                        state.start1,
+                        state.length1,
+                        state.replacement1!,
+                        ref read,
+                        ref written
+                    );
                 }
 
-                if (state.count > 2) {
-                    Fill(span, state.template, state.start2, state.length2, state.replacement2!, ref read, ref written);
+                if (state.count > 2)
+                {
+                    Fill(
+                        span,
+                        state.template,
+                        state.start2,
+                        state.length2,
+                        state.replacement2!,
+                        ref read,
+                        ref written
+                    );
                 }
 
-                if (state.count > 3) {
-                    Fill(span, state.template, state.start3, state.length3, state.replacement3!, ref read, ref written);
+                if (state.count > 3)
+                {
+                    Fill(
+                        span,
+                        state.template,
+                        state.start3,
+                        state.length3,
+                        state.replacement3!,
+                        ref read,
+                        ref written
+                    );
                 }
 
                 state.template.AsSpan(read).CopyTo(span[written..]);
-            });
+            }
+        );
     }
 
     private static void Fill(
-        Span<char> span, string template, int start, int holeLength, string replacement,
-        ref int read, ref int written) {
+        Span<char> span,
+        string template,
+        int start,
+        int holeLength,
+        string replacement,
+        ref int read,
+        ref int written
+    )
+    {
         template.AsSpan(read, start - read).CopyTo(span[written..]);
         written += start - read;
         replacement.CopyTo(span[written..]);
@@ -264,40 +399,62 @@ public sealed class ValidationMessageInfo {
     /// The rare-shape fallback: more holes than the scratch buffer. Correctness over exactness.
     /// </summary>
     private static string RenderSlow(
-        string template, string field, object[] args, bool daHoles, IFormatProvider formatProvider) {
+        string template,
+        string field,
+        object[] args,
+        bool daHoles,
+        IFormatProvider formatProvider
+    )
+    {
         var builder = new StringBuilder(template.Length + 32);
 
-        for (var i = 0; i < template.Length; i++) {
+        for (var i = 0; i < template.Length; i++)
+        {
             var current = template[i];
 
-            if (current == '{' && i + 1 < template.Length && template[i + 1] == '{') {
+            if (current == '{' && i + 1 < template.Length && template[i + 1] == '{')
+            {
                 builder.Append('{');
                 i++;
                 continue;
             }
 
-            if (current == '}' && i + 1 < template.Length && template[i + 1] == '}') {
+            if (current == '}' && i + 1 < template.Length && template[i + 1] == '}')
+            {
                 builder.Append('}');
                 i++;
                 continue;
             }
 
-            if (current != '{') {
+            if (current != '{')
+            {
                 builder.Append(current);
                 continue;
             }
 
             var close = template.IndexOf('}', i + 1);
-            if (close < 0) {
+            if (close < 0)
+            {
                 builder.Append(current);
                 continue;
             }
 
-            if (Resolve(template.AsSpan(i + 1, close - i - 1), field, args, daHoles, formatProvider) is { } replacement) {
+            if (
+                Resolve(
+                    template.AsSpan(i + 1, close - i - 1),
+                    field,
+                    args,
+                    daHoles,
+                    formatProvider
+                ) is
+                { } replacement
+            )
+            {
                 builder.Append(replacement);
                 i = close;
             }
-            else {
+            else
+            {
                 builder.Append(current);
             }
         }
@@ -310,27 +467,38 @@ public sealed class ValidationMessageInfo {
     /// render verbatim.
     /// </summary>
     private static string? Resolve(
-        ReadOnlySpan<char> hole, string field, object[] args, bool daHoles, IFormatProvider formatProvider) {
-        if (hole.SequenceEqual("field")) {
+        ReadOnlySpan<char> hole,
+        string field,
+        object[] args,
+        bool daHoles,
+        IFormatProvider formatProvider
+    )
+    {
+        if (hole.SequenceEqual("field"))
+        {
             return field;
         }
 
-        if (hole.Length != 1 || hole[0] is < '0' or > '9') {
+        if (hole.Length != 1 || hole[0] is < '0' or > '9')
+        {
             return null;
         }
 
         var position = hole[0] - '0';
 
         // DataAnnotations' own convention puts the field at {0} and shifts the arguments up one.
-        if (daHoles) {
-            if (position == 0) {
+        if (daHoles)
+        {
+            if (position == 0)
+            {
                 return field;
             }
 
             position--;
         }
 
-        if (position >= args.Length) {
+        if (position >= args.Length)
+        {
             return null;
         }
 

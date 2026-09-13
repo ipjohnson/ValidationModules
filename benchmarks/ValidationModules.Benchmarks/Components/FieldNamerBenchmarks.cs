@@ -22,7 +22,8 @@ namespace ValidationModules.Benchmarks.Components;
 /// </remarks>
 [MemoryDiagnoser]
 [BenchmarkCategory(BenchmarkCategories.Component)]
-public class FieldNamerBenchmarks {
+public class FieldNamerBenchmarks
+{
     private const string PropertyName = "PostalCode";
     private const string AcronymPropertyName = "HTTPStatusCode";
     private const string ParentPath = "order.shipTo";
@@ -41,11 +42,13 @@ public class FieldNamerBenchmarks {
     /// two words. Compared against the plain name, this is what that lookahead costs.
     /// </summary>
     [Benchmark(Description = "SnakeCase over an acronym - the lookahead path")]
-    public string Snake_ToFieldName_Acronym() => SnakeCaseFieldNamer.Instance.ToFieldName(AcronymPropertyName);
+    public string Snake_ToFieldName_Acronym() =>
+        SnakeCaseFieldNamer.Instance.ToFieldName(AcronymPropertyName);
 
     [Benchmark(Description = "Combine - one concat")]
     public string Combine() => CamelCaseFieldNamer.Instance.Combine(ParentPath, "postalCode");
 
     [Benchmark(Description = "CombineIndex - concat plus an int format")]
-    public string CombineIndex() => CamelCaseFieldNamer.Instance.CombineIndex(ParentPath, "lines", 3);
+    public string CombineIndex() =>
+        CamelCaseFieldNamer.Instance.CombineIndex(ParentPath, "lines", 3);
 }

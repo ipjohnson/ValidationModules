@@ -43,46 +43,72 @@ namespace ValidationModules.SourceGenerator.Impl;
 /// the old-to-new table.
 /// </para>
 /// </remarks>
-public static class ValidationDiagnostics {
+public static class ValidationDiagnostics
+{
     private const string Usage = "ValidationModules.Usage";
 
-    private static DiagnosticDescriptor Descriptor(string id, string title, string message, DiagnosticSeverity severity) =>
-        new(id, title, message, Usage, severity, isEnabledByDefault: true);
+    private static DiagnosticDescriptor Descriptor(
+        string id,
+        string title,
+        string message,
+        DiagnosticSeverity severity
+    ) => new(id, title, message, Usage, severity, isEnabledByDefault: true);
 
     public static readonly DiagnosticDescriptor StringConstraintOnNonString = Descriptor(
-        "VM1001", "Constraint requires a string",
-        "'{0}' applies to strings; '{1}' is '{2}'", DiagnosticSeverity.Error);
+        "VM1001",
+        "Constraint requires a string",
+        "'{0}' applies to strings; '{1}' is '{2}'",
+        DiagnosticSeverity.Error
+    );
 
     public static readonly DiagnosticDescriptor ItemCountOnNonCollection = Descriptor(
-        "VM1002", "[ItemCount] requires a collection",
-        "[ItemCount] applies to collections; '{0}' is '{1}'", DiagnosticSeverity.Error);
+        "VM1002",
+        "[ItemCount] requires a collection",
+        "[ItemCount] applies to collections; '{0}' is '{1}'",
+        DiagnosticSeverity.Error
+    );
 
     public static readonly DiagnosticDescriptor RangeOnUnorderedType = Descriptor(
-        "VM1003", "[Range] requires an ordered type",
-        "[Range] applies to numeric and date types; '{0}' is '{1}'", DiagnosticSeverity.Error);
+        "VM1003",
+        "[Range] requires an ordered type",
+        "[Range] applies to numeric and date types; '{0}' is '{1}'",
+        DiagnosticSeverity.Error
+    );
 
     public static readonly DiagnosticDescriptor MultipleOfOnUnsupportedType = Descriptor(
-        "VM1004", "[MultipleOf] requires a numeric type",
+        "VM1004",
+        "[MultipleOf] requires a numeric type",
         "[MultipleOf] applies to integral, decimal and floating-point types; '{0}' is '{1}'",
-        DiagnosticSeverity.Error);
+        DiagnosticSeverity.Error
+    );
 
     public static readonly DiagnosticDescriptor UniqueItemsOnNonCollection = Descriptor(
-        "VM1005", "[UniqueItems] requires a collection",
-        "[UniqueItems] applies to collections; '{0}' is '{1}'", DiagnosticSeverity.Error);
+        "VM1005",
+        "[UniqueItems] requires a collection",
+        "[UniqueItems] applies to collections; '{0}' is '{1}'",
+        DiagnosticSeverity.Error
+    );
 
     public static readonly DiagnosticDescriptor EnumDefinedOnNonEnum = Descriptor(
-        "VM1006", "[EnumDefined] requires an enum type",
+        "VM1006",
+        "[EnumDefined] requires an enum type",
         "[EnumDefined] applies to enum types; '{0}' is '{1}'",
-        DiagnosticSeverity.Error);
+        DiagnosticSeverity.Error
+    );
 
     public static readonly DiagnosticDescriptor InaccessibleProperty = Descriptor(
-        "VM1007", "Constrained property is not readable",
-        "'{0}' has no accessible getter, so its constraints cannot be evaluated", DiagnosticSeverity.Error);
+        "VM1007",
+        "Constrained property is not readable",
+        "'{0}' has no accessible getter, so its constraints cannot be evaluated",
+        DiagnosticSeverity.Error
+    );
 
     public static readonly DiagnosticDescriptor RecordParameterMissingPropertyTarget = Descriptor(
-        "VM1008", "Constraint on a record parameter has no effect",
+        "VM1008",
+        "Constraint on a record parameter has no effect",
         "'{0}' is on a record parameter without the property: target, so it lands on the parameter and is never evaluated. Write [property: {0}]",
-        DiagnosticSeverity.Warning);
+        DiagnosticSeverity.Warning
+    );
 
     /// <summary>
     /// Constraints on a base type's properties are collected into the derived type's validator, so
@@ -90,11 +116,13 @@ public static class ValidationDiagnostics {
     /// field.
     /// </summary>
     public static readonly DiagnosticDescriptor HiddenBaseConstraints = Descriptor(
-        "VM1009", "Hidden property drops the base declaration's constraints",
-        "'{0}' hides '{1}.{0}', so the {2} constraint(s) declared there no longer apply. The " +
-        "most-derived declaration of a property supplies all of its constraints, never some of " +
-        "them - restate what is still wanted, or rename one of the two",
-        DiagnosticSeverity.Warning);
+        "VM1009",
+        "Hidden property drops the base declaration's constraints",
+        "'{0}' hides '{1}.{0}', so the {2} constraint(s) declared there no longer apply. The "
+            + "most-derived declaration of a property supplies all of its constraints, never some of "
+            + "them - restate what is still wanted, or rename one of the two",
+        DiagnosticSeverity.Warning
+    );
 
     /// <summary>
     /// A generic type cannot have a generated validator.
@@ -113,21 +141,32 @@ public static class ValidationDiagnostics {
     /// </para>
     /// </remarks>
     public static readonly DiagnosticDescriptor GenericTypeCannotBeValidated = Descriptor(
-        "VM1010", "A generic type cannot have a generated validator",
+        "VM1010",
+        "A generic type cannot have a generated validator",
         "'{0}' is generic, and a validator for it could not be registered - the service type has its parameter nested inside a construction, which no container can resolve without MakeGenericType. Declare the constraints on a closed type instead ('{0}<Order>' written out as its own type), or validate the payload's own type and leave the envelope unconstrained",
-        DiagnosticSeverity.Error);
+        DiagnosticSeverity.Error
+    );
 
     public static readonly DiagnosticDescriptor MinExceedsMax = Descriptor(
-        "VM1101", "Lower bound exceeds upper bound",
-        "The bounds on '{0}' are inverted, so the constraint can never be satisfied", DiagnosticSeverity.Error);
+        "VM1101",
+        "Lower bound exceeds upper bound",
+        "The bounds on '{0}' are inverted, so the constraint can never be satisfied",
+        DiagnosticSeverity.Error
+    );
 
     public static readonly DiagnosticDescriptor RangeHasNoBounds = Descriptor(
-        "VM1102", "[Range] declares no bounds",
-        "[Range] on '{0}' sets neither Min nor Max, so it can never fail", DiagnosticSeverity.Warning);
+        "VM1102",
+        "[Range] declares no bounds",
+        "[Range] on '{0}' sets neither Min nor Max, so it can never fail",
+        DiagnosticSeverity.Warning
+    );
 
     public static readonly DiagnosticDescriptor RangeBoundsNotParseable = Descriptor(
-        "VM1103", "Range bounds do not match the member type",
-        "The bounds on '{0}' do not parse as '{1}'", DiagnosticSeverity.Error);
+        "VM1103",
+        "Range bounds do not match the member type",
+        "The bounds on '{0}' do not parse as '{1}'",
+        DiagnosticSeverity.Error
+    );
 
     /// <summary>
     /// A zero divisor is the reason this is an error rather than a warning that drops the rule.
@@ -135,25 +174,39 @@ public static class ValidationDiagnostics {
     /// one, so leaving it to the emitter puts the failure inside generated code - plan §7.5.
     /// </summary>
     public static readonly DiagnosticDescriptor MultipleOfDivisorNotPositive = Descriptor(
-        "VM1104", "[MultipleOf] divisor must be positive",
-        "The divisor on '{0}' is '{1}'; it must be greater than zero", DiagnosticSeverity.Error);
+        "VM1104",
+        "[MultipleOf] divisor must be positive",
+        "The divisor on '{0}' is '{1}'; it must be greater than zero",
+        DiagnosticSeverity.Error
+    );
 
     public static readonly DiagnosticDescriptor MultipleOfDivisorNotParseable = Descriptor(
-        "VM1105", "[MultipleOf] divisor does not match the member type",
-        "The divisor on '{0}' does not parse as '{1}'", DiagnosticSeverity.Error);
+        "VM1105",
+        "[MultipleOf] divisor does not match the member type",
+        "The divisor on '{0}' does not parse as '{1}'",
+        DiagnosticSeverity.Error
+    );
 
     public static readonly DiagnosticDescriptor InvalidPattern = Descriptor(
-        "VM1106", "Pattern is not a valid regular expression",
-        "The pattern on '{0}' is not a valid regular expression: {1}", DiagnosticSeverity.Error);
+        "VM1106",
+        "Pattern is not a valid regular expression",
+        "The pattern on '{0}' is not a valid regular expression: {1}",
+        DiagnosticSeverity.Error
+    );
 
     public static readonly DiagnosticDescriptor RegexMemberUnusable = Descriptor(
-        "VM1107", "Referenced regex member is unusable",
-        "'{0}.{1}' {2}, so the pattern on '{3}' cannot be emitted", DiagnosticSeverity.Error);
+        "VM1107",
+        "Referenced regex member is unusable",
+        "'{0}.{1}' {2}, so the pattern on '{3}' cannot be emitted",
+        DiagnosticSeverity.Error
+    );
 
     public static readonly DiagnosticDescriptor RequiredOnNonNullableValueType = Descriptor(
-        "VM1201", "[Required] has no effect",
+        "VM1201",
+        "[Required] has no effect",
         "'{0}' is a non-nullable value type, so it is always present and [Required] can never fail",
-        DiagnosticSeverity.Warning);
+        DiagnosticSeverity.Warning
+    );
 
     /// <summary>
     /// The quiet half of <c>[UniqueItems]</c>. The check runs through
@@ -162,11 +215,13 @@ public static class ValidationDiagnostics {
     /// "unique" - a rule that passes for the wrong reason rather than one that fails.
     /// </summary>
     public static readonly DiagnosticDescriptor UniqueItemsComparesByReference = Descriptor(
-        "VM1202", "[UniqueItems] will compare by reference",
-        "'{1}' does not override Equals, so [UniqueItems] on '{0}' compares elements by reference " +
-        "and two elements with equal contents both pass. Make it a record, override Equals, or " +
-        "implement IEquatable<{1}>",
-        DiagnosticSeverity.Warning);
+        "VM1202",
+        "[UniqueItems] will compare by reference",
+        "'{1}' does not override Equals, so [UniqueItems] on '{0}' compares elements by reference "
+            + "and two elements with equal contents both pass. Make it a record, override Equals, or "
+            + "implement IEquatable<{1}>",
+        DiagnosticSeverity.Warning
+    );
 
     /// <summary>
     /// Declared with a fixed default severity so release tracking can discover it; the effective
@@ -174,24 +229,30 @@ public static class ValidationDiagnostics {
     /// build error for an AOT-facing project and unremarkable for a JIT one.
     /// </summary>
     public static readonly DiagnosticDescriptor InlinePatternUnderAot = Descriptor(
-        "VM1301", "Inline pattern roots the regex engine",
-        "The pattern on '{0}' is built from a string at run time, which roots the regex parser and " +
-        "interpreter - about 450 KB on an AOT-published binary, once, however many patterns follow. " +
-        "Declare it as a " +
-        "[GeneratedRegex] and point at it: [Pattern(typeof({1}Patterns), nameof({1}Patterns.{0}))]. " +
-        "Set ValidationModules_PatternPolicy to Allow to keep the inline form",
-        DiagnosticSeverity.Warning);
+        "VM1301",
+        "Inline pattern roots the regex engine",
+        "The pattern on '{0}' is built from a string at run time, which roots the regex parser and "
+            + "interpreter - about 450 KB on an AOT-published binary, once, however many patterns follow. "
+            + "Declare it as a "
+            + "[GeneratedRegex] and point at it: [Pattern(typeof({1}Patterns), nameof({1}Patterns.{0}))]. "
+            + "Set ValidationModules_PatternPolicy to Allow to keep the inline form",
+        DiagnosticSeverity.Warning
+    );
 
     public static readonly DiagnosticDescriptor CompiledRegexRequested = Descriptor(
-        "VM1302", "RegexOptions.Compiled is not meaningful here",
+        "VM1302",
+        "RegexOptions.Compiled is not meaningful here",
         "Patterns compile through [GeneratedRegex]; RegexOptions.Compiled on '{0}' is ignored",
-        DiagnosticSeverity.Warning);
+        DiagnosticSeverity.Warning
+    );
 
     public static readonly DiagnosticDescriptor ConditionMemberNotFound = Descriptor(
-        "VM1401", "Condition member not found",
-        "'{0}' names '{1}', which '{2}' does not declare. A condition names a member of the type " +
-        "being validated",
-        DiagnosticSeverity.Error);
+        "VM1401",
+        "Condition member not found",
+        "'{0}' names '{1}', which '{2}' does not declare. A condition names a member of the type "
+            + "being validated",
+        DiagnosticSeverity.Error
+    );
 
     /// <summary>
     /// The three accepted shapes are the three that cannot capture anything, which is what makes
@@ -199,16 +260,20 @@ public static class ValidationDiagnostics {
     /// here for free.
     /// </summary>
     public static readonly DiagnosticDescriptor ConditionMemberNotAPredicate = Descriptor(
-        "VM1402", "Condition member is not a predicate",
-        "'{0}.{1}' cannot be used as a condition. A condition is a bool property, a parameterless " +
-        "bool method, or a static bool method taking a single '{0}' parameter",
-        DiagnosticSeverity.Error);
+        "VM1402",
+        "Condition member is not a predicate",
+        "'{0}.{1}' cannot be used as a condition. A condition is a bool property, a parameterless "
+            + "bool method, or a static bool method taking a single '{0}' parameter",
+        DiagnosticSeverity.Error
+    );
 
     public static readonly DiagnosticDescriptor ConditionSetBothWays = Descriptor(
-        "VM1403", "Constraint sets both When and Unless",
-        "'{0}' on '{1}' sets both When and Unless, which is ambiguous. Write two constraints, or " +
-        "one negated condition",
-        DiagnosticSeverity.Error);
+        "VM1403",
+        "Constraint sets both When and Unless",
+        "'{0}' on '{1}' sets both When and Unless, which is ambiguous. Write two constraints, or "
+            + "one negated condition",
+        DiagnosticSeverity.Error
+    );
 
     /// <summary>
     /// <c>[ValidateNested]</c> pointing at a type that has no rules, so the descent finds nothing.
@@ -232,10 +297,12 @@ public static class ValidationDiagnostics {
     /// </para>
     /// </remarks>
     public static readonly DiagnosticDescriptor NestedTypeHasNoRules = Descriptor(
-        "VM1501", "[ValidateNested] target has no rules",
-        "'{0}' declares no constraints and no [GenerateValidator], so [ValidateNested] on '{1}' " +
-        "validates nothing and the descent is dropped",
-        DiagnosticSeverity.Warning);
+        "VM1501",
+        "[ValidateNested] target has no rules",
+        "'{0}' declares no constraints and no [GenerateValidator], so [ValidateNested] on '{1}' "
+            + "validates nothing and the descent is dropped",
+        DiagnosticSeverity.Warning
+    );
 
     /// <summary>
     /// A nested descent whose target could never carry a generated validator: a constructed
@@ -257,10 +324,12 @@ public static class ValidationDiagnostics {
     /// </para>
     /// </remarks>
     public static readonly DiagnosticDescriptor NestedTargetCannotHaveValidator = Descriptor(
-        "VM1502", "[ValidateNested] target can never have a validator",
-        "'{0}' is not a type a validator can be generated for, so [ValidateNested] on '{1}' is " +
-        "dropped; model the inner collection as a property of a type that declares its own rules",
-        DiagnosticSeverity.Warning);
+        "VM1502",
+        "[ValidateNested] target can never have a validator",
+        "'{0}' is not a type a validator can be generated for, so [ValidateNested] on '{1}' is "
+            + "dropped; model the inner collection as a property of a type that declares its own rules",
+        DiagnosticSeverity.Warning
+    );
 
     /// <summary>
     /// Keyed on whether the target is sealed - a local fact about the type - and never on which
@@ -272,11 +341,13 @@ public static class ValidationDiagnostics {
     /// precisely the layout-dependence polymorphic dispatch is written to avoid.
     /// </remarks>
     public static readonly DiagnosticDescriptor UnsealedNestedTargetHasNoMode = Descriptor(
-        "VM1503", "[ValidateNested] target is not sealed and declares no polymorphism mode",
-        "'{0}' is not sealed, so a value of a more derived type may reach '{1}'. Say what should " +
-        "happen: seal it, or pass Polymorphism.DeclaredOnly to check only the declared type, or " +
-        "Polymorphism.CompileTime to dispatch over its subtypes",
-        DiagnosticSeverity.Warning);
+        "VM1503",
+        "[ValidateNested] target is not sealed and declares no polymorphism mode",
+        "'{0}' is not sealed, so a value of a more derived type may reach '{1}'. Say what should "
+            + "happen: seal it, or pass Polymorphism.DeclaredOnly to check only the declared type, or "
+            + "Polymorphism.CompileTime to dispatch over its subtypes",
+        DiagnosticSeverity.Warning
+    );
 
     /// <summary>
     /// Runtime dispatch on a type that can have no subtypes resolves, at cost, to the validator the
@@ -287,10 +358,12 @@ public static class ValidationDiagnostics {
     /// mode that can never differ from DeclaredOnly is never what was meant.
     /// </remarks>
     public static readonly DiagnosticDescriptor RuntimePolymorphismOnClosedType = Descriptor(
-        "VM1504", "Polymorphism.Runtime on a type that can have no subtypes",
-        "'{0}' is {1}, so its runtime type can never differ from its declared type and dispatching " +
-        "on it costs a container lookup for the same answer. Use Polymorphism.DeclaredOnly",
-        DiagnosticSeverity.Error);
+        "VM1504",
+        "Polymorphism.Runtime on a type that can have no subtypes",
+        "'{0}' is {1}, so its runtime type can never differ from its declared type and dispatching "
+            + "on it costs a container lookup for the same answer. Use Polymorphism.DeclaredOnly",
+        DiagnosticSeverity.Error
+    );
 
     /// <summary>
     /// A <c>CustomConstraintAttribute</c> subclass whose <c>IsValid</c> cannot be compiled: the
@@ -303,9 +376,11 @@ public static class ValidationDiagnostics {
     /// DataAnnotations shape can only discover one at run time.
     /// </remarks>
     public static readonly DiagnosticDescriptor CustomConstraintUnusable = Descriptor(
-        "VM1601", "Custom constraint attribute is unusable",
+        "VM1601",
+        "Custom constraint attribute is unusable",
         "'{0}' on '{1}' cannot be compiled: {2}",
-        DiagnosticSeverity.Error);
+        DiagnosticSeverity.Error
+    );
 
     /// <summary>
     /// An attribute implementing <c>IConstraintFor&lt;T&gt;</c> that cannot be compiled: no
@@ -319,9 +394,11 @@ public static class ValidationDiagnostics {
     /// stops running.
     /// </remarks>
     public static readonly DiagnosticDescriptor ConstraintInterfaceUnusable = Descriptor(
-        "VM1602", "IConstraintFor<T> attribute is unusable",
+        "VM1602",
+        "IConstraintFor<T> attribute is unusable",
         "'{0}' on '{1}' cannot be compiled: {2}",
-        DiagnosticSeverity.Error);
+        DiagnosticSeverity.Error
+    );
 
     /// <summary>
     /// A constraint attribute opted out of the shared instance, so every check constructs one.
@@ -333,11 +410,13 @@ public static class ValidationDiagnostics {
     /// the class that caused it.
     /// </remarks>
     public static readonly DiagnosticDescriptor PerValidationInstanceCost = Descriptor(
-        "VM1603", "Constraint instance is constructed per check",
-        "'{0}' is marked [PerValidationInstance], so checking '{1}' constructs a new instance on " +
-        "every validation pass, passing values included - the allocation a shared instance would " +
-        "not cost",
-        DiagnosticSeverity.Info);
+        "VM1603",
+        "Constraint instance is constructed per check",
+        "'{0}' is marked [PerValidationInstance], so checking '{1}' constructs a new instance on "
+            + "every validation pass, passing values included - the allocation a shared instance would "
+            + "not cost",
+        DiagnosticSeverity.Info
+    );
 
     /// <summary>
     /// Info rather than Warning, because it only fires when the project explicitly set
@@ -346,9 +425,11 @@ public static class ValidationDiagnostics {
     /// another validation system reading the same attributes may still enforce them.
     /// </summary>
     public static readonly DiagnosticDescriptor DataAnnotationsSkipped = Descriptor(
-        "VM2001", "DataAnnotations constraint is ignored by ValidationModules",
+        "VM2001",
+        "DataAnnotations constraint is ignored by ValidationModules",
         "'{0}' on '{1}' is a DataAnnotations constraint, which ValidationModules is ignoring because ValidationModules_DataAnnotations is set to Ignore; another validation system may still enforce it",
-        DiagnosticSeverity.Info);
+        DiagnosticSeverity.Info
+    );
 
     /// <summary>
     /// One descriptor with distinct closing sentences rather than several descriptors: the
@@ -363,15 +444,17 @@ public static class ValidationDiagnostics {
     /// is nothing to fix, only the cost model worth knowing.
     /// </remarks>
     public static readonly DiagnosticDescriptor CustomValidationAttribute = Descriptor(
-        "VM2002", "Custom ValidationAttribute is invoked, not compiled",
+        "VM2002",
+        "Custom ValidationAttribute is invoked, not compiled",
         "'{0}' on '{1}' derives from ValidationAttribute, so its check is user code. {2}",
-        DiagnosticSeverity.Info);
+        DiagnosticSeverity.Info
+    );
 
     /// <summary>VM2002's tail when the attribute compiles to an invocation.</summary>
     public const string CustomValidationInvokeTail =
-        "It is constructed once and invoked with DataAnnotations semantics, so this property pays " +
-        "DataAnnotations' costs: a ValidationContext per check, and a box if the value is a value " +
-        "type";
+        "It is constructed once and invoked with DataAnnotations semantics, so this property pays "
+        + "DataAnnotations' costs: a ValidationContext per check, and a box if the value is a value "
+        + "type";
 
     /// <summary>VM2002's tail when the attribute's arguments cannot be rendered.</summary>
     public const string CustomValidationEnforceTail =
@@ -382,9 +465,11 @@ public static class ValidationDiagnostics {
         "ValidationModules is ignoring it because ValidationModules_DataAnnotations is set to Ignore; another validation system may still enforce it";
 
     public static readonly DiagnosticDescriptor CrossFieldAttribute = Descriptor(
-        "VM2003", "Cross-field DataAnnotations attribute is not compiled",
+        "VM2003",
+        "Cross-field DataAnnotations attribute is not compiled",
         "'{0}' on '{1}' compares against another member, which a per-property constraint cannot express. It is not enforced",
-        DiagnosticSeverity.Warning);
+        DiagnosticSeverity.Warning
+    );
 
     /// <summary>
     /// The format validators compile with the BCL's exact semantics, and those semantics are
@@ -400,27 +485,34 @@ public static class ValidationDiagnostics {
     /// than joining the retired list.
     /// </remarks>
     public static readonly DiagnosticDescriptor FormatValidatorCompiled = Descriptor(
-        "VM2004", "Format DataAnnotations attribute is compiled with its BCL semantics",
+        "VM2004",
+        "Format DataAnnotations attribute is compiled with its BCL semantics",
         "'{0}' on '{1}' compiles to the DataAnnotations check: {2}. Declare a [Pattern] instead if you want a stricter rule",
-        DiagnosticSeverity.Info);
+        DiagnosticSeverity.Info
+    );
 
     public static readonly DiagnosticDescriptor LengthOnUnsupportedMember = Descriptor(
-        "VM2005", "Length constraint requires a string or a collection",
-        "'{0}' applies to strings and collections; '{1}' is '{2}'", DiagnosticSeverity.Error);
+        "VM2005",
+        "Length constraint requires a string or a collection",
+        "'{0}' applies to strings and collections; '{1}' is '{2}'",
+        DiagnosticSeverity.Error
+    );
 
     /// <summary>
     /// The same multi-tail arrangement as VM2002, for the same reason.
     /// </summary>
     public static readonly DiagnosticDescriptor ValidatableObjectCompiled = Descriptor(
-        "VM2006", "IValidatableObject is invoked after every other rule passes",
+        "VM2006",
+        "IValidatableObject is invoked after every other rule passes",
         "'{0}' implements IValidatableObject; {1}",
-        DiagnosticSeverity.Info);
+        DiagnosticSeverity.Info
+    );
 
     /// <summary>VM2006's tail when the DataAnnotations front end is on.</summary>
     public const string ValidatableObjectEnforceTail =
-        "the generated validator calls its Validate method after every other rule on the type has " +
-        "passed, exactly as Validator.TryValidateObject sequences it, and the type keeps no " +
-        "boolean fast path";
+        "the generated validator calls its Validate method after every other rule on the type has "
+        + "passed, exactly as Validator.TryValidateObject sequences it, and the type keeps no "
+        + "boolean fast path";
 
     /// <summary>VM2006's tail under <c>ValidationModules_DataAnnotations=Ignore</c>.</summary>
     public const string ValidatableObjectIgnoreTail =
@@ -434,11 +526,13 @@ public static class ValidationDiagnostics {
     /// family <c>[CustomValidation]</c>'s narrowing refuses.
     /// </summary>
     public static readonly DiagnosticDescriptor EnumDataTypeNotCompiled = Descriptor(
-        "VM2007", "[EnumDataType] is not compiled",
-        "'{0}' on '{1}' checks that a loosely-typed value parses as an enum, a runtime conversion " +
-        "this library does not compile. It is not enforced; type the member as the enum and use " +
-        "[EnumDefined]",
-        DiagnosticSeverity.Warning);
+        "VM2007",
+        "[EnumDataType] is not compiled",
+        "'{0}' on '{1}' checks that a loosely-typed value parses as an enum, a runtime conversion "
+            + "this library does not compile. It is not enforced; type the member as the enum and use "
+            + "[EnumDefined]",
+        DiagnosticSeverity.Warning
+    );
 
     /// <summary>
     /// <c>[CustomValidation]</c> whose target cannot be called: the type or method does not
@@ -452,20 +546,24 @@ public static class ValidationDiagnostics {
     /// <c>[CustomValidation]</c>'s runtime string conversion, which this library does not do.
     /// </remarks>
     public static readonly DiagnosticDescriptor CustomValidationTargetUnusable = Descriptor(
-        "VM2008", "[CustomValidation] target is unusable",
+        "VM2008",
+        "[CustomValidation] target is unusable",
         "'{0}' on '{1}' cannot be compiled: {2}",
-        DiagnosticSeverity.Error);
+        DiagnosticSeverity.Error
+    );
 
     /// <summary>
     /// A custom attribute configures resource-based error messages, whose lookup reflects at run
     /// time - the one part of an invoked attribute the trimmer can break.
     /// </summary>
     public static readonly DiagnosticDescriptor ResourceErrorMessageUnderTrimming = Descriptor(
-        "VM2009", "Resource-based ErrorMessage resolves reflectively",
-        "'{0}' on '{1}' sets ErrorMessageResourceType, which DataAnnotations resolves with " +
-        "reflection when the message is formatted. Under trimming or Native AOT the resource " +
-        "property may be removed; set ErrorMessage, or keep the resource type rooted",
-        DiagnosticSeverity.Warning);
+        "VM2009",
+        "Resource-based ErrorMessage resolves reflectively",
+        "'{0}' on '{1}' sets ErrorMessageResourceType, which DataAnnotations resolves with "
+            + "reflection when the message is formatted. Under trimming or Native AOT the resource "
+            + "property may be removed; set ErrorMessage, or keep the resource type rooted",
+        DiagnosticSeverity.Warning
+    );
 
     /// <summary>
     /// A Describe body is transcribed, and almost everything transcribes; what remains rejected is
@@ -474,9 +572,11 @@ public static class ValidationDiagnostics {
     /// validator otherwise checks less than the body says.
     /// </summary>
     public static readonly DiagnosticDescriptor NotTranscribable = Descriptor(
-        "VM3001", "Statement is not transcribable",
+        "VM3001",
+        "Statement is not transcribable",
         "'{0}.Describe' contains {1}, which the generator does not transcribe",
-        DiagnosticSeverity.Error);
+        DiagnosticSeverity.Error
+    );
 
     /// <summary>
     /// The anti-silent-drop rule. A rule call the generator cannot see would transcribe into a
@@ -484,10 +584,12 @@ public static class ValidationDiagnostics {
     /// client-eval and made it an error; so does this.
     /// </summary>
     public static readonly DiagnosticDescriptor RulesFlowNotFollowable = Descriptor(
-        "VM3002", "The rules builder flows where the generator cannot follow",
-        "The builder declares rules only where the generator can read them; here it would {0}, " +
-        "which would validate nothing at runtime",
-        DiagnosticSeverity.Error);
+        "VM3002",
+        "The rules builder flows where the generator cannot follow",
+        "The builder declares rules only where the generator can read them; here it would {0}, "
+            + "which would validate nothing at runtime",
+        DiagnosticSeverity.Error
+    );
 
     /// <summary>
     /// Islands need generator-computed identity - a field, a rendered message - and a loop or
@@ -495,11 +597,13 @@ public static class ValidationDiagnostics {
     /// per-element case with a computed field string.
     /// </summary>
     public static readonly DiagnosticDescriptor IslandInUnreadableScope = Descriptor(
-        "VM3003", "Rule declaration inside a loop, lambda, or local function",
-        "'{0}.Describe' declares a rule inside a scope the generator cannot expand it in. Use Each " +
-        "for collections - a collection of strings chains element rules, " +
-        "Each(x.Steps).Length(5, 500) - or report per element through rules.Context",
-        DiagnosticSeverity.Error);
+        "VM3003",
+        "Rule declaration inside a loop, lambda, or local function",
+        "'{0}.Describe' declares a rule inside a scope the generator cannot expand it in. Use Each "
+            + "for collections - a collection of strings chains element rules, "
+            + "Each(x.Steps).Length(5, 500) - or report per element through rules.Context",
+        DiagnosticSeverity.Error
+    );
 
     /// <summary>
     /// Transcribed code must compile at the emission site: the companion file is internal to the
@@ -507,10 +611,12 @@ public static class ValidationDiagnostics {
     /// here rather than surfacing as CS0122 inside generated code, which is the worst place for it.
     /// </summary>
     public static readonly DiagnosticDescriptor MemberNotReachableFromRegion = Descriptor(
-        "VM3004", "Member is not reachable from the generated region",
-        "'{0}' is not accessible from the companion file '{1}.Describe' is transcribed into. " +
-        "Make it internal",
-        DiagnosticSeverity.Error);
+        "VM3004",
+        "Member is not reachable from the generated region",
+        "'{0}' is not accessible from the companion file '{1}.Describe' is transcribed into. "
+            + "Make it internal",
+        DiagnosticSeverity.Error
+    );
 
     /// <summary>
     /// A fragment is expanded from syntax, and a referenced assembly ships IL - the symbol has no
@@ -518,36 +624,46 @@ public static class ValidationDiagnostics {
     /// ProjectReference is on the wrong side of it.
     /// </summary>
     public static readonly DiagnosticDescriptor FragmentIsCompiledIl = Descriptor(
-        "VM3005", "Fragment is compiled IL from a referenced assembly",
-        "Fragment '{0}' is compiled IL from a referenced assembly; fragments must be part of this " +
-        "compilation - use a shared project or a source-only package",
-        DiagnosticSeverity.Error);
+        "VM3005",
+        "Fragment is compiled IL from a referenced assembly",
+        "Fragment '{0}' is compiled IL from a referenced assembly; fragments must be part of this "
+            + "compilation - use a shared project or a source-only package",
+        DiagnosticSeverity.Error
+    );
 
     public static readonly DiagnosticDescriptor FragmentCallCycle = Descriptor(
-        "VM3006", "Fragment call cycle",
+        "VM3006",
+        "Fragment call cycle",
         "Fragments may call fragments, but this chain returns to where it started: {0}",
-        DiagnosticSeverity.Error);
+        DiagnosticSeverity.Error
+    );
 
     public static readonly DiagnosticDescriptor SelectorNotAPath = Descriptor(
-        "VM3007", "Value argument is not a member path",
+        "VM3007",
+        "Value argument is not a member path",
         "A rule's value argument in '{0}' must be a member path on the subject parameter, so the error has a field to be pathed against; anything else needs field:",
-        DiagnosticSeverity.Error);
+        DiagnosticSeverity.Error
+    );
 
     /// <summary>
     /// The selector overload matrix used to make this unwritable; values cannot, because a
     /// non-nullable value type converts to its nullable form implicitly.
     /// </summary>
     public static readonly DiagnosticDescriptor RequireCannotFail = Descriptor(
-        "VM3101", "Require on a non-nullable value type has no effect",
-        "'{0}' is a non-nullable value type and can never be missing, so this rule can never " +
-        "fail. Constrain the value instead, or make the property nullable",
-        DiagnosticSeverity.Error);
+        "VM3101",
+        "Require on a non-nullable value type has no effect",
+        "'{0}' is a non-nullable value type and can never be missing, so this rule can never "
+            + "fail. Constrain the value instead, or make the property nullable",
+        DiagnosticSeverity.Error
+    );
 
     public static readonly DiagnosticDescriptor EnsureHasNoField = Descriptor(
-        "VM3102", "Ensure has no field",
-        "The condition in '{0}.Describe' reads no property of the subject, so the rule has no " +
-        "field to report against. Anchor it by reading the property it is about, or pass field:",
-        DiagnosticSeverity.Error);
+        "VM3102",
+        "Ensure has no field",
+        "The condition in '{0}.Describe' reads no property of the subject, so the rule has no "
+            + "field to report against. Anchor it by reading the property it is about, or pass field:",
+        DiagnosticSeverity.Error
+    );
 
     /// <summary>
     /// The code an <c>Ensure</c> derived, stated where the rule was written.
@@ -561,9 +677,12 @@ public static class ValidationDiagnostics {
     /// passed <c>code:</c>, since then the code is already in the source.
     /// </remarks>
     public static readonly DiagnosticDescriptor EnsureCodeDerived = Descriptor(
-        "VM3103", "Ensure derives its code from its condition",
-        "This rule reports code '{0}', derived from '{1}'. Pass code: to pin it against a change " +
-        "to the condition", DiagnosticSeverity.Info);
+        "VM3103",
+        "Ensure derives its code from its condition",
+        "This rule reports code '{0}', derived from '{1}'. Pass code: to pin it against a change "
+            + "to the condition",
+        DiagnosticSeverity.Info
+    );
 
     /// <summary>
     /// A rule value written as <c>x.Member.Value</c>. The rule methods take the nullable
@@ -578,56 +697,77 @@ public static class ValidationDiagnostics {
     /// spite. The diagnostic still fires so the source stops disagreeing with what is generated.
     /// </remarks>
     public static readonly DiagnosticDescriptor NullableValueUnwrapped = Descriptor(
-        "VM3104", "Drop .Value; the rule takes the nullable directly",
-        "'{0}.Value' unwraps a nullable member. The rule takes the nullable directly, and the " +
-        "field path is derived from the member - write '{0}'", DiagnosticSeverity.Warning);
+        "VM3104",
+        "Drop .Value; the rule takes the nullable directly",
+        "'{0}.Value' unwraps a nullable member. The rule takes the nullable directly, and the "
+            + "field path is derived from the member - write '{0}'",
+        DiagnosticSeverity.Warning
+    );
 
     /// <summary>
     /// A facet declared in this compilation with no rules at all would make <c>As</c> a silent
     /// no-op - the failure this library refuses everywhere else.
     /// </summary>
     public static readonly DiagnosticDescriptor FacetDeclaresNoRules = Descriptor(
-        "VM3105", "Facet declares no rules",
-        "'{0}' is validated as a facet here, but nothing in this compilation declares rules for " +
-        "it, so this would check nothing. Give the facet constraint attributes or a rules class",
-        DiagnosticSeverity.Error);
+        "VM3105",
+        "Facet declares no rules",
+        "'{0}' is validated as a facet here, but nothing in this compilation declares rules for "
+            + "it, so this would check nothing. Give the facet constraint attributes or a rules class",
+        DiagnosticSeverity.Error
+    );
 
     public static readonly DiagnosticDescriptor LanguagePackUnreadable = Descriptor(
-        "VM4001", "Language pack cannot be read",
-        "'{0}' was skipped: {1}", DiagnosticSeverity.Error);
+        "VM4001",
+        "Language pack cannot be read",
+        "'{0}' was skipped: {1}",
+        DiagnosticSeverity.Error
+    );
 
     public static readonly DiagnosticDescriptor LanguagePackUnknownShape = Descriptor(
-        "VM4002", "Language pack names an unknown shape key",
+        "VM4002",
+        "Language pack names an unknown shape key",
         "'{0}' in '{1}' names no known shape; the nearest is '{2}'. The entry was skipped",
-        DiagnosticSeverity.Warning);
+        DiagnosticSeverity.Warning
+    );
 
     public static readonly DiagnosticDescriptor LanguagePackHoleOutOfRange = Descriptor(
-        "VM4003", "Template hole exceeds the shape's arguments",
+        "VM4003",
+        "Template hole exceeds the shape's arguments",
         "'{0}' uses {{{1}}}, but the shape carries {2} argument(s); the entry in '{3}' was skipped",
-        DiagnosticSeverity.Error);
+        DiagnosticSeverity.Error
+    );
 
     public static readonly DiagnosticDescriptor LanguagePackDuplicateKey = Descriptor(
-        "VM4004", "Language pack repeats a key",
+        "VM4004",
+        "Language pack repeats a key",
         "'{0}' appears more than once in '{1}'; entries after the first were skipped",
-        DiagnosticSeverity.Error);
+        DiagnosticSeverity.Error
+    );
 
     public static readonly DiagnosticDescriptor LanguagePackNameMismatch = Descriptor(
-        "VM4005", "Language pack file name and culture disagree",
+        "VM4005",
+        "Language pack file name and culture disagree",
         "'{0}' is named for '{1}' but declares culture '{2}'; the body wins",
-        DiagnosticSeverity.Warning);
+        DiagnosticSeverity.Warning
+    );
 
     public static readonly DiagnosticDescriptor LanguagePackCoverage = Descriptor(
-        "VM4006", "Language pack coverage",
-        "'{0}' covers {1} of {2} shapes; missing: {3}", DiagnosticSeverity.Info);
+        "VM4006",
+        "Language pack coverage",
+        "'{0}' covers {1} of {2} shapes; missing: {3}",
+        DiagnosticSeverity.Info
+    );
 
     /// <summary>
     /// Reported before any source is added, so the build fails here rather than on generated code
     /// calling a runtime member that does not exist. Plan §7.5.
     /// </summary>
     public static readonly DiagnosticDescriptor RuntimeContractTooOld = Descriptor(
-        "VM5001", "ValidationModules.Runtime is too old",
+        "VM5001",
+        "ValidationModules.Runtime is too old",
         "The generated validators require ValidationModules.Runtime contract {0} or later; the referenced runtime is contract {1}. Update the ValidationModules.Runtime package reference.",
-        DiagnosticSeverity.Error);
+        DiagnosticSeverity.Error
+    );
 
     /// <summary>
     /// The backstop for the class of failure VM1502 fixes one instance of: any unhandled exception
@@ -642,10 +782,12 @@ public static class ValidationDiagnostics {
     /// fail the build instead of shipping as an assembly that validates nothing.
     /// </remarks>
     public static readonly DiagnosticDescriptor GeneratorFailed = Descriptor(
-        "VM5002", "The validator generator failed",
-        "Emitting {0} threw {1}: {2}. The build is failed so the missing generated source cannot " +
-        "ship silently; please report this",
-        DiagnosticSeverity.Error);
+        "VM5002",
+        "The validator generator failed",
+        "Emitting {0} threw {1}: {2}. The build is failed so the missing generated source cannot "
+            + "ship silently; please report this",
+        DiagnosticSeverity.Error
+    );
 
     /// <summary>
     /// <c>.Validate&lt;T&gt;()</c> naming a type this compilation declares and generates no
@@ -658,11 +800,12 @@ public static class ValidationDiagnostics {
     /// authority and this is the earlier, cheaper signal.
     /// </remarks>
     public static readonly DiagnosticDescriptor ValidateTargetHasNoValidator = Descriptor(
-        "VM5003", "Validate<T>() names a type with no validator",
-        "'{0}' has no constraints, no [GenerateValidator], and no rules class or hand-written " +
-        "validator in this compilation, so .Validate<{1}>() will fail when the endpoint is " +
-        "built. Add constraints or [GenerateValidator] - or, if its rules arrive from another " +
-        "assembly, ignore this and the startup check will agree",
-        DiagnosticSeverity.Warning);
-
+        "VM5003",
+        "Validate<T>() names a type with no validator",
+        "'{0}' has no constraints, no [GenerateValidator], and no rules class or hand-written "
+            + "validator in this compilation, so .Validate<{1}>() will fail when the endpoint is "
+            + "built. Add constraints or [GenerateValidator] - or, if its rules arrive from another "
+            + "assembly, ignore this and the startup check will agree",
+        DiagnosticSeverity.Warning
+    );
 }

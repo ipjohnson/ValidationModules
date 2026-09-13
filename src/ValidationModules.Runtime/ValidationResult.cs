@@ -13,10 +13,13 @@ namespace ValidationModules;
 /// makes the shared <see cref="Valid"/> instance safe.
 /// </para>
 /// </remarks>
-public sealed class ValidationResult {
-    private static readonly IReadOnlyList<ValidationError> NoErrors = new ReadOnlyCollection<ValidationError>([]);
+public sealed class ValidationResult
+{
+    private static readonly IReadOnlyList<ValidationError> NoErrors =
+        new ReadOnlyCollection<ValidationError>([]);
 
-    private ValidationResult(IReadOnlyList<ValidationError> errors) {
+    private ValidationResult(IReadOnlyList<ValidationError> errors)
+    {
         Errors = errors;
     }
 
@@ -34,10 +37,14 @@ public sealed class ValidationResult {
     /// Whether the value is acceptable: true when no failure carries
     /// <see cref="ValidationSeverity.Error"/>. Warnings and information do not invalidate.
     /// </summary>
-    public bool IsValid {
-        get {
-            for (var i = 0; i < Errors.Count; i++) {
-                if (Errors[i].Severity == ValidationSeverity.Error) {
+    public bool IsValid
+    {
+        get
+        {
+            for (var i = 0; i < Errors.Count; i++)
+            {
+                if (Errors[i].Severity == ValidationSeverity.Error)
+                {
                     return false;
                 }
             }
@@ -55,13 +62,16 @@ public sealed class ValidationResult {
     /// <summary>
     /// Creates a result from a sequence of failures. Returns <see cref="Valid"/> when empty.
     /// </summary>
-    public static ValidationResult FromErrors(IEnumerable<ValidationError> errors) {
+    public static ValidationResult FromErrors(IEnumerable<ValidationError> errors)
+    {
         ArgumentNullException.ThrowIfNull(errors);
 
         // Copied rather than wrapped: the caller may be a pooled collector that is about to Reset.
         var copy = new List<ValidationError>(errors);
 
-        return copy.Count == 0 ? Valid : new ValidationResult(new ReadOnlyCollection<ValidationError>(copy));
+        return copy.Count == 0
+            ? Valid
+            : new ValidationResult(new ReadOnlyCollection<ValidationError>(copy));
     }
 
     /// <summary>
@@ -87,14 +97,17 @@ public sealed class ValidationResult {
     /// precedence is deliberate: structural constraints must not silently disappear because
     /// someone registered a business rule.
     /// </remarks>
-    public ValidationResult Merge(ValidationResult other) {
+    public ValidationResult Merge(ValidationResult other)
+    {
         ArgumentNullException.ThrowIfNull(other);
 
-        if (!other.HasErrors) {
+        if (!other.HasErrors)
+        {
             return this;
         }
 
-        if (!HasErrors) {
+        if (!HasErrors)
+        {
             return other;
         }
 

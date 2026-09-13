@@ -6,7 +6,8 @@ namespace SutProject;
 /// The two shapes that used to emit C# which did not compile, kept as models rather than as golden
 /// files because the fault was never in the text - it was that the text did not build.
 /// </summary>
-public enum Tier {
+public enum Tier
+{
     Free,
     Pro,
     Enterprise,
@@ -17,7 +18,8 @@ public enum Tier {
 /// <c>TypedConstant.Value</c>, which holds the underlying <c>int</c>, so the emitted comparison was
 /// <c>value.Plan != 1</c> - CS0019 against an enum, with no diagnostic pointing at the cause.
 /// </summary>
-public sealed record Account {
+public sealed record Account
+{
     [AllowedValues(Tier.Pro, Tier.Enterprise)]
     public Tier Plan { get; init; }
 
@@ -31,7 +33,8 @@ public sealed record Account {
 /// generated validator exposed a less accessible type in <c>Validate</c>'s signature - CS0051, again
 /// inside generated code.
 /// </summary>
-internal sealed record InternalReading {
+internal sealed record InternalReading
+{
     [Required]
     public string? Label { get; init; }
 
@@ -40,8 +43,10 @@ internal sealed record InternalReading {
 }
 
 /// <summary>Public, but nested in an internal type, so internal in effect.</summary>
-internal static class Enclosing {
-    public sealed record Nested {
+internal static class Enclosing
+{
+    public sealed record Nested
+    {
         [Required]
         public string? Name { get; init; }
     }

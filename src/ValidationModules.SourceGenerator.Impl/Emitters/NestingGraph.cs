@@ -26,31 +26,37 @@ namespace ValidationModules.SourceGenerator.Impl.Emitters;
 /// collected at the emission site, so knowing this costs no incrementality.
 /// </para>
 /// </remarks>
-public sealed class NestingGraph {
-
+public sealed class NestingGraph
+{
     private readonly Dictionary<string, HashSet<string>> _reachable;
 
     private NestingGraph(Dictionary<string, HashSet<string>> reachable) => _reachable = reachable;
 
     /// <summary>The empty graph, for a caller with no model set to hand - golden tests, mostly.</summary>
-    public static NestingGraph Empty { get; } = new(new Dictionary<string, HashSet<string>>(StringComparer.Ordinal));
+    public static NestingGraph Empty { get; } =
+        new(new Dictionary<string, HashSet<string>>(StringComparer.Ordinal));
 
     /// <summary>
     /// Builds the transitive closure of the nesting edges between <paramref name="models"/>.
     /// </summary>
-    public static NestingGraph Build(IEnumerable<ValidatedTypeModel> models) {
+    public static NestingGraph Build(IEnumerable<ValidatedTypeModel> models)
+    {
         var edges = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
 
-        foreach (var model in models) {
+        foreach (var model in models)
+        {
             var from = NameOf(model);
 
-            if (!edges.TryGetValue(from, out var targets)) {
+            if (!edges.TryGetValue(from, out var targets))
+            {
                 targets = new HashSet<string>(StringComparer.Ordinal);
                 edges[from] = targets;
             }
 
-            foreach (var property in model.Properties) {
-                if (property.ElementValidatorName is { } to) {
+            foreach (var property in model.Properties)
+            {
+                if (property.ElementValidatorName is { } to)
+                {
                     targets.Add(to);
                 }
             }
@@ -58,7 +64,8 @@ public sealed class NestingGraph {
 
         var reachable = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
 
-        foreach (var node in edges.Keys) {
+        foreach (var node in edges.Keys)
+        {
             reachable[node] = Close(node, edges);
         }
 
@@ -70,24 +77,30 @@ public sealed class NestingGraph {
     /// recursion - the graph being walked is a cyclic one by assumption, and a generator that
     /// overflows its stack takes the compiler with it.
     /// </summary>
-    private static HashSet<string> Close(string start, Dictionary<string, HashSet<string>> edges) {
+    private static HashSet<string> Close(string start, Dictionary<string, HashSet<string>> edges)
+    {
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var pending = new Stack<string>();
 
-        if (edges.TryGetValue(start, out var first)) {
-            foreach (var target in first) {
+        if (edges.TryGetValue(start, out var first))
+        {
+            foreach (var target in first)
+            {
                 pending.Push(target);
             }
         }
 
-        while (pending.Count > 0) {
+        while (pending.Count > 0)
+        {
             var node = pending.Pop();
 
-            if (!seen.Add(node) || !edges.TryGetValue(node, out var next)) {
+            if (!seen.Add(node) || !edges.TryGetValue(node, out var next))
+            {
                 continue;
             }
 
-            foreach (var target in next) {
+            foreach (var target in next)
+            {
                 pending.Push(target);
             }
         }
@@ -99,15 +112,17 @@ public sealed class NestingGraph {
     /// Whether descending from <paramref name="model"/> into <paramref name="property"/> can arrive
     /// back at <paramref name="model"/>.
     /// </summary>
-    public bool DescentReturnsToDeclarer(ValidatedTypeModel model, ValidatedPropertyModel property) {
-        if (property.ElementValidatorName is not { } target) {
+    public bool DescentReturnsToDeclarer(ValidatedTypeModel model, ValidatedPropertyModel property)
+    {
+        if (property.ElementValidatorName is not { } target)
+        {
             return false;
         }
 
         var declarer = NameOf(model);
 
-        return target == declarer ||
-            (_reachable.TryGetValue(target, out var reachable) && reachable.Contains(declarer));
+        return target == declarer
+            || (_reachable.TryGetValue(target, out var reachable) && reachable.Contains(declarer));
     }
 
     /// <summary>

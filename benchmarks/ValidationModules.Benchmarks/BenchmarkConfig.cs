@@ -33,10 +33,11 @@ namespace ValidationModules.Benchmarks;
 /// and picks up AOT by that route.
 /// </para>
 /// </remarks>
-public static class BenchmarkConfig {
-
+public static class BenchmarkConfig
+{
     /// <summary>Both runtimes. Selected by <c>--runtime both</c>, and the default suite's default.</summary>
-    public static IConfig Create(bool quick = false) => Base().AddJob(Jit(quick)).AddJob(Aot(quick));
+    public static IConfig Create(bool quick = false) =>
+        Base().AddJob(Jit(quick)).AddJob(Aot(quick));
 
     /// <summary>
     /// The JIT job only. Selected by <c>--runtime jit</c>, and the fast path for a check that is
@@ -48,8 +49,8 @@ public static class BenchmarkConfig {
     public static IConfig CreateAotOnly(bool quick = false) => Base().AddJob(Aot(quick));
 
     private static IConfig Base() =>
-        DefaultConfig.Instance
-            .WithOrderer(new DefaultOrderer(SummaryOrderPolicy.Declared))
+        DefaultConfig
+            .Instance.WithOrderer(new DefaultOrderer(SummaryOrderPolicy.Declared))
             .HideColumns(Column.Job)
             .AddColumn(CategoriesColumn.Default);
 
@@ -87,7 +88,10 @@ public static class BenchmarkConfig {
     /// </remarks>
     private static Job Counts(Job job, bool quick) =>
         quick
-            ? job.WithWarmupCount(1).WithIterationCount(3).WithLaunchCount(1).WithIterationTime(IterationTime)
+            ? job.WithWarmupCount(1)
+                .WithIterationCount(3)
+                .WithLaunchCount(1)
+                .WithIterationTime(IterationTime)
             : job.WithWarmupCount(5).WithIterationCount(15).WithIterationTime(IterationTime);
 
     private static readonly TimeInterval IterationTime = TimeInterval.FromMilliseconds(100);

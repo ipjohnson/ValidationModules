@@ -9,9 +9,9 @@ than when the failure happened:
 var result = new PetValidator().Validate(new Pet());
 var error = result.Errors[0];
 
-Console.WriteLine(error.Field);      // name
-Console.WriteLine(error.Code);       // required
-Console.WriteLine(error.Message);    // name is required. (rendered by this read)
+Console.WriteLine(error.Field); // name
+Console.WriteLine(error.Code); // required
+Console.WriteLine(error.Message); // name is required. (rendered by this read)
 ```
 
 That ordering is the feature. A `ValidationResult` is in no language until a reader picks one, so
@@ -121,7 +121,7 @@ it to the read:
 <!-- verify:models -->
 ```csharp
 var services = new ServiceCollection()
-    .AddSampleValidators()          // your assembly's generated registration
+    .AddSampleValidators() // your assembly's generated registration
     .BuildServiceProvider();
 
 var validator = services.GetRequiredService<IValidatorFor<Pet>>();
@@ -129,8 +129,9 @@ var formatter = services.GetRequiredService<ValidationMessageFormatter>();
 
 var result = validator.Validate(new Pet());
 
-foreach (var error in result.Errors) {
-    Console.WriteLine(error.ToMessage(formatter));   // rendered in CurrentUICulture
+foreach (var error in result.Errors)
+{
+    Console.WriteLine(error.ToMessage(formatter)); // rendered in CurrentUICulture
 }
 ```
 
@@ -145,13 +146,22 @@ and everything else keeps its default. Each entry is a `ValidationMessageMap.Mes
 plain C# over the error:
 
 ```csharp
-public static class FrenchMessages {
+public static class FrenchMessages
+{
     public static readonly ValidationMessageFormatter Instance = new ValidationMessageMap()
-        .Map(ValidationCodes.Required,     static (in ValidationError e) => $"{e.Field} est obligatoire.")
-        .Map(ValidationCodes.StringLength, static (in ValidationError e) =>
-            $"{e.Field} doit contenir entre {e.MessageInfo!.Args[0]} et {e.MessageInfo.Args[1]} caractères.")
-        .Map("date_order",                 static (in ValidationError _) =>
-            "la date de fin doit suivre la date de début.");
+        .Map(
+            ValidationCodes.Required,
+            static (in ValidationError e) => $"{e.Field} est obligatoire."
+        )
+        .Map(
+            ValidationCodes.StringLength,
+            static (in ValidationError e) =>
+                $"{e.Field} doit contenir entre {e.MessageInfo!.Args[0]} et {e.MessageInfo.Args[1]} caractères."
+        )
+        .Map(
+            "date_order",
+            static (in ValidationError _) => "la date de fin doit suivre la date de début."
+        );
 }
 ```
 
@@ -172,7 +182,8 @@ error.ToMessage(FrenchMessages.Instance);
 
 // The HTTP boundary: the errors object localises per request, the codes stay put:
 builder.Services.AddValidationProblemDetails(options =>
-    options.MessageFormatter = FrenchMessages.Instance);
+    options.MessageFormatter = FrenchMessages.Instance
+);
 ```
 
 Setting `ValidationProblemOptions.MessageFormatter` is optional when a language pack is
@@ -203,11 +214,14 @@ may, which makes echoing a value an explicit decision at a named place:
 
 ```csharp
 // Development only: messages that name the offending value.
-if (builder.Environment.IsDevelopment()) {
+if (builder.Environment.IsDevelopment())
+{
     builder.Services.AddValidationProblemDetails(options =>
-        options.MessageFormatter = new ValidationMessageMap()
-            .Map(ValidationCodes.Pattern, static (in ValidationError e) =>
-                $"'{e.Value}' is not in the required format."));
+        options.MessageFormatter = new ValidationMessageMap().Map(
+            ValidationCodes.Pattern,
+            static (in ValidationError e) => $"'{e.Value}' is not in the required format."
+        )
+    );
 }
 ```
 

@@ -23,8 +23,8 @@ namespace ValidationModules;
 /// before. Removing or changing a member is not covered by a bump - the surface is additive-only.
 /// </para>
 /// </remarks>
-public static class RuntimeContract {
-
+public static class RuntimeContract
+{
     // 1 -> 2: the emitter began calling NestedValidation.ValidateRegistered after every nested
     // descent, so that a validator registered for the nested type composes the same way one
     // registered for the top-level type always has. A runtime at contract 1 has no such method, and

@@ -30,8 +30,8 @@ namespace ValidationModules.Benchmarks;
 /// and <c>--list</c> behave exactly as documented upstream.
 /// </para>
 /// </remarks>
-public static class BenchmarkArguments {
-
+public static class BenchmarkArguments
+{
     private const string RuntimeSwitch = "--runtime";
     private const string QuickSwitch = "--quick";
 
@@ -45,24 +45,35 @@ public static class BenchmarkArguments {
     /// a third-party engine through ILC on every run is a poor trade for a number that only moves
     /// when that engine does.
     /// </param>
-    public static (IConfig Config, string[] Forwarded) Parse(string[] args, bool defaultToJitOnly = false) {
+    public static (IConfig Config, string[] Forwarded) Parse(
+        string[] args,
+        bool defaultToJitOnly = false
+    )
+    {
         var selection = defaultToJitOnly ? "jit" : "both";
         var quick = false;
         var forwarded = new List<string>(args.Length);
 
-        for (var i = 0; i < args.Length; i++) {
+        for (var i = 0; i < args.Length; i++)
+        {
             // Both spellings, because a reader who has seen --filter=x will write --runtime=jit.
-            if (args[i].StartsWith(RuntimeSwitch + "=", StringComparison.OrdinalIgnoreCase)) {
+            if (args[i].StartsWith(RuntimeSwitch + "=", StringComparison.OrdinalIgnoreCase))
+            {
                 selection = args[i][(RuntimeSwitch.Length + 1)..];
                 continue;
             }
 
-            if (string.Equals(args[i], RuntimeSwitch, StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length) {
+            if (
+                string.Equals(args[i], RuntimeSwitch, StringComparison.OrdinalIgnoreCase)
+                && i + 1 < args.Length
+            )
+            {
                 selection = args[++i];
                 continue;
             }
 
-            if (string.Equals(args[i], QuickSwitch, StringComparison.OrdinalIgnoreCase)) {
+            if (string.Equals(args[i], QuickSwitch, StringComparison.OrdinalIgnoreCase))
+            {
                 quick = true;
                 continue;
             }
@@ -73,11 +84,15 @@ public static class BenchmarkArguments {
         return (Select(selection, quick), forwarded.ToArray());
     }
 
-    private static IConfig Select(string selection, bool quick) => selection.ToLowerInvariant() switch {
-        "jit" => BenchmarkConfig.CreateJitOnly(quick),
-        "aot" => BenchmarkConfig.CreateAotOnly(quick),
-        "both" => BenchmarkConfig.Create(quick),
-        _ => throw new ArgumentException(
-            $"--runtime must be jit, aot or both; got '{selection}'.", nameof(selection)),
-    };
+    private static IConfig Select(string selection, bool quick) =>
+        selection.ToLowerInvariant() switch
+        {
+            "jit" => BenchmarkConfig.CreateJitOnly(quick),
+            "aot" => BenchmarkConfig.CreateAotOnly(quick),
+            "both" => BenchmarkConfig.Create(quick),
+            _ => throw new ArgumentException(
+                $"--runtime must be jit, aot or both; got '{selection}'.",
+                nameof(selection)
+            ),
+        };
 }

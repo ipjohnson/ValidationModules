@@ -24,9 +24,10 @@ namespace ValidationModules.Constraints;
 [AttributeUsage(
     AttributeTargets.Property | AttributeTargets.Field | AttributeTargets.Parameter,
     AllowMultiple = true,
-    Inherited = true)]
-public abstract class ValidationConstraintAttribute : Attribute {
-
+    Inherited = true
+)]
+public abstract class ValidationConstraintAttribute : Attribute
+{
     /// <summary>
     /// Overrides the machine-readable code this constraint emits. Defaults to the constraint's own
     /// code - <c>required</c>, <c>string_length</c>, and so on.

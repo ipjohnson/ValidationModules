@@ -31,14 +31,16 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// single bound, so they have nothing to reconcile and are unaffected.
 /// </para>
 /// </remarks>
-public class RangeBoundLiteralTypeTests {
-
+public class RangeBoundLiteralTypeTests
+{
     /// <summary>
     /// The reported case: 0 is int, 4294967295 is uint, and ReportRange needs them to agree.
     /// </summary>
     [Fact]
-    public void Generate_BoundsStraddlingIntAndUInt_EmitsCompilableCode() {
-        var result = GeneratorHarness.Run("""
+    public void Generate_BoundsStraddlingIntAndUInt_EmitsCompilableCode()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Api;
@@ -47,14 +49,17 @@ public class RangeBoundLiteralTypeTests {
                 [Range(0, 4294967295)]
                 public long IndexDiveLimit { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
-    public void Generate_BoundsStraddlingIntAndUInt_OnANullableMember_EmitsCompilableCode() {
-        var result = GeneratorHarness.Run("""
+    public void Generate_BoundsStraddlingIntAndUInt_OnANullableMember_EmitsCompilableCode()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Api;
@@ -63,7 +68,8 @@ public class RangeBoundLiteralTypeTests {
                 [Range(0, 4294967295)]
                 public long? IndexDiveLimit { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
     }
@@ -81,8 +87,10 @@ public class RangeBoundLiteralTypeTests {
     [InlineData("0", "5000000000")]
     [InlineData("0", "9223372036854775807")]
     [InlineData("-1", "4294967295")]
-    public void Generate_MixedWidthIntegralBounds_EmitCompilableCode(string min, string max) {
-        var result = GeneratorHarness.Run($$"""
+    public void Generate_MixedWidthIntegralBounds_EmitCompilableCode(string min, string max)
+    {
+        var result = GeneratorHarness.Run(
+            $$"""
             using ValidationModules.Constraints;
 
             namespace Api;
@@ -91,7 +99,8 @@ public class RangeBoundLiteralTypeTests {
                 [Range({{min}}, {{max}})]
                 public long Value { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
     }
@@ -101,8 +110,10 @@ public class RangeBoundLiteralTypeTests {
     /// widens both bounds to double happily; the report call still has to pick one T.
     /// </summary>
     [Fact]
-    public void Generate_MixedWidthBoundsOnADoubleMember_EmitsCompilableCode() {
-        var result = GeneratorHarness.Run("""
+    public void Generate_MixedWidthBoundsOnADoubleMember_EmitsCompilableCode()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Api;
@@ -111,7 +122,8 @@ public class RangeBoundLiteralTypeTests {
                 [Range(0, 4294967295)]
                 public double Ratio { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
     }
@@ -120,8 +132,10 @@ public class RangeBoundLiteralTypeTests {
     /// The ordinary case, which must keep working and must keep reading as it did.
     /// </summary>
     [Fact]
-    public void Generate_TwoIntBounds_AreUnchanged() {
-        var result = GeneratorHarness.Run("""
+    public void Generate_TwoIntBounds_AreUnchanged()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Api;
@@ -130,10 +144,14 @@ public class RangeBoundLiteralTypeTests {
                 [Range(0, 23)]
                 public int Hour { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
-        Assert.Contains("new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.RangeBetween, 0, 23)", result.Sources["Api.LimitsValidator.g.cs"]);
+        Assert.Contains(
+            "new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.RangeBetween, 0, 23)",
+            result.Sources["Api.LimitsValidator.g.cs"]
+        );
     }
 
     /// <summary>
@@ -141,8 +159,10 @@ public class RangeBoundLiteralTypeTests {
     /// would have been read as on its own.
     /// </summary>
     [Fact]
-    public void Generate_MixedWidthBounds_SuffixBothBoundsToTheMembersType() {
-        var result = GeneratorHarness.Run("""
+    public void Generate_MixedWidthBounds_SuffixBothBoundsToTheMembersType()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Api;
@@ -151,12 +171,16 @@ public class RangeBoundLiteralTypeTests {
                 [Range(0, 4294967295)]
                 public long IndexDiveLimit { get; init; }
             }
-            """);
+            """
+        );
 
         var source = result.Sources["Api.LimitsValidator.g.cs"];
 
         Assert.Empty(result.CompilationErrors);
-        Assert.Contains("new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.RangeBetween, 0L, 4294967295L)", source);
+        Assert.Contains(
+            "new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.RangeBetween, 0L, 4294967295L)",
+            source
+        );
     }
 
     /// <summary>
@@ -164,8 +188,10 @@ public class RangeBoundLiteralTypeTests {
     /// carry <c>m</c> or the comparison itself fails, because C# has no implicit double-to-decimal.
     /// </summary>
     [Fact]
-    public void Generate_DecimalMemberWithIntegralBounds_StillRedenominates() {
-        var result = GeneratorHarness.Run("""
+    public void Generate_DecimalMemberWithIntegralBounds_StillRedenominates()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Api;
@@ -174,7 +200,8 @@ public class RangeBoundLiteralTypeTests {
                 [Range(0, 4294967295)]
                 public decimal Amount { get; init; }
             }
-            """);
+            """
+        );
 
         var source = result.Sources["Api.MoneyValidator.g.cs"];
 
@@ -188,8 +215,10 @@ public class RangeBoundLiteralTypeTests {
     /// something uncompilable - the guard Redenominate already had, kept for the widened path.
     /// </summary>
     [Fact]
-    public void Generate_NonFiniteBoundOnADecimalMember_IsReportedNotEmitted() {
-        var result = GeneratorHarness.Run("""
+    public void Generate_NonFiniteBoundOnADecimalMember_IsReportedNotEmitted()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Api;
@@ -198,7 +227,8 @@ public class RangeBoundLiteralTypeTests {
                 [Range(0, double.PositiveInfinity)]
                 public decimal Amount { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
         Assert.Contains(result.Diagnostics, d => d.Id == "VM1103");
@@ -211,8 +241,12 @@ public class RangeBoundLiteralTypeTests {
     [InlineData("float", "f")]
     [InlineData("double", "")]
     public void Generate_FractionalMemberWithMixedWidthBounds_EmitsCompilableCode(
-        string memberType, string _) {
-        var result = GeneratorHarness.Run($$"""
+        string memberType,
+        string _
+    )
+    {
+        var result = GeneratorHarness.Run(
+            $$"""
             using ValidationModules.Constraints;
 
             namespace Api;
@@ -221,7 +255,8 @@ public class RangeBoundLiteralTypeTests {
                 [Range(0, 4294967295)]
                 public {{memberType}} Value { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
     }

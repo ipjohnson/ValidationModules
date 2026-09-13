@@ -12,8 +12,8 @@ namespace ValidationModules.SourceGenerator.Impl.FrontEnds;
 /// The attribute is never constructed and <c>IsValid</c> is never called - its arguments are read
 /// out of metadata and compiled. Two DataAnnotations behaviours are deliberately not reproduced.
 /// </remarks>
-public static class DataAnnotationsConstraintReader {
-
+public static class DataAnnotationsConstraintReader
+{
     /// <param name="Constraint">The constraint read, when the attribute maps to one.</param>
     /// <param name="Diagnostic">A diagnostic to report beside it, when there is news.</param>
     /// <param name="Detail">
@@ -23,17 +23,32 @@ public static class DataAnnotationsConstraintReader {
     /// ignores.
     /// </param>
     public readonly record struct Outcome(
-        ConstraintModel? Constraint, DiagnosticDescriptor? Diagnostic, string? Detail = null);
+        ConstraintModel? Constraint,
+        DiagnosticDescriptor? Diagnostic,
+        string? Detail = null
+    );
 
-    private static readonly string[] Constraints = {
-        "RequiredAttribute", "StringLengthAttribute", "LengthAttribute", "MinLengthAttribute",
-        "MaxLengthAttribute", "RangeAttribute", "RegularExpressionAttribute",
-        "AllowedValuesAttribute", "DeniedValuesAttribute",
+    private static readonly string[] Constraints =
+    {
+        "RequiredAttribute",
+        "StringLengthAttribute",
+        "LengthAttribute",
+        "MinLengthAttribute",
+        "MaxLengthAttribute",
+        "RangeAttribute",
+        "RegularExpressionAttribute",
+        "AllowedValuesAttribute",
+        "DeniedValuesAttribute",
     };
 
-    private static readonly string[] FormatValidators = {
-        "EmailAddressAttribute", "PhoneAttribute", "UrlAttribute", "CreditCardAttribute",
-        "Base64StringAttribute", "FileExtensionsAttribute",
+    private static readonly string[] FormatValidators =
+    {
+        "EmailAddressAttribute",
+        "PhoneAttribute",
+        "UrlAttribute",
+        "CreditCardAttribute",
+        "Base64StringAttribute",
+        "FileExtensionsAttribute",
     };
 
     /// <summary>
@@ -48,46 +63,81 @@ public static class DataAnnotationsConstraintReader {
     /// VM2001 under Ignore, and VM1008 on a record parameter.
     /// </summary>
     public static bool IsConstraint(string attributeName) =>
-        Array.IndexOf(Constraints, attributeName) >= 0 ||
-        Array.IndexOf(FormatValidators, attributeName) >= 0;
+        Array.IndexOf(Constraints, attributeName) >= 0
+        || Array.IndexOf(FormatValidators, attributeName) >= 0;
 
-    public static Outcome Read(AttributeData attribute, string attributeName, ITypeSymbol memberType) =>
-        FinishMessage(ReadCore(attribute, attributeName, memberType), attribute, attributeName);
+    public static Outcome Read(
+        AttributeData attribute,
+        string attributeName,
+        ITypeSymbol memberType
+    ) => FinishMessage(ReadCore(attribute, attributeName, memberType), attribute, attributeName);
 
-    private static Outcome ReadCore(AttributeData attribute, string attributeName, ITypeSymbol memberType) {
-        switch (attributeName) {
+    private static Outcome ReadCore(
+        AttributeData attribute,
+        string attributeName,
+        ITypeSymbol memberType
+    )
+    {
+        switch (attributeName)
+        {
             case "RequiredAttribute":
                 return new Outcome(
                     new ConstraintModel(
                         ConstraintKind.Required,
                         Message: NativeConstraintReader.Named(attribute, "ErrorMessage") as string,
-                        AllowEmptyStrings: NativeConstraintReader.Named(attribute, "AllowEmptyStrings") is bool allow && allow),
-                    null);
+                        AllowEmptyStrings: NativeConstraintReader.Named(
+                            attribute,
+                            "AllowEmptyStrings"
+                        )
+                            is bool allow
+                            && allow
+                    ),
+                    null
+                );
 
-            case "StringLengthAttribute": {
+            case "StringLengthAttribute":
+            {
                 var max = First(attribute) ?? int.MaxValue.ToString();
-                var min = NativeConstraintReader.Named(attribute, "MinimumLength") is int m ? m.ToString() : "0";
+                var min = NativeConstraintReader.Named(attribute, "MinimumLength") is int m
+                    ? m.ToString()
+                    : "0";
                 return new Outcome(Bounded(ConstraintKind.StringLength, attribute, min, max), null);
             }
 
-            case "LengthAttribute": {
+            case "LengthAttribute":
+            {
                 var args = attribute.ConstructorArguments;
                 var min = args.Length > 0 ? NativeConstraintReader.Literal(args[0]) : "0";
-                var max = args.Length > 1 ? NativeConstraintReader.Literal(args[1]) : int.MaxValue.ToString();
+                var max =
+                    args.Length > 1
+                        ? NativeConstraintReader.Literal(args[1])
+                        : int.MaxValue.ToString();
                 return Sized(attribute, memberType, min, max);
             }
 
             // Both apply to strings and to collections in DataAnnotations, so the member's type
             // decides which constraint this becomes. A member that is neither is VM2005.
             case "MinLengthAttribute":
-                return Sized(attribute, memberType, First(attribute) ?? "0", int.MaxValue.ToString());
+                return Sized(
+                    attribute,
+                    memberType,
+                    First(attribute) ?? "0",
+                    int.MaxValue.ToString()
+                );
 
             case "MaxLengthAttribute":
-                return Sized(attribute, memberType, "0", First(attribute) ?? int.MaxValue.ToString());
+                return Sized(
+                    attribute,
+                    memberType,
+                    "0",
+                    First(attribute) ?? int.MaxValue.ToString()
+                );
 
-            case "RangeAttribute": {
+            case "RangeAttribute":
+            {
                 var args = attribute.ConstructorArguments;
-                if (args.Length < 2) {
+                if (args.Length < 2)
+                {
                     return default;
                 }
 
@@ -100,14 +150,24 @@ public static class DataAnnotationsConstraintReader {
                         Message: NativeConstraintReader.Named(attribute, "ErrorMessage") as string,
                         Min: NativeConstraintReader.Literal(args[minIndex]),
                         Max: NativeConstraintReader.Literal(args[minIndex + 1]),
-                        ExclusiveMin: NativeConstraintReader.Named(attribute, "MinimumIsExclusive") is bool exMin && exMin,
-                        ExclusiveMax: NativeConstraintReader.Named(attribute, "MaximumIsExclusive") is bool exMax && exMax),
-                    null);
+                        ExclusiveMin: NativeConstraintReader.Named(attribute, "MinimumIsExclusive")
+                            is bool exMin
+                            && exMin,
+                        ExclusiveMax: NativeConstraintReader.Named(attribute, "MaximumIsExclusive")
+                            is bool exMax
+                            && exMax
+                    ),
+                    null
+                );
             }
 
-            case "RegularExpressionAttribute": {
-                if (attribute.ConstructorArguments.Length != 1 ||
-                    attribute.ConstructorArguments[0].Value is not string pattern) {
+            case "RegularExpressionAttribute":
+            {
+                if (
+                    attribute.ConstructorArguments.Length != 1
+                    || attribute.ConstructorArguments[0].Value is not string pattern
+                )
+                {
                     return default;
                 }
 
@@ -119,24 +179,33 @@ public static class DataAnnotationsConstraintReader {
                         ConstraintKind.Pattern,
                         Message: NativeConstraintReader.Named(attribute, "ErrorMessage") as string,
                         Pattern: pattern,
-                        Anchored: true),
-                    null);
+                        Anchored: true
+                    ),
+                    null
+                );
             }
 
             case "AllowedValuesAttribute":
-            case "DeniedValuesAttribute": {
-                var values = attribute.ConstructorArguments.Length == 1 &&
-                             attribute.ConstructorArguments[0].Kind == TypedConstantKind.Array
-                    ? attribute.ConstructorArguments[0].Values.Select(NativeConstraintReader.Literal).ToImmutableArray()
-                    : ImmutableArray<string>.Empty;
+            case "DeniedValuesAttribute":
+            {
+                var values =
+                    attribute.ConstructorArguments.Length == 1
+                    && attribute.ConstructorArguments[0].Kind == TypedConstantKind.Array
+                        ? attribute
+                            .ConstructorArguments[0]
+                            .Values.Select(NativeConstraintReader.Literal)
+                            .ToImmutableArray()
+                        : ImmutableArray<string>.Empty;
 
                 return new Outcome(
                     new ConstraintModel(
                         ConstraintKind.AllowedValues,
                         Message: NativeConstraintReader.Named(attribute, "ErrorMessage") as string,
                         Values: new EquatableArray<string>(values),
-                        Negated: attributeName == "DeniedValuesAttribute"),
-                    null);
+                        Negated: attributeName == "DeniedValuesAttribute"
+                    ),
+                    null
+                );
             }
 
             case "CompareAttribute":
@@ -157,46 +226,75 @@ public static class DataAnnotationsConstraintReader {
             // exactly what was emitted, because the checks are looser than the attribute names
             // suggest and an author who wants more should hear it where they typed the attribute.
             case "EmailAddressAttribute":
-                return Format(ConstraintKind.Email, attribute, memberType,
-                    "the value must contain exactly one '@', neither first nor last, and no line " +
-                    "breaks - 'a@b' passes, as RFC 5322 permits");
+                return Format(
+                    ConstraintKind.Email,
+                    attribute,
+                    memberType,
+                    "the value must contain exactly one '@', neither first nor last, and no line "
+                        + "breaks - 'a@b' passes, as RFC 5322 permits"
+                );
 
             case "PhoneAttribute":
-                return Format(ConstraintKind.Phone, attribute, memberType,
-                    "'+' signs are stripped, a trailing extension ('ext.', 'ext' or 'x' plus " +
-                    "digits) is removed, and what remains must contain a digit and only digits, " +
-                    "whitespace and '-.()'");
+                return Format(
+                    ConstraintKind.Phone,
+                    attribute,
+                    memberType,
+                    "'+' signs are stripped, a trailing extension ('ext.', 'ext' or 'x' plus "
+                        + "digits) is removed, and what remains must contain a digit and only digits, "
+                        + "whitespace and '-.()'"
+                );
 
             case "UrlAttribute":
-                return Format(ConstraintKind.Url, attribute, memberType,
+                return Format(
+                    ConstraintKind.Url,
+                    attribute,
+                    memberType,
                     IsUri(memberType)
                         ? "the Uri must be absolute with scheme http, https or ftp"
-                        : "the value must start with 'http://', 'https://' or 'ftp://' " +
-                          "(case-insensitive); nothing past the prefix is checked");
+                        : "the value must start with 'http://', 'https://' or 'ftp://' "
+                            + "(case-insensitive); nothing past the prefix is checked"
+                );
 
             case "CreditCardAttribute":
-                return Format(ConstraintKind.CreditCard, attribute, memberType,
-                    "the digits (spaces and dashes allowed) must pass the Luhn mod-10 checksum");
+                return Format(
+                    ConstraintKind.CreditCard,
+                    attribute,
+                    memberType,
+                    "the digits (spaces and dashes allowed) must pass the Luhn mod-10 checksum"
+                );
 
             case "Base64StringAttribute":
-                return Format(ConstraintKind.Base64, attribute, memberType,
-                    "the value must be well-formed Base64, as Convert.FromBase64String reads it");
+                return Format(
+                    ConstraintKind.Base64,
+                    attribute,
+                    memberType,
+                    "the value must be well-formed Base64, as Convert.FromBase64String reads it"
+                );
 
-            case "FileExtensionsAttribute": {
+            case "FileExtensionsAttribute":
+            {
                 var extensions = NormalizedFileExtensions(
-                    NativeConstraintReader.Named(attribute, "Extensions") as string);
+                    NativeConstraintReader.Named(attribute, "Extensions") as string
+                );
 
                 var constraint = new ConstraintModel(
                     ConstraintKind.FileExtension,
                     Message: NativeConstraintReader.Named(attribute, "ErrorMessage") as string,
                     Values: new EquatableArray<string>(
-                        extensions.Select(e => SymbolDisplay.FormatLiteral(e, quote: true)).ToImmutableArray()),
-                    ValueDisplays: new EquatableArray<string>(extensions));
+                        extensions
+                            .Select(e => SymbolDisplay.FormatLiteral(e, quote: true))
+                            .ToImmutableArray()
+                    ),
+                    ValueDisplays: new EquatableArray<string>(extensions)
+                );
 
                 return memberType.SpecialType == SpecialType.System_String
-                    ? new Outcome(constraint, ValidationDiagnostics.FormatValidatorCompiled,
-                        "the file name's extension must be one of " +
-                        $"{string.Join(", ", extensions)} (case-insensitive)")
+                    ? new Outcome(
+                        constraint,
+                        ValidationDiagnostics.FormatValidatorCompiled,
+                        "the file name's extension must be one of "
+                            + $"{string.Join(", ", extensions)} (case-insensitive)"
+                    )
                     : new Outcome(constraint, null);
             }
 
@@ -228,13 +326,20 @@ public static class DataAnnotationsConstraintReader {
     /// over the error.
     /// </summary>
     private static Outcome Format(
-        ConstraintKind kind, AttributeData attribute, ITypeSymbol memberType, string semantics) {
-
+        ConstraintKind kind,
+        AttributeData attribute,
+        ITypeSymbol memberType,
+        string semantics
+    )
+    {
         var constraint = new ConstraintModel(
-            kind, Message: NativeConstraintReader.Named(attribute, "ErrorMessage") as string);
+            kind,
+            Message: NativeConstraintReader.Named(attribute, "ErrorMessage") as string
+        );
 
-        var fits = memberType.SpecialType == SpecialType.System_String ||
-            (kind == ConstraintKind.Url && IsUri(memberType));
+        var fits =
+            memberType.SpecialType == SpecialType.System_String
+            || (kind == ConstraintKind.Url && IsUri(memberType));
 
         return fits
             ? new Outcome(constraint, ValidationDiagnostics.FormatValidatorCompiled, semantics)
@@ -246,10 +351,13 @@ public static class DataAnnotationsConstraintReader {
     /// <c>ToDisplayString</c> would not.
     /// </summary>
     internal static bool IsUri(ITypeSymbol type) =>
-        type is INamedTypeSymbol {
-            Name: "Uri",
-            ContainingNamespace: { Name: "System", ContainingNamespace.IsGlobalNamespace: true },
-        };
+        type
+            is INamedTypeSymbol
+            {
+                Name: "Uri",
+                ContainingNamespace:
+                { Name: "System", ContainingNamespace.IsGlobalNamespace: true },
+            };
 
     /// <summary>
     /// Resolves <c>[CustomValidation(typeof(T), "Method")]</c> to the static method the emitter
@@ -263,53 +371,91 @@ public static class DataAnnotationsConstraintReader {
     /// string-conversion fallback <c>CustomValidationAttribute</c> performs is a conversion this
     /// library will not do silently.
     /// </remarks>
-    private static Outcome CustomValidation(AttributeData attribute, ITypeSymbol memberType) {
+    private static Outcome CustomValidation(AttributeData attribute, ITypeSymbol memberType)
+    {
         var args = attribute.ConstructorArguments;
 
-        if (args.Length != 2 ||
-            args[0].Value is not INamedTypeSymbol provider ||
-            args[1].Value is not string methodName) {
-            return new Outcome(null, ValidationDiagnostics.CustomValidationTargetUnusable,
-                "its arguments are not a validator type and a method name");
+        if (
+            args.Length != 2
+            || args[0].Value is not INamedTypeSymbol provider
+            || args[1].Value is not string methodName
+        )
+        {
+            return new Outcome(
+                null,
+                ValidationDiagnostics.CustomValidationTargetUnusable,
+                "its arguments are not a validator type and a method name"
+            );
         }
 
         IMethodSymbol? candidate = null;
 
-        foreach (var member in provider.GetMembers(methodName)) {
-            if (member is IMethodSymbol { IsStatic: true, DeclaredAccessibility: Accessibility.Public } method &&
-                method.Parameters.Length is 1 or 2) {
+        foreach (var member in provider.GetMembers(methodName))
+        {
+            if (
+                member
+                    is IMethodSymbol
+                    {
+                        IsStatic: true,
+                        DeclaredAccessibility: Accessibility.Public
+                    } method
+                && method.Parameters.Length is 1 or 2
+            )
+            {
                 candidate = method;
                 break;
             }
         }
 
-        if (candidate is null) {
-            return new Outcome(null, ValidationDiagnostics.CustomValidationTargetUnusable,
-                $"'{provider.ToDisplayString()}.{methodName}' is not a public static method " +
-                "taking one or two parameters");
+        if (candidate is null)
+        {
+            return new Outcome(
+                null,
+                ValidationDiagnostics.CustomValidationTargetUnusable,
+                $"'{provider.ToDisplayString()}.{methodName}' is not a public static method "
+                    + "taking one or two parameters"
+            );
         }
 
-        if (candidate.ReturnType.ToDisplayString() is not
-            ("System.ComponentModel.DataAnnotations.ValidationResult"
-            or "System.ComponentModel.DataAnnotations.ValidationResult?")) {
-            return new Outcome(null, ValidationDiagnostics.CustomValidationTargetUnusable,
-                $"'{provider.ToDisplayString()}.{methodName}' does not return ValidationResult");
+        if (
+            candidate.ReturnType.ToDisplayString()
+            is not (
+                "System.ComponentModel.DataAnnotations.ValidationResult"
+                or "System.ComponentModel.DataAnnotations.ValidationResult?"
+            )
+        )
+        {
+            return new Outcome(
+                null,
+                ValidationDiagnostics.CustomValidationTargetUnusable,
+                $"'{provider.ToDisplayString()}.{methodName}' does not return ValidationResult"
+            );
         }
 
-        if (candidate.Parameters.Length == 2 &&
-            candidate.Parameters[1].Type.ToDisplayString() !=
-                "System.ComponentModel.DataAnnotations.ValidationContext") {
-            return new Outcome(null, ValidationDiagnostics.CustomValidationTargetUnusable,
-                $"'{provider.ToDisplayString()}.{methodName}' has a second parameter that is not " +
-                "a ValidationContext");
+        if (
+            candidate.Parameters.Length == 2
+            && candidate.Parameters[1].Type.ToDisplayString()
+                != "System.ComponentModel.DataAnnotations.ValidationContext"
+        )
+        {
+            return new Outcome(
+                null,
+                ValidationDiagnostics.CustomValidationTargetUnusable,
+                $"'{provider.ToDisplayString()}.{methodName}' has a second parameter that is not "
+                    + "a ValidationContext"
+            );
         }
 
-        if (!Accepts(candidate.Parameters[0].Type, memberType)) {
-            return new Outcome(null, ValidationDiagnostics.CustomValidationTargetUnusable,
-                $"'{provider.ToDisplayString()}.{methodName}' takes " +
-                $"'{candidate.Parameters[0].Type.ToDisplayString()}', which cannot accept this " +
-                "member without DataAnnotations' runtime string conversion; take the member's " +
-                "type, or object");
+        if (!Accepts(candidate.Parameters[0].Type, memberType))
+        {
+            return new Outcome(
+                null,
+                ValidationDiagnostics.CustomValidationTargetUnusable,
+                $"'{provider.ToDisplayString()}.{methodName}' takes "
+                    + $"'{candidate.Parameters[0].Type.ToDisplayString()}', which cannot accept this "
+                    + "member without DataAnnotations' runtime string conversion; take the member's "
+                    + "type, or object"
+            );
         }
 
         var qualified = provider.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
@@ -318,8 +464,10 @@ public static class DataAnnotationsConstraintReader {
             new ConstraintModel(
                 ConstraintKind.CustomValidationMethod,
                 CustomAccessor: $"{qualified}.{methodName}",
-                CustomTakesContext: candidate.Parameters.Length == 2),
-            null);
+                CustomTakesContext: candidate.Parameters.Length == 2
+            ),
+            null
+        );
     }
 
     /// <summary>
@@ -329,21 +477,27 @@ public static class DataAnnotationsConstraintReader {
     /// <c>object</c>, never bare <c>int</c>, because the emitted call passes the property straight
     /// through and has no null to hide.
     /// </summary>
-    private static bool Accepts(ITypeSymbol parameter, ITypeSymbol memberType) {
-        if (parameter.SpecialType == SpecialType.System_Object) {
+    private static bool Accepts(ITypeSymbol parameter, ITypeSymbol memberType)
+    {
+        if (parameter.SpecialType == SpecialType.System_Object)
+        {
             return true;
         }
 
         var comparer = SymbolEqualityComparer.Default;
 
-        for (ITypeSymbol? current = memberType; current is not null; current = current.BaseType) {
-            if (comparer.Equals(parameter, current)) {
+        for (ITypeSymbol? current = memberType; current is not null; current = current.BaseType)
+        {
+            if (comparer.Equals(parameter, current))
+            {
                 return true;
             }
         }
 
-        foreach (var contract in memberType.AllInterfaces) {
-            if (comparer.Equals(parameter, contract)) {
+        foreach (var contract in memberType.AllInterfaces)
+        {
+            if (comparer.Equals(parameter, contract))
+            {
                 return true;
             }
         }
@@ -351,23 +505,42 @@ public static class DataAnnotationsConstraintReader {
         return false;
     }
 
-    private static Outcome Sized(AttributeData attribute, ITypeSymbol memberType, string min, string max) {
-        if (memberType.SpecialType == SpecialType.System_String) {
+    private static Outcome Sized(
+        AttributeData attribute,
+        ITypeSymbol memberType,
+        string min,
+        string max
+    )
+    {
+        if (memberType.SpecialType == SpecialType.System_String)
+        {
             return new Outcome(Bounded(ConstraintKind.StringLength, attribute, min, max), null);
         }
 
-        if (TypeFacts.ElementTypeOf(memberType) is not null) {
+        if (TypeFacts.ElementTypeOf(memberType) is not null)
+        {
             return new Outcome(Bounded(ConstraintKind.ItemCount, attribute, min, max), null);
         }
 
-        return new Outcome(null, ValidationDiagnostics.LengthOnUnsupportedMember, memberType.ToDisplayString());
+        return new Outcome(
+            null,
+            ValidationDiagnostics.LengthOnUnsupportedMember,
+            memberType.ToDisplayString()
+        );
     }
 
-    private static ConstraintModel Bounded(ConstraintKind kind, AttributeData attribute, string min, string max) =>
-        new(kind,
+    private static ConstraintModel Bounded(
+        ConstraintKind kind,
+        AttributeData attribute,
+        string min,
+        string max
+    ) =>
+        new(
+            kind,
             Message: NativeConstraintReader.Named(attribute, "ErrorMessage") as string,
             Min: min,
-            Max: max);
+            Max: max
+        );
 
     private static string? First(AttributeData attribute) =>
         attribute.ConstructorArguments.Length > 0
@@ -389,15 +562,26 @@ public static class DataAnnotationsConstraintReader {
     /// minimum first. Encoded here, beside the reader that knows which attribute it read, because
     /// after normalization into the model the original order is gone.
     /// </remarks>
-    private static Outcome FinishMessage(Outcome outcome, AttributeData attribute, string attributeName) {
-        if (outcome.Constraint is not { } constraint ||
-            constraint.Kind == ConstraintKind.CustomValidationMethod) {
+    private static Outcome FinishMessage(
+        Outcome outcome,
+        AttributeData attribute,
+        string attributeName
+    )
+    {
+        if (
+            outcome.Constraint is not { } constraint
+            || constraint.Kind == ConstraintKind.CustomValidationMethod
+        )
+        {
             return outcome;
         }
 
-        if (constraint.Message is { } message) {
-            return outcome with {
-                Constraint = constraint with {
+        if (constraint.Message is { } message)
+        {
+            return outcome with
+            {
+                Constraint = constraint with
+                {
                     Message = BakeComposite(message, attribute, attributeName),
                     DataAnnotationsMessage = true,
                 },
@@ -406,13 +590,22 @@ public static class DataAnnotationsConstraintReader {
 
         // An explicit ErrorMessage wins over the resource pair, which is DataAnnotations' own
         // precedence; reaching here means there was none.
-        if (NativeConstraintReader.Named(attribute, "ErrorMessageResourceName") is string resourceName &&
-            NativeConstraintReader.Named(attribute, "ErrorMessageResourceType") is INamedTypeSymbol resourceType) {
-            return outcome with {
-                Constraint = constraint with {
+        if (
+            NativeConstraintReader.Named(attribute, "ErrorMessageResourceName")
+                is string resourceName
+            && NativeConstraintReader.Named(attribute, "ErrorMessageResourceType")
+                is INamedTypeSymbol resourceType
+        )
+        {
+            return outcome with
+            {
+                Constraint = constraint with
+                {
                     MessageResourceAccessor =
                         $"{resourceType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{resourceName}",
-                    MessageResourceArgs = new EquatableArray<string>(FormatArgumentLiterals(attribute, attributeName)),
+                    MessageResourceArgs = new EquatableArray<string>(
+                        FormatArgumentLiterals(attribute, attributeName)
+                    ),
                     DataAnnotationsMessage = true,
                 },
             };
@@ -425,16 +618,23 @@ public static class DataAnnotationsConstraintReader {
     /// Replaces <c>{1}</c>…<c>{9}</c> with the attribute's own format arguments, rendered as text.
     /// <c>{0}</c> - the display name - survives for the emitter, which knows it.
     /// </summary>
-    private static string BakeComposite(string message, AttributeData attribute, string attributeName) {
+    private static string BakeComposite(
+        string message,
+        AttributeData attribute,
+        string attributeName
+    )
+    {
         var arguments = FormatArgumentValues(attribute, attributeName);
 
-        for (var i = 0; i < arguments.Length; i++) {
+        for (var i = 0; i < arguments.Length; i++)
+        {
             var value = arguments[i];
             message = message.Replace(
                 $"{{{i + 1}}}",
                 value is IFormattable formattable
                     ? formattable.ToString(null, System.Globalization.CultureInfo.InvariantCulture)
-                    : value?.ToString() ?? string.Empty);
+                    : value?.ToString() ?? string.Empty
+            );
         }
 
         return message;
@@ -443,23 +643,38 @@ public static class DataAnnotationsConstraintReader {
     /// <summary>
     /// The values behind <c>{1}</c>…, in the declaring attribute's <c>FormatErrorMessage</c> order.
     /// </summary>
-    private static ImmutableArray<object?> FormatArgumentValues(AttributeData attribute, string attributeName) {
+    private static ImmutableArray<object?> FormatArgumentValues(
+        AttributeData attribute,
+        string attributeName
+    )
+    {
         var args = attribute.ConstructorArguments;
 
-        return attributeName switch {
+        return attributeName switch
+        {
             // (name, MaximumLength, MinimumLength) - max first, unlike this model.
             "StringLengthAttribute" => ImmutableArray.Create(
                 args.Length > 0 ? args[0].Value : null,
-                NativeConstraintReader.Named(attribute, "MinimumLength") is int m ? m : (object?)0),
-            "MinLengthAttribute" or "MaxLengthAttribute" =>
-                ImmutableArray.Create(args.Length > 0 ? args[0].Value : null),
+                NativeConstraintReader.Named(attribute, "MinimumLength") is int m ? m : (object?)0
+            ),
+            "MinLengthAttribute" or "MaxLengthAttribute" => ImmutableArray.Create(
+                args.Length > 0 ? args[0].Value : null
+            ),
             "LengthAttribute" => ImmutableArray.Create(
                 args.Length > 0 ? args[0].Value : null,
-                args.Length > 1 ? args[1].Value : null),
-            "RangeAttribute" when args.Length == 3 => ImmutableArray.Create(args[1].Value, args[2].Value),
-            "RangeAttribute" when args.Length == 2 => ImmutableArray.Create(args[0].Value, args[1].Value),
-            "RegularExpressionAttribute" =>
-                ImmutableArray.Create(args.Length > 0 ? args[0].Value : null),
+                args.Length > 1 ? args[1].Value : null
+            ),
+            "RangeAttribute" when args.Length == 3 => ImmutableArray.Create(
+                args[1].Value,
+                args[2].Value
+            ),
+            "RangeAttribute" when args.Length == 2 => ImmutableArray.Create(
+                args[0].Value,
+                args[1].Value
+            ),
+            "RegularExpressionAttribute" => ImmutableArray.Create(
+                args.Length > 0 ? args[0].Value : null
+            ),
             _ => ImmutableArray<object?>.Empty,
         };
     }
@@ -468,26 +683,39 @@ public static class DataAnnotationsConstraintReader {
     /// The same arguments as C# constant expressions, for the emitted provider-backed info whose
     /// resx template fills <c>{1}</c>… at render time.
     /// </summary>
-    private static ImmutableArray<string> FormatArgumentLiterals(AttributeData attribute, string attributeName) {
+    private static ImmutableArray<string> FormatArgumentLiterals(
+        AttributeData attribute,
+        string attributeName
+    )
+    {
         var args = attribute.ConstructorArguments;
 
-        return attributeName switch {
+        return attributeName switch
+        {
             "StringLengthAttribute" => ImmutableArray.Create(
                 args.Length > 0 ? NativeConstraintReader.Literal(args[0]) : "0",
-                NativeConstraintReader.Named(attribute, "MinimumLength") is int m ? m.ToString() : "0"),
-            "MinLengthAttribute" or "MaxLengthAttribute" =>
-                ImmutableArray.Create(args.Length > 0 ? NativeConstraintReader.Literal(args[0]) : "0"),
+                NativeConstraintReader.Named(attribute, "MinimumLength") is int m
+                    ? m.ToString()
+                    : "0"
+            ),
+            "MinLengthAttribute" or "MaxLengthAttribute" => ImmutableArray.Create(
+                args.Length > 0 ? NativeConstraintReader.Literal(args[0]) : "0"
+            ),
             "LengthAttribute" => ImmutableArray.Create(
                 args.Length > 0 ? NativeConstraintReader.Literal(args[0]) : "0",
-                args.Length > 1 ? NativeConstraintReader.Literal(args[1]) : "0"),
+                args.Length > 1 ? NativeConstraintReader.Literal(args[1]) : "0"
+            ),
             "RangeAttribute" when args.Length == 3 => ImmutableArray.Create(
                 NativeConstraintReader.Literal(args[1]),
-                NativeConstraintReader.Literal(args[2])),
+                NativeConstraintReader.Literal(args[2])
+            ),
             "RangeAttribute" when args.Length == 2 => ImmutableArray.Create(
                 NativeConstraintReader.Literal(args[0]),
-                NativeConstraintReader.Literal(args[1])),
-            "RegularExpressionAttribute" =>
-                ImmutableArray.Create(args.Length > 0 ? NativeConstraintReader.Literal(args[0]) : "\"\""),
+                NativeConstraintReader.Literal(args[1])
+            ),
+            "RegularExpressionAttribute" => ImmutableArray.Create(
+                args.Length > 0 ? NativeConstraintReader.Literal(args[0]) : "\"\""
+            ),
             _ => ImmutableArray<string>.Empty,
         };
     }

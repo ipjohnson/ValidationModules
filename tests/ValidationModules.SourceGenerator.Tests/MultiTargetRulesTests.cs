@@ -13,8 +13,8 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// which is what lands each overload on its own target whatever order anything is written in - and
 /// what makes an explicitly implemented <c>Describe</c> visible at all.
 /// </remarks>
-public class MultiTargetRulesTests {
-
+public class MultiTargetRulesTests
+{
     private const string TwoTargets = """
         using ValidationModules;
 
@@ -45,7 +45,8 @@ public class MultiTargetRulesTests {
         """;
 
     [Fact]
-    public void TwoTargets_ProduceTwoValidatorsAndOneCompanion() {
+    public void TwoTargets_ProduceTwoValidatorsAndOneCompanion()
+    {
         var result = GeneratorHarness.Run(TwoTargets);
 
         Assert.Empty(result.CompilationErrors);
@@ -58,25 +59,34 @@ public class MultiTargetRulesTests {
 
         // One file, two Describe overloads - a second file would collide on the hint name and
         // AddSource throwing would fail the whole generator.
-        Assert.Equal(2, companion.Split("public static global::ValidationModules.ValidationFlow Describe(").Length - 1);
+        Assert.Equal(
+            2,
+            companion
+                .Split("public static global::ValidationModules.ValidationFlow Describe(")
+                .Length - 1
+        );
         Assert.Contains("global::Sample.Order x", companion);
         Assert.Contains("global::Sample.Customer x", companion);
     }
 
     [Fact]
-    public void EachValidator_CallsItsOwnRegion() {
+    public void EachValidator_CallsItsOwnRegion()
+    {
         var result = GeneratorHarness.Run(TwoTargets);
 
         Assert.Contains(
             "global::Sample.CatalogRules_Rules.Describe(ref ctx, value)",
-            result.Sources["Sample.OrderValidator.g.cs"]);
+            result.Sources["Sample.OrderValidator.g.cs"]
+        );
         Assert.Contains(
             "global::Sample.CatalogRules_Rules.Describe(ref ctx, value)",
-            result.Sources["Sample.CustomerValidator.g.cs"]);
+            result.Sources["Sample.CustomerValidator.g.cs"]
+        );
     }
 
     [Fact]
-    public void ASharedPrivateConstant_BakesIntoBothRegions() {
+    public void ASharedPrivateConstant_BakesIntoBothRegions()
+    {
         // The cohesion payoff: the class's own members serve every region, under the same
         // qualification and constant-baking rules as a single-target class.
         var companion = GeneratorHarness.Run(TwoTargets).Sources["Sample.CatalogRules_Rules.g.cs"];
@@ -85,11 +95,13 @@ public class MultiTargetRulesTests {
     }
 
     [Fact]
-    public void PairingFollowsTheImplementation_NotDeclarationOrder() {
+    public void PairingFollowsTheImplementation_NotDeclarationOrder()
+    {
         // Interfaces listed one way, overloads written the other: each region must still carry its
         // own target's rules. Before the interface-member pairing, the first Describe in source
         // was taken for the first interface, whatever its type.
-        var result = GeneratorHarness.Run("""
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules;
 
             namespace Sample;
@@ -114,7 +126,8 @@ public class MultiTargetRulesTests {
                     rules.Require(x.Number);
                 }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
 
@@ -125,10 +138,12 @@ public class MultiTargetRulesTests {
     }
 
     [Fact]
-    public void AnExplicitlyImplementedDescribe_IsRead() {
+    public void AnExplicitlyImplementedDescribe_IsRead()
+    {
         // An explicit implementation's metadata name is not "Describe", so the old name lookup
         // never saw it and the class was silently not a rules class at all.
-        var result = GeneratorHarness.Run("""
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules;
 
             namespace Sample;
@@ -142,19 +157,23 @@ public class MultiTargetRulesTests {
                     rules.Require(x.Number);
                 }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
         Assert.Contains(
             "ReportRequired(ctx, \"number\")",
-            result.Sources["Sample.OrderRules_Rules.g.cs"]);
+            result.Sources["Sample.OrderRules_Rules.g.cs"]
+        );
     }
 
     [Fact]
-    public void ABrokenRegion_DropsOnlyItself() {
+    public void ABrokenRegion_DropsOnlyItself()
+    {
         // One target's body fails transcription; the other target still gets its validator, and
         // the diagnostic names the failure.
-        var result = GeneratorHarness.Run("""
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules;
 
             namespace Sample;
@@ -180,18 +199,24 @@ public class MultiTargetRulesTests {
                     rules.Require(x.Name);
                 }
             }
-            """);
+            """
+        );
 
         Assert.Contains(result.Diagnostics, d => d.Id == "VM3001");
         Assert.Contains(result.Sources.Keys, key => key.Contains("CustomerValidator"));
-        Assert.Contains("ReportRequired(ctx, \"name\")", result.Sources["Sample.CatalogRules_Rules.g.cs"]);
+        Assert.Contains(
+            "ReportRequired(ctx, \"name\")",
+            result.Sources["Sample.CatalogRules_Rules.g.cs"]
+        );
     }
 
     [Fact]
-    public void FacetFields_StayDistinctAcrossRegions() {
+    public void FacetFields_StayDistinctAcrossRegions()
+    {
         // Both regions cache a facet validator; merged into one companion, the fields must not
         // collide - the seed carries the count across writers.
-        var result = GeneratorHarness.Run("""
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules;
             using ValidationModules.Constraints;
 
@@ -227,7 +252,8 @@ public class MultiTargetRulesTests {
                     rules.As<IAudited>(x);
                 }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
 

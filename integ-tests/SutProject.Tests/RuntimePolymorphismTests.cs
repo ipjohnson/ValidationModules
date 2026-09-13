@@ -14,9 +14,10 @@ namespace SutProject.Tests;
 /// <c>Activator</c>, no scanning - because the assembly declaring each type registers an adapter it
 /// knows statically.
 /// </remarks>
-public class RuntimePolymorphismTests {
-
-    private static ServiceProvider Container() {
+public class RuntimePolymorphismTests
+{
+    private static ServiceProvider Container()
+    {
         var services = new ServiceCollection();
         services.AddSutProjectValidators();
 
@@ -24,15 +25,19 @@ public class RuntimePolymorphismTests {
     }
 
     [Fact]
-    public void SubtypeRules_RunWhenResolvedThroughTheContainer() {
+    public void SubtypeRules_RunWhenResolvedThroughTheContainer()
+    {
         using var provider = Container();
         using var scope = provider.CreateScope();
 
         var runner = scope.ServiceProvider.GetRequiredService<ValidationRunner<DynamicCheckout>>();
 
-        var result = runner.Validate(new DynamicCheckout {
-            Payment = new Card { Currency = "GBP", Pan = "123" },
-        });
+        var result = runner.Validate(
+            new DynamicCheckout
+            {
+                Payment = new Card { Currency = "GBP", Pan = "123" },
+            }
+        );
 
         var error = Assert.Single(result.Errors);
 
@@ -44,29 +49,46 @@ public class RuntimePolymorphismTests {
     /// Two levels down, reached by runtime type rather than by a switch arm.
     /// </summary>
     [Fact]
-    public void TheMostDerivedValidatorIsTheOneResolved() {
+    public void TheMostDerivedValidatorIsTheOneResolved()
+    {
         using var provider = Container();
         using var scope = provider.CreateScope();
 
         var runner = scope.ServiceProvider.GetRequiredService<ValidationRunner<DynamicCheckout>>();
 
-        var result = runner.Validate(new DynamicCheckout {
-            Payment = new Premium { Currency = "GBP", Pan = "1234567890123456", Concierge = null },
-        });
+        var result = runner.Validate(
+            new DynamicCheckout
+            {
+                Payment = new Premium
+                {
+                    Currency = "GBP",
+                    Pan = "1234567890123456",
+                    Concierge = null,
+                },
+            }
+        );
 
         Assert.Equal("payment.concierge", Assert.Single(result.Errors).Field);
     }
 
     [Fact]
-    public void AValidValueReportsNothing() {
+    public void AValidValueReportsNothing()
+    {
         using var provider = Container();
         using var scope = provider.CreateScope();
 
         var runner = scope.ServiceProvider.GetRequiredService<ValidationRunner<DynamicCheckout>>();
 
-        Assert.True(runner.Validate(new DynamicCheckout {
-            Payment = new Bank { Currency = "GBP", Iban = "GB00" },
-        }).IsValid);
+        Assert.True(
+            runner
+                .Validate(
+                    new DynamicCheckout
+                    {
+                        Payment = new Bank { Currency = "GBP", Iban = "GB00" },
+                    }
+                )
+                .IsValid
+        );
     }
 
     /// <summary>
@@ -75,14 +97,19 @@ public class RuntimePolymorphismTests {
     /// the sort of context-dependent silent change this design exists to avoid.
     /// </summary>
     [Fact]
-    public void WithoutAProvider_ItThrowsRatherThanFallingBack() {
+    public void WithoutAProvider_ItThrowsRatherThanFallingBack()
+    {
         var validator = new DynamicCheckoutValidator();
         var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
-        var checkout = new DynamicCheckout { Payment = new Card { Currency = "GBP", Pan = "123" } };
+        var checkout = new DynamicCheckout
+        {
+            Payment = new Card { Currency = "GBP", Pan = "123" },
+        };
 
-        var thrown = Assert.Throws<InvalidOperationException>(
-            () => validator.Validate(ref context, checkout));
+        var thrown = Assert.Throws<InvalidOperationException>(() =>
+            validator.Validate(ref context, checkout)
+        );
 
         Assert.Contains("payment", thrown.Message);
         Assert.Contains("Polymorphism.CompileTime", thrown.Message);
@@ -94,7 +121,8 @@ public class RuntimePolymorphismTests {
     /// never registered" rather than "that type had no rules".
     /// </summary>
     [Fact]
-    public void EveryValidatedTypeHasAnAdapter() {
+    public void EveryValidatedTypeHasAnAdapter()
+    {
         using var provider = Container();
 
         var registry = provider.GetRequiredService<DynamicValidatorRegistry>();
@@ -110,7 +138,8 @@ public class RuntimePolymorphismTests {
     /// validator for the runtime type composes with the generated one.
     /// </summary>
     [Fact]
-    public void ASeparatelyRegisteredValidatorForTheRuntimeType_Composes() {
+    public void ASeparatelyRegisteredValidatorForTheRuntimeType_Composes()
+    {
         var services = new ServiceCollection();
         services.AddSutProjectValidators();
         services.AddSingleton<IValidatorFor<Card>, ExtraCardRule>();
@@ -120,14 +149,18 @@ public class RuntimePolymorphismTests {
 
         var runner = scope.ServiceProvider.GetRequiredService<ValidationRunner<DynamicCheckout>>();
 
-        var result = runner.Validate(new DynamicCheckout {
-            Payment = new Card { Currency = "GBP", Pan = "1234567890123456" },
-        });
+        var result = runner.Validate(
+            new DynamicCheckout
+            {
+                Payment = new Card { Currency = "GBP", Pan = "1234567890123456" },
+            }
+        );
 
         Assert.Equal("payment.pan", Assert.Single(result.Errors).Field);
     }
 
-    private sealed class ExtraCardRule : IValidatorFor<Card> {
+    private sealed class ExtraCardRule : IValidatorFor<Card>
+    {
         public ValidationFlow Validate(ref ValidationContext context, Card value) =>
             value.Pan?.StartsWith('9') == false
                 ? context.Report("pan", "issuer", "cards must be issued in the 9 range.")

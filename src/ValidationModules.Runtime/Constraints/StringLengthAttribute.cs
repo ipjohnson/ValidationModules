@@ -9,8 +9,8 @@ namespace ValidationModules.Constraints;
 /// [StringLength(Max = 500)]        public string? Notes { get; init; }
 /// </code>
 /// </example>
-public sealed class StringLengthAttribute : ValidationConstraintAttribute {
-
+public sealed class StringLengthAttribute : ValidationConstraintAttribute
+{
     /// <summary>
     /// Bounds set through <see cref="Min"/> and <see cref="Max"/>, for declaring only one of them.
     /// </summary>
@@ -30,7 +30,8 @@ public sealed class StringLengthAttribute : ValidationConstraintAttribute {
     /// </remarks>
     /// <param name="min">Shortest permitted length, inclusive. Zero means unbounded below.</param>
     /// <param name="max">Longest permitted length, inclusive. Defaults to unbounded.</param>
-    public StringLengthAttribute(int min = 0, int max = int.MaxValue) {
+    public StringLengthAttribute(int min = 0, int max = int.MaxValue)
+    {
         Min = min;
         Max = max;
     }

@@ -25,11 +25,13 @@ namespace ValidationModules.Benchmarks.EndToEnd;
 /// </remarks>
 [MemoryDiagnoser]
 [BenchmarkCategory(BenchmarkCategories.EndToEnd)]
-public class RegistrationBenchmarks {
+public class RegistrationBenchmarks
+{
     private ServiceProvider _provider = null!;
 
     [GlobalSetup]
-    public void Setup() {
+    public void Setup()
+    {
         var services = new ServiceCollection();
         services.AddValidationModulesBenchmarksValidators();
         services.AddValidationRunner<Customer>();
@@ -50,7 +52,8 @@ public class RegistrationBenchmarks {
     /// validated type and nothing more.
     /// </summary>
     [Benchmark(Baseline = true, Description = "AddValidationModules over the generated table")]
-    public int Register() {
+    public int Register()
+    {
         var services = new ServiceCollection();
 
         services.AddValidationModulesBenchmarksValidators();
@@ -63,7 +66,8 @@ public class RegistrationBenchmarks {
     /// application startup.
     /// </summary>
     [Benchmark(Description = "Register + BuildServiceProvider")]
-    public ServiceProvider Register_AndBuild() {
+    public ServiceProvider Register_AndBuild()
+    {
         var services = new ServiceCollection();
         services.AddValidationModulesBenchmarksValidators();
 
@@ -79,7 +83,8 @@ public class RegistrationBenchmarks {
     /// handler pays per request if it resolves rather than holding one.
     /// </summary>
     [Benchmark(Description = "Create a scope and resolve ValidationRunner<T>")]
-    public ValidationRunner<Customer> Resolve_Runner() {
+    public ValidationRunner<Customer> Resolve_Runner()
+    {
         using var scope = _provider.CreateScope();
 
         return scope.ServiceProvider.GetRequiredService<ValidationRunner<Customer>>();

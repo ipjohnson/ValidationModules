@@ -8,8 +8,8 @@ namespace MessagesDemo;
 /// string with length bounds, a two-bounded range, a pattern, an element count, and a cross-field
 /// rule carrying the user code the packs also translate.
 /// </summary>
-public sealed record Reservation {
-
+public sealed record Reservation
+{
     [Required]
     [StringLength(min: 1, max: 60)]
     public string? Name { get; init; }
@@ -28,9 +28,10 @@ public sealed record Reservation {
     public DateOnly End { get; init; }
 }
 
-public sealed class ReservationRules : IValidationRulesFor<Reservation> {
-
-    public static void Describe(ValidationRules<Reservation> rules, Reservation x) {
+public sealed class ReservationRules : IValidationRulesFor<Reservation>
+{
+    public static void Describe(ValidationRules<Reservation> rules, Reservation x)
+    {
         // A user code: unknown to the shape inventory on purpose, translated by the packs all the
         // same - the map is keyed by string, and nothing about "date_order" is special.
         rules.Ensure(x.End >= x.Start, code: "date_order", field: "end");
@@ -43,8 +44,8 @@ public sealed class ReservationRules : IValidationRulesFor<Reservation> {
 /// die under <c>[Required]</c> and survive under <c>[StringLength]</c> - same class, same
 /// culture, opposite behaviour.
 /// </summary>
-public sealed record Signup {
-
+public sealed record Signup
+{
     [Required(Message = "pick a handle")]
     public string? Handle { get; init; }
 

@@ -2,17 +2,19 @@ using Xunit;
 
 namespace ValidationModules.Runtime.Tests;
 
-public class ValidationResultTests {
-
+public class ValidationResultTests
+{
     [Fact]
-    public void Valid_HasNoErrorsAndIsValid() {
+    public void Valid_HasNoErrorsAndIsValid()
+    {
         Assert.True(ValidationResult.Valid.IsValid);
         Assert.False(ValidationResult.Valid.HasErrors);
         Assert.Empty(ValidationResult.Valid.Errors);
     }
 
     [Fact]
-    public void Valid_ExposesNoMutator() {
+    public void Valid_ExposesNoMutator()
+    {
         // Hardened's equivalent exposes AddError on a process-wide static, so the natural way to
         // write a custom validator poisons every other caller's success result. Nothing on this
         // type can mutate it, which is what makes sharing the instance safe.
@@ -25,9 +27,13 @@ public class ValidationResultTests {
     }
 
     [Fact]
-    public void IsValid_OnlyErrorSeverityInvalidates() {
+    public void IsValid_OnlyErrorSeverityInvalidates()
+    {
         var warnings = ValidationResult.FromErrors([
-            new ValidationError("name", "deprecated", "x") { Severity = ValidationSeverity.Warning },
+            new ValidationError("name", "deprecated", "x")
+            {
+                Severity = ValidationSeverity.Warning,
+            },
             new ValidationError("tag", "note", "x") { Severity = ValidationSeverity.Info },
         ]);
 
@@ -36,7 +42,8 @@ public class ValidationResultTests {
     }
 
     [Fact]
-    public void Severity_DefaultsToError() {
+    public void Severity_DefaultsToError()
+    {
         var error = new ValidationError("name", "required", "x");
 
         Assert.Equal(ValidationSeverity.Error, error.Severity);
@@ -44,12 +51,14 @@ public class ValidationResultTests {
     }
 
     [Fact]
-    public void FromErrors_Empty_ReturnsTheSharedValidInstance() {
+    public void FromErrors_Empty_ReturnsTheSharedValidInstance()
+    {
         Assert.Same(ValidationResult.Valid, ValidationResult.FromErrors([]));
     }
 
     [Fact]
-    public void Merge_PreservesOrderWithThisResultFirst() {
+    public void Merge_PreservesOrderWithThisResultFirst()
+    {
         var first = ValidationResult.FromErrors([new ValidationError("a", "required", "x")]);
         var second = ValidationResult.FromErrors([new ValidationError("b", "required", "x")]);
 
@@ -57,7 +66,8 @@ public class ValidationResultTests {
     }
 
     [Fact]
-    public void Merge_DoesNotMutateEitherOperand() {
+    public void Merge_DoesNotMutateEitherOperand()
+    {
         var first = ValidationResult.FromErrors([new ValidationError("a", "required", "x")]);
         var second = ValidationResult.FromErrors([new ValidationError("b", "required", "x")]);
 
@@ -68,7 +78,8 @@ public class ValidationResultTests {
     }
 
     [Fact]
-    public void Merge_WithValid_ReturnsTheOtherOperandUnchanged() {
+    public void Merge_WithValid_ReturnsTheOtherOperandUnchanged()
+    {
         var errors = ValidationResult.FromErrors([new ValidationError("a", "required", "x")]);
 
         Assert.Same(errors, errors.Merge(ValidationResult.Valid));
@@ -76,7 +87,8 @@ public class ValidationResultTests {
     }
 
     [Fact]
-    public void ValidationException_CarriesTheResult() {
+    public void ValidationException_CarriesTheResult()
+    {
         var result = ValidationResult.FromErrors([new ValidationError("name", "required", "x")]);
 
         var exception = new ValidationException(result);

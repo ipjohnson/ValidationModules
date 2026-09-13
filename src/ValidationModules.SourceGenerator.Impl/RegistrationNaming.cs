@@ -13,18 +13,21 @@ namespace ValidationModules.SourceGenerator.Impl;
 /// <c>AddMyAppValidators</c>. The method name is public generated API, so this was decided before
 /// 1.0.0 - the last moment the change is cheap.
 /// </remarks>
-internal static class RegistrationNaming {
-
+internal static class RegistrationNaming
+{
     /// <summary>
     /// The single identifier for a sanitized assembly namespace - letters, digits, underscores
     /// and dots, which is what <c>SanitizeNamespace</c> guarantees.
     /// </summary>
-    public static string Identifier(string assemblyNamespace) {
+    public static string Identifier(string assemblyNamespace)
+    {
         var builder = new System.Text.StringBuilder(assemblyNamespace.Length);
         var startOfSegment = true;
 
-        foreach (var character in assemblyNamespace) {
-            if (character is '.' or '_') {
+        foreach (var character in assemblyNamespace)
+        {
+            if (character is '.' or '_')
+            {
                 startOfSegment = true;
                 continue;
             }
@@ -33,13 +36,15 @@ internal static class RegistrationNaming {
             startOfSegment = false;
         }
 
-        if (builder.Length == 0) {
+        if (builder.Length == 0)
+        {
             return "Generated";
         }
 
         // Dropping the separators can surface a leading digit, which the extension class's name
         // cannot begin with; restore the underscore sanitization would have supplied.
-        if (char.IsDigit(builder[0])) {
+        if (char.IsDigit(builder[0]))
+        {
             builder.Insert(0, '_');
         }
 

@@ -6,31 +6,39 @@ that need I/O are hand-written, and they implement a different interface:
 ```csharp
 namespace ValidationModules;
 
-public interface IAsyncValidatorFor<in T> {
+public interface IAsyncValidatorFor<in T>
+{
     ValueTask ValidateAsync(
         ValidationContext context,
         T value,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 }
 ```
 
 <!-- verify:models -->
 ```csharp
-public sealed class PetUniquenessValidator : IAsyncValidatorFor<Pet> {
+public sealed class PetUniquenessValidator : IAsyncValidatorFor<Pet>
+{
     private readonly IPetRepository _pets;
 
     public PetUniquenessValidator(IPetRepository pets) => _pets = pets;
 
     public async ValueTask ValidateAsync(
-        ValidationContext context, Pet value, CancellationToken cancellationToken = default) {
-
-        if (await _pets.ExistsAsync(value.Sku!, cancellationToken)) {
+        ValidationContext context,
+        Pet value,
+        CancellationToken cancellationToken = default
+    )
+    {
+        if (await _pets.ExistsAsync(value.Sku!, cancellationToken))
+        {
             context.Report("sku", "duplicate", "sku is already in use.");
         }
     }
 }
 
-public interface IPetRepository {
+public interface IPetRepository
+{
     ValueTask<bool> ExistsAsync(string sku, CancellationToken cancellationToken);
 }
 ```
@@ -41,9 +49,13 @@ var services = new ServiceCollection();
 
 services.AddScoped<IAsyncValidatorFor<Pet>, PetUniquenessValidator>();
 
-public sealed class PetUniquenessValidator : IAsyncValidatorFor<Pet> {
+public sealed class PetUniquenessValidator : IAsyncValidatorFor<Pet>
+{
     public ValueTask ValidateAsync(
-        ValidationContext context, Pet value, CancellationToken cancellationToken = default) => default;
+        ValidationContext context,
+        Pet value,
+        CancellationToken cancellationToken = default
+    ) => default;
 }
 ```
 
@@ -72,15 +84,20 @@ awaits, inside closures, in any order:
 
 ```csharp
 public async ValueTask ValidateAsync(
-    ValidationContext context, Order value, CancellationToken cancellationToken) {
+    ValidationContext context,
+    Order value,
+    CancellationToken cancellationToken
+)
+{
+    var lines = context.Push("lines"); // fine to hold
 
-    var lines = context.Push("lines");                       // fine to hold
-
-    for (var i = 0; i < value.Lines.Count; i++) {
+    for (var i = 0; i < value.Lines.Count; i++)
+    {
         var line = context.PushIndex("lines", i);
         var stock = await _inventory.LevelAsync(value.Lines[i].Sku, cancellationToken);
 
-        if (stock < value.Lines[i].Quantity) {               // still correct after the await
+        if (stock < value.Lines[i].Quantity)
+        { // still correct after the await
             line.Report("quantity", "insufficient_stock", "not enough stock.");
         }
     }
@@ -122,15 +139,18 @@ across *validators* still holds.
 `ValidationRunner<T>` composes them:
 
 ```csharp
-public class PetService {
+public class PetService
+{
     private readonly ValidationRunner<Pet> _validation;
 
     public PetService(ValidationRunner<Pet> validation) => _validation = validation;
 
-    public async Task CreateAsync(Pet pet, CancellationToken cancellationToken) {
+    public async Task CreateAsync(Pet pet, CancellationToken cancellationToken)
+    {
         var result = await _validation.ValidateAsync(pet, cancellationToken: cancellationToken);
 
-        if (!result.IsValid) {
+        if (!result.IsValid)
+        {
             throw new ValidationException(result);
         }
 
@@ -154,7 +174,8 @@ Business rules are awaited **sequentially**, so error ordering across validators
 Not every rule belongs to a field. `ReportHere` reports against the current object:
 
 ```csharp
-if (value.Start > value.End) {
+if (value.Start > value.End)
+{
     context.ReportHere("date_order", "start must not be after end.");
 }
 ```

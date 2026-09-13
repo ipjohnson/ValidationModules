@@ -11,8 +11,8 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// on the one rule it was written on: the descent a property declares elsewhere keeps pushing the
 /// property's own wire name, and so does every other rule anchored there.
 /// </remarks>
-public class EnsureFieldRenameTests {
-
+public class EnsureFieldRenameTests
+{
     private const string Source = """
         using ValidationModules;
         using ValidationModules.Constraints;
@@ -40,7 +40,8 @@ public class EnsureFieldRenameTests {
         """;
 
     [Fact]
-    public void ExplicitField_DoesNotRenameTheNestedDescent() {
+    public void ExplicitField_DoesNotRenameTheNestedDescent()
+    {
         // The reported corruption this pins: an unrelated nested error moved from `ship.zone.city`
         // to `shipping_address.zone.city`, because the descent pushes the property's field name and
         // the rename had been promoted onto the property.
@@ -53,7 +54,8 @@ public class EnsureFieldRenameTests {
     }
 
     [Fact]
-    public void ExplicitField_StillRenamesItsOwnError() {
+    public void ExplicitField_StillRenamesItsOwnError()
+    {
         // The complement: the rename has to survive on the rule it was written on, which now lives
         // in the region companion.
         var result = GeneratorHarness.Run(Source);
@@ -62,7 +64,8 @@ public class EnsureFieldRenameTests {
     }
 
     [Fact]
-    public void ExplicitField_DoesNotRenameOtherConstraintsOnTheAnchor() {
+    public void ExplicitField_DoesNotRenameOtherConstraintsOnTheAnchor()
+    {
         var source = """
             using ValidationModules;
             using ValidationModules.Constraints;
@@ -83,12 +86,16 @@ public class EnsureFieldRenameTests {
         var result = GeneratorHarness.Run(source);
 
         // The [Required] on the same property keeps its own name in the attribute region.
-        Assert.Contains("ReportRequired(ctx, \"reference\"", result.Sources["Sample.OrderValidator.g.cs"]);
+        Assert.Contains(
+            "ReportRequired(ctx, \"reference\"",
+            result.Sources["Sample.OrderValidator.g.cs"]
+        );
         Assert.Contains("\"reference_state\"", result.Sources["Sample.OrderRules_Rules.g.cs"]);
     }
 
     [Fact]
-    public void ExplicitField_IsNotPutThroughTheFieldNamer() {
+    public void ExplicitField_IsNotPutThroughTheFieldNamer()
+    {
         // A rename is the author's literal string. It is the one field name the namer must leave
         // alone - which is also why it must not become the property's name, where the namer's
         // output is what every other site expects.
@@ -98,7 +105,8 @@ public class EnsureFieldRenameTests {
     }
 
     [Fact]
-    public void FieldFromNameof_TakesTheWireName() {
+    public void FieldFromNameof_TakesTheWireName()
+    {
         // nameof through the subject is the one field: spelling that names a member rather than
         // choosing a string, and transcribed code already rewrites the same spelling to the wire
         // path. Before this, one property could reach a client under two keys: 'AccountNumber'

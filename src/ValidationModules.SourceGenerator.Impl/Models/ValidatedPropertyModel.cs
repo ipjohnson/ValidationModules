@@ -1,7 +1,8 @@
 namespace ValidationModules.SourceGenerator.Impl.Models;
 
 /// <summary>How the emitter has to walk a property.</summary>
-public enum PropertyShape {
+public enum PropertyShape
+{
     /// <summary>A value with no structure to descend into.</summary>
     Scalar,
 
@@ -73,4 +74,5 @@ public sealed record ValidatedPropertyModel(
     PolymorphismMode Polymorphism = PolymorphismMode.DeclaredOnly,
     EquatableArray<SubtypeModel> Subtypes = default,
     string? DisplayName = null,
-    bool NestedWalkInRegion = false) : IEquatable<ValidatedPropertyModel>;
+    bool NestedWalkInRegion = false
+) : IEquatable<ValidatedPropertyModel>;

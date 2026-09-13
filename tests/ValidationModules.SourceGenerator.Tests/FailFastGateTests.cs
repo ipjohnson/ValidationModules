@@ -12,8 +12,8 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// <c>ValidationErrorCollector.StopMode</c> is a runtime field with a public setter, so a consumer
 /// who never sets the mode would otherwise carry the cost with no way to decline it.
 /// </remarks>
-public class FailFastGateTests {
-
+public class FailFastGateTests
+{
     private const string Source = """
         using ValidationModules.Constraints;
 
@@ -33,7 +33,8 @@ public class FailFastGateTests {
         }
         """;
 
-    private static string Emit(params (string Key, string Value)[] properties) {
+    private static string Emit(params (string Key, string Value)[] properties)
+    {
         var result = GeneratorHarness.Run(Source, properties);
 
         Assert.Empty(result.CompilationErrors);
@@ -42,10 +43,14 @@ public class FailFastGateTests {
     }
 
     [Fact]
-    public void Unset_EmitsTheReturns() {
+    public void Unset_EmitsTheReturns()
+    {
         var body = Emit();
 
-        Assert.Contains("if (string.IsNullOrWhiteSpace(value.Name) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\", value: value.Name).ShouldStop)", body);
+        Assert.Contains(
+            "if (string.IsNullOrWhiteSpace(value.Name) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\", value: value.Name).ShouldStop)",
+            body
+        );
         Assert.Contains("return global::ValidationModules.ValidationFlow.Stop;", body);
     }
 
@@ -54,11 +59,15 @@ public class FailFastGateTests {
     [InlineData("disabled")]
     [InlineData("false")]
     [InlineData("False")]
-    public void TurnedOff_DiscardsTheAnswerInstead(string setting) {
+    public void TurnedOff_DiscardsTheAnswerInstead(string setting)
+    {
         var body = Emit(("ValidationModules_FailFast", setting));
 
         Assert.Contains("if (string.IsNullOrWhiteSpace(value.Name))", body);
-        Assert.Contains("global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\", value: value.Name);", body);
+        Assert.Contains(
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\", value: value.Name);",
+            body
+        );
         Assert.DoesNotContain("ShouldStop", body);
         Assert.DoesNotContain("return global::ValidationModules.ValidationFlow.Stop;", body);
     }
@@ -68,7 +77,8 @@ public class FailFastGateTests {
     /// anything but <c>Ignore</c> as "compile". A typo therefore keeps the safer behaviour.
     /// </summary>
     [Fact]
-    public void AnUnrecognizedValue_LeavesItOn() {
+    public void AnUnrecognizedValue_LeavesItOn()
+    {
         var body = Emit(("ValidationModules_FailFast", "Enabled"));
 
         Assert.Contains("ShouldStop", body);
@@ -81,15 +91,20 @@ public class FailFastGateTests {
     [Theory]
     [InlineData(null)]
     [InlineData("Disabled")]
-    public void EitherWay_TheSignatureAndTerminalReturnAreTheSame(string? setting) {
+    public void EitherWay_TheSignatureAndTerminalReturnAreTheSame(string? setting)
+    {
         var body = setting is null ? Emit() : Emit(("ValidationModules_FailFast", setting));
 
-        Assert.Contains("public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx", body);
+        Assert.Contains(
+            "public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx",
+            body
+        );
         Assert.Contains("return global::ValidationModules.ValidationFlow.Continue;", body);
     }
 
     [Fact]
-    public void TurnedOff_TheNestedDescentAlsoDiscards() {
+    public void TurnedOff_TheNestedDescentAlsoDiscards()
+    {
         var body = Emit(("ValidationModules_FailFast", "Disabled"));
 
         Assert.Contains("validatorsHome[vi].Validate(ref ctxHome, nestedHome);", body);
@@ -99,7 +114,8 @@ public class FailFastGateTests {
     [Theory]
     [InlineData(null)]
     [InlineData("Disabled")]
-    public void IsValid_IsUnaffected(string? setting) {
+    public void IsValid_IsUnaffected(string? setting)
+    {
         var body = setting is null ? Emit() : Emit(("ValidationModules_FailFast", setting));
         var isValid = body[body.IndexOf("public bool IsValid", System.StringComparison.Ordinal)..];
 

@@ -25,8 +25,8 @@ namespace ValidationModules;
 /// </para>
 /// </remarks>
 /// <typeparam name="TElement">The element type, which owns the actual rules.</typeparam>
-public sealed class CollectionValidatorFor<TElement> : IValidatorFor<IReadOnlyList<TElement>> {
-
+public sealed class CollectionValidatorFor<TElement> : IValidatorFor<IReadOnlyList<TElement>>
+{
     private readonly IValidatorFor<TElement>[] _element;
 
     /// <summary>
@@ -36,16 +36,20 @@ public sealed class CollectionValidatorFor<TElement> : IValidatorFor<IReadOnlyLi
     /// Every validator registered for <typeparamref name="TElement"/>, run per element in
     /// registration order - the same merge <see cref="ValidationRunner{T}"/> applies at the top.
     /// </param>
-    public CollectionValidatorFor(IEnumerable<IValidatorFor<TElement>> element) {
+    public CollectionValidatorFor(IEnumerable<IValidatorFor<TElement>> element)
+    {
         ArgumentNullException.ThrowIfNull(element);
 
         _element = element as IValidatorFor<TElement>[] ?? System.Linq.Enumerable.ToArray(element);
     }
 
     /// <inheritdoc/>
-    public ValidationFlow Validate(ref ValidationContext context, IReadOnlyList<TElement> value) {
-        for (var i = 0; i < value.Count; i++) {
-            if (value[i] is not { } element) {
+    public ValidationFlow Validate(ref ValidationContext context, IReadOnlyList<TElement> value)
+    {
+        for (var i = 0; i < value.Count; i++)
+        {
+            if (value[i] is not { } element)
+            {
                 continue;
             }
 
@@ -53,8 +57,10 @@ public sealed class CollectionValidatorFor<TElement> : IValidatorFor<IReadOnlyLi
             // array's errors read [2].quantity rather than inventing a field name for the body.
             var elementContext = context.PushIndex(string.Empty, i);
 
-            for (var v = 0; v < _element.Length; v++) {
-                if (_element[v].Validate(ref elementContext, element).ShouldStop) {
+            for (var v = 0; v < _element.Length; v++)
+            {
+                if (_element[v].Validate(ref elementContext, element).ShouldStop)
+                {
                     return ValidationFlow.Stop;
                 }
             }

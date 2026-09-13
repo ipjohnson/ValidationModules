@@ -1,7 +1,8 @@
 namespace ValidationModules.SourceGenerator.Impl.Models;
 
 /// <summary>What a constraint checks. One kind per code in the runtime's vocabulary.</summary>
-public enum ConstraintKind {
+public enum ConstraintKind
+{
     Required,
     StringLength,
     Range,
@@ -169,7 +170,6 @@ public sealed record ConstraintModel(
     EquatableArray<string> ValueDisplays = default,
     bool Negated = false,
     string? PredicateAccessor = null,
-
     /// <summary>
     /// The field this one constraint reports under, when it differs from its property's. A rule is
     /// anchored to a property so both engines agree on ordering, but <c>field:</c> renames the
@@ -177,30 +177,25 @@ public sealed record ConstraintModel(
     /// different field, so the name cannot live on the property.
     /// </summary>
     string? Field = null,
-
     /// <summary>
     /// The severity member to report with - <c>Warning</c> or <c>Info</c>. Null is
     /// <c>Error</c>, which is both the default and what an omitted argument means.
     /// </summary>
     string? Severity = null,
-
     /// <summary>
     /// For <see cref="ConstraintKind.EnumDefined"/> on a <c>[Flags]</c> enum: the OR of every
     /// declared member, tested as a mask rather than as membership because a combination is a
     /// legitimate value that no single member equals.
     /// </summary>
     string? FlagsMask = null,
-
     /// <summary>
     /// The member named by <c>When</c>, exactly as written. Resolved by the front end into
     /// <see cref="Condition"/>; carried separately so that "both were set" stays answerable, which
     /// is VM1403.
     /// </summary>
     string? WhenMember = null,
-
     /// <summary>The member named by <c>Unless</c>, exactly as written.</summary>
     string? UnlessMember = null,
-
     /// <summary>
     /// The resolved condition: a complete boolean expression in terms of <c>value</c>, with any
     /// negation already baked in, or null when the constraint is unconditional.
@@ -212,7 +207,6 @@ public sealed record ConstraintModel(
     /// identically.
     /// </remarks>
     string? Condition = null,
-
     /// <summary>
     /// <see cref="ConstraintKind.CustomAttribute"/> only: the complete construction expression -
     /// <c>new global::My.EvenNumberAttribute(2) { ErrorMessage = "…" }</c> - every argument
@@ -220,28 +214,24 @@ public sealed record ConstraintModel(
     /// into a static field, so the instance is built once per validator rather than per pass.
     /// </summary>
     string? CustomConstruction = null,
-
     /// <summary>
     /// <see cref="ConstraintKind.CustomValidationMethod"/> only: the fully qualified static method
     /// - <c>global::My.Checks.EvenNumber</c> - already resolved and signature-checked, so the
     /// emitter writes a direct call.
     /// </summary>
     string? CustomAccessor = null,
-
     /// <summary>
     /// <see cref="ConstraintKind.CustomValidationMethod"/> only: whether the method's second
     /// parameter takes the DataAnnotations <c>ValidationContext</c>, which the emitted call then
     /// builds through <c>DataAnnotationsSupport.CreateContext</c>.
     /// </summary>
     bool CustomTakesContext = false,
-
     /// <summary>
     /// <see cref="ConstraintKind.CustomInstance"/> only: the attribute class, fully qualified. It
     /// types the hoisted field, so the woven calls stay direct - and inlineable - whenever the
     /// class implements the interface implicitly.
     /// </summary>
     string? InstanceType = null,
-
     /// <summary>
     /// <see cref="ConstraintKind.CustomInstance"/> only: the <c>IConstraintFor&lt;T&gt;</c>
     /// instantiation the member matched, fully qualified. A call the class cannot bind - a member
@@ -249,27 +239,23 @@ public sealed record ConstraintModel(
     /// cast to this.
     /// </summary>
     string? InstanceInterface = null,
-
     /// <summary>
     /// <see cref="ConstraintKind.CustomInstance"/> only: <c>Validate</c> is not a public method of
     /// the class, so the woven call must go through <see cref="InstanceInterface"/>.
     /// </summary>
     bool ValidateThroughInterface = false,
-
     /// <summary>
     /// The same question for <c>IsValid</c>, answered separately: an author who overrides
     /// <c>Validate</c> but implements <c>IsValid</c> explicitly - or the reverse - gets each call
     /// bound the cheapest way it can be.
     /// </summary>
     bool IsValidThroughInterface = false,
-
     /// <summary>
     /// <see cref="ConstraintKind.CustomInstance"/> only: <c>[PerValidationInstance]</c> is on the
     /// attribute class, so the emitter constructs the attribute at every check instead of hoisting
     /// one instance into a static field.
     /// </summary>
     bool PerPassInstance = false,
-
     /// <summary>
     /// The <see cref="Message"/> came from a DataAnnotations attribute and follows that dialect:
     /// <c>{0}</c> is the member's display name. The reader bakes every other placeholder in - the
@@ -278,7 +264,6 @@ public sealed record ConstraintModel(
     /// DataAnnotations would have called <c>string.Format</c> per failure.
     /// </summary>
     bool DataAnnotationsMessage = false,
-
     /// <summary>
     /// A DataAnnotations attribute whose message lives in a resx:
     /// <c>ErrorMessageResourceType</c>/<c>ErrorMessageResourceName</c> resolved to the accessor
@@ -288,11 +273,11 @@ public sealed record ConstraintModel(
     /// DataAnnotations itself treats an explicit <c>ErrorMessage</c> as winning.
     /// </summary>
     string? MessageResourceAccessor = null,
-
     /// <summary>
     /// The template arguments a resx message's <c>{1}</c>… placeholders refer to, as C# constant
     /// expressions, in the declaring attribute's own <c>FormatErrorMessage</c> order - which is not
     /// this model's Min/Max order for every attribute ([StringLength] formats max before min).
     /// Meaningful only beside <see cref="MessageResourceAccessor"/>.
     /// </summary>
-    EquatableArray<string> MessageResourceArgs = default) : IEquatable<ConstraintModel>;
+    EquatableArray<string> MessageResourceArgs = default
+) : IEquatable<ConstraintModel>;

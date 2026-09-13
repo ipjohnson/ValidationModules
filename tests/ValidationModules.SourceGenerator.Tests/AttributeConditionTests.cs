@@ -11,22 +11,31 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// static state, so evaluating it once per pass and once per guarded constraint are different
 /// answers, and once per pass is what the described engine also owes.
 /// </remarks>
-public class AttributeConditionTests {
+public class AttributeConditionTests
+{
+    private static string Emit(string members, string extra = "") =>
+        Body(
+            GeneratorHarness.Run(
+                $$"""
+                using ValidationModules.Constraints;
 
-    private static string Emit(string members, string extra = "") => Body(GeneratorHarness.Run($$"""
-        using ValidationModules.Constraints;
+                namespace Sample;
 
-        namespace Sample;
+                public record Claim {
+                {{members}}
+                }
+                {{extra}}
+                """
+            )
+        );
 
-        public record Claim {
-        {{members}}
-        }
-        {{extra}}
-        """));
-
-    private static string Body(GeneratorHarness.Result result) {
+    private static string Body(GeneratorHarness.Result result)
+    {
         Assert.Empty(result.CompilationErrors);
-        Assert.DoesNotContain(result.Diagnostics, d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error);
+        Assert.DoesNotContain(
+            result.Diagnostics,
+            d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error
+        );
 
         return result.Sources.Single(source => source.Key.Contains("ClaimValidator")).Value;
     }
@@ -34,26 +43,35 @@ public class AttributeConditionTests {
     // -- the three accepted shapes -----------------------------------------------------------
 
     [Fact]
-    public void BoolProperty_IsReadDirectly() {
-        var body = Emit("""
+    public void BoolProperty_IsReadDirectly()
+    {
+        var body = Emit(
+            """
                 public bool IsAuto { get; init; }
 
                 [Required(When = nameof(IsAuto))]
                 public string? PolicyNumber { get; init; }
-            """);
+            """
+        );
 
         Assert.Contains("var c0 = value.IsAuto;", body);
-        Assert.Contains("if (c0 && (string.IsNullOrWhiteSpace(value.PolicyNumber)) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"policyNumber\", value: value.PolicyNumber).ShouldStop)", body);
+        Assert.Contains(
+            "if (c0 && (string.IsNullOrWhiteSpace(value.PolicyNumber)) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"policyNumber\", value: value.PolicyNumber).ShouldStop)",
+            body
+        );
     }
 
     [Fact]
-    public void ParameterlessBoolMethod_IsCalledOnTheValue() {
-        var body = Emit("""
+    public void ParameterlessBoolMethod_IsCalledOnTheValue()
+    {
+        var body = Emit(
+            """
                 public bool IsAuto() => true;
 
                 [Required(When = nameof(IsAuto))]
                 public string? PolicyNumber { get; init; }
-            """);
+            """
+        );
 
         Assert.Contains("var c0 = value.IsAuto();", body);
     }
@@ -64,27 +82,33 @@ public class AttributeConditionTests {
     /// forwarder on the model rather than by naming another class.
     /// </summary>
     [Fact]
-    public void StaticBoolMethodTakingTheModel_IsCalledWithTheValue() {
-        var body = Emit("""
+    public void StaticBoolMethodTakingTheModel_IsCalledWithTheValue()
+    {
+        var body = Emit(
+            """
                 public static bool IsAuto(Claim value) => value.Kind == 1;
 
                 public int Kind { get; init; }
 
                 [Required(When = nameof(IsAuto))]
                 public string? PolicyNumber { get; init; }
-            """);
+            """
+        );
 
         Assert.Contains("var c0 = global::Sample.Claim.IsAuto(value);", body);
     }
 
     [Fact]
-    public void Unless_BakesTheNegationIntoTheCondition() {
-        var body = Emit("""
+    public void Unless_BakesTheNegationIntoTheCondition()
+    {
+        var body = Emit(
+            """
                 public bool IsDraft { get; init; }
 
                 [Required(Unless = nameof(IsDraft))]
                 public string? PolicyNumber { get; init; }
-            """);
+            """
+        );
 
         Assert.Contains("var c0 = !(value.IsDraft);", body);
     }
@@ -96,8 +120,10 @@ public class AttributeConditionTests {
     /// "evaluated once per pass" true rather than merely intended.
     /// </summary>
     [Fact]
-    public void OneConditionUsedTwice_IsHoistedOnce() {
-        var body = Emit("""
+    public void OneConditionUsedTwice_IsHoistedOnce()
+    {
+        var body = Emit(
+            """
                 public bool IsAuto { get; init; }
 
                 [Required(When = nameof(IsAuto))]
@@ -105,7 +131,8 @@ public class AttributeConditionTests {
 
                 [Range(1, 5, When = nameof(IsAuto))]
                 public int Priority { get; init; }
-            """);
+            """
+        );
 
         var validate = Method(body, "public global::ValidationModules.ValidationFlow Validate");
 
@@ -114,8 +141,10 @@ public class AttributeConditionTests {
     }
 
     [Fact]
-    public void TwoDistinctConditions_EachGetTheirOwnLocal() {
-        var body = Emit("""
+    public void TwoDistinctConditions_EachGetTheirOwnLocal()
+    {
+        var body = Emit(
+            """
                 public bool IsAuto { get; init; }
                 public bool IsExpedited { get; init; }
 
@@ -124,7 +153,8 @@ public class AttributeConditionTests {
 
                 [Range(1, 5, When = nameof(IsExpedited))]
                 public int Priority { get; init; }
-            """);
+            """
+        );
 
         Assert.Contains("var c0 = value.IsAuto;", body);
         Assert.Contains("var c1 = value.IsExpedited;", body);
@@ -141,13 +171,16 @@ public class AttributeConditionTests {
     /// is checkable from here is that the two scopes are genuinely separate.
     /// </remarks>
     [Fact]
-    public void ConditionsAreScopedPerMethodBody() {
-        var body = Emit("""
+    public void ConditionsAreScopedPerMethodBody()
+    {
+        var body = Emit(
+            """
                 public bool IsAuto { get; init; }
 
                 [Required(When = nameof(IsAuto))]
                 public string? PolicyNumber { get; init; }
-            """);
+            """
+        );
 
         var validate = Method(body, "public global::ValidationModules.ValidationFlow Validate");
         var isValid = Method(body, "public bool IsValid");
@@ -164,34 +197,44 @@ public class AttributeConditionTests {
     /// condition being part of the test rather than needing a case of its own.
     /// </summary>
     [Fact]
-    public void GuardedRequired_FoldsItsConditionIntoTheSuppressionLocal() {
-        var body = Emit("""
+    public void GuardedRequired_FoldsItsConditionIntoTheSuppressionLocal()
+    {
+        var body = Emit(
+            """
                 public bool IsAuto { get; init; }
 
                 [Required(When = nameof(IsAuto))]
                 [StringLength(2, 8)]
                 public string? PolicyNumber { get; init; }
-            """);
+            """
+        );
 
         Assert.Contains(
             "var missingPolicyNumber = c0 && (string.IsNullOrWhiteSpace(value.PolicyNumber));",
-            body);
+            body
+        );
     }
 
     /// <summary>
     /// A condition on one constraint of a field does not leak onto the others.
     /// </summary>
     [Fact]
-    public void UnconditionalConstraintsOnAGuardedField_StayUnconditional() {
-        var body = Emit("""
+    public void UnconditionalConstraintsOnAGuardedField_StayUnconditional()
+    {
+        var body = Emit(
+            """
                 public bool IsAuto { get; init; }
 
                 [Required]
                 [StringLength(2, 8, When = nameof(IsAuto))]
                 public string? PolicyNumber { get; init; }
-            """);
+            """
+        );
 
-        Assert.Contains("if (missingPolicyNumber && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"policyNumber\", value: value.PolicyNumber).ShouldStop)", body);
+        Assert.Contains(
+            "if (missingPolicyNumber && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"policyNumber\", value: value.PolicyNumber).ShouldStop)",
+            body
+        );
         Assert.Contains("if (c0 && !missingPolicyNumber && (", body);
     }
 
@@ -202,8 +245,10 @@ public class AttributeConditionTests {
     /// discriminated-union case: the block a discriminator says to ignore reports nothing.
     /// </summary>
     [Fact]
-    public void ValidateNested_CanBeGuarded() {
-        var result = GeneratorHarness.Run("""
+    public void ValidateNested_CanBeGuarded()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -219,7 +264,8 @@ public class AttributeConditionTests {
                 [ValidateNested(When = nameof(IsAuto))]
                 public Auto? Auto { get; init; }
             }
-            """);
+            """
+        );
 
         var body = Body(result);
 
@@ -230,8 +276,10 @@ public class AttributeConditionTests {
     // -- diagnostics --------------------------------------------------------------------------
 
     [Fact]
-    public void ConditionNamingAMemberThatDoesNotExist_IsVM1401() {
-        var result = GeneratorHarness.Run("""
+    public void ConditionNamingAMemberThatDoesNotExist_IsVM1401()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -240,7 +288,8 @@ public class AttributeConditionTests {
                 [Required(When = "NoSuchMember")]
                 public string? PolicyNumber { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Contains(result.Diagnostics, d => d.Id == "VM1401");
     }
@@ -250,8 +299,10 @@ public class AttributeConditionTests {
     [InlineData("public string? IsAuto { get; init; }")]
     [InlineData("public bool IsAuto(int x) => true;")]
     [InlineData("public static bool IsAuto(int x) => true;")]
-    public void ConditionNamingSomethingThatIsNotAPredicate_IsVM1402(string member) {
-        var result = GeneratorHarness.Run($$"""
+    public void ConditionNamingSomethingThatIsNotAPredicate_IsVM1402(string member)
+    {
+        var result = GeneratorHarness.Run(
+            $$"""
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -262,14 +313,17 @@ public class AttributeConditionTests {
                 [Required(When = nameof(IsAuto))]
                 public string? PolicyNumber { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Contains(result.Diagnostics, d => d.Id == "VM1402");
     }
 
     [Fact]
-    public void ConstraintSettingBothWhenAndUnless_IsVM1403() {
-        var result = GeneratorHarness.Run("""
+    public void ConstraintSettingBothWhenAndUnless_IsVM1403()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -281,7 +335,8 @@ public class AttributeConditionTests {
                 [Required(When = nameof(IsAuto), Unless = nameof(IsDraft))]
                 public string? PolicyNumber { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Contains(result.Diagnostics, d => d.Id == "VM1403");
     }
@@ -292,8 +347,10 @@ public class AttributeConditionTests {
     /// validated rather than the one that declared the constraint.
     /// </summary>
     [Fact]
-    public void ConditionDeclaredOnABaseType_ResolvesFromTheDerivedType() {
-        var result = GeneratorHarness.Run("""
+    public void ConditionDeclaredOnABaseType_ResolvesFromTheDerivedType()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -309,13 +366,15 @@ public class AttributeConditionTests {
                 [Required]
                 public string? Reference { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Contains("var c0 = value.IsAuto;", Body(result));
     }
 
     /// <summary>The text of one emitted method, so a per-method claim is checked per method.</summary>
-    private static string Method(string body, string signature) {
+    private static string Method(string body, string signature)
+    {
         var start = body.IndexOf(signature, StringComparison.Ordinal);
         Assert.True(start >= 0, $"'{signature}' was not emitted");
 
@@ -323,12 +382,16 @@ public class AttributeConditionTests {
         return end < 0 ? body[start..] : body[start..end];
     }
 
-    private static int Occurrences(string text, string value) {
+    private static int Occurrences(string text, string value)
+    {
         var count = 0;
 
-        for (var i = text.IndexOf(value, StringComparison.Ordinal);
-             i >= 0;
-             i = text.IndexOf(value, i + value.Length, StringComparison.Ordinal)) {
+        for (
+            var i = text.IndexOf(value, StringComparison.Ordinal);
+            i >= 0;
+            i = text.IndexOf(value, i + value.Length, StringComparison.Ordinal)
+        )
+        {
             count++;
         }
 

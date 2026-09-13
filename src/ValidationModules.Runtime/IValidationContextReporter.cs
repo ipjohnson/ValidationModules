@@ -23,8 +23,8 @@ namespace ValidationModules;
 /// the tier.
 /// </para>
 /// </remarks>
-public interface IValidationContextReporter {
-
+public interface IValidationContextReporter
+{
     /// <summary>
     /// Records a failure against a field of the current object, and answers whether the pass
     /// carries on.
@@ -37,7 +37,8 @@ public interface IValidationContextReporter {
         string field,
         string code,
         string message,
-        ValidationSeverity severity = ValidationSeverity.Error);
+        ValidationSeverity severity = ValidationSeverity.Error
+    );
 
     /// <summary>
     /// Records a structured failure: code, attempted value and message ingredients, no composed
@@ -60,7 +61,8 @@ public interface IValidationContextReporter {
         string code,
         object? value,
         ValidationMessageInfo messageInfo,
-        ValidationSeverity severity = ValidationSeverity.Error);
+        ValidationSeverity severity = ValidationSeverity.Error
+    );
 
     /// <summary>
     /// Records a failure against the current object itself, for type-level and cross-field rules.
@@ -71,5 +73,6 @@ public interface IValidationContextReporter {
     ValidationFlow ReportHere(
         string code,
         string message,
-        ValidationSeverity severity = ValidationSeverity.Error);
+        ValidationSeverity severity = ValidationSeverity.Error
+    );
 }

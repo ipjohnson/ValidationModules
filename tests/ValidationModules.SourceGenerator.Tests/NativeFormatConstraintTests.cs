@@ -16,15 +16,17 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// emitted validator is the same file - asserted as equality rather than as two snapshots, so the
 /// two paths cannot drift apart quietly.
 /// </remarks>
-public class NativeFormatConstraintTests {
-
+public class NativeFormatConstraintTests
+{
     /// <summary>
     /// The brief's shape: one model file, one using, all seven attributes. No CS0104 is possible
     /// because the second namespace is never imported, and every code reaches the wire.
     /// </summary>
     [Fact]
-    public void AllSeven_CompileFromTheSingleUsing_AndEmitTheirCodes() {
-        var result = GeneratorHarness.Run("""
+    public void AllSeven_CompileFromTheSingleUsing_AndEmitTheirCodes()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -38,7 +40,8 @@ public class NativeFormatConstraintTests {
                 [FileExtensions(Extensions = "pdf,docx")] public string? Attachment { get; init; }
                 [DeniedValues("admin", "root")] public string? Username { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
         Assert.DoesNotContain(result.Diagnostics, d => d.Severity > DiagnosticSeverity.Info);
@@ -54,7 +57,10 @@ public class NativeFormatConstraintTests {
 
         // [DeniedValues] reuses the membership machinery negated: same check, same enum code.
         Assert.Contains("== \"admin\"", emitted);
-        Assert.Contains("global::ValidationModules.ValidationMessageTemplates.DeniedValues", emitted);
+        Assert.Contains(
+            "global::ValidationModules.ValidationMessageTemplates.DeniedValues",
+            emitted
+        );
     }
 
     /// <summary>
@@ -70,15 +76,19 @@ public class NativeFormatConstraintTests {
     [InlineData("[FileExtensions]")]
     [InlineData("""[FileExtensions(Extensions = "pdf, .tar.gz")]""")]
     [InlineData("""[DeniedValues("admin", "root", "system")]""")]
-    public void EachOfTheSeven_EmitsIdenticallyFromEitherNamespace(string attribute) {
+    public void EachOfTheSeven_EmitsIdenticallyFromEitherNamespace(string attribute)
+    {
         var native = GeneratorHarness.Run(Model("ValidationModules.Constraints", attribute));
-        var bridged = GeneratorHarness.Run(Model("System.ComponentModel.DataAnnotations", attribute));
+        var bridged = GeneratorHarness.Run(
+            Model("System.ComponentModel.DataAnnotations", attribute)
+        );
 
         Assert.Empty(native.CompilationErrors);
         Assert.Empty(bridged.CompilationErrors);
         Assert.Equal(
             bridged.Sources["Sample.DocumentValidator.g.cs"],
-            native.Sources["Sample.DocumentValidator.g.cs"]);
+            native.Sources["Sample.DocumentValidator.g.cs"]
+        );
     }
 
     /// <summary>
@@ -86,7 +96,8 @@ public class NativeFormatConstraintTests {
     /// must not depend on which namespace the attribute came from.
     /// </summary>
     [Fact]
-    public void Url_OnAUriMember_EmitsIdenticallyFromEitherNamespace() {
+    public void Url_OnAUriMember_EmitsIdenticallyFromEitherNamespace()
+    {
         const string model = """
             using {0};
 
@@ -98,15 +109,19 @@ public class NativeFormatConstraintTests {
             """;
 
         var native = GeneratorHarness.Run(string.Format(model, "ValidationModules.Constraints"));
-        var bridged = GeneratorHarness.Run(string.Format(model, "System.ComponentModel.DataAnnotations"));
+        var bridged = GeneratorHarness.Run(
+            string.Format(model, "System.ComponentModel.DataAnnotations")
+        );
 
         Assert.Empty(native.CompilationErrors);
         Assert.Contains(
             "global::ValidationModules.ConstraintChecks.IsUrl",
-            native.Sources["Sample.DocumentValidator.g.cs"]);
+            native.Sources["Sample.DocumentValidator.g.cs"]
+        );
         Assert.Equal(
             bridged.Sources["Sample.DocumentValidator.g.cs"],
-            native.Sources["Sample.DocumentValidator.g.cs"]);
+            native.Sources["Sample.DocumentValidator.g.cs"]
+        );
     }
 
     /// <summary>
@@ -114,8 +129,10 @@ public class NativeFormatConstraintTests {
     /// on a non-string member is the same VM1001 the bridged one reports.
     /// </summary>
     [Fact]
-    public void NativeFormatAttribute_OnANonString_IsVM1001() {
-        var result = GeneratorHarness.Run("""
+    public void NativeFormatAttribute_OnANonString_IsVM1001()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -123,7 +140,8 @@ public class NativeFormatConstraintTests {
             public record Pet {
                 [EmailAddress] public int Age { get; init; }
             }
-            """);
+            """
+        );
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1001");
         Assert.Contains("[EmailAddress]", diagnostic.GetMessage());
@@ -135,8 +153,10 @@ public class NativeFormatConstraintTests {
     /// <c>Message</c> and <c>When</c> need no special-casing.
     /// </summary>
     [Fact]
-    public void NativeFormatAttribute_CarriesTheBaseOverrides() {
-        var result = GeneratorHarness.Run("""
+    public void NativeFormatAttribute_CarriesTheBaseOverrides()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -145,7 +165,8 @@ public class NativeFormatConstraintTests {
                 [EmailAddress(Code = "work_email", Message = "{field} must be a work address.")]
                 public string? Email { get; init; }
             }
-            """);
+            """
+        );
 
         var emitted = result.Sources["Sample.SignupValidator.g.cs"];
 
@@ -153,14 +174,15 @@ public class NativeFormatConstraintTests {
         Assert.Contains("email must be a work address.", emitted);
     }
 
-    private static string Model(string ns, string attribute) => $$"""
-        using {{ns}};
+    private static string Model(string ns, string attribute) =>
+        $$"""
+            using {{ns}};
 
-        namespace Sample;
+            namespace Sample;
 
-        public record Document {
-            {{attribute}}
-            public string? Field { get; init; }
-        }
-        """;
+            public record Document {
+                {{attribute}}
+                public string? Field { get; init; }
+            }
+            """;
 }

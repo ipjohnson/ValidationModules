@@ -31,8 +31,8 @@ namespace ValidationModules.SourceGenerator.Impl.Emitters;
 /// The one Roslyn-coupled emitter, because it copies syntax. The others take only the IR.
 /// </para>
 /// </remarks>
-public sealed class RegionEmitter {
-
+public sealed class RegionEmitter
+{
     /// <summary>The companion class a rules class's region is emitted into.</summary>
     public static string CompanionFor(INamedTypeSymbol rulesClass) => $"{rulesClass.Name}_Rules";
 
@@ -43,8 +43,10 @@ public sealed class RegionEmitter {
     /// than one type.
     /// </summary>
     public string EmitRegion(
-        IReadOnlyList<RulesDeclaration> declarations, BraceStyle style = BraceStyle.Allman) {
-
+        IReadOnlyList<RulesDeclaration> declarations,
+        BraceStyle style = BraceStyle.Allman
+    )
+    {
         var rulesClass = declarations[0].RulesClass;
         var ns = rulesClass.ContainingNamespace;
         var file = GeneratedFile(ns.IsGlobalNamespace ? string.Empty : ns.ToDisplayString());
@@ -54,29 +56,35 @@ public sealed class RegionEmitter {
         var container = file.AddClass(CompanionFor(rulesClass));
 
         container.Modifiers = ComponentModifier.Internal | ComponentModifier.Static;
-        container.Comment = declarations.Count == 1
-            ? $"The transcribed Describe body of {rulesClass.Name}: read from the rules class, run from here."
-            : $"The transcribed Describe bodies of {rulesClass.Name}, one region per target: read from the rules class, run from here.";
+        container.Comment =
+            declarations.Count == 1
+                ? $"The transcribed Describe body of {rulesClass.Name}: read from the rules class, run from here."
+                : $"The transcribed Describe bodies of {rulesClass.Name}, one region per target: read from the rules class, run from here.";
 
-        foreach (var declaration in declarations) {
+        foreach (var declaration in declarations)
+        {
             Fields(container, declaration.Fields);
         }
 
-        foreach (var declaration in declarations) {
+        foreach (var declaration in declarations)
+        {
             // Overloads on the subject type: the validator's call site passes its own value, so
             // resolution lands each target on its own region.
             var method = container.AddMethod("Describe");
 
             method.Modifiers = ComponentModifier.Public | ComponentModifier.Static;
             method.SetReturnType(TypeDefinition.Get("ValidationModules", "ValidationFlow"));
-            method.AddParameter(TypeDefinition.Get("ValidationModules", "ValidationContext"), "ctx")
+            method
+                .AddParameter(TypeDefinition.Get("ValidationModules", "ValidationContext"), "ctx")
                 .Modifier = ParameterModifier.Ref;
             method.AddParameter(SymbolType(declaration.Target), declaration.SubjectParameterName);
 
-            foreach (var dependency in declaration.Dependencies) {
+            foreach (var dependency in declaration.Dependencies)
+            {
                 method.AddParameter(
                     ValidatorFor(TypeRef(dependency.ElementQualifiedType)).MakeArray(),
-                    dependency.ParameterName);
+                    dependency.ParameterName
+                );
             }
 
             Body(method, declaration.BodyLines);
@@ -87,8 +95,10 @@ public sealed class RegionEmitter {
     }
 
     /// <summary>Emits one declaring type's fragment methods, or null when it has none.</summary>
-    public string? EmitFragments(FragmentContainer fragments, BraceStyle style = BraceStyle.Allman) {
-        if (fragments.Methods.Count == 0) {
+    public string? EmitFragments(FragmentContainer fragments, BraceStyle style = BraceStyle.Allman)
+    {
+        if (fragments.Methods.Count == 0)
+        {
             return null;
         }
 
@@ -102,21 +112,25 @@ public sealed class RegionEmitter {
         container.Comment =
             $"The transcribed fragments of {fragments.DeclaringType.Name}, one method per concrete target.";
 
-        foreach (var fragment in fragments.Methods) {
+        foreach (var fragment in fragments.Methods)
+        {
             Fields(container, fragment.Fields);
 
             var method = container.AddMethod(fragment.Name);
 
             method.Modifiers = ComponentModifier.Public | ComponentModifier.Static;
             method.SetReturnType(TypeDefinition.Get("ValidationModules", "ValidationFlow"));
-            method.AddParameter(TypeDefinition.Get("ValidationModules", "ValidationContext"), "ctx")
+            method
+                .AddParameter(TypeDefinition.Get("ValidationModules", "ValidationContext"), "ctx")
                 .Modifier = ParameterModifier.Ref;
 
-            if (fragment.Subject is { } subject) {
+            if (fragment.Subject is { } subject)
+            {
                 method.AddParameter(SymbolType(fragment.Target), subject.Name);
             }
 
-            foreach (var extra in fragment.ExtraParameters) {
+            foreach (var extra in fragment.ExtraParameters)
+            {
                 method.AddParameter(extra.Type.GetTypeDefinition(), extra.Name);
             }
 
@@ -131,8 +145,13 @@ public sealed class RegionEmitter {
     /// The lazily-built facet validators a region caches: nullable static fields, filled on first
     /// use with the benign race the validator's own nested arrays already accept.
     /// </summary>
-    private static void Fields(ClassDefinition container, IReadOnlyList<FrontEnds.CompanionField> fields) {
-        foreach (var field in fields) {
+    private static void Fields(
+        ClassDefinition container,
+        IReadOnlyList<FrontEnds.CompanionField> fields
+    )
+    {
+        foreach (var field in fields)
+        {
             container.AddField(TypeRef(field.TypeQualified).MakeNullable(), field.Name).Modifiers =
                 ComponentModifier.Private | ComponentModifier.Static;
         }
@@ -142,11 +161,16 @@ public sealed class RegionEmitter {
     /// The transcribed statements, written as the raw lines the front end produced. Their own
     /// relative indentation rides inside each line; the component supplies the method's.
     /// </summary>
-    private static void Body(MethodDefinition method, IReadOnlyList<string> lines) {
-        foreach (var line in lines) {
-            if (line.Length == 0) {
+    private static void Body(MethodDefinition method, IReadOnlyList<string> lines)
+    {
+        foreach (var line in lines)
+        {
+            if (line.Length == 0)
+            {
                 BlankLine(method);
-            } else {
+            }
+            else
+            {
                 method.Add(new CodeOutputComponent(line));
             }
         }
@@ -167,11 +191,14 @@ public sealed class RegionEmitter {
     /// calls transcribe in reduced extension form, which a fully qualified rules class would
     /// otherwise leave unresolvable. Handed to the file as imports so they deduplicate.
     /// </summary>
-    private static void CopyUsings(CSharpFileDefinition file, INamedTypeSymbol declaringType) {
+    private static void CopyUsings(CSharpFileDefinition file, INamedTypeSymbol declaringType)
+    {
         file.AddUsingNamespace("ValidationModules");
 
-        foreach (var directive in UsingsOf(declaringType)) {
-            if (ImportOf(directive) is { } import) {
+        foreach (var directive in UsingsOf(declaringType))
+        {
+            if (ImportOf(directive) is { } import)
+            {
                 file.AddUsingNamespace(import);
             }
         }
@@ -182,20 +209,24 @@ public sealed class RegionEmitter {
     /// <c>global</c> modifier dropped because it is only legal before namespace declarations and
     /// the plain form imports the same names here.
     /// </summary>
-    private static string? ImportOf(string directive) {
+    private static string? ImportOf(string directive)
+    {
         var text = directive.Trim();
 
-        if (text.StartsWith("global ", StringComparison.Ordinal)) {
+        if (text.StartsWith("global ", StringComparison.Ordinal))
+        {
             text = text.Substring("global ".Length).TrimStart();
         }
 
-        if (!text.StartsWith("using ", StringComparison.Ordinal)) {
+        if (!text.StartsWith("using ", StringComparison.Ordinal))
+        {
             return null;
         }
 
         text = text.Substring("using ".Length).TrimStart();
 
-        if (text.EndsWith(";", StringComparison.Ordinal)) {
+        if (text.EndsWith(";", StringComparison.Ordinal))
+        {
             text = text.Substring(0, text.Length - 1).TrimEnd();
         }
 
@@ -205,23 +236,29 @@ public sealed class RegionEmitter {
     /// <summary>
     /// Every using directive in scope at the declaring type, innermost namespace outwards.
     /// </summary>
-    private static IEnumerable<string> UsingsOf(INamedTypeSymbol declaringType) {
+    private static IEnumerable<string> UsingsOf(INamedTypeSymbol declaringType)
+    {
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var reference in declaringType.DeclaringSyntaxReferences) {
+        foreach (var reference in declaringType.DeclaringSyntaxReferences)
+        {
             var node = reference.GetSyntax();
 
-            for (var current = node; current is not null; current = current.Parent) {
-                var directives = current switch {
+            for (var current = node; current is not null; current = current.Parent)
+            {
+                var directives = current switch
+                {
                     BaseNamespaceDeclarationSyntax declaration => declaration.Usings,
                     CompilationUnitSyntax unit => unit.Usings,
                     _ => default,
                 };
 
-                foreach (var directive in directives) {
+                foreach (var directive in directives)
+                {
                     var text = directive.ToString();
 
-                    if (seen.Add(text)) {
+                    if (seen.Add(text))
+                    {
                         yield return text;
                     }
                 }

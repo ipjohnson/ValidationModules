@@ -1,10 +1,9 @@
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics.CodeAnalysis;
-
+using ValidationModules.Naming;
 // The library's own ValidationResult wins name lookup inside this namespace, so the
 // DataAnnotations one - the only result type this file deals in - is aliased explicitly.
 using DataAnnotationsResult = System.ComponentModel.DataAnnotations.ValidationResult;
-using ValidationModules.Naming;
 
 namespace ValidationModules;
 
@@ -41,8 +40,8 @@ namespace ValidationModules;
 /// contract that must not vary with it.
 /// </para>
 /// </remarks>
-public static class DataAnnotationsSupport {
-
+public static class DataAnnotationsSupport
+{
     /// <summary>
     /// Runs one attribute against one member value, reporting its failure with the attribute's own
     /// formatted message.
@@ -65,10 +64,13 @@ public static class DataAnnotationsSupport {
         object? value,
         string field,
         string memberName,
-        string displayName) {
-
+        string displayName
+    )
+    {
         var result = attribute.GetValidationResult(
-            value, CreateContext(context.Services, instance, memberName, displayName));
+            value,
+            CreateContext(context.Services, instance, memberName, displayName)
+        );
 
         return result is null
             ? ValidationFlow.Continue
@@ -84,9 +86,14 @@ public static class DataAnnotationsSupport {
     /// hands attributes when no provider was supplied.
     /// </remarks>
     public static bool IsValid(
-        ValidationAttribute attribute, object instance, object? value, string memberName, string displayName) =>
-        attribute.GetValidationResult(
-            value, CreateContext(null, instance, memberName, displayName)) is null;
+        ValidationAttribute attribute,
+        object instance,
+        object? value,
+        string memberName,
+        string displayName
+    ) =>
+        attribute.GetValidationResult(value, CreateContext(null, instance, memberName, displayName))
+            is null;
 
     /// <summary>
     /// Maps one <see cref="ValidationResult"/> - from a <c>[CustomValidation]</c> method or an
@@ -106,17 +113,24 @@ public static class DataAnnotationsSupport {
     /// at run time lands on the same path a compiled constraint would have used.
     /// </param>
     public static ValidationFlow Apply(
-        ref ValidationContext context, DataAnnotationsResult? result, string? field, IValidationFieldNamer namer) {
-
-        if (result is null) {
+        ref ValidationContext context,
+        DataAnnotationsResult? result,
+        string? field,
+        IValidationFieldNamer namer
+    )
+    {
+        if (result is null)
+        {
             return ValidationFlow.Continue;
         }
 
         var message = Message(result, field);
         var named = false;
 
-        foreach (var member in result.MemberNames) {
-            if (string.IsNullOrEmpty(member)) {
+        foreach (var member in result.MemberNames)
+        {
+            if (string.IsNullOrEmpty(member))
+            {
                 continue;
             }
 
@@ -124,12 +138,14 @@ public static class DataAnnotationsSupport {
 
             var flow = context.Report(namer.ToFieldName(member), ValidationCodes.Custom, message);
 
-            if (flow.ShouldStop) {
+            if (flow.ShouldStop)
+            {
                 return flow;
             }
         }
 
-        if (named) {
+        if (named)
+        {
             return ValidationFlow.Continue;
         }
 
@@ -148,14 +164,19 @@ public static class DataAnnotationsSupport {
     /// generated validator owns its ordering.
     /// </remarks>
     public static ValidationFlow ValidateObject(
-        ref ValidationContext context, IValidatableObject value, IValidationFieldNamer namer) {
-
+        ref ValidationContext context,
+        IValidatableObject value,
+        IValidationFieldNamer namer
+    )
+    {
         var objectContext = CreateContext(context.Services, value, null, value.GetType().Name);
 
-        foreach (var result in value.Validate(objectContext)) {
+        foreach (var result in value.Validate(objectContext))
+        {
             var flow = Apply(ref context, result, null, namer);
 
-            if (flow.ShouldStop) {
+            if (flow.ShouldStop)
+            {
                 return flow;
             }
         }
@@ -176,7 +197,11 @@ public static class DataAnnotationsSupport {
     /// <param name="memberName">The CLR member name, or null for a type-level context.</param>
     /// <param name="displayName">The display name, resolved at build time.</param>
     public static System.ComponentModel.DataAnnotations.ValidationContext CreateContext(
-        IServiceProvider? services, object instance, string? memberName, string displayName) =>
+        IServiceProvider? services,
+        object instance,
+        string? memberName,
+        string displayName
+    ) =>
 #if NET10_0_OR_GREATER
         // The one constructor without [RequiresUnreferencedCode]: taking the display name as a
         // parameter is what removes the reflective resolution the others are annotated for.
@@ -192,11 +217,18 @@ public static class DataAnnotationsSupport {
     // [Display] off the symbol and passed the answer in. A private helper rather than a branch in
     // CreateContext, so the suppression stays off the public surface and the API snapshot reads
     // the same on both target frameworks.
-    [UnconditionalSuppressMessage("Trimming", "IL2026",
-        Justification = "DisplayName and MemberName are assigned explicitly, so the reflective " +
-            "display-name resolution the constructor is annotated for is never reached.")]
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2026",
+        Justification = "DisplayName and MemberName are assigned explicitly, so the reflective "
+            + "display-name resolution the constructor is annotated for is never reached."
+    )]
     private static System.ComponentModel.DataAnnotations.ValidationContext Net8Context(
-        IServiceProvider? services, object instance, string? memberName, string displayName) =>
+        IServiceProvider? services,
+        object instance,
+        string? memberName,
+        string displayName
+    ) =>
         new(instance, services, items: null) { MemberName = memberName, DisplayName = displayName };
 #endif
 
@@ -206,7 +238,7 @@ public static class DataAnnotationsSupport {
     /// <c>[CustomValidation]</c> method can.
     /// </summary>
     private static string Message(DataAnnotationsResult result, string? field) =>
-        result.ErrorMessage is { Length: > 0 } message
-            ? message
-            : field is null ? "validation failed." : string.Concat(field, " is invalid.");
+        result.ErrorMessage is { Length: > 0 } message ? message
+        : field is null ? "validation failed."
+        : string.Concat(field, " is invalid.");
 }

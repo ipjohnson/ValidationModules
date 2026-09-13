@@ -19,11 +19,12 @@ namespace SutProject.Tests;
 /// blocking failure is Name.
 /// </para>
 /// </remarks>
-public class FailFastTests {
-
+public class FailFastTests
+{
     private static readonly PetValidator Validator = new();
 
-    private static ValidationResult Run(Pet pet, ValidationStopMode mode) {
+    private static ValidationResult Run(Pet pet, ValidationStopMode mode)
+    {
         var collector = new ValidationErrorCollector { StopMode = mode };
 
         Validator.ValidateInto(collector, pet);
@@ -32,7 +33,8 @@ public class FailFastTests {
     }
 
     [Fact]
-    public void CollectAll_ReportsEveryFailure() {
+    public void CollectAll_ReportsEveryFailure()
+    {
         var result = Run(new Pet(), ValidationStopMode.CollectAll);
 
         Assert.True(result.Errors.Count > 1, "the default mode reports the whole set");
@@ -41,14 +43,16 @@ public class FailFastTests {
     }
 
     [Fact]
-    public void StopOnFirstError_ReportsOnlyTheFirstInDeclarationOrder() {
+    public void StopOnFirstError_ReportsOnlyTheFirstInDeclarationOrder()
+    {
         var result = Run(new Pet(), ValidationStopMode.StopOnFirstError);
 
         Assert.Equal("name", Assert.Single(result.Errors).Field);
     }
 
     [Fact]
-    public void ValidateFirst_IsTheEntryPointForIt() {
+    public void ValidateFirst_IsTheEntryPointForIt()
+    {
         var result = Validator.ValidateFirst(new Pet());
 
         Assert.Equal("name", Assert.Single(result.Errors).Field);
@@ -59,12 +63,14 @@ public class FailFastTests {
     /// failure inside Home ends the pass before Toys is walked.
     /// </summary>
     [Fact]
-    public void StopOnFirstError_PropagatesOutOfANestedDescent() {
-        var pet = new Pet {
+    public void StopOnFirstError_PropagatesOutOfANestedDescent()
+    {
+        var pet = new Pet
+        {
             Name = "Ada",
             Age = 3,
             Home = new Address(),
-            Toys = [new Toy()]
+            Toys = [new Toy()],
         };
 
         var result = Run(pet, ValidationStopMode.StopOnFirstError);
@@ -74,12 +80,14 @@ public class FailFastTests {
 
     /// <summary>The same graph under the default mode finds the toy as well.</summary>
     [Fact]
-    public void CollectAll_WalksPastTheNestedFailure() {
-        var pet = new Pet {
+    public void CollectAll_WalksPastTheNestedFailure()
+    {
+        var pet = new Pet
+        {
             Name = "Ada",
             Age = 3,
             Home = new Address(),
-            Toys = [new Toy()]
+            Toys = [new Toy()],
         };
 
         var result = Run(pet, ValidationStopMode.CollectAll);
@@ -92,11 +100,13 @@ public class FailFastTests {
     /// Collection elements stop too: the second element is never validated once the first failed.
     /// </summary>
     [Fact]
-    public void StopOnFirstError_StopsBetweenCollectionElements() {
-        var pet = new Pet {
+    public void StopOnFirstError_StopsBetweenCollectionElements()
+    {
+        var pet = new Pet
+        {
             Name = "Ada",
             Age = 3,
-            Toys = [new Toy(), new Toy()]
+            Toys = [new Toy(), new Toy()],
         };
 
         var result = Run(pet, ValidationStopMode.StopOnFirstError);
@@ -105,11 +115,13 @@ public class FailFastTests {
     }
 
     [Fact]
-    public void AValidPet_IsValidEitherWay() {
-        var pet = new Pet {
+    public void AValidPet_IsValidEitherWay()
+    {
+        var pet = new Pet
+        {
             Name = "Ada",
             Age = 3,
-            Toys = [new Toy { Name = "ball" }]
+            Toys = [new Toy { Name = "ball" }],
         };
 
         Assert.True(Run(pet, ValidationStopMode.StopOnFirstError).IsValid);

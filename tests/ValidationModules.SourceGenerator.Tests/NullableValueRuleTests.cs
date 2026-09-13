@@ -9,27 +9,31 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// one habit: unsuffixed bound literals inferring the wrong <c>TValue</c> (an opaque CS1503 plus
 /// VM3001), and a compiling rule whose wire path was <c>batteryKwh.value</c>.
 /// </summary>
-public class NullableValueRuleTests {
+public class NullableValueRuleTests
+{
+    private static string Rules(string body) =>
+        $$"""
+            using ValidationModules;
 
-    private static string Rules(string body) => $$"""
-        using ValidationModules;
+            namespace Sample;
 
-        namespace Sample;
-
-        public sealed record Vehicle {
-            public decimal? BatteryKwh { get; init; }
-        }
-
-        public sealed class VehicleRules : IValidationRulesFor<Vehicle> {
-            public static void Describe(ValidationRules<Vehicle> rules, Vehicle x) {
-        {{body}}
+            public sealed record Vehicle {
+                public decimal? BatteryKwh { get; init; }
             }
-        }
-        """;
+
+            public sealed class VehicleRules : IValidationRulesFor<Vehicle> {
+                public static void Describe(ValidationRules<Vehicle> rules, Vehicle x) {
+            {{body}}
+                }
+            }
+            """;
 
     [Fact]
-    public void ValueUnwrap_ReportsVM3104_NamingTheFix() {
-        var result = GeneratorHarness.Run(Rules("        rules.Range(x.BatteryKwh.Value, 10m, 300m);"));
+    public void ValueUnwrap_ReportsVM3104_NamingTheFix()
+    {
+        var result = GeneratorHarness.Run(
+            Rules("        rules.Range(x.BatteryKwh.Value, 10m, 300m);")
+        );
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM3104");
         Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
@@ -42,8 +46,11 @@ public class NullableValueRuleTests {
     /// so the wire path is <c>batteryKwh</c> and the message leaf stops being <c>value</c>.
     /// </summary>
     [Fact]
-    public void ValueUnwrap_DerivesTheMemberPath_NotTheValueHop() {
-        var result = GeneratorHarness.Run(Rules("        rules.Range(x.BatteryKwh.Value, 10m, 300m);"));
+    public void ValueUnwrap_DerivesTheMemberPath_NotTheValueHop()
+    {
+        var result = GeneratorHarness.Run(
+            Rules("        rules.Range(x.BatteryKwh.Value, 10m, 300m);")
+        );
 
         Assert.Empty(result.CompilationErrors);
 
@@ -59,8 +66,11 @@ public class NullableValueRuleTests {
     /// binds through the range pair's plain overload - RangeInferenceTests owns it.
     /// </summary>
     [Fact]
-    public void ValueUnwrap_OnAnUnresolvableCall_ReportsVM3104BesideVM3001() {
-        var result = GeneratorHarness.Run(Rules("""        rules.Range(x.BatteryKwh.Value, "10", "300");"""));
+    public void ValueUnwrap_OnAnUnresolvableCall_ReportsVM3104BesideVM3001()
+    {
+        var result = GeneratorHarness.Run(
+            Rules("""        rules.Range(x.BatteryKwh.Value, "10", "300");""")
+        );
 
         Assert.Contains(result.Diagnostics, d => d.Id == "VM3001");
         var unwrap = Assert.Single(result.Diagnostics, d => d.Id == "VM3104");
@@ -68,7 +78,8 @@ public class NullableValueRuleTests {
     }
 
     [Fact]
-    public void NullableValue_WithoutTheUnwrap_IsClean() {
+    public void NullableValue_WithoutTheUnwrap_IsClean()
+    {
         var result = GeneratorHarness.Run(Rules("        rules.Range(x.BatteryKwh, 10m, 300m);"));
 
         Assert.Empty(result.CompilationErrors);
@@ -80,11 +91,16 @@ public class NullableValueRuleTests {
     /// diagnostic's business; VM3007 already owns "not a member path".
     /// </summary>
     [Fact]
-    public void ValueOnANonSubjectPath_IsNotVM3104() {
-        var result = GeneratorHarness.Run(Rules("""
-                decimal? local = 5m;
-                rules.Range(local.Value, 10m, 300m);
-        """));
+    public void ValueOnANonSubjectPath_IsNotVM3104()
+    {
+        var result = GeneratorHarness.Run(
+            Rules(
+                """
+                        decimal? local = 5m;
+                        rules.Range(local.Value, 10m, 300m);
+                """
+            )
+        );
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM3104");
     }

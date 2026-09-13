@@ -21,7 +21,8 @@ namespace ValidationModules.Benchmarks.Comparative.Models.Annotated;
 /// descend into nested objects at all.
 /// </para>
 /// </remarks>
-public sealed record Customer {
+public sealed record Customer
+{
     [Required]
     [StringLength(100, MinimumLength = 1)]
     public string? Name { get; init; }
@@ -40,7 +41,8 @@ public sealed record Customer {
     public string? Notes { get; init; }
 }
 
-public sealed record Order {
+public sealed record Order
+{
     [Required]
     [RegularExpression("^ORD-[0-9]{4}$")]
     public string? Reference { get; init; }
@@ -54,7 +56,8 @@ public sealed record Order {
     public IReadOnlyList<OrderLine> Lines { get; init; } = [];
 }
 
-public sealed record Address {
+public sealed record Address
+{
     [Required]
     [StringLength(120, MinimumLength = 1)]
     public string? Line1 { get; init; }
@@ -68,7 +71,8 @@ public sealed record Address {
     public string? PostalCode { get; init; }
 }
 
-public sealed record OrderLine {
+public sealed record OrderLine
+{
     [Required]
     [RegularExpression("^[A-Z]{3}-[0-9]{4}$")]
     public string? Sku { get; init; }

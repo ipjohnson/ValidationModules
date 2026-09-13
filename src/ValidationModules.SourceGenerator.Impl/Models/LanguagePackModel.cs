@@ -21,7 +21,8 @@ public sealed record LanguagePackModel(
     string Culture,
     string ClassName,
     string HintName,
-    EquatableArray<LanguagePackEntry> Entries);
+    EquatableArray<LanguagePackEntry> Entries
+);
 
 /// <summary>An additional file the pack pipeline considers: its path and its text.</summary>
 public sealed record LanguagePackFile(string Path, string Content);

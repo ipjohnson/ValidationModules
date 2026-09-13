@@ -45,8 +45,8 @@ namespace ValidationModules;
 /// many strings holds the result of one read.
 /// </para>
 /// </remarks>
-public readonly record struct ValidationError {
-
+public readonly record struct ValidationError
+{
     private readonly string? _message;
 
     /// <summary>
@@ -56,7 +56,8 @@ public readonly record struct ValidationError {
     /// <param name="field">The dotted path to the field - <c>home.postalCode</c>, <c>toys[3].name</c>.</param>
     /// <param name="code">A stable machine-readable code - <c>required</c>, <c>string_length</c>.</param>
     /// <param name="message">The human-readable message, already composed.</param>
-    public ValidationError(string field, string code, string message) {
+    public ValidationError(string field, string code, string message)
+    {
         Field = field;
         Code = code;
         _message = message;
@@ -70,7 +71,13 @@ public readonly record struct ValidationError {
     /// <param name="code">A stable machine-readable code.</param>
     /// <param name="value">The attempted value, or null when capture is off or nothing applies.</param>
     /// <param name="messageInfo">The constraint's template and arguments. Shared, not per-error.</param>
-    public ValidationError(string field, string code, object? value, ValidationMessageInfo messageInfo) {
+    public ValidationError(
+        string field,
+        string code,
+        object? value,
+        ValidationMessageInfo messageInfo
+    )
+    {
         Field = field;
         Code = code;
         Value = value;
@@ -130,7 +137,8 @@ public readonly record struct ValidationError {
     /// pass that produced the error never took part in this decision.
     /// </summary>
     /// <param name="formatter">The formatter whose answer is wanted.</param>
-    public string ToMessage(ValidationMessageFormatter formatter) {
+    public string ToMessage(ValidationMessageFormatter formatter)
+    {
         ArgumentNullException.ThrowIfNull(formatter);
 
         return formatter.Format(in this);
@@ -143,7 +151,8 @@ public readonly record struct ValidationError {
     /// <param name="field">Receives <see cref="Field"/>.</param>
     /// <param name="code">Receives <see cref="Code"/>.</param>
     /// <param name="message">Receives <see cref="Message"/>, rendering it if needed.</param>
-    public void Deconstruct(out string field, out string code, out string message) {
+    public void Deconstruct(out string field, out string code, out string message)
+    {
         field = Field;
         code = Code;
         message = Message;

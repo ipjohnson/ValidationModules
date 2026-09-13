@@ -29,8 +29,8 @@ namespace ValidationModules.SourceGenerator.Impl.FrontEnds;
 /// simply fails to compile - but it is the reason the two look different from the rest.
 /// </para>
 /// </remarks>
-public static class RangeBoundReader {
-
+public static class RangeBoundReader
+{
     /// <summary>
     /// Rewrites a bound against <paramref name="type"/>, or reports that it does not parse.
     /// </summary>
@@ -41,7 +41,8 @@ public static class RangeBoundReader {
     /// </param>
     /// <param name="expression">The C# expression to emit in the comparison and the message.</param>
     /// <returns>False when the bound was written as a string and does not parse as the type.</returns>
-    public static bool TryResolve(ITypeSymbol type, string literal, out string expression) {
+    public static bool TryResolve(ITypeSymbol type, string literal, out string expression)
+    {
         expression = literal;
 
         var underlying = TypeFacts.IsNullableValueType(type)
@@ -63,24 +64,28 @@ public static class RangeBoundReader {
         // converts implicitly to the other. So a bound is re-emitted carrying the member's own type
         // rather than trusted to keep it, which is the same normalisation the quoted path below does
         // and for the same reason.
-        if (!IsQuoted(literal)) {
+        if (!IsQuoted(literal))
+        {
             return Retype(underlying, suffix, literal, out expression);
         }
 
         var text = Unquote(literal);
 
-        if (suffix is not null) {
+        if (suffix is not null)
+        {
             return IsIntegral(underlying)
                 ? Integral(text, suffix, out expression)
                 : Numeric(text, suffix, out expression);
         }
 
-        switch (underlying.SpecialType) {
+        switch (underlying.SpecialType)
+        {
             case SpecialType.System_DateTime:
                 return DateTimeBound(text, out expression);
         }
 
-        switch (underlying.ToDisplayString()) {
+        switch (underlying.ToDisplayString())
+        {
             case "System.DateOnly":
                 return DateOnly(text, out expression);
 
@@ -113,8 +118,10 @@ public static class RangeBoundReader {
     /// literal, so the pair agrees without one and the emitted text stays as it reads in the source.
     /// </para>
     /// </remarks>
-    private static string? SuffixFor(ITypeSymbol underlying) {
-        switch (underlying.SpecialType) {
+    private static string? SuffixFor(ITypeSymbol underlying)
+    {
+        switch (underlying.SpecialType)
+        {
             case SpecialType.System_Decimal:
                 return "m";
 
@@ -145,8 +152,10 @@ public static class RangeBoundReader {
         }
     }
 
-    private static bool IsIntegral(ITypeSymbol underlying) {
-        switch (underlying.SpecialType) {
+    private static bool IsIntegral(ITypeSymbol underlying)
+    {
+        switch (underlying.SpecialType)
+        {
             case SpecialType.System_Byte:
             case SpecialType.System_SByte:
             case SpecialType.System_Int16:
@@ -180,24 +189,43 @@ public static class RangeBoundReader {
     /// no such thing as <c>0.5L</c>.
     /// </para>
     /// </remarks>
-    private static bool Retype(ITypeSymbol underlying, string? suffix, string literal, out string expression) {
+    private static bool Retype(
+        ITypeSymbol underlying,
+        string? suffix,
+        string literal,
+        out string expression
+    )
+    {
         expression = literal;
 
-        if (suffix is null) {
+        if (suffix is null)
+        {
             return true;
         }
 
         var text = literal.TrimEnd('d', 'D', 'f', 'F', 'm', 'M', 'l', 'L', 'u', 'U');
 
-        if (IsIntegral(underlying)) {
-            if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var whole)) {
+        if (IsIntegral(underlying))
+        {
+            if (
+                long.TryParse(
+                    text,
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var whole
+                )
+            )
+            {
                 expression = whole.ToString(CultureInfo.InvariantCulture) + suffix;
             }
 
             return true;
         }
 
-        if (!decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)) {
+        if (
+            !decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
+        )
+        {
             return underlying.SpecialType != SpecialType.System_Decimal;
         }
 
@@ -211,10 +239,14 @@ public static class RangeBoundReader {
     internal static string Unquote(string literal) =>
         literal.Substring(1, literal.Length - 2).Replace("\\\\", "\\").Replace("\\\"", "\"");
 
-    private static bool Numeric(string text, string suffix, out string expression) {
+    private static bool Numeric(string text, string suffix, out string expression)
+    {
         expression = string.Empty;
 
-        if (!decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)) {
+        if (
+            !decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
+        )
+        {
             return false;
         }
 
@@ -222,10 +254,12 @@ public static class RangeBoundReader {
         return true;
     }
 
-    private static bool Integral(string text, string suffix, out string expression) {
+    private static bool Integral(string text, string suffix, out string expression)
+    {
         expression = string.Empty;
 
-        if (!long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)) {
+        if (!long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
+        {
             return false;
         }
 
@@ -236,27 +270,31 @@ public static class RangeBoundReader {
     private static bool TryDate(string text, out DateTime value) =>
         DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out value);
 
-    private static bool DateTimeBound(string text, out string expression) {
+    private static bool DateTimeBound(string text, out string expression)
+    {
         expression = string.Empty;
 
-        if (!TryDate(text, out var value)) {
+        if (!TryDate(text, out var value))
+        {
             return false;
         }
 
         // Unspecified rather than the parsed Kind: a bound written "2000-01-01" carries no zone, and
         // silently anchoring it to the build machine's would make the same source mean two things.
         expression =
-            $"new global::System.DateTime({value.Year}, {value.Month}, {value.Day}, " +
-            $"{value.Hour}, {value.Minute}, {value.Second}, {value.Millisecond}, " +
-            "global::System.DateTimeKind.Unspecified)";
+            $"new global::System.DateTime({value.Year}, {value.Month}, {value.Day}, "
+            + $"{value.Hour}, {value.Minute}, {value.Second}, {value.Millisecond}, "
+            + "global::System.DateTimeKind.Unspecified)";
 
         return true;
     }
 
-    private static bool DateOnly(string text, out string expression) {
+    private static bool DateOnly(string text, out string expression)
+    {
         expression = string.Empty;
 
-        if (!TryDate(text, out var value)) {
+        if (!TryDate(text, out var value))
+        {
             return false;
         }
 
@@ -264,11 +302,16 @@ public static class RangeBoundReader {
         return true;
     }
 
-    private static bool TimeOnly(string text, out string expression) {
+    private static bool TimeOnly(string text, out string expression)
+    {
         expression = string.Empty;
 
-        if (!TimeSpan.TryParse(text, CultureInfo.InvariantCulture, out var value) ||
-            value < TimeSpan.Zero || value.Days > 0) {
+        if (
+            !TimeSpan.TryParse(text, CultureInfo.InvariantCulture, out var value)
+            || value < TimeSpan.Zero
+            || value.Days > 0
+        )
+        {
             return false;
         }
 
@@ -278,31 +321,42 @@ public static class RangeBoundReader {
         return true;
     }
 
-    private static bool TimeSpanBound(string text, out string expression) {
+    private static bool TimeSpanBound(string text, out string expression)
+    {
         expression = string.Empty;
 
-        if (!TimeSpan.TryParse(text, CultureInfo.InvariantCulture, out var value)) {
+        if (!TimeSpan.TryParse(text, CultureInfo.InvariantCulture, out var value))
+        {
             return false;
         }
 
         expression =
-            $"new global::System.TimeSpan({value.Days}, {value.Hours}, {value.Minutes}, " +
-            $"{value.Seconds}, {value.Milliseconds})";
+            $"new global::System.TimeSpan({value.Days}, {value.Hours}, {value.Minutes}, "
+            + $"{value.Seconds}, {value.Milliseconds})";
 
         return true;
     }
 
-    private static bool DateTimeOffsetBound(string text, out string expression) {
+    private static bool DateTimeOffsetBound(string text, out string expression)
+    {
         expression = string.Empty;
 
-        if (!DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var value)) {
+        if (
+            !DateTimeOffset.TryParse(
+                text,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var value
+            )
+        )
+        {
             return false;
         }
 
         expression =
-            $"new global::System.DateTimeOffset({value.Year}, {value.Month}, {value.Day}, " +
-            $"{value.Hour}, {value.Minute}, {value.Second}, {value.Millisecond}, " +
-            $"new global::System.TimeSpan({value.Offset.Hours}, {value.Offset.Minutes}, 0))";
+            $"new global::System.DateTimeOffset({value.Year}, {value.Month}, {value.Day}, "
+            + $"{value.Hour}, {value.Minute}, {value.Second}, {value.Millisecond}, "
+            + $"new global::System.TimeSpan({value.Offset.Hours}, {value.Offset.Minutes}, 0))";
 
         return true;
     }

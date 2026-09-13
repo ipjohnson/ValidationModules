@@ -19,8 +19,8 @@ namespace ValidationModules.SourceGenerator.Impl.Emitters;
 /// their own generators, and they read the property themselves.
 /// </para>
 /// </remarks>
-public static class GeneratedCodeStyle {
-
+public static class GeneratedCodeStyle
+{
     /// <summary>The key <c>AnalyzerConfigOptions.GlobalOptions</c> exposes the property under.</summary>
     public const string BuildProperty = "build_property.GeneratedCodeStyle";
 
@@ -30,12 +30,15 @@ public static class GeneratedCodeStyle {
     /// than diagnosing matches DependencyModules, and the property only moves braces: a wrong
     /// value cannot change what the generated code does.
     /// </summary>
-    public static BraceStyle Parse(string? value) {
-        if (value is null) {
+    public static BraceStyle Parse(string? value)
+    {
+        if (value is null)
+        {
             return BraceStyle.Allman;
         }
 
-        switch (value.Trim().ToLowerInvariant()) {
+        switch (value.Trim().ToLowerInvariant())
+        {
             case "kandr":
             case "k&r":
                 return BraceStyle.KAndR;
