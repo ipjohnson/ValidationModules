@@ -88,7 +88,8 @@ Constraints live on the model. A source generator writes the validator during th
 ```csharp
 using ValidationModules.Constraints;
 
-public sealed record Pet {
+public sealed record Pet
+{
     [Required]
     [StringLength(min: 1, max: 100)]
     public string? Name { get; init; }
@@ -104,20 +105,26 @@ public sealed record Pet {
 The generator writes this into your own assembly. It is the code you would have written by hand:
 
 ```csharp
-public sealed partial class PetValidator : IValidatorFor<Pet> {
-
-    public ValidationFlow Validate(ref ValidationContext ctx, Pet value) {
-        if (string.IsNullOrWhiteSpace(value.Name)) {
-            if (ctx.ReportRequired("name").ShouldStop) return ValidationFlow.Stop;
+public sealed partial class PetValidator : IValidatorFor<Pet>
+{
+    public ValidationFlow Validate(ref ValidationContext ctx, Pet value)
+    {
+        if (string.IsNullOrWhiteSpace(value.Name))
+        {
+            if (ctx.ReportRequired("name").ShouldStop)
+                return ValidationFlow.Stop;
         }
-        else if (value.Name is not null && (value.Name.Length < 1 || value.Name.Length > 100)) {
-            if (ctx.ReportStringLength("name", 1, 100).ShouldStop) return ValidationFlow.Stop;
+        else if (value.Name is not null && (value.Name.Length < 1 || value.Name.Length > 100))
+        {
+            if (ctx.ReportStringLength("name", 1, 100).ShouldStop)
+                return ValidationFlow.Stop;
         }
 
         if ((value.Age < 0 || value.Age > 30) && ctx.ReportRange("age", 0, 30).ShouldStop)
             return ValidationFlow.Stop;
 
-        if (value.Home is { } nestedHome) {
+        if (value.Home is { } nestedHome)
+        {
             var ctxHome = ctx.Push("home");
             if (HomeValidators[0].Validate(ref ctxHome, nestedHome).ShouldStop)
                 return ValidationFlow.Stop;
@@ -133,10 +140,13 @@ facts, computation, and types you do not own belong there. It is full C#, **read
 never run**:
 
 ```csharp
-public sealed class PetRules : IValidationRulesFor<Pet> {
-    public static void Describe(ValidationRules<Pet> rules, Pet x) {
-        if (x.Age > 20) {
-            rules.Require(x.Name).Length(2, 40);   // control flow is just C#
+public sealed class PetRules : IValidationRulesFor<Pet>
+{
+    public static void Describe(ValidationRules<Pet> rules, Pet x)
+    {
+        if (x.Age > 20)
+        {
+            rules.Require(x.Name).Length(2, 40); // control flow is just C#
         }
 
         rules.Ensure(x.Age != 13, code: "unlucky");
@@ -152,7 +162,8 @@ using ValidationModules;
 
 var result = new PetValidator().Validate(pet);
 
-foreach (var error in result.Errors) {
+foreach (var error in result.Errors)
+{
     Console.WriteLine($"{error.Field}: {error.Code}");
 }
 // name             required

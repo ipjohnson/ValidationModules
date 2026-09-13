@@ -6,14 +6,15 @@ static check, and the generator writes the branch:
 ```csharp
 using ValidationModules.Constraints;
 
-public sealed class SkuAttribute : CustomConstraintAttribute {
+public sealed class SkuAttribute : CustomConstraintAttribute
+{
     public const string DefaultMessage = "sku must look like SKU-XXXXXXXX";
 
-    public static bool IsValid(string value) =>
-        value.StartsWith("SKU-", StringComparison.Ordinal);
+    public static bool IsValid(string value) => value.StartsWith("SKU-", StringComparison.Ordinal);
 }
 
-public sealed record Product {
+public sealed record Product
+{
     [Required]
     [Sku]
     public string? Sku { get; init; }
@@ -23,8 +24,11 @@ public sealed record Product {
 What comes out the other side:
 
 ```csharp
-if (value.Sku is not null && !global::SkuAttribute.IsValid(value.Sku) &&
-    ctx.Report("sku", ValidationCodes.Custom, "sku must look like SKU-XXXXXXXX").ShouldStop)
+if (
+    value.Sku is not null
+    && !global::SkuAttribute.IsValid(value.Sku)
+    && ctx.Report("sku", ValidationCodes.Custom, "sku must look like SKU-XXXXXXXX").ShouldStop
+)
 {
     return ValidationFlow.Stop;
 }
@@ -48,7 +52,8 @@ constructor's parameters positionally, and the generator passes the constant the
 supplied.
 
 ```csharp
-public sealed class DivisibleAttribute : CustomConstraintAttribute {
+public sealed class DivisibleAttribute : CustomConstraintAttribute
+{
     public DivisibleAttribute(int divisor) { }
 
     public static bool IsValid(int value, int divisor) => value % divisor == 0;
@@ -100,17 +105,25 @@ declaration, holds it in a static field on the validator, and calls it directly:
 ```csharp
 using ValidationModules;
 
-public sealed class ChannelAttribute : Attribute, IConstraintFor<string> {
+public sealed class ChannelAttribute : Attribute, IConstraintFor<string>
+{
     private readonly string[] _allowed;
 
-    public ChannelAttribute(params string[] allowed) { _allowed = allowed; }
+    public ChannelAttribute(params string[] allowed)
+    {
+        _allowed = allowed;
+    }
 
     public bool IsValid(string value) => Array.IndexOf(_allowed, value) >= 0;
 
     public ValidationFlow Validate(ref ValidationContext context, string value, string field) =>
         IsValid(value)
             ? ValidationFlow.Continue
-            : context.Report(field, "channel", $"{field} must be one of: {string.Join(", ", _allowed)}.");
+            : context.Report(
+                field,
+                "channel",
+                $"{field} must be one of: {string.Join(", ", _allowed)}."
+            );
 }
 ```
 

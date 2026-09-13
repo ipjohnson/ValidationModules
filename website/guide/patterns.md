@@ -32,7 +32,8 @@ patterns follow.
 The referenced form points at a member you declared:
 
 ```csharp
-public static partial class PetPatterns {
+public static partial class PetPatterns
+{
     [GeneratedRegex("^[A-Z]{3}$")]
     public static partial Regex Sku();
 }
@@ -88,7 +89,8 @@ Set `Error` explicitly in a library that ships to AOT consumers, so the failure 
 Under `Error`, the offending constraint is dropped and the rest of the type is still emitted:
 
 ```csharp
-public sealed record Pet {
+public sealed record Pet
+{
     [Required]
     public string? Name { get; init; }
 
@@ -119,7 +121,8 @@ VM1107: 'MyApp.PetPatterns.Sku' is not static, so the pattern on 'Sku' cannot be
 A field works if you would rather not write a method:
 
 ```csharp
-public static partial class PetPatterns {
+public static partial class PetPatterns
+{
     [GeneratedRegex("^[A-Z]{3}$")]
     public static partial Regex Sku();
 

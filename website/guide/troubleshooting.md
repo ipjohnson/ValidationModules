@@ -7,15 +7,16 @@ because it has at least one constraint, a `[ValidateNested]`, a rule class targe
 `[GenerateValidator]`. Check that the attribute is one of ours and that the namespace is imported:
 
 ```csharp
-using ValidationModules.Constraints;   // not ValidationModules
+using ValidationModules.Constraints; // not ValidationModules
 ```
 
 **The constraint is on a record parameter.** This is the most common cause, and it now reports
 [VM1008](/reference/diagnostics#vm1008), so check your warnings before reading further:
 
 ```csharp
-public sealed record Pet([Required] string Name);              // VM1008
-public sealed record Pet([property: Required] string Name);    // works
+public sealed record Pet([Required] string Name); // VM1008
+
+public sealed record Pet([property: Required] string Name); // works
 ```
 
 The attribute binds to the constructor parameter, so the property carries no metadata and the type

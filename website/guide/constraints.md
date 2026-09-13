@@ -11,7 +11,8 @@ way.
 ```csharp
 using ValidationModules.Constraints;
 
-public sealed record Pet {
+public sealed record Pet
+{
     [Required]
     public string? Name { get; init; }
 
@@ -40,7 +41,8 @@ public sealed record Pet {
     public Address? Home { get; init; }
 }
 
-public sealed record Address {
+public sealed record Address
+{
     [Required]
     public string? PostalCode { get; init; }
 }
@@ -50,7 +52,8 @@ public sealed record Address {
 binary:
 
 ```csharp
-public static partial class PetPatterns {
+public static partial class PetPatterns
+{
     [GeneratedRegex("^[A-Z]{3}$")]
     public static partial Regex Sku();
 }
@@ -74,7 +77,8 @@ public string? Name { get; init; }
 ```
 
 ```csharp
-if (string.IsNullOrWhiteSpace(value.Name)) ctx.ReportRequired("name");
+if (string.IsNullOrWhiteSpace(value.Name))
+    ctx.ReportRequired("name");
 ```
 
 What counts as missing depends on the type:
@@ -140,7 +144,8 @@ public double Ratio { get; init; }
 Bounds are inclusive unless you say otherwise:
 
 ```csharp
-if ((value.Age < 0 || value.Age > 30)) ctx.ReportRange("age", 0, 30);
+if ((value.Age < 0 || value.Age > 30))
+    ctx.ReportRange("age", 0, 30);
 ```
 
 `ExclusiveMin` and `ExclusiveMax` turn the corresponding comparison into `<=` / `>=`. Applying
@@ -223,7 +228,7 @@ semantics:
 public string? Email { get; init; }
 
 [Url]
-public Uri? Homepage { get; init; }        // [Url] also reads a System.Uri member
+public Uri? Homepage { get; init; } // [Url] also reads a System.Uri member
 
 [FileExtensions(Extensions = "pdf,docx")]
 public string? Attachment { get; init; }
@@ -248,8 +253,10 @@ public string? Status { get; init; }
 ```
 
 ```csharp
-if (value.Status is not null &&
-    (value.Status != "available" && value.Status != "pending" && value.Status != "sold"))
+if (
+    value.Status is not null
+    && (value.Status != "available" && value.Status != "pending" && value.Status != "sold")
+)
     ctx.ReportAllowedValues("status", "available, pending, sold");
 ```
 
@@ -320,13 +327,15 @@ So a `double` or `float` member converts to `decimal` first, which rounds to 15 
 and cancels exactly that error:
 
 ```csharp
-if (!ConstraintChecks.IsMultipleOf(value.Ratio, 0.01m)) ctx.ReportMultipleOf("ratio", 0.01m);
+if (!ConstraintChecks.IsMultipleOf(value.Ratio, 0.01m))
+    ctx.ReportMultipleOf("ratio", 0.01m);
 ```
 
 Integral and `decimal` members are already exact, and compile to a plain comparison:
 
 ```csharp
-if ((value.Quantity % 5 != 0)) ctx.ReportMultipleOf("quantity", 5);
+if ((value.Quantity % 5 != 0))
+    ctx.ReportMultipleOf("quantity", 5);
 ```
 
 The one case with no answer is a floating-point value past `decimal`'s range, around 7.9e28. Its
@@ -348,7 +357,8 @@ This is the one constraint here that is not a comparison, so it is the one that 
 runtime rather than being written inline:
 
 ```csharp
-if (value.Codes is not null && !ConstraintChecks.AllUnique(value.Codes)) ctx.ReportUniqueItems("codes");
+if (value.Codes is not null && !ConstraintChecks.AllUnique(value.Codes))
+    ctx.ReportUniqueItems("codes");
 ```
 
 `AllUnique` compares pairwise below sixteen elements and allocates a `HashSet<T>` above them, so a
@@ -403,7 +413,7 @@ is human-facing and safe to reword. Both are baked in as literals at build time.
 The name in `ValidationError.Field` is derived from the property name, camelCase by default:
 
 ```csharp
-public string? PostalCode { get; init; }   // → "postalCode"
+public string? PostalCode { get; init; } // → "postalCode"
 ```
 
 Precedence, highest first:
@@ -422,8 +432,9 @@ A positional record parameter needs the `property:` target, or the attribute lan
 and is never read:
 
 ```csharp
-public sealed record Pet([property: Required] string Name);   // correct
-public sealed record Pet([Required] string Name);             // silently validates nothing
+public sealed record Pet([property: Required] string Name); // correct
+
+public sealed record Pet([Required] string Name); // silently validates nothing
 ```
 
 ::: warning Why the wrong form needs a diagnostic
@@ -435,7 +446,8 @@ merging zero validators reports every value as valid.
 A record with an explicit body avoids the question:
 
 ```csharp
-public sealed record Pet {
+public sealed record Pet
+{
     [Required]
     public string? Name { get; init; }
 }
@@ -461,8 +473,14 @@ The members are known while the validator is being written, so the emitted test 
 against them:
 
 ```csharp
-if ((value.Method != PaymentMethod.Card && value.Method != PaymentMethod.Cash &&
-     value.Method != PaymentMethod.Transfer)) ctx.ReportAllowedValues("method", "Card, Cash, Transfer");
+if (
+    (
+        value.Method != PaymentMethod.Card
+        && value.Method != PaymentMethod.Cash
+        && value.Method != PaymentMethod.Transfer
+    )
+)
+    ctx.ReportAllowedValues("method", "Card, Cash, Transfer");
 ```
 
 Never `Enum.IsDefined`, which boxes, searches, and needs the enum's metadata kept alive under
@@ -476,7 +494,11 @@ whether any bit outside the declared ones is set:
 
 ```csharp
 if (((value.Rights & ~(Access.None | Access.Read | Access.Write | Access.Delete)) != 0))
-    ctx.Report("rights", ValidationCodes.Enum, "rights must be a combination of: None, Read, Write, Delete.");
+    ctx.Report(
+        "rights",
+        ValidationCodes.Enum,
+        "rights must be a combination of: None, Read, Write, Delete."
+    );
 ```
 
 `Read | Delete` passes. `(Access)64` does not.

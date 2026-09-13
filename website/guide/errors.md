@@ -5,14 +5,15 @@ from a fixed vocabulary. That determinism is what lets two different engines be 
 it is pinned rather than incidental.
 
 ```csharp
-public readonly record struct ValidationError {
+public readonly record struct ValidationError
+{
     public string Field { get; }
     public string Code { get; }
-    public object? Value { get; }                    // captured, never rendered by any default
+    public object? Value { get; } // captured, never rendered by any default
     public ValidationSeverity Severity { get; init; }
     public ValidationMessageInfo? MessageInfo { get; }
 
-    public string Message { get; }                   // rendered by this read
+    public string Message { get; } // rendered by this read
 }
 ```
 
@@ -30,8 +31,8 @@ rules for the attempted value.
 ```csharp
 var result = new PetValidator().Validate(new Pet());
 
-bool valid = result.IsValid;                            // no error has Severity == Error
-bool anything = result.HasErrors;                       // non-empty at any severity
+bool valid = result.IsValid; // no error has Severity == Error
+bool anything = result.HasErrors; // non-empty at any severity
 IReadOnlyList<ValidationError> errors = result.Errors;
 ```
 
@@ -40,18 +41,19 @@ there is no `AddError` on it. A mutable process-wide "success" singleton is some
 could poison.
 
 ```csharp
-ValidationResult.Valid;                      // the shared empty result
-ValidationResult.FromErrors(errors);         // build one
-first.Merge(second);                         // returns a new result; mutates neither
+ValidationResult.Valid; // the shared empty result
+ValidationResult.FromErrors(errors); // build one
+first.Merge(second); // returns a new result; mutates neither
 ```
 
 ## Severity
 
 ```csharp
-public enum ValidationSeverity {
-    Error   = 0,   // the value is invalid
-    Warning = 1,   // worth surfacing, value accepted
-    Info    = 2,   // informational
+public enum ValidationSeverity
+{
+    Error = 0, // the value is invalid
+    Warning = 1, // worth surfacing, value accepted
+    Info = 2, // informational
 }
 ```
 
@@ -116,7 +118,8 @@ attributes were written in. The next section is why.
 A failed `[Required]` suppresses every other error on the same field for the rest of the pass.
 
 ```csharp
-public sealed record Pet {
+public sealed record Pet
+{
     [Required]
     [StringLength(min: 1, max: 100)]
     public string? Name { get; init; }
@@ -178,7 +181,8 @@ Throws `ValidationException` carrying the `ValidationResult`. Nothing else in th
 a validation failure. Validating accumulates and returns.
 
 ```csharp
-public sealed class ValidationException : Exception {
+public sealed class ValidationException : Exception
+{
     public ValidationResult Result { get; }
 }
 ```
@@ -193,13 +197,19 @@ Inside an `IValidatorFor<T>` or an [`IAsyncValidatorFor<T>`](/guide/async), the 
 report:
 
 ```csharp
-public ValidationFlow Validate(ref ValidationContext context, Pet value) {
-    if (value.Name is null && context.ReportRequired("name").ShouldStop) {
+public ValidationFlow Validate(ref ValidationContext context, Pet value)
+{
+    if (value.Name is null && context.ReportRequired("name").ShouldStop)
+    {
         return ValidationFlow.Stop;
     }
 
     // on the object itself rather than a field of it: cross-field and type-level rules
-    if (value.Start > value.End && context.ReportHere("date_order", "start must not be after end.").ShouldStop) {
+    if (
+        value.Start > value.End
+        && context.ReportHere("date_order", "start must not be after end.").ShouldStop
+    )
+    {
         return ValidationFlow.Stop;
     }
 
@@ -222,7 +232,7 @@ a validator that propagates it leaves the remaining rules unevaluated, including
 descent:
 
 ```csharp
-var result = validator.ValidateFirst(pet);   // at most one error, and the rest never ran
+var result = validator.ValidateFirst(pet); // at most one error, and the rest never ran
 ```
 
 `ValidateFirst` is the entry point. The mode itself lives on the collector, so a caller that owns

@@ -7,8 +7,10 @@ run**.
 ```csharp
 using ValidationModules;
 
-public sealed class PetRules : IValidationRulesFor<Pet> {
-    public static void Describe(ValidationRules<Pet> rules, Pet x) {
+public sealed class PetRules : IValidationRulesFor<Pet>
+{
+    public static void Describe(ValidationRules<Pet> rules, Pet x)
+    {
         rules.Require(x.Name).Length(1, 100);
         rules.Range(x.Age, 0, 30);
         rules.Pattern(x.Sku, PetPatterns.Sku);
@@ -23,8 +25,10 @@ A version of that you can paste, against the guide's `Pet`:
 
 <!-- verify:models -->
 ```csharp
-public sealed class PetRules : IValidationRulesFor<Pet> {
-    public static void Describe(ValidationRules<Pet> rules, Pet x) {
+public sealed class PetRules : IValidationRulesFor<Pet>
+{
+    public static void Describe(ValidationRules<Pet> rules, Pet x)
+    {
         rules.Require(x.Name).Length(1, 100);
         rules.Range(x.Age, 0, 30);
         rules.Count(x.Toys, 1, 10);
@@ -67,17 +71,17 @@ A rules class may implement `IValidationRulesFor<T>` once per type it describes,
 members:
 
 ```csharp
-public sealed class LedgerRules :
-    IValidationRulesFor<Invoice>,
-    IValidationRulesFor<CreditNote> {
+public sealed class LedgerRules : IValidationRulesFor<Invoice>, IValidationRulesFor<CreditNote>
+{
+    private const int NumberLength = 10; // one declaration, both regions
 
-    private const int NumberLength = 10;                  // one declaration, both regions
-
-    public static void Describe(ValidationRules<Invoice> rules, Invoice x) {
+    public static void Describe(ValidationRules<Invoice> rules, Invoice x)
+    {
         rules.Require(x.Number).Length(NumberLength, NumberLength);
     }
 
-    public static void Describe(ValidationRules<CreditNote> rules, CreditNote x) {
+    public static void Describe(ValidationRules<CreditNote> rules, CreditNote x)
+    {
         rules.Require(x.Number).Length(NumberLength, NumberLength);
         rules.Ensure(x.Amount > 0m, code: "positive");
     }
@@ -95,11 +99,16 @@ time:
 
 <!-- verify:models -->
 ```csharp
-public sealed class SeniorPetRules : IValidationRulesFor<Pet> {
-    public static void Describe(ValidationRules<Pet> rules, Pet x) {
-        if (x.Age > 20) {
+public sealed class SeniorPetRules : IValidationRulesFor<Pet>
+{
+    public static void Describe(ValidationRules<Pet> rules, Pet x)
+    {
+        if (x.Age > 20)
+        {
             rules.Require(x.Home);
-        } else {
+        }
+        else
+        {
             rules.Range(x.Age, 0, 20);
         }
     }
@@ -111,7 +120,7 @@ into rules:
 
 ```csharp
 var total = x.Lines?.Sum(l => l.Price * l.Qty) ?? 0m;
-rules.Ensure(total <= x.CreditLimit);          // message: "total <= creditLimit."
+rules.Ensure(total <= x.CreditLimit); // message: "total <= creditLimit."
 ```
 
 ::: warning Computation runs unguarded
@@ -132,8 +141,10 @@ anchor. A failed `Require` suppresses the checks chained after it:
 
 <!-- verify:models -->
 ```csharp
-public sealed class AnchoredRules : IValidationRulesFor<Pet> {
-    public static void Describe(ValidationRules<Pet> rules, Pet x) {
+public sealed class AnchoredRules : IValidationRulesFor<Pet>
+{
+    public static void Describe(ValidationRules<Pet> rules, Pet x)
+    {
         rules.Require(x.Name).Length(1, 100);
     }
 }
@@ -164,12 +175,15 @@ chained after it expand into an indexed loop:
 
 <!-- verify -->
 ```csharp
-public sealed record Procedure {
+public sealed record Procedure
+{
     public List<string> Steps { get; init; } = [];
 }
 
-public sealed class ProcedureRules : IValidationRulesFor<Procedure> {
-    public static void Describe(ValidationRules<Procedure> rules, Procedure x) {
+public sealed class ProcedureRules : IValidationRulesFor<Procedure>
+{
+    public static void Describe(ValidationRules<Procedure> rules, Procedure x)
+    {
         rules.Count(x.Steps, 1, 30).Each().Length(5, 500);
     }
 }
@@ -184,15 +198,18 @@ A nullable member is passed as itself, and plain literal bounds convert to the m
 
 <!-- verify -->
 ```csharp
-public sealed record Vehicle {
+public sealed record Vehicle
+{
     public double Latitude { get; init; }
     public decimal? BatteryKwh { get; init; }
 }
 
-public sealed class VehicleRules : IValidationRulesFor<Vehicle> {
-    public static void Describe(ValidationRules<Vehicle> rules, Vehicle x) {
-        rules.Range(x.Latitude, -90, 90);      // infers double from the member
-        rules.Range(x.BatteryKwh, 10, 300);    // null passes; Require is the presence check
+public sealed class VehicleRules : IValidationRulesFor<Vehicle>
+{
+    public static void Describe(ValidationRules<Vehicle> rules, Vehicle x)
+    {
+        rules.Range(x.Latitude, -90, 90); // infers double from the member
+        rules.Range(x.BatteryKwh, 10, 300); // null passes; Require is the presence check
     }
 }
 ```
@@ -213,7 +230,7 @@ never an inline string. There is no inline form to leak the regex engine into an
 An island's value must be a member path on the subject. Nested paths and `?.` are included:
 
 ```csharp
-rules.Require(x.Home?.PostalCode);   // field "home.postalCode"
+rules.Require(x.Home?.PostalCode); // field "home.postalCode"
 rules.Require(x.Name, field: "petName");
 ```
 
@@ -226,8 +243,11 @@ Where free-form code needs a field name, `nameof` through the subject parameter 
 path, including inside interpolated strings:
 
 ```csharp
-rules.Context.Report(nameof(x.AccountNumber), "checksum",   // → "accountNumber"
-    $"{nameof(x.AccountNumber)} failed its checksum");
+rules.Context.Report(
+    nameof(x.AccountNumber),
+    "checksum", // → "accountNumber"
+    $"{nameof(x.AccountNumber)} failed its checksum"
+);
 ```
 
 `field: nameof(x.AccountNumber)` follows the same rule: it names a member, so the error takes
@@ -266,9 +286,9 @@ When free-form logic finds something, report it through `rules.Context`, a narro
 validation pass carrying exactly the members that work here:
 
 ```csharp
-if (!Luhn.Validates(x.AccountNumber)) {
-    rules.Context.Report(nameof(x.AccountNumber), "checksum",
-        "account number failed its checksum");
+if (!Luhn.Validates(x.AccountNumber))
+{
+    rules.Context.Report(nameof(x.AccountNumber), "checksum", "account number failed its checksum");
 }
 ```
 
@@ -287,18 +307,23 @@ Decomposition and reuse are method extraction, read by the generator: any `stati
 same-compilation method that receives the builder is followed.
 
 ```csharp
-public static class AuditRules {
+public static class AuditRules
+{
     // The mixin the attributes never had: every audited type gets these rules, said once.
-    public static void Standard<T>(ValidationRules<T> rules, T audited) where T : IAudited {
+    public static void Standard<T>(ValidationRules<T> rules, T audited)
+        where T : IAudited
+    {
         rules.Require(audited.CreatedBy);
         rules.RangeAtLeast(audited.Version, 1);
     }
 }
 
-public sealed class OrderRules : IValidationRulesFor<Order> {
-    public static void Describe(ValidationRules<Order> rules, Order x) {
+public sealed class OrderRules : IValidationRulesFor<Order>
+{
+    public static void Describe(ValidationRules<Order> rules, Order x)
+    {
         rules.Require(x.Number);
-        AuditRules.Standard(rules, x);          // expanded here, in body order
+        AuditRules.Standard(rules, x); // expanded here, in body order
     }
 }
 ```
@@ -326,12 +351,15 @@ facets":
 
 ```csharp
 // The shared assembly declares the facet and its rules, and runs the generator itself:
-public interface IAudited {
+public interface IAudited
+{
     string? CreatedBy { get; }
 }
 
-public sealed class AuditRules : IValidationRulesFor<IAudited> {
-    public static void Describe(ValidationRules<IAudited> rules, IAudited x) {
+public sealed class AuditRules : IValidationRulesFor<IAudited>
+{
+    public static void Describe(ValidationRules<IAudited> rules, IAudited x)
+    {
         rules.Require(x.CreatedBy);
     }
 }

@@ -257,7 +257,10 @@ not.
 
 ```csharp
 [Required] // VM1007
-public string? Name { set { } }
+public string? Name
+{
+    set { }
+}
 
 [Required] // VM1007
 public string? Name { private get; set; }
@@ -274,8 +277,9 @@ applies.
 **Warning**: *`'Required' is on a record parameter without the property: target, so it lands on the parameter and is never evaluated. Write [property: Required]`*
 
 ```csharp
-public sealed record Pet([Required] string Name);              // VM1008
-public sealed record Pet([property: Required] string Name);    // correct
+public sealed record Pet([Required] string Name); // VM1008
+
+public sealed record Pet([property: Required] string Name); // correct
 ```
 
 Without this the failure is silent in every direction. The attribute binds to the primary
@@ -295,7 +299,8 @@ equally inert, but `[property:]` is not legal there, so this advice would be wro
 Write `[property: Required]`, or use a record with an explicit body:
 
 ```csharp
-public sealed record Pet {
+public sealed record Pet
+{
     [Required]
     public string? Name { get; init; }
 }
@@ -306,13 +311,15 @@ public sealed record Pet {
 **Warning**: *`'Name' hides 'Base.Name', so the 2 constraint(s) declared there no longer apply`*
 
 ```csharp
-public class Base {
+public class Base
+{
     [Required]
     [StringLength(1, 10)]
     public virtual string? Name { get; set; }
 }
 
-public class Derived : Base {
+public class Derived : Base
+{
     [StringLength(1, 200)]
     public new string? Name { get; set; } // VM1009
 }
@@ -331,8 +338,10 @@ An `override` is one property with two declarations rather than two properties, 
 **Error**: *`'Envelope' is generic, and a validator for it could not be registered`*
 
 ```csharp
-public sealed record Envelope<T> {      // VM1010
-    [Required] public string? TraceId { get; init; }
+public sealed record Envelope<T>
+{ // VM1010
+    [Required]
+    public string? TraceId { get; init; }
     public T? Payload { get; init; }
 }
 ```
@@ -346,9 +355,13 @@ does not use anywhere.
 Declare the constraints on a closed type:
 
 ```csharp
-public sealed record OrderEnvelope {
-    [Required] public string? TraceId { get; init; }
-    [ValidateNested] public Order? Payload { get; init; }
+public sealed record OrderEnvelope
+{
+    [Required]
+    public string? TraceId { get; init; }
+
+    [ValidateNested]
+    public Order? Payload { get; init; }
 }
 ```
 
@@ -492,9 +505,13 @@ Use `int?` if the value is genuinely optional, or `[Range]` if what you meant wa
 **Warning**: *`'Sample.Tag' does not override Equals, so [UniqueItems] on 'Tags' compares elements by reference and two elements with equal contents both pass`*
 
 ```csharp
-public class Tag { public string? Value { get; init; } }
+public class Tag
+{
+    public string? Value { get; init; }
+}
 
-public sealed record Order {
+public sealed record Order
+{
     [UniqueItems] // VM1202
     public List<Tag> Tags { get; init; } = [];
 }
@@ -523,7 +540,8 @@ public string? Sku { get; init; }
 Declare it with `[GeneratedRegex]` and point at it:
 
 ```csharp
-public static partial class PetPatterns {
+public static partial class PetPatterns
+{
     [GeneratedRegex("^[A-Z]{3}$")]
     public static partial Regex Sku();
 }
@@ -620,7 +638,8 @@ nullable element like `Money?`. Validators are named `<Type>Validator` over plai
 so there is no class this descent could call, and the descent is dropped.
 
 ```csharp
-public sealed record Document {
+public sealed record Document
+{
     [ValidateNested] // VM1502
     public List<List<Section>> Sections { get; init; } = [];
 }
@@ -639,7 +658,8 @@ target could never have any.
 ```csharp
 public record Address { … }        // not sealed
 
-public sealed record Person {
+public sealed record Person
+{
     [ValidateNested] // VM1503
     public Address? Home { get; init; }
 }
@@ -664,7 +684,7 @@ to a package, reintroducing the layout-dependence that explicit modes exist to p
 
 ```csharp
 [ValidateNested(Polymorphism.Runtime)] // VM1504
-public Address? Home { get; init; }    // where Address is sealed
+public Address? Home { get; init; } // where Address is sealed
 ```
 
 `Runtime` buys a container lookup for an answer the declared type already had. Use `DeclaredOnly`.
@@ -839,11 +859,17 @@ body says. Almost everything transcribes; these are the exceptions, and every on
 **Error**: *`'PetRules.Describe' contains a TryStatement, which the generator does not transcribe`*
 
 ```csharp
-public static void Describe(ValidationRules<Pet> rules, Pet x) {
-    try { rules.Require(x.Name); } catch { }   // VM3001
-    x.Name = "fixed";                          // VM3001: validation does not mutate its subject
-    if (x.Age > 20) {
-        rules.Apply(Checks.Senior);            // VM3001: Apply runs last, unconditionally
+public static void Describe(ValidationRules<Pet> rules, Pet x)
+{
+    try
+    {
+        rules.Require(x.Name);
+    }
+    catch { } // VM3001
+    x.Name = "fixed"; // VM3001: validation does not mutate its subject
+    if (x.Age > 20)
+    {
+        rules.Apply(Checks.Senior); // VM3001: Apply runs last, unconditionally
     }
 }
 ```
@@ -857,9 +883,9 @@ assignment to the subject, and `Apply` anywhere but the top of the body. Locals,
 **Error**: *`The builder declares rules only where the generator can read them; here it would store it, capture it, return it, or pass it to anything the generator cannot read, which would validate nothing at runtime`*
 
 ```csharp
-var chain = rules.Require(x.Name);                  // VM3002
-Func<PropertyRules<Pet, string?>> f = () => rules.Require(x.Name);  // VM3002
-Helper(rules);                                      // VM3002 unless Helper is a fragment
+var chain = rules.Require(x.Name); // VM3002
+Func<PropertyRules<Pet, string?>> f = () => rules.Require(x.Name); // VM3002
+Helper(rules); // VM3002 unless Helper is a fragment
 ```
 
 The anti-silent-drop rule. `ValidationRules<T>` is inert, so a rule call the generator cannot see
@@ -872,12 +898,14 @@ is followed; everything else is this.
 **Error**: *`'PetRules.Describe' declares a rule inside a scope the generator cannot expand it in. Use Each for collections - a collection of strings chains element rules, Each(x.Steps).Length(5, 500) - or report per element through rules.Context`*
 
 ```csharp
-foreach (var toy in x.Toys) {
-    rules.Require(toy.Name);            // VM3003
+foreach (var toy in x.Toys)
+{
+    rules.Require(toy.Name); // VM3003
 }
 
-for (var i = 0; i < x.Steps.Count; i++) {
-    rules.Length(x.Steps[i], 5, 500);   // VM3003 - write rules.Each(x.Steps).Length(5, 500)
+for (var i = 0; i < x.Steps.Count; i++)
+{
+    rules.Length(x.Steps[i], 5, 500); // VM3003 - write rules.Each(x.Steps).Length(5, 500)
 }
 ```
 
@@ -892,11 +920,13 @@ string.
 **Error**: *`'Max' is not accessible from the companion file 'ModelRules.Describe' is transcribed into. Make it internal`*
 
 ```csharp
-public sealed class ModelRules : IValidationRulesFor<Model> {
+public sealed class ModelRules : IValidationRulesFor<Model>
+{
     private static readonly int Max = 10;
 
-    public static void Describe(ValidationRules<Model> rules, Model x) {
-        rules.Ensure(x.Count <= Max);   // VM3004
+    public static void Describe(ValidationRules<Model> rules, Model x)
+    {
+        rules.Ensure(x.Count <= Max); // VM3004
     }
 }
 ```
@@ -935,9 +965,9 @@ Fragment expansion follows calls; a cycle would follow them forever. The message
 **Error**: *`A rule's value argument in 'PetRules' must be a member path on the subject parameter, so the error has a field to be pathed against; anything else needs field:`*
 
 ```csharp
-rules.Require(x.Name!.Trim());          // VM3007
-rules.Range(x.Nights + 1, 1, 30);       // VM3007
-rules.Require(x.Home?.PostalCode);      // fine: ?. is the nested-path spelling
+rules.Require(x.Name!.Trim()); // VM3007
+rules.Range(x.Nights + 1, 1, 30); // VM3007
+rules.Require(x.Home?.PostalCode); // fine: ?. is the nested-path spelling
 ```
 
 The member path is what supplies the field name, taking `[JsonPropertyName]` first and then the
@@ -949,7 +979,7 @@ value genuinely is not a path.
 **Error**: *`'x.Nights' is a non-nullable value type and can never be missing, so this rule can never fail`*
 
 ```csharp
-rules.Require(x.Nights);   // VM3101, the only error on the line
+rules.Require(x.Nights); // VM3101, the only error on the line
 ```
 
 A non-nullable value type fits none of `Require`'s typed overloads - inference does not unwrap
@@ -962,9 +992,9 @@ reach it. Constrain the value instead, or make the property nullable.
 **Error**: *`The condition in 'PetRules.Describe' reads no property of the subject, so the rule has no field to report against. Anchor it by reading the property it is about, or pass field:`*
 
 ```csharp
-rules.Ensure(1 < 2);                    // VM3102
-rules.Ensure(1 < 2, field: "nights");   // fine: field: anchors it
-rules.Ensure(x.Nights <= 7);            // fine: anchored to nights
+rules.Ensure(1 < 2); // VM3102
+rules.Ensure(1 < 2, field: "nights"); // fine: field: anchors it
+rules.Ensure(x.Nights <= 7); // fine: anchored to nights
 ```
 
 An `Ensure` reports against the first property its condition reads. A condition that reads none
@@ -990,7 +1020,7 @@ spellings.
 **Warning**: *`'x.BatteryKwh.Value' unwraps a nullable member. The rule takes the nullable directly, and the field path is derived from the member - write 'x.BatteryKwh'`*
 
 ```csharp
-rules.Range(x.BatteryKwh.Value, 10, 300);   // VM3104 - write x.BatteryKwh
+rules.Range(x.BatteryKwh.Value, 10, 300); // VM3104 - write x.BatteryKwh
 ```
 
 Every rule takes the nullable directly, so the unwrap is never needed - and without this
@@ -1164,8 +1194,7 @@ validator in the compilation is still generated.
 **Warning**: *`'Coupon' has no constraints, no [GenerateValidator], and no rules class or hand-written validator in this compilation, so .Validate<Coupon>() will fail when the endpoint is built. Add constraints or [GenerateValidator] - or, if its rules arrive from another assembly, ignore this and the startup check will agree`*
 
 ```csharp
-app.MapPost("/coupons", (Coupon c) => Results.Ok())
-   .Validate<Coupon>();   // VM5003 when Coupon declares no rules here
+app.MapPost("/coupons", (Coupon c) => Results.Ok()).Validate<Coupon>(); // VM5003 when Coupon declares no rules here
 ```
 
 The build-time version of the [endpoint filter's startup check](/guide/aspnetcore): the same
