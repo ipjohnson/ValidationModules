@@ -114,8 +114,8 @@ what to do instead, not only what is wrong.
 Work here is often split across parallel agents, so every question asked back multiplies.
 
 - Decide and proceed. Do not ask.
-- Copy the nearest existing example for test framework, assertion style, mocking, naming, and brace
-  style. Do not ask which to use.
+- Copy the nearest existing example for test framework, assertion style, mocking, and naming. Do
+  not ask which to use. Layout is not a choice: CSharpier decides it. See Formatting.
 - On hitting an ambiguity, pick the most reasonable option, write the test, and note the assumption
   in the final report.
 - Collect uncertainty into one summary at the end rather than interrupting.
@@ -156,6 +156,29 @@ UPDATE_SNAPSHOTS=1 dotnet test tests/ValidationModules.Runtime.Tests   # accept 
 
 `TreatWarningsAsErrors` is on only when `ContinuousIntegrationBuild=true`. Leave the solution
 warning-free.
+
+## Formatting
+
+CSharpier owns the layout, and the repo is Allman because that is what CSharpier emits. Do not
+argue with it in review, and do not hand-align anything it will undo.
+
+```bash
+dotnet tool restore                             # once per clone
+dotnet csharpier format .                       # the source
+dotnet run scripts/format-doc-snippets.cs       # the ```csharp fences in README.md and website/
+git config core.hooksPath .githooks             # once per clone, to check both before a commit
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
+`build-package.yaml` runs both checks on every pull request, before the build, so a style-only
+failure costs seconds. The hook is the same check and is skippable with `--no-verify`; CI is the
+one that holds.
+
+Two things CSharpier does not reach. A raw string literal holding sample C# is a string to it, so
+the generator test fixtures keep the compact layout they were written in. A Markdown fence is not
+a file, which is what the script above is for; a fence that parses neither bare nor wrapped in a
+class is left as written, and a fence marked `<!-- format:skip -->` is a signature listing whose
+columns are meant to be scanned down.
 
 ## Permissions
 

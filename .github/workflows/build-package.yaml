@@ -43,6 +43,19 @@ jobs:
 
       - run: dotnet restore ValidationModules.sln
 
+      # The pre-commit hook in .githooks runs both of these too, but a hook is local and skippable.
+      # This is what actually holds the formatting. It runs before the build so a style-only failure
+      # costs seconds rather than a full compile and test cycle.
+      - name: Check formatting
+        run: |
+          dotnet tool restore
+          dotnet csharpier check .
+
+      # The samples in README.md and website/ are C# a reader copies, so they are held to the same
+      # layout. CSharpier has no Markdown mode; the script runs it over each ```csharp fence.
+      - name: Check documentation formatting
+        run: dotnet run scripts/format-doc-snippets.cs -- --check
+
       - run: dotnet build ValidationModules.sln --no-restore --configuration Release
 
       # Runs every test suite with coverage collection and merges the results.
