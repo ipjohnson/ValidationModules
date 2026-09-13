@@ -7,8 +7,8 @@ namespace ValidationModules.Constraints;
 /// Constrains the collection itself. To validate the elements, add
 /// <see cref="ValidateNestedAttribute"/> as well - the two coexist on one property.
 /// </remarks>
-public sealed class ItemCountAttribute : ValidationConstraintAttribute {
-
+public sealed class ItemCountAttribute : ValidationConstraintAttribute
+{
     /// <summary>
     /// Bounds set through <see cref="Min"/> and <see cref="Max"/>, for declaring only one of them.
     /// </summary>
@@ -23,7 +23,8 @@ public sealed class ItemCountAttribute : ValidationConstraintAttribute {
     /// </remarks>
     /// <param name="min">Fewest permitted elements, inclusive. Zero means unbounded below.</param>
     /// <param name="max">Most permitted elements, inclusive. Defaults to unbounded.</param>
-    public ItemCountAttribute(int min = 0, int max = int.MaxValue) {
+    public ItemCountAttribute(int min = 0, int max = int.MaxValue)
+    {
         Min = min;
         Max = max;
     }

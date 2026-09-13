@@ -14,27 +14,32 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// validated and is not. Both halves are asserted: that the diagnostic fires on the bad pairing,
 /// and that it stays silent on the good one.
 /// </remarks>
-public class ConstraintDiagnosticsTests {
+public class ConstraintDiagnosticsTests
+{
+    private static string Model(string members) =>
+        $$"""
+            using System;
+            using System.Collections.Generic;
+            using ValidationModules.Constraints;
 
-    private static string Model(string members) => $$"""
-        using System;
-        using System.Collections.Generic;
-        using ValidationModules.Constraints;
+            namespace Sample;
 
-        namespace Sample;
-
-        public record Pet {
-        {{members}}
-        }
-        """;
+            public record Pet {
+            {{members}}
+            }
+            """;
 
     // VM1001 — a string constraint on something that is not a string.
 
     [Theory]
     [InlineData("[StringLength(1, 10)] public int Age { get; init; }", "[StringLength]")]
-    [InlineData("[StringLength(1, 10)] public List<string> Tags { get; init; } = new();", "[StringLength]")]
+    [InlineData(
+        "[StringLength(1, 10)] public List<string> Tags { get; init; } = new();",
+        "[StringLength]"
+    )]
     [InlineData("[Pattern(\"^a$\")] public int Age { get; init; }", "[Pattern]")]
-    public void StringConstraint_OnNonString_IsVM1001(string member, string mentioned) {
+    public void StringConstraint_OnNonString_IsVM1001(string member, string mentioned)
+    {
         var result = GeneratorHarness.Run(Model(member));
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1001");
@@ -43,12 +48,17 @@ public class ConstraintDiagnosticsTests {
     }
 
     [Fact]
-    public void StringConstraint_OnString_IsSilent() {
-        var result = GeneratorHarness.Run(Model("""
-            [StringLength(1, 10)]
-            [Pattern("^a$")]
-            public string? Name { get; init; }
-            """));
+    public void StringConstraint_OnString_IsSilent()
+    {
+        var result = GeneratorHarness.Run(
+            Model(
+                """
+                [StringLength(1, 10)]
+                [Pattern("^a$")]
+                public string? Name { get; init; }
+                """
+            )
+        );
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1001");
     }
@@ -58,27 +68,38 @@ public class ConstraintDiagnosticsTests {
     [Theory]
     [InlineData("[ItemCount(1, 10)] public int Age { get; init; }")]
     [InlineData("[ItemCount(1, 10)] public string? Name { get; init; }")]
-    public void ItemCount_OnNonCollection_IsVM1002(string member) {
+    public void ItemCount_OnNonCollection_IsVM1002(string member)
+    {
         var result = GeneratorHarness.Run(Model(member));
 
-        Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM1002").Severity);
+        Assert.Equal(
+            DiagnosticSeverity.Error,
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1002").Severity
+        );
     }
 
     [Fact]
-    public void ItemCount_OnString_IsVM1002_BecauseAStringIsNotACollectionHere() {
+    public void ItemCount_OnString_IsVM1002_BecauseAStringIsNotACollectionHere()
+    {
         // string implements IEnumerable<char>, so the reading that makes [ItemCount] legal here is
         // available and deliberately not taken — it would turn a length check into a per-character
         // walk. TypeFacts.ElementTypeOf excludes string for exactly this.
-        var result = GeneratorHarness.Run(Model("[ItemCount(1, 10)] public string? Name { get; init; }"));
+        var result = GeneratorHarness.Run(
+            Model("[ItemCount(1, 10)] public string? Name { get; init; }")
+        );
 
-        Assert.Contains("string", Assert.Single(result.Diagnostics, d => d.Id == "VM1002").GetMessage());
+        Assert.Contains(
+            "string",
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1002").GetMessage()
+        );
     }
 
     [Theory]
     [InlineData("[ItemCount(1, 10)] public List<string> Tags { get; init; } = new();")]
     [InlineData("[ItemCount(1, 10)] public string[] Tags { get; init; } = [];")]
     [InlineData("[ItemCount(1, 10)] public IReadOnlyList<string> Tags { get; init; } = [];")]
-    public void ItemCount_OnCollection_IsSilent(string member) {
+    public void ItemCount_OnCollection_IsSilent(string member)
+    {
         var result = GeneratorHarness.Run(Model(member));
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1002");
@@ -89,10 +110,14 @@ public class ConstraintDiagnosticsTests {
     [Theory]
     [InlineData("[Range(0, 30)] public string? Name { get; init; }")]
     [InlineData("[Range(0, 30)] public bool Flag { get; init; }")]
-    public void Range_OnUnorderedType_IsVM1003(string member) {
+    public void Range_OnUnorderedType_IsVM1003(string member)
+    {
         var result = GeneratorHarness.Run(Model(member));
 
-        Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM1003").Severity);
+        Assert.Equal(
+            DiagnosticSeverity.Error,
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1003").Severity
+        );
     }
 
     [Theory]
@@ -103,7 +128,8 @@ public class ConstraintDiagnosticsTests {
     [InlineData("[Range(0, 30)] public int? Optional { get; init; }")]
     [InlineData("[Range(\"2000-01-01\", \"2100-01-01\")] public DateTime Effective { get; init; }")]
     [InlineData("[Range(\"2000-01-01\", \"2100-01-01\")] public DateOnly Day { get; init; }")]
-    public void Range_OnOrderedType_IsSilent(string member) {
+    public void Range_OnOrderedType_IsSilent(string member)
+    {
         var result = GeneratorHarness.Run(Model(member));
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1003");
@@ -112,19 +138,24 @@ public class ConstraintDiagnosticsTests {
     // VM1201 — [Required] that can never fail.
 
     [Fact]
-    public void Required_OnNonNullableValueType_IsVM1201AndOnlyAWarning() {
+    public void Required_OnNonNullableValueType_IsVM1201AndOnlyAWarning()
+    {
         // A warning rather than an error: the declaration is harmless, just pointless. Making it an
         // error would break a build over a no-op.
         var result = GeneratorHarness.Run(Model("[Required] public int Age { get; init; }"));
 
-        Assert.Equal(DiagnosticSeverity.Warning, Assert.Single(result.Diagnostics, d => d.Id == "VM1201").Severity);
+        Assert.Equal(
+            DiagnosticSeverity.Warning,
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1201").Severity
+        );
     }
 
     [Theory]
     [InlineData("[Required] public string? Name { get; init; }")]
     [InlineData("[Required] public int? Age { get; init; }")]
     [InlineData("[Required] public List<string>? Tags { get; init; }")]
-    public void Required_OnSomethingThatCanBeMissing_IsSilent(string member) {
+    public void Required_OnSomethingThatCanBeMissing_IsSilent(string member)
+    {
         var result = GeneratorHarness.Run(Model(member));
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1201");
@@ -137,18 +168,26 @@ public class ConstraintDiagnosticsTests {
     [InlineData("(unclosed")]
     [InlineData("a{2,1}")]
     [InlineData("*")]
-    public void InvalidPattern_IsVM1106(string pattern) {
-        var result = GeneratorHarness.Run(Model(
-            $"[Pattern(\"{pattern}\")] public string? Sku {{ get; init; }}"));
+    public void InvalidPattern_IsVM1106(string pattern)
+    {
+        var result = GeneratorHarness.Run(
+            Model($"[Pattern(\"{pattern}\")] public string? Sku {{ get; init; }}")
+        );
 
-        Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM1106").Severity);
+        Assert.Equal(
+            DiagnosticSeverity.Error,
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1106").Severity
+        );
     }
 
     [Fact]
-    public void InvalidPattern_CarriesTheParserMessage() {
+    public void InvalidPattern_CarriesTheParserMessage()
+    {
         // The regex parser's own text, forwarded. Re-describing it would be a worse message than the
         // one the engine already produces.
-        var result = GeneratorHarness.Run(Model("[Pattern(\"[\")] public string? Sku { get; init; }"));
+        var result = GeneratorHarness.Run(
+            Model("[Pattern(\"[\")] public string? Sku { get; init; }")
+        );
 
         var message = Assert.Single(result.Diagnostics, d => d.Id == "VM1106").GetMessage();
         Assert.Contains("Sku", message);
@@ -156,8 +195,11 @@ public class ConstraintDiagnosticsTests {
     }
 
     [Fact]
-    public void ValidPattern_IsSilent() {
-        var result = GeneratorHarness.Run(Model("[Pattern(\"^[A-Z]{3}$\")] public string? Sku { get; init; }"));
+    public void ValidPattern_IsSilent()
+    {
+        var result = GeneratorHarness.Run(
+            Model("[Pattern(\"^[A-Z]{3}$\")] public string? Sku { get; init; }")
+        );
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1106");
     }
@@ -168,10 +210,14 @@ public class ConstraintDiagnosticsTests {
     [InlineData("[StringLength(10, 1)] public string? Name { get; init; }")]
     [InlineData("[StringLength(Min = 10, Max = 1)] public string? Name { get; init; }")]
     [InlineData("[ItemCount(10, 1)] public List<string> Tags { get; init; } = new();")]
-    public void InvertedBounds_IsVM1101(string member) {
+    public void InvertedBounds_IsVM1101(string member)
+    {
         var result = GeneratorHarness.Run(Model(member));
 
-        Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM1101").Severity);
+        Assert.Equal(
+            DiagnosticSeverity.Error,
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1101").Severity
+        );
     }
 
     [Theory]
@@ -179,7 +225,8 @@ public class ConstraintDiagnosticsTests {
     [InlineData("[StringLength(5, 5)] public string? Name { get; init; }")]
     [InlineData("[StringLength(Max = 500)] public string? Notes { get; init; }")]
     [InlineData("[StringLength(Min = 1)] public string? Name { get; init; }")]
-    public void SatisfiableBounds_IsSilent(string member) {
+    public void SatisfiableBounds_IsSilent(string member)
+    {
         var result = GeneratorHarness.Run(Model(member));
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1101");
@@ -188,36 +235,54 @@ public class ConstraintDiagnosticsTests {
     // VM1007 — a constrained property the validator cannot read.
 
     [Fact]
-    public void SetOnlyProperty_IsVM1007() {
-        var result = GeneratorHarness.Run(Model("""
-            [Required]
-            public string? Name { set { } }
-            """));
+    public void SetOnlyProperty_IsVM1007()
+    {
+        var result = GeneratorHarness.Run(
+            Model(
+                """
+                [Required]
+                public string? Name { set { } }
+                """
+            )
+        );
 
-        Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM1007").Severity);
+        Assert.Equal(
+            DiagnosticSeverity.Error,
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1007").Severity
+        );
     }
 
     [Fact]
-    public void PrivateGetter_IsVM1007() {
-        var result = GeneratorHarness.Run(Model("""
-            [Required]
-            public string? Name { private get; set; }
-            """));
+    public void PrivateGetter_IsVM1007()
+    {
+        var result = GeneratorHarness.Run(
+            Model(
+                """
+                [Required]
+                public string? Name { private get; set; }
+                """
+            )
+        );
 
         Assert.Single(result.Diagnostics, d => d.Id == "VM1007");
     }
 
     [Fact]
-    public void InaccessibleProperty_IsSkippedWhileTheRestOfTheTypeIsStillEmitted() {
+    public void InaccessibleProperty_IsSkippedWhileTheRestOfTheTypeIsStillEmitted()
+    {
         // The unreadable property is dropped rather than emitted anyway, so the build fails on
         // VM1007 alone and not also on generated code that will not compile.
-        var result = GeneratorHarness.Run(Model("""
-            [Required]
-            public string? Hidden { set { } }
+        var result = GeneratorHarness.Run(
+            Model(
+                """
+                [Required]
+                public string? Hidden { set { } }
 
-            [Required]
-            public string? Name { get; init; }
-            """));
+                [Required]
+                public string? Name { get; init; }
+                """
+            )
+        );
 
         Assert.Single(result.Diagnostics, d => d.Id == "VM1007");
 
@@ -227,12 +292,17 @@ public class ConstraintDiagnosticsTests {
     }
 
     [Fact]
-    public void InternalGetter_IsReadableAndSilent() {
+    public void InternalGetter_IsReadableAndSilent()
+    {
         // Internal is visible to the generated validator, which lands in the same assembly.
-        var result = GeneratorHarness.Run(Model("""
-            [Required]
-            public string? Name { internal get; set; }
-            """));
+        var result = GeneratorHarness.Run(
+            Model(
+                """
+                [Required]
+                public string? Name { internal get; set; }
+                """
+            )
+        );
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1007");
     }
@@ -240,7 +310,8 @@ public class ConstraintDiagnosticsTests {
     // VM1302 — RegexOptions.Compiled asked for where it means nothing.
 
     [Fact]
-    public void CompiledRegexOption_IsVM1302() {
+    public void CompiledRegexOption_IsVM1302()
+    {
         // Carrying this over is the exact habit §2 of the plan exists to remove: under AOT,
         // RegexOptions.Compiled emits IL through Reflection.Emit. Patterns here go through
         // [GeneratedRegex], so the flag is not honoured and saying so beats ignoring it.
@@ -258,11 +329,15 @@ public class ConstraintDiagnosticsTests {
 
         var result = GeneratorHarness.Run(source);
 
-        Assert.Equal(DiagnosticSeverity.Warning, Assert.Single(result.Diagnostics, d => d.Id == "VM1302").Severity);
+        Assert.Equal(
+            DiagnosticSeverity.Warning,
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1302").Severity
+        );
     }
 
     [Fact]
-    public void OtherRegexOptions_AreSilent() {
+    public void OtherRegexOptions_AreSilent()
+    {
         var source = """
             using System.Text.RegularExpressions;
             using ValidationModules.Constraints;
@@ -283,94 +358,120 @@ public class ConstraintDiagnosticsTests {
     // VM1008 — a constraint on a record parameter, which binds to the parameter and is never read.
 
     [Fact]
-    public void ConstraintOnARecordParameter_IsVM1008() {
+    public void ConstraintOnARecordParameter_IsVM1008()
+    {
         // Without this the type looks entirely unconstrained: no validator is emitted, nothing is
         // registered, IValidatorFor<Pet> does not resolve, and a runner merging zero validators
         // calls every value valid. Silent in every direction, which is why it is reported before
         // any property is read rather than as part of reading one.
-        var result = GeneratorHarness.Run("""
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
 
             public record Pet([Required] string Name);
-            """);
+            """
+        );
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1008");
         Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
     }
 
     [Fact]
-    public void VM1008_SuggestsTheFixAsItWouldBeTyped() {
-        var result = GeneratorHarness.Run("""
+    public void VM1008_SuggestsTheFixAsItWouldBeTyped()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
 
             public record Pet([Required] string Name);
-            """);
+            """
+        );
 
         // "[property: Required]", not "[property: RequiredAttribute]".
-        Assert.Contains("[property: Required]", Assert.Single(result.Diagnostics, d => d.Id == "VM1008").GetMessage());
+        Assert.Contains(
+            "[property: Required]",
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1008").GetMessage()
+        );
     }
 
     [Fact]
-    public void ConstraintOnARecordParameter_ReportsOncePerAttribute() {
-        var result = GeneratorHarness.Run("""
+    public void ConstraintOnARecordParameter_ReportsOncePerAttribute()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
 
             public record Pet([Required][StringLength(1, 10)] string Name, [Range(0, 30)] int Age);
-            """);
+            """
+        );
 
         Assert.Equal(3, result.Diagnostics.Count(d => d.Id == "VM1008"));
     }
 
     [Fact]
-    public void ConstraintOnARecordParameterWithThePropertyTarget_IsReadNormallyAndIsSilent() {
-        var result = GeneratorHarness.Run("""
+    public void ConstraintOnARecordParameterWithThePropertyTarget_IsReadNormallyAndIsSilent()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
 
             public record Pet([property: Required] string Name);
-            """);
+            """
+        );
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1008");
         Assert.Contains(
             "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\", value: value.Name)",
-            result.Sources["Sample.PetValidator.g.cs"]);
+            result.Sources["Sample.PetValidator.g.cs"]
+        );
     }
 
     [Fact]
-    public void MixedTargets_ReportOnlyTheUntargetedOne() {
-        var result = GeneratorHarness.Run("""
+    public void MixedTargets_ReportOnlyTheUntargetedOne()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
 
             public record Pet([property: Required] string Name, [StringLength(1, 10)] string Tag);
-            """);
+            """
+        );
 
-        Assert.Contains("StringLength", Assert.Single(result.Diagnostics, d => d.Id == "VM1008").GetMessage());
+        Assert.Contains(
+            "StringLength",
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1008").GetMessage()
+        );
     }
 
     [Fact]
-    public void DataAnnotationsConstraintOnARecordParameter_IsAlsoVM1008() {
-        var result = GeneratorHarness.Run("""
+    public void DataAnnotationsConstraintOnARecordParameter_IsAlsoVM1008()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using System.ComponentModel.DataAnnotations;
 
             namespace Sample;
 
             public record Customer([Required] string Name);
-            """);
+            """
+        );
 
         Assert.Single(result.Diagnostics, d => d.Id == "VM1008");
     }
 
     [Fact]
-    public void DataAnnotationsConstraintOnARecordParameter_IsSilentWhenTheFrontEndIsOff() {
+    public void DataAnnotationsConstraintOnARecordParameter_IsSilentWhenTheFrontEndIsOff()
+    {
         // With the vocabulary switched off the attribute is inert wherever it sits, and VM2001 is
         // the diagnostic with that news. Reporting both would be two answers to one question.
         var result = GeneratorHarness.Run(
@@ -381,14 +482,17 @@ public class ConstraintDiagnosticsTests {
 
             public record Customer([Required] string Name);
             """,
-            ("ValidationModules_DataAnnotations", "Ignore"));
+            ("ValidationModules_DataAnnotations", "Ignore")
+        );
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1008");
     }
 
     [Fact]
-    public void NonConstraintAttributeOnARecordParameter_IsSilent() {
-        var result = GeneratorHarness.Run("""
+    public void NonConstraintAttributeOnARecordParameter_IsSilent()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using System;
             using ValidationModules.Constraints;
 
@@ -400,16 +504,19 @@ public class ConstraintDiagnosticsTests {
             public record Pet([Note] string Name) {
                 [Required] public string? Tag { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1008");
     }
 
     [Fact]
-    public void ConstraintOnAnOrdinaryConstructorParameter_IsNotVM1008() {
+    public void ConstraintOnAnOrdinaryConstructorParameter_IsNotVM1008()
+    {
         // Equally inert, but [property:] is not legal there, so this diagnostic's advice would be
         // wrong. Scoped to the primary constructor for exactly that reason.
-        var result = GeneratorHarness.Run("""
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -419,22 +526,26 @@ public class ConstraintDiagnosticsTests {
 
                 [Required] public string? Name { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1008");
     }
 
     [Fact]
-    public void ConstraintOnARecordParameter_DoesNotAlsoEmitAValidatorWithNoRules() {
+    public void ConstraintOnARecordParameter_DoesNotAlsoEmitAValidatorWithNoRules()
+    {
         // The diagnostic is the whole output. Emitting an empty validator as well would register
         // something that validates nothing, which is the state this exists to make visible.
-        var result = GeneratorHarness.Run("""
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
 
             public record Pet([Required] string Name);
-            """);
+            """
+        );
 
         Assert.DoesNotContain("Sample.PetValidator.g.cs", result.Sources.Keys);
     }
@@ -443,8 +554,10 @@ public class ConstraintDiagnosticsTests {
     // keeps the ones above from passing for the wrong reason.
 
     [Fact]
-    public void WellFormedModel_ProducesNoDiagnosticsAndCompiles() {
-        var result = GeneratorHarness.Run("""
+    public void WellFormedModel_ProducesNoDiagnosticsAndCompiles()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using System;
             using System.Collections.Generic;
             using ValidationModules.Constraints;
@@ -479,7 +592,8 @@ public class ConstraintDiagnosticsTests {
                 [ValidateNested]
                 public Address? Home { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.Diagnostics);
         Assert.Empty(result.CompilationErrors);
@@ -492,7 +606,8 @@ public class ConstraintDiagnosticsTests {
     [InlineData("[MultipleOf(5)] public bool Flag { get; init; }")]
     [InlineData("[MultipleOf(5)] public DateTime Starts { get; init; }")]
     [InlineData("[MultipleOf(5)] public List<int> Sizes { get; init; } = new();")]
-    public void MultipleOf_OnNonNumeric_IsVM1004(string member) {
+    public void MultipleOf_OnNonNumeric_IsVM1004(string member)
+    {
         var result = GeneratorHarness.Run(Model(member));
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1004");
@@ -511,7 +626,8 @@ public class ConstraintDiagnosticsTests {
     [InlineData("[MultipleOf(0.05)] public decimal Rounded { get; init; }")]
     [InlineData("[MultipleOf(0.01)] public double Ratio { get; init; }")]
     [InlineData("[MultipleOf(0.01)] public float Share { get; init; }")]
-    public void MultipleOf_OnNumeric_IsSilentAndCompiles(string member) {
+    public void MultipleOf_OnNumeric_IsSilentAndCompiles(string member)
+    {
         var result = GeneratorHarness.Run(Model(member));
 
         Assert.Empty(result.Diagnostics);
@@ -525,7 +641,8 @@ public class ConstraintDiagnosticsTests {
     [InlineData("[MultipleOf(-5)] public int Negative { get; init; }")]
     [InlineData("[MultipleOf(0.0)] public double Ratio { get; init; }")]
     [InlineData("[MultipleOf(\"0\")] public decimal Price { get; init; }")]
-    public void MultipleOf_WithANonPositiveDivisor_IsVM1104(string member) {
+    public void MultipleOf_WithANonPositiveDivisor_IsVM1104(string member)
+    {
         var result = GeneratorHarness.Run(Model(member));
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1104");
@@ -542,7 +659,8 @@ public class ConstraintDiagnosticsTests {
     [InlineData("[MultipleOf(\"not a number\")] public decimal Price { get; init; }")]
     [InlineData("[MultipleOf(\"2.5\")] public int Quantity { get; init; }")]
     [InlineData("[MultipleOf(2.5)] public int Whole { get; init; }")]
-    public void MultipleOf_WithAnUnparseableDivisor_IsVM1105(string member) {
+    public void MultipleOf_WithAnUnparseableDivisor_IsVM1105(string member)
+    {
         var result = GeneratorHarness.Run(Model(member));
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1105");
@@ -555,7 +673,8 @@ public class ConstraintDiagnosticsTests {
     [Theory]
     [InlineData("[UniqueItems] public int Age { get; init; }")]
     [InlineData("[UniqueItems] public string? Name { get; init; }")]
-    public void UniqueItems_OnNonCollection_IsVM1005(string member) {
+    public void UniqueItems_OnNonCollection_IsVM1005(string member)
+    {
         var result = GeneratorHarness.Run(Model(member));
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1005");
@@ -566,7 +685,8 @@ public class ConstraintDiagnosticsTests {
     [InlineData("[UniqueItems] public List<string> Tags { get; init; } = new();")]
     [InlineData("[UniqueItems] public int[] Sizes { get; init; } = Array.Empty<int>();")]
     [InlineData("[UniqueItems] public IEnumerable<string>? Codes { get; init; }")]
-    public void UniqueItems_OnACollection_IsSilentAndCompiles(string member) {
+    public void UniqueItems_OnACollection_IsSilentAndCompiles(string member)
+    {
         var result = GeneratorHarness.Run(Model(member));
 
         Assert.Empty(result.Diagnostics);
@@ -576,8 +696,10 @@ public class ConstraintDiagnosticsTests {
     // VM1202 — elements with no equality of their own, which compare by reference.
 
     [Fact]
-    public void UniqueItems_OverAClassWithNoEquality_IsVM1202() {
-        var result = GeneratorHarness.Run("""
+    public void UniqueItems_OverAClassWithNoEquality_IsVM1202()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using System.Collections.Generic;
             using ValidationModules.Constraints;
 
@@ -591,7 +713,8 @@ public class ConstraintDiagnosticsTests {
                 [UniqueItems]
                 public List<Tag> Tags { get; init; } = new();
             }
-            """);
+            """
+        );
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1202");
         Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
@@ -602,8 +725,10 @@ public class ConstraintDiagnosticsTests {
     /// The four ways an element type earns value equality. None of them should warn.
     /// </summary>
     [Fact]
-    public void UniqueItems_OverElementsWithEquality_IsSilent() {
-        var result = GeneratorHarness.Run("""
+    public void UniqueItems_OverElementsWithEquality_IsSilent()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using System;
             using System.Collections.Generic;
             using ValidationModules.Constraints;
@@ -624,7 +749,8 @@ public class ConstraintDiagnosticsTests {
                 [UniqueItems] public List<Named> Records { get; init; } = new();
                 [UniqueItems] public List<Explicitly> Equatables { get; init; } = new();
             }
-            """);
+            """
+        );
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1202");
     }
@@ -632,7 +758,8 @@ public class ConstraintDiagnosticsTests {
     // VM1102 — a [Range] that declares neither bound.
 
     [Fact]
-    public void Range_WithNoBounds_IsVM1102() {
+    public void Range_WithNoBounds_IsVM1102()
+    {
         var result = GeneratorHarness.Run(Model("[Range] public int Age { get; init; }"));
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1102");
@@ -644,7 +771,8 @@ public class ConstraintDiagnosticsTests {
     [InlineData("[Range(Min = 1)] public int Age { get; init; }")]
     [InlineData("[Range(Max = 99)] public int Count { get; init; }")]
     [InlineData("[Range(1, 99)] public int Both { get; init; }")]
-    public void Range_WithOneBoundOrTwo_IsSilent(string member) {
+    public void Range_WithOneBoundOrTwo_IsSilent(string member)
+    {
         var result = GeneratorHarness.Run(Model(member));
 
         Assert.Empty(result.Diagnostics);
@@ -657,8 +785,11 @@ public class ConstraintDiagnosticsTests {
     /// comparison was CS0019 - an error inside generated code, which plan §7.5 rules out.
     /// </summary>
     [Fact]
-    public void Range_WithAFractionalLiteralOnADecimal_Compiles() {
-        var result = GeneratorHarness.Run(Model("[Range(0.5, 9.99)] public decimal Price { get; init; }"));
+    public void Range_WithAFractionalLiteralOnADecimal_Compiles()
+    {
+        var result = GeneratorHarness.Run(
+            Model("[Range(0.5, 9.99)] public decimal Price { get; init; }")
+        );
 
         Assert.Empty(result.Diagnostics);
         Assert.Empty(result.CompilationErrors);
@@ -681,7 +812,11 @@ public class ConstraintDiagnosticsTests {
     [InlineData("[Pattern(\"([unclosed\")] public string? Name { get; init; }", "VM1106")]
     [InlineData("[MultipleOf(5)] public string? Name { get; init; }", "VM1004")]
     [InlineData("[UniqueItems] public int Quantity { get; init; }", "VM1005")]
-    public void DiagnosedConstraint_DoesNotAlsoEmitUncompilableCode(string member, string diagnostic) {
+    public void DiagnosedConstraint_DoesNotAlsoEmitUncompilableCode(
+        string member,
+        string diagnostic
+    )
+    {
         var result = GeneratorHarness.Run(Model(member));
 
         Assert.Contains(result.Diagnostics, d => d.Id == diagnostic);
@@ -694,17 +829,24 @@ public class ConstraintDiagnosticsTests {
     /// keeps compiling.
     /// </summary>
     [Fact]
-    public void DiagnosedConstraint_LeavesTheRestOfTheModelIntact() {
-        var result = GeneratorHarness.Run(Model("""
-            [StringLength(1, 10)] public int Quantity { get; init; }
+    public void DiagnosedConstraint_LeavesTheRestOfTheModelIntact()
+    {
+        var result = GeneratorHarness.Run(
+            Model(
+                """
+                [StringLength(1, 10)] public int Quantity { get; init; }
 
-            [Required] public string? Name { get; init; }
-            """));
+                [Required] public string? Name { get; init; }
+                """
+            )
+        );
 
         Assert.Contains(result.Diagnostics, d => d.Id == "VM1001");
         Assert.Empty(result.CompilationErrors);
 
-        var emitted = Assert.Single(result.Sources, pair => pair.Key.EndsWith("Validator.g.cs")).Value;
+        var emitted = Assert
+            .Single(result.Sources, pair => pair.Key.EndsWith("Validator.g.cs"))
+            .Value;
 
         Assert.Contains("ReportRequired(ctx, \"name\", value: value.Name)", emitted);
         Assert.DoesNotContain("Quantity", emitted);
@@ -713,7 +855,8 @@ public class ConstraintDiagnosticsTests {
     [Theory]
     [InlineData("[EnumDefined] public int Quantity { get; init; }", "int")]
     [InlineData("[EnumDefined] public string? Name { get; init; }", "string")]
-    public void EnumDefined_OnANonEnum_IsVM1006(string member, string mentioned) {
+    public void EnumDefined_OnANonEnum_IsVM1006(string member, string mentioned)
+    {
         var result = GeneratorHarness.Run(Model(member));
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1006");

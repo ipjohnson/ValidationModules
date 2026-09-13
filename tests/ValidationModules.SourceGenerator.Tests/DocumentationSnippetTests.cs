@@ -34,8 +34,8 @@ namespace ValidationModules.SourceGenerator.Tests;
 ///                          System.ComponentModel.DataAnnotations instead
 /// </code>
 /// </remarks>
-public class DocumentationSnippetTests {
-
+public class DocumentationSnippetTests
+{
     /// <summary>The usings every sample gets, so a page can show the interesting line alone.</summary>
     /// <remarks>
     /// <b>This preamble is why a sample compiling here does not prove a reader can copy it.</b> It
@@ -118,13 +118,19 @@ public class DocumentationSnippetTests {
 
     private static readonly Regex Fence = new(
         @"<!--\s*verify(?<mode>:models|:bare)?\s*-->\s*\r?\n```csharp\r?\n(?<code>.*?)\r?\n```",
-        RegexOptions.Singleline | RegexOptions.Compiled);
+        RegexOptions.Singleline | RegexOptions.Compiled
+    );
 
-    public static TheoryData<string, string, string> Snippets() {
+    public static TheoryData<string, string, string> Snippets()
+    {
         var data = new TheoryData<string, string, string>();
 
-        foreach (var file in Directory.EnumerateFiles(WebsiteRoot, "*.md", SearchOption.AllDirectories)) {
-            if (file.Contains("node_modules", StringComparison.Ordinal)) {
+        foreach (
+            var file in Directory.EnumerateFiles(WebsiteRoot, "*.md", SearchOption.AllDirectories)
+        )
+        {
+            if (file.Contains("node_modules", StringComparison.Ordinal))
+            {
                 continue;
             }
 
@@ -132,8 +138,13 @@ public class DocumentationSnippetTests {
             var page = Path.GetRelativePath(WebsiteRoot, file);
             var index = 0;
 
-            foreach (Match match in Fence.Matches(text)) {
-                data.Add($"{page}#{index++}", match.Groups["code"].Value, match.Groups["mode"].Value);
+            foreach (Match match in Fence.Matches(text))
+            {
+                data.Add(
+                    $"{page}#{index++}",
+                    match.Groups["code"].Value,
+                    match.Groups["mode"].Value
+                );
             }
         }
 
@@ -142,16 +153,19 @@ public class DocumentationSnippetTests {
 
     [Theory]
     [MemberData(nameof(Snippets))]
-    public void EverySampleMarkedVerifiable_Compiles(string where, string code, string mode) {
+    public void EverySampleMarkedVerifiable_Compiles(string where, string code, string mode)
+    {
         var source = new StringBuilder(Preamble);
 
-        if (mode != ":bare") {
+        if (mode != ":bare")
+        {
             source.Append(ConstraintsUsing);
         }
 
         source.Append(code);
 
-        if (mode == ":models") {
+        if (mode == ":models")
+        {
             source.AppendLine().Append(Models);
         }
 
@@ -163,13 +177,15 @@ public class DocumentationSnippetTests {
         // either means the sample is valid C# in the shape it is written.
         var asProgram = Errors(source.ToString(), OutputKind.ConsoleApplication);
 
-        if (asProgram.Count == 0) {
+        if (asProgram.Count == 0)
+        {
             return;
         }
 
         var asLibrary = Errors(source.ToString(), OutputKind.DynamicallyLinkedLibrary);
 
-        if (asLibrary.Count == 0) {
+        if (asLibrary.Count == 0)
+        {
             return;
         }
 
@@ -178,18 +194,22 @@ public class DocumentationSnippetTests {
         Assert.Fail($"{where} does not compile:\n  {string.Join("\n  ", errors)}");
     }
 
-    private static List<string> Errors(string source, OutputKind outputKind) {
+    private static List<string> Errors(string source, OutputKind outputKind)
+    {
         var result = GeneratorHarness.Run(source, "Sample", outputKind);
 
-        return result.CompilationErrors
-            .Concat(result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error))
+        return result
+            .CompilationErrors.Concat(
+                result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)
+            )
             .Select(d => $"{d.Id}: {d.GetMessage()}")
             .Distinct(StringComparer.Ordinal)
             .ToList();
     }
 
     [Fact]
-    public void TheDocumentationHasSamplesUnderVerification() {
+    public void TheDocumentationHasSamplesUnderVerification()
+    {
         // A marker typo would silently empty the theory and turn this whole file green, which is the
         // failure mode a guard like this actually has.
         Assert.True(Snippets().Count >= 12, $"only {Snippets().Count} samples are being verified");
@@ -197,14 +217,18 @@ public class DocumentationSnippetTests {
 
     private static string WebsiteRoot { get; } = ResolveWebsiteRoot();
 
-    private static string ResolveWebsiteRoot() {
-        var configured = typeof(DocumentationSnippetTests).Assembly
-            .GetCustomAttributes<AssemblyMetadataAttribute>()
-            .FirstOrDefault(attribute => attribute.Key == "RepositoryRoot")?.Value;
+    private static string ResolveWebsiteRoot()
+    {
+        var configured = typeof(DocumentationSnippetTests)
+            .Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(attribute => attribute.Key == "RepositoryRoot")
+            ?.Value;
 
-        if (configured is null || !Directory.Exists(Path.Combine(configured, "website"))) {
+        if (configured is null || !Directory.Exists(Path.Combine(configured, "website")))
+        {
             throw new InvalidOperationException(
-                "RepositoryRoot assembly metadata is missing or does not contain website/.");
+                "RepositoryRoot assembly metadata is missing or does not contain website/."
+            );
         }
 
         return Path.Combine(configured, "website");

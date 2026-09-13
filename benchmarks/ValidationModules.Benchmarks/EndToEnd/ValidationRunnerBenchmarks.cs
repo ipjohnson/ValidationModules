@@ -29,8 +29,8 @@ namespace ValidationModules.Benchmarks.EndToEnd;
 /// </remarks>
 [MemoryDiagnoser]
 [BenchmarkCategory(BenchmarkCategories.EndToEnd)]
-public class ValidationRunnerBenchmarks {
-
+public class ValidationRunnerBenchmarks
+{
     // Hoisted: constructing per invocation would put an allocation on the measured path.
     private static readonly CustomerValidator CustomerValidatorShared = new();
     private ValidationRunner<Customer> _structuralOnly = null!;
@@ -40,17 +40,17 @@ public class ValidationRunnerBenchmarks {
     private Customer _invalid = null!;
 
     [GlobalSetup]
-    public void Setup() {
+    public void Setup()
+    {
         _valid = SampleData.ValidCustomer();
         _invalid = SampleData.InvalidCustomer();
 
-        _structuralOnly = new ValidationRunner<Customer>(
-            [CustomerValidatorShared],
-            []);
+        _structuralOnly = new ValidationRunner<Customer>([CustomerValidatorShared], []);
 
         _withBusinessRule = new ValidationRunner<Customer>(
             [CustomerValidatorShared],
-            [new SynchronousBusinessRule()]);
+            [new SynchronousBusinessRule()]
+        );
     }
 
     [Benchmark(Baseline = true, Description = "Direct validator call, clean")]
@@ -63,10 +63,12 @@ public class ValidationRunnerBenchmarks {
     public ValidationResult Runner_Validate_Failing() => _structuralOnly.Validate(_invalid);
 
     [Benchmark(Description = "Runner async, no business rules, clean")]
-    public ValueTask<ValidationResult> Runner_ValidateAsync() => _structuralOnly.ValidateAsync(_valid);
+    public ValueTask<ValidationResult> Runner_ValidateAsync() =>
+        _structuralOnly.ValidateAsync(_valid);
 
     [Benchmark(Description = "Runner async, one business rule, clean - the rule runs")]
-    public ValueTask<ValidationResult> Runner_ValidateAsync_WithRule() => _withBusinessRule.ValidateAsync(_valid);
+    public ValueTask<ValidationResult> Runner_ValidateAsync_WithRule() =>
+        _withBusinessRule.ValidateAsync(_valid);
 
     /// <summary>
     /// Structural validation fails, so the business rule is skipped entirely. This is the gate
@@ -74,17 +76,24 @@ public class ValidationRunnerBenchmarks {
     /// a database round trip rather than the microseconds shown here.
     /// </summary>
     [Benchmark(Description = "Runner async, one business rule, failing - the rule is skipped")]
-    public ValueTask<ValidationResult> Runner_ValidateAsync_Gated() => _withBusinessRule.ValidateAsync(_invalid);
+    public ValueTask<ValidationResult> Runner_ValidateAsync_Gated() =>
+        _withBusinessRule.ValidateAsync(_invalid);
 }
 
 /// <summary>
 /// A business rule with no I/O in it, so the async benchmarks measure the machinery rather than a
 /// simulated round trip. It does add an error, so the merge path is exercised rather than skipped.
 /// </summary>
-public sealed class SynchronousBusinessRule : IAsyncValidatorFor<Customer> {
-
-    public ValueTask ValidateAsync(ValidationContext context, Customer value, CancellationToken cancellationToken) {
-        if (value.Tier == "gold" && value.DiscountRate > 0.5) {
+public sealed class SynchronousBusinessRule : IAsyncValidatorFor<Customer>
+{
+    public ValueTask ValidateAsync(
+        ValidationContext context,
+        Customer value,
+        CancellationToken cancellationToken
+    )
+    {
+        if (value.Tier == "gold" && value.DiscountRate > 0.5)
+        {
             context.ReportHere("conflict", "a gold customer cannot exceed a 50% discount.");
         }
 

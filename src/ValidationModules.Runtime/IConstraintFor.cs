@@ -77,8 +77,8 @@ namespace ValidationModules;
 /// The member type the check reads. An attribute may implement several instantiations; the
 /// generator picks the member's own type, or the single implemented one the member converts to.
 /// </typeparam>
-public interface IConstraintFor<in T> {
-
+public interface IConstraintFor<in T>
+{
     /// <summary>
     /// The verdict, with nothing recorded: false when the value would fail with an
     /// <see cref="ValidationSeverity.Error"/>, true otherwise. Never called with null.
@@ -95,8 +95,10 @@ public interface IConstraintFor<in T> {
     /// <param name="context">The pass to report into.</param>
     /// <param name="value">The member's value. Never null.</param>
     /// <param name="field">The wire field name errors report under.</param>
-    ValidationFlow Validate(ref ValidationContext context, T value, string field) {
-        if (IsValid(value)) {
+    ValidationFlow Validate(ref ValidationContext context, T value, string field)
+    {
+        if (IsValid(value))
+        {
             return ValidationFlow.Continue;
         }
 
@@ -108,7 +110,10 @@ public interface IConstraintFor<in T> {
         return this is Constraints.ValidationConstraintAttribute declared
             ? declared.Message is { } message
                 ? context.Report(
-                    field, declared.Code ?? ValidationCodes.Custom, message.Replace("{field}", field))
+                    field,
+                    declared.Code ?? ValidationCodes.Custom,
+                    message.Replace("{field}", field)
+                )
                 : context.ReportCustom(field, code: declared.Code)
             : context.ReportCustom(field);
     }

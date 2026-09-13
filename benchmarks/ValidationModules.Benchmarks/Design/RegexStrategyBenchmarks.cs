@@ -26,7 +26,8 @@ namespace ValidationModules.Benchmarks.Design;
 /// </remarks>
 [MemoryDiagnoser]
 [BenchmarkCategory(BenchmarkCategories.Design)]
-public partial class RegexStrategyBenchmarks {
+public partial class RegexStrategyBenchmarks
+{
     private const string Pattern = "^[A-Z]{3}$";
 
     private static readonly Regex Interpreted = new(Pattern, RegexOptions.None);
@@ -49,15 +50,19 @@ public partial class RegexStrategyBenchmarks {
     public bool StaticCompiled() => Compiled.IsMatch(Value);
 
     [Benchmark(Description = "specialized matcher - what a subset compiler would emit")]
-    public bool Specialized() {
+    public bool Specialized()
+    {
         var value = Value;
 
-        if (value.Length != 3) {
+        if (value.Length != 3)
+        {
             return false;
         }
 
-        for (var i = 0; i < 3; i++) {
-            if (value[i] is < 'A' or > 'Z') {
+        for (var i = 0; i < 3; i++)
+        {
+            if (value[i] is < 'A' or > 'Z')
+            {
                 return false;
             }
         }

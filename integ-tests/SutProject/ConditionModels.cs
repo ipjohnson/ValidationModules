@@ -6,7 +6,8 @@ namespace SutProject.Conditions;
 /// The discriminated-union shape conditional constraints exist for: a discriminator that says which
 /// half of the model is meaningful, and constraints on the other half that should not fire.
 /// </summary>
-public sealed record Claim {
+public sealed record Claim
+{
     public bool IsAuto { get; init; }
 
     public bool IsDraft { get; init; }
@@ -29,7 +30,8 @@ public sealed record Claim {
     public AutoDetail? Auto { get; init; }
 }
 
-public sealed record AutoDetail {
+public sealed record AutoDetail
+{
     [Required]
     public string? Vin { get; init; }
 }
@@ -38,10 +40,12 @@ public sealed record AutoDetail {
 /// A condition reading mutable static state, so that "evaluated once per pass" is observable rather
 /// than merely intended. Two constraints name it; the counter must move by one per validation.
 /// </summary>
-public sealed record Counted {
+public sealed record Counted
+{
     public static int Evaluations;
 
-    public static bool Enabled(Counted value) {
+    public static bool Enabled(Counted value)
+    {
         Evaluations++;
         return value.Gate;
     }

@@ -10,8 +10,8 @@ namespace Microsoft.Extensions.DependencyInjection;
 /// <summary>
 /// Wires the generated validators into the options pipeline.
 /// </summary>
-public static class ValidationModulesOptionsExtensions {
-
+public static class ValidationModulesOptionsExtensions
+{
     /// <summary>
     /// Registers <typeparamref name="TOptions"/> with validation at host startup: every
     /// <see cref="IValidatorFor{T}"/> registered for it runs through
@@ -46,16 +46,21 @@ public static class ValidationModulesOptionsExtensions {
     /// <param name="services">The collection to add to.</param>
     /// <param name="name">The options instance to validate; null for the default instance.</param>
     public static OptionsBuilder<TOptions> AddValidatedOptions<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TOptions>(
-        this IServiceCollection services, string? name = null)
-        where TOptions : class {
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
+            TOptions
+    >(this IServiceCollection services, string? name = null)
+        where TOptions : class
+    {
         ArgumentNullException.ThrowIfNull(services);
 
         var builder = services.AddOptions<TOptions>(name);
 
-        services.AddSingleton<IValidateOptions<TOptions>>(provider =>
-            new ValidatorForValidateOptions<TOptions>(
-                builder.Name, provider.GetServices<IValidatorFor<TOptions>>()));
+        services.AddSingleton<IValidateOptions<TOptions>>(
+            provider => new ValidatorForValidateOptions<TOptions>(
+                builder.Name,
+                provider.GetServices<IValidatorFor<TOptions>>()
+            )
+        );
 
         return builder.ValidateOnStart();
     }

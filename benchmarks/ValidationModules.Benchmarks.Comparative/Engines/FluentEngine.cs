@@ -22,15 +22,16 @@ namespace ValidationModules.Benchmarks.Comparative.Engines;
 /// equivalent.
 /// </para>
 /// </remarks>
-public sealed class CustomerFluentValidator : AbstractValidator<Customer> {
-
+public sealed class CustomerFluentValidator : AbstractValidator<Customer>
+{
     /// <summary>
     /// Built once and shared. Constructing one runs every <c>RuleFor</c> and compiles a property
     /// accessor per rule, which <c>ValidatorConstructionComparison</c> prices separately.
     /// </summary>
     public static readonly CustomerFluentValidator Instance = new();
 
-    public CustomerFluentValidator() {
+    public CustomerFluentValidator()
+    {
         RuleLevelCascadeMode = CascadeMode.Stop;
 
         RuleFor(x => x.Name).NotEmpty().Length(1, 100);
@@ -47,10 +48,12 @@ public sealed class CustomerFluentValidator : AbstractValidator<Customer> {
     private static bool IsKnownTier(string? tier) => tier is null or "gold" or "silver" or "bronze";
 }
 
-public sealed class AddressFluentValidator : AbstractValidator<Address> {
+public sealed class AddressFluentValidator : AbstractValidator<Address>
+{
     public static readonly AddressFluentValidator Instance = new();
 
-    public AddressFluentValidator() {
+    public AddressFluentValidator()
+    {
         RuleLevelCascadeMode = CascadeMode.Stop;
 
         RuleFor(x => x.Line1).NotEmpty().Length(1, 120);
@@ -59,10 +62,12 @@ public sealed class AddressFluentValidator : AbstractValidator<Address> {
     }
 }
 
-public sealed class OrderLineFluentValidator : AbstractValidator<OrderLine> {
+public sealed class OrderLineFluentValidator : AbstractValidator<OrderLine>
+{
     public static readonly OrderLineFluentValidator Instance = new();
 
-    public OrderLineFluentValidator() {
+    public OrderLineFluentValidator()
+    {
         RuleLevelCascadeMode = CascadeMode.Stop;
 
         RuleFor(x => x.Sku).NotEmpty().Matches(Patterns.Sku());
@@ -70,10 +75,12 @@ public sealed class OrderLineFluentValidator : AbstractValidator<OrderLine> {
     }
 }
 
-public sealed class OrderFluentValidator : AbstractValidator<Order> {
+public sealed class OrderFluentValidator : AbstractValidator<Order>
+{
     public static readonly OrderFluentValidator Instance = new();
 
-    public OrderFluentValidator() {
+    public OrderFluentValidator()
+    {
         RuleLevelCascadeMode = CascadeMode.Stop;
 
         RuleFor(x => x.Reference).NotEmpty().Matches(Patterns.Reference());
@@ -87,10 +94,12 @@ public sealed class OrderFluentValidator : AbstractValidator<Order> {
     }
 }
 
-public sealed class BasketFluentValidator : AbstractValidator<Basket> {
+public sealed class BasketFluentValidator : AbstractValidator<Basket>
+{
     public static readonly BasketFluentValidator Instance = new();
 
-    public BasketFluentValidator() {
+    public BasketFluentValidator()
+    {
         RuleLevelCascadeMode = CascadeMode.Stop;
 
         RuleFor(x => x.Id).NotEmpty();

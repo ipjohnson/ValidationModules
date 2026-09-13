@@ -10,8 +10,8 @@ namespace ValidationModules.Naming;
 /// than JSON Pointer. FluentValidation already produces that shape, which reduces the adapter's job
 /// to a case conversion.
 /// </remarks>
-public abstract class FieldNamer : IValidationFieldNamer {
-
+public abstract class FieldNamer : IValidationFieldNamer
+{
     /// <inheritdoc />
     public abstract string ToFieldName(string clrPropertyName);
 
@@ -38,56 +38,68 @@ public abstract class FieldNamer : IValidationFieldNamer {
 /// because the runtime does not reference System.Text.Json, and pinned to the serializer by a test
 /// that asserts against it directly.
 /// </remarks>
-public sealed class CamelCaseFieldNamer : FieldNamer {
-
+public sealed class CamelCaseFieldNamer : FieldNamer
+{
     /// <summary>The shared instance. Stateless.</summary>
     public static CamelCaseFieldNamer Instance { get; } = new();
 
     /// <inheritdoc />
-    public override string ToFieldName(string clrPropertyName) {
+    public override string ToFieldName(string clrPropertyName)
+    {
         ArgumentNullException.ThrowIfNull(clrPropertyName);
 
-        if (clrPropertyName.Length == 0 || !char.IsUpper(clrPropertyName[0])) {
+        if (clrPropertyName.Length == 0 || !char.IsUpper(clrPropertyName[0]))
+        {
             return clrPropertyName;
         }
 
-        return string.Create(clrPropertyName.Length, clrPropertyName, static (destination, source) => {
-            source.AsSpan().CopyTo(destination);
+        return string.Create(
+            clrPropertyName.Length,
+            clrPropertyName,
+            static (destination, source) =>
+            {
+                source.AsSpan().CopyTo(destination);
 
-            for (var i = 0; i < destination.Length; i++) {
-                // A second character that is already lowercase means the first was a word on its
-                // own, and it has been dealt with.
-                if (i == 1 && !char.IsUpper(destination[i])) {
-                    break;
-                }
-
-                var hasNext = i + 1 < destination.Length;
-
-                // The run has ended: this capital starts the next word and keeps its case.
-                if (i > 0 && hasNext && !char.IsUpper(destination[i + 1])) {
-                    if (destination[i + 1] == ' ') {
-                        destination[i] = char.ToLowerInvariant(destination[i]);
+                for (var i = 0; i < destination.Length; i++)
+                {
+                    // A second character that is already lowercase means the first was a word on its
+                    // own, and it has been dealt with.
+                    if (i == 1 && !char.IsUpper(destination[i]))
+                    {
+                        break;
                     }
 
-                    break;
-                }
+                    var hasNext = i + 1 < destination.Length;
 
-                destination[i] = char.ToLowerInvariant(destination[i]);
+                    // The run has ended: this capital starts the next word and keeps its case.
+                    if (i > 0 && hasNext && !char.IsUpper(destination[i + 1]))
+                    {
+                        if (destination[i + 1] == ' ')
+                        {
+                            destination[i] = char.ToLowerInvariant(destination[i]);
+                        }
+
+                        break;
+                    }
+
+                    destination[i] = char.ToLowerInvariant(destination[i]);
+                }
             }
-        });
+        );
     }
 }
 
 /// <summary>
 /// <c>PostalCode</c> stays <c>PostalCode</c>. For APIs whose wire format is the CLR name.
 /// </summary>
-public sealed class PascalCaseFieldNamer : FieldNamer {
-
+public sealed class PascalCaseFieldNamer : FieldNamer
+{
     /// <summary>The shared instance. Stateless.</summary>
     public static PascalCaseFieldNamer Instance { get; } = new();
 
     /// <inheritdoc />
-    public override string ToFieldName(string clrPropertyName) {
+    public override string ToFieldName(string clrPropertyName)
+    {
         ArgumentNullException.ThrowIfNull(clrPropertyName);
 
         return clrPropertyName;
@@ -97,39 +109,48 @@ public sealed class PascalCaseFieldNamer : FieldNamer {
 /// <summary>
 /// <c>PostalCode</c> becomes <c>postal_code</c>.
 /// </summary>
-public sealed class SnakeCaseFieldNamer : FieldNamer {
-
+public sealed class SnakeCaseFieldNamer : FieldNamer
+{
     /// <summary>The shared instance. Stateless.</summary>
     public static SnakeCaseFieldNamer Instance { get; } = new();
 
     /// <inheritdoc />
-    public override string ToFieldName(string clrPropertyName) {
+    public override string ToFieldName(string clrPropertyName)
+    {
         ArgumentNullException.ThrowIfNull(clrPropertyName);
 
-        if (clrPropertyName.Length == 0) {
+        if (clrPropertyName.Length == 0)
+        {
             return clrPropertyName;
         }
 
         var builder = new StringBuilder(clrPropertyName.Length + 4);
 
-        for (var i = 0; i < clrPropertyName.Length; i++) {
+        for (var i = 0; i < clrPropertyName.Length; i++)
+        {
             var character = clrPropertyName[i];
 
-            if (char.IsUpper(character)) {
+            if (char.IsUpper(character))
+            {
                 // A capital starts a new word when it follows a non-capital, or when it ends a run
                 // of capitals by being followed by a lowercase one. The second clause is what makes
                 // HTTPStatus into http_status rather than httpstatus or h_t_t_p_status.
                 var startsWord =
-                    i > 0 &&
-                    (!char.IsUpper(clrPropertyName[i - 1]) ||
-                     (i + 1 < clrPropertyName.Length && char.IsLower(clrPropertyName[i + 1])));
+                    i > 0
+                    && (
+                        !char.IsUpper(clrPropertyName[i - 1])
+                        || (i + 1 < clrPropertyName.Length && char.IsLower(clrPropertyName[i + 1]))
+                    );
 
-                if (startsWord) {
+                if (startsWord)
+                {
                     builder.Append('_');
                 }
 
                 builder.Append(char.ToLowerInvariant(character));
-            } else {
+            }
+            else
+            {
                 builder.Append(character);
             }
         }

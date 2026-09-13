@@ -20,8 +20,8 @@ namespace ValidationModules.Runtime.Tests;
 /// the emitter expresses that as the null guard around the call, so the methods never see one.
 /// </para>
 /// </remarks>
-public class ConstraintChecksTests {
-
+public class ConstraintChecksTests
+{
     /// <summary>
     /// Every one of these fails a naive <c>value % 0.01</c> in binary floating point - 0.3 % 0.01 is
     /// 0.00999999999999998 - and every one is a value a specification author would call valid. This
@@ -35,7 +35,8 @@ public class ConstraintChecksTests {
     [InlineData(99.99)]
     [InlineData(1234.56)]
     [InlineData(0.35)]
-    public void IsMultipleOf_AcceptsValuesTheNaiveModuloRejects(double value) {
+    public void IsMultipleOf_AcceptsValuesTheNaiveModuloRejects(double value)
+    {
         Assert.False(value % 0.01 == 0, "the premise: this value fails a binary-domain check");
         Assert.True(ConstraintChecks.IsMultipleOf(value, 0.01m));
     }
@@ -45,7 +46,8 @@ public class ConstraintChecksTests {
     /// representation error cancels rather than compounding.
     /// </summary>
     [Fact]
-    public void IsMultipleOf_CancelsAccumulatedError() {
+    public void IsMultipleOf_CancelsAccumulatedError()
+    {
         Assert.True(ConstraintChecks.IsMultipleOf(0.1 + 0.2, 0.1m));
     }
 
@@ -53,7 +55,8 @@ public class ConstraintChecksTests {
     [InlineData(0.125, 0.01)]
     [InlineData(1.005, 0.01)]
     [InlineData(7.0, 5.0)]
-    public void IsMultipleOf_RejectsWhatIsNotAMultiple(double value, double divisor) {
+    public void IsMultipleOf_RejectsWhatIsNotAMultiple(double value, double divisor)
+    {
         Assert.False(ConstraintChecks.IsMultipleOf(value, (decimal)divisor));
     }
 
@@ -61,7 +64,8 @@ public class ConstraintChecksTests {
     [InlineData(0.0)]
     [InlineData(-10.0)]
     [InlineData(15.0)]
-    public void IsMultipleOf_AcceptsZeroAndNegatives(double value) {
+    public void IsMultipleOf_AcceptsZeroAndNegatives(double value)
+    {
         Assert.True(ConstraintChecks.IsMultipleOf(value, 5m));
     }
 
@@ -76,30 +80,35 @@ public class ConstraintChecksTests {
     [InlineData(double.NegativeInfinity)]
     [InlineData(1e30)]
     [InlineData(-1e30)]
-    public void IsMultipleOf_RejectsWhatItCannotEvaluate(double value) {
+    public void IsMultipleOf_RejectsWhatItCannotEvaluate(double value)
+    {
         Assert.False(ConstraintChecks.IsMultipleOf(value, 0.01m));
     }
 
     [Fact]
-    public void IsMultipleOf_HandlesFloatThroughTheSamePath() {
+    public void IsMultipleOf_HandlesFloatThroughTheSamePath()
+    {
         Assert.True(ConstraintChecks.IsMultipleOf(0.25f, 0.05m));
         Assert.False(ConstraintChecks.IsMultipleOf(0.26f, 0.05m));
     }
 
     [Fact]
-    public void AllUnique_IsTrueForDistinctElements() {
+    public void AllUnique_IsTrueForDistinctElements()
+    {
         Assert.True(ConstraintChecks.AllUnique(new[] { "a", "b", "c" }));
     }
 
     [Fact]
-    public void AllUnique_IsFalseForARepeat() {
+    public void AllUnique_IsFalseForARepeat()
+    {
         Assert.False(ConstraintChecks.AllUnique(new[] { "a", "b", "a" }));
     }
 
     [Theory]
     [InlineData(0)]
     [InlineData(1)]
-    public void AllUnique_IsTrueBelowTwoElements(int count) {
+    public void AllUnique_IsTrueBelowTwoElements(int count)
+    {
         Assert.True(ConstraintChecks.AllUnique(Enumerable.Range(0, count).ToList()));
     }
 
@@ -111,7 +120,8 @@ public class ConstraintChecksTests {
     [InlineData(16)]
     [InlineData(17)]
     [InlineData(200)]
-    public void AllUnique_AgreesAcrossTheThreshold(int count) {
+    public void AllUnique_AgreesAcrossTheThreshold(int count)
+    {
         var distinct = Enumerable.Range(0, count).ToList();
         Assert.True(ConstraintChecks.AllUnique(distinct));
 
@@ -124,8 +134,10 @@ public class ConstraintChecksTests {
     /// IEnumerable, so the fallback the count constraints need does not arise here.
     /// </summary>
     [Fact]
-    public void AllUnique_WalksAnEnumerableWithNoCount() {
-        static IEnumerable<int> Sequence() {
+    public void AllUnique_WalksAnEnumerableWithNoCount()
+    {
+        static IEnumerable<int> Sequence()
+        {
             yield return 1;
             yield return 2;
             yield return 1;
@@ -135,7 +147,8 @@ public class ConstraintChecksTests {
     }
 
     [Fact]
-    public void AllUnique_UsesValueEqualityWhereTheElementHasIt() {
+    public void AllUnique_UsesValueEqualityWhereTheElementHasIt()
+    {
         Assert.False(ConstraintChecks.AllUnique(new[] { new Point(1, 2), new Point(1, 2) }));
     }
 
@@ -144,19 +157,22 @@ public class ConstraintChecksTests {
     /// equality of its own compares by reference, and two equal-looking elements both pass.
     /// </summary>
     [Fact]
-    public void AllUnique_ComparesByReferenceWhereTheElementHasNoEquality() {
+    public void AllUnique_ComparesByReferenceWhereTheElementHasNoEquality()
+    {
         Assert.True(ConstraintChecks.AllUnique(new[] { new Opaque("x"), new Opaque("x") }));
     }
 
     [Fact]
-    public void AllUnique_StopsAtNullsRatherThanThrowing() {
+    public void AllUnique_StopsAtNullsRatherThanThrowing()
+    {
         Assert.False(ConstraintChecks.AllUnique(new string?[] { null, "a", null }));
         Assert.True(ConstraintChecks.AllUnique(new string?[] { null, "a" }));
     }
 
     private sealed record Point(int X, int Y);
 
-    private sealed class Opaque(string value) {
+    private sealed class Opaque(string value)
+    {
         public string Value { get; } = value;
     }
 
@@ -171,10 +187,12 @@ public class ConstraintChecksTests {
     [InlineData(1.0f)]
     [InlineData(0.1f)]
     [InlineData(12.5f)]
-    public void IsMultipleOf_Float_AgreesWithTheSameValueAsADouble(float value) {
+    public void IsMultipleOf_Float_AgreesWithTheSameValueAsADouble(float value)
+    {
         Assert.Equal(
             ConstraintChecks.IsMultipleOf((double)(decimal)value, 0.1m),
-            ConstraintChecks.IsMultipleOf(value, 0.1m));
+            ConstraintChecks.IsMultipleOf(value, 0.1m)
+        );
     }
 
     [Theory]
@@ -182,8 +200,10 @@ public class ConstraintChecksTests {
     [InlineData(0.7f, true)]
     [InlineData(0.25f, false)]
     [InlineData(0.05f, false)]
-    public void IsMultipleOf_Float_MatchesWhatTheConstraintAuthorWrote(float value, bool expected) =>
-        Assert.Equal(expected, ConstraintChecks.IsMultipleOf(value, 0.1m));
+    public void IsMultipleOf_Float_MatchesWhatTheConstraintAuthorWrote(
+        float value,
+        bool expected
+    ) => Assert.Equal(expected, ConstraintChecks.IsMultipleOf(value, 0.1m));
 
     [Theory]
     [InlineData(float.NaN)]
@@ -259,7 +279,8 @@ public class ConstraintChecksTests {
     /// Above <c>PhoneStackLimit</c> the scratch copy moves to the heap; the answer must not.
     /// </summary>
     [Fact]
-    public void IsPhone_LongValues_TakeTheHeapPathToTheSameAnswer() {
+    public void IsPhone_LongValues_TakeTheHeapPathToTheSameAnswer()
+    {
         var longValid = string.Concat(new string(' ', 200), "555-1234");
         var longInvalid = string.Concat(new string(' ', 200), "abc");
 
@@ -293,7 +314,8 @@ public class ConstraintChecksTests {
     [InlineData("ftp://files.example.com", true)]
     [InlineData("gopher://example.com", false)]
     [InlineData("mailto:a@b.com", false)]
-    public void IsUrl_Uri_PinsTheSemantics(string uri, bool expected) {
+    public void IsUrl_Uri_PinsTheSemantics(string uri, bool expected)
+    {
         var value = new Uri(uri);
 
         Assert.Equal(expected, ConstraintChecks.IsUrl(value));
@@ -322,7 +344,10 @@ public class ConstraintChecksTests {
     [InlineData("0")]
     [InlineData("59")]
     public void IsCreditCard_MatchesCreditCardAttribute(string value) =>
-        Assert.Equal(new CreditCardAttribute().IsValid(value), ConstraintChecks.IsCreditCard(value));
+        Assert.Equal(
+            new CreditCardAttribute().IsValid(value),
+            ConstraintChecks.IsCreditCard(value)
+        );
 
     /// <summary>
     /// An empty string - and a string of only dashes and spaces - has checksum zero and passes,
@@ -333,7 +358,8 @@ public class ConstraintChecksTests {
     [InlineData("")]
     [InlineData("- -")]
     [InlineData("0")]
-    public void IsCreditCard_PassesTheChecksumOnNothing(string value) {
+    public void IsCreditCard_PassesTheChecksumOnNothing(string value)
+    {
         Assert.True(ConstraintChecks.IsCreditCard(value));
         Assert.True(new CreditCardAttribute().IsValid(value));
     }
@@ -359,18 +385,21 @@ public class ConstraintChecksTests {
     [InlineData("photo.png ")]
     [InlineData("archive.tar.gz")]
     [InlineData("dir.png/file")]
-    public void HasFileExtension_MatchesFileExtensionsAttribute(string value) {
+    public void HasFileExtension_MatchesFileExtensionsAttribute(string value)
+    {
         // The runtime receives the set the generator normalizes out of the attribute; this states
         // the default set post-normalization, which the reader's own tests pin against the source.
         string[] normalizedDefault = [".png", ".jpg", ".jpeg", ".gif"];
 
         Assert.Equal(
             new FileExtensionsAttribute().IsValid(value),
-            ConstraintChecks.HasFileExtension(value, normalizedDefault));
+            ConstraintChecks.HasFileExtension(value, normalizedDefault)
+        );
     }
 
     [Fact]
-    public void HasFileExtension_ComparesCaseInsensitively_AgainstTheLoweredSet() {
+    public void HasFileExtension_ComparesCaseInsensitively_AgainstTheLoweredSet()
+    {
         Assert.True(ConstraintChecks.HasFileExtension("a.GIF", [".gif"]));
         Assert.False(ConstraintChecks.HasFileExtension("a.gif", [".png"]));
     }

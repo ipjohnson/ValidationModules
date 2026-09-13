@@ -25,6 +25,4 @@ var (config, forwarded) = BenchmarkArguments.Parse(args, defaultToJitOnly: true)
 // relates them, so this refuses to run a comparison whose engines have drifted apart.
 EngineParity.Verify();
 
-BenchmarkSwitcher
-    .FromAssembly(Assembly.GetExecutingAssembly())
-    .Run(forwarded, config);
+BenchmarkSwitcher.FromAssembly(Assembly.GetExecutingAssembly()).Run(forwarded, config);

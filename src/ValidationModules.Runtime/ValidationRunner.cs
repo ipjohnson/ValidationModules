@@ -19,8 +19,8 @@ namespace ValidationModules;
 /// </para>
 /// </remarks>
 /// <typeparam name="T">The type being validated.</typeparam>
-public sealed class ValidationRunner<T> {
-
+public sealed class ValidationRunner<T>
+{
     /// <summary>
     /// Materialised once, and held as arrays rather than as the injected sequences.
     /// </summary>
@@ -52,11 +52,14 @@ public sealed class ValidationRunner<T> {
     public ValidationRunner(
         IEnumerable<IValidatorFor<T>> structural,
         IEnumerable<IAsyncValidatorFor<T>> business,
-        IServiceProvider? services = null) {
+        IServiceProvider? services = null
+    )
+    {
         ArgumentNullException.ThrowIfNull(structural);
         ArgumentNullException.ThrowIfNull(business);
 
-        _structural = structural as IValidatorFor<T>[] ?? System.Linq.Enumerable.ToArray(structural);
+        _structural =
+            structural as IValidatorFor<T>[] ?? System.Linq.Enumerable.ToArray(structural);
         _business = business as IAsyncValidatorFor<T>[] ?? System.Linq.Enumerable.ToArray(business);
         _services = services;
     }
@@ -72,16 +75,19 @@ public sealed class ValidationRunner<T> {
     /// </summary>
     /// <param name="value">The value to validate.</param>
     /// <param name="pathMode">How error paths render. See <see cref="ValidationPathMode"/>.</param>
-    public ValidationResult Validate(T value, ValidationPathMode pathMode) {
+    public ValidationResult Validate(T value, ValidationPathMode pathMode)
+    {
         var collector = new ValidationErrorCollector(_services, pathMode);
         var path = ArrayPool<PathSegment>.Shared.Rent(ValidationErrorCollector.DefaultDepthLimit);
 
-        try {
+        try
+        {
             RunStructural(collector, path, value);
 
             return collector.ToResult();
         }
-        finally {
+        finally
+        {
             ArrayPool<PathSegment>.Shared.Return(path);
         }
     }
@@ -104,8 +110,8 @@ public sealed class ValidationRunner<T> {
     /// <param name="cancellationToken">Cancels any I/O the business rules perform.</param>
     public ValueTask<ValidationResult> ValidateAsync(
         T value,
-        CancellationToken cancellationToken = default) =>
-        ValidateAsync(value, ValidationPathMode.Bounded, cancellationToken);
+        CancellationToken cancellationToken = default
+    ) => ValidateAsync(value, ValidationPathMode.Bounded, cancellationToken);
 
     /// <summary>
     /// The same pass with the given path rendering.
@@ -116,12 +122,14 @@ public sealed class ValidationRunner<T> {
     public async ValueTask<ValidationResult> ValidateAsync(
         T value,
         ValidationPathMode pathMode,
-        CancellationToken cancellationToken = default) {
-
+        CancellationToken cancellationToken = default
+    )
+    {
         var collector = new ValidationErrorCollector(_services, pathMode);
         var path = ArrayPool<PathSegment>.Shared.Rent(ValidationErrorCollector.DefaultDepthLimit);
 
-        try {
+        try
+        {
             RunStructural(collector, path, value);
 
             // Blocking errors, not any error. A structural rule that reports a warning has
@@ -129,30 +137,38 @@ public sealed class ValidationRunner<T> {
             // HasErrors here silently skipped every business rule for a request that was valid.
             // The gate itself is deliberate: do not spend a round trip checking whether a policy
             // number exists when the policy number is malformed.
-            if (!collector.HasBlockingErrors) {
+            if (!collector.HasBlockingErrors)
+            {
                 var context = new ValidationContext(collector, path);
 
-                for (var i = 0; i < _business.Length; i++) {
-                    await _business[i].ValidateAsync(context, value, cancellationToken).ConfigureAwait(false);
+                for (var i = 0; i < _business.Length; i++)
+                {
+                    await _business[i]
+                        .ValidateAsync(context, value, cancellationToken)
+                        .ConfigureAwait(false);
                 }
             }
 
             return collector.ToResult();
         }
-        finally {
+        finally
+        {
             ArrayPool<PathSegment>.Shared.Return(path);
         }
     }
 
-    private void RunStructural(ValidationErrorCollector collector, PathSegment[] path, T value) {
-        for (var i = 0; i < _structural.Length; i++) {
+    private void RunStructural(ValidationErrorCollector collector, PathSegment[] path, T value)
+    {
+        for (var i = 0; i < _structural.Length; i++)
+        {
             var context = new ValidationContext(collector, path);
 
             // One validator asking to stop ends the pass, not just its own walk. Every registered
             // validator for a type contributes to one result, so carrying on into the next after a
             // StopOnFirstError pass has its error would collect the second validator's findings
             // too - which is the outcome that mode exists to avoid.
-            if (_structural[i].Validate(ref context, value).ShouldStop) {
+            if (_structural[i].Validate(ref context, value).ShouldStop)
+            {
                 return;
             }
         }

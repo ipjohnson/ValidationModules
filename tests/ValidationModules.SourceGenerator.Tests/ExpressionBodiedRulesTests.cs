@@ -21,27 +21,29 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// than at the one rules class responsible.
 /// </para>
 /// </remarks>
-public class ExpressionBodiedRulesTests {
+public class ExpressionBodiedRulesTests
+{
+    private static string Rules(string describe) =>
+        $$"""
+            using ValidationModules;
 
-    private static string Rules(string describe) => $$"""
-        using ValidationModules;
+            namespace Sample;
 
-        namespace Sample;
+            public sealed record Model {
+                public string? Name { get; init; }
+            }
 
-        public sealed record Model {
-            public string? Name { get; init; }
-        }
-
-        public sealed class ModelRules : IValidationRulesFor<Model> {
-            public static void Describe(ValidationRules<Model> rules, Model x){{describe}}
-        }
-        """;
+            public sealed class ModelRules : IValidationRulesFor<Model> {
+                public static void Describe(ValidationRules<Model> rules, Model x){{describe}}
+            }
+            """;
 
     private const string Arrow = " => rules.Require(x.Name);";
     private const string Block = " { rules.Require(x.Name); }";
 
     [Fact]
-    public void ArrowForm_GeneratesTheValidatorRatherThanCrashingTheGenerator() {
+    public void ArrowForm_GeneratesTheValidatorRatherThanCrashingTheGenerator()
+    {
         var result = GeneratorHarness.Run(Rules(Arrow));
 
         // CS8785 is how a generator exception surfaces, and it is a warning - so a test asserting
@@ -57,16 +59,19 @@ public class ExpressionBodiedRulesTests {
     /// rule through the transcriber, not merely that something was emitted under the right name.
     /// </summary>
     [Fact]
-    public void ArrowForm_EmitsExactlyWhatTheBlockFormEmits() {
+    public void ArrowForm_EmitsExactlyWhatTheBlockFormEmits()
+    {
         var arrow = GeneratorHarness.Run(Rules(Arrow));
         var block = GeneratorHarness.Run(Rules(Block));
 
         Assert.Equal(
             block.Sources.Single(s => s.Key.Contains("_Rules")).Value,
-            arrow.Sources.Single(s => s.Key.Contains("_Rules")).Value);
+            arrow.Sources.Single(s => s.Key.Contains("_Rules")).Value
+        );
         Assert.Equal(
             block.Sources.Single(s => s.Key.Contains("ModelValidator")).Value,
-            arrow.Sources.Single(s => s.Key.Contains("ModelValidator")).Value);
+            arrow.Sources.Single(s => s.Key.Contains("ModelValidator")).Value
+        );
     }
 
     /// <summary>
@@ -74,14 +79,16 @@ public class ExpressionBodiedRulesTests {
     /// legal and lands in the region.
     /// </summary>
     [Fact]
-    public void ArrowFormWithOrdinaryComputation_Transcribes() {
+    public void ArrowFormWithOrdinaryComputation_Transcribes()
+    {
         var result = GeneratorHarness.Run(Rules(" => System.Console.WriteLine(x.Name);"));
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "CS8785");
         Assert.Empty(result.CompilationErrors);
         Assert.Contains(
             "System.Console.WriteLine(x.Name);",
-            result.Sources.Single(s => s.Key.Contains("_Rules")).Value);
+            result.Sources.Single(s => s.Key.Contains("_Rules")).Value
+        );
     }
 
     /// <summary>
@@ -89,8 +96,10 @@ public class ExpressionBodiedRulesTests {
     /// expression itself.
     /// </summary>
     [Fact]
-    public void ArrowFormThatLeaksTheBuilder_IsStillVM3002() {
-        var result = GeneratorHarness.Run($$"""
+    public void ArrowFormThatLeaksTheBuilder_IsStillVM3002()
+    {
+        var result = GeneratorHarness.Run(
+            $$"""
             using ValidationModules;
 
             namespace Sample;
@@ -104,7 +113,8 @@ public class ExpressionBodiedRulesTests {
 
                 public static void Describe(ValidationRules<Model> rules, Model x) => Helper(rules);
             }
-            """);
+            """
+        );
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "CS8785");
         Assert.Contains(result.Diagnostics, d => d.Id == "VM3002");

@@ -21,17 +21,25 @@ namespace ValidationModules.SourceGenerator.Impl.Emitters;
 /// against flat. Storage remains this
 /// emitter's implementation detail: the authoring format stays a data file whatever this becomes.
 /// </remarks>
-public sealed class LanguagePackEmitter {
-
+public sealed class LanguagePackEmitter
+{
     private static readonly ITypeDefinition PackInterface = TypeDefinition.Get(
-        TypeDefinitionEnum.InterfaceDefinition, "ValidationModules", "IValidationLanguagePack");
+        TypeDefinitionEnum.InterfaceDefinition,
+        "ValidationModules",
+        "IValidationLanguagePack"
+    );
 
     private const string Pair = "global::System.Collections.Generic.KeyValuePair<string, string>";
 
     /// <param name="model">The pack to emit, already read and validated.</param>
     /// <param name="assemblyNamespace">The sanitized assembly namespace the class lands in.</param>
     /// <param name="style">Where the braces go, from the shared build property.</param>
-    public string Emit(LanguagePackModel model, string assemblyNamespace, BraceStyle style = BraceStyle.Allman) {
+    public string Emit(
+        LanguagePackModel model,
+        string assemblyNamespace,
+        BraceStyle style = BraceStyle.Allman
+    )
+    {
         var file = new CSharpFileDefinition();
 
         Header(file);
@@ -44,16 +52,22 @@ public sealed class LanguagePackEmitter {
 
         pack.Modifiers = ComponentModifier.Internal | ComponentModifier.Sealed;
         pack.Comment =
-            $"The '{model.Culture}' message templates this assembly compiled from a\n" +
-            "*.validation-messages.json file. Keys are the stable vocabulary - wire codes and\n" +
-            "shape keys - never wording, which is why rewording a default breaks no pack.";
+            $"The '{model.Culture}' message templates this assembly compiled from a\n"
+            + "*.validation-messages.json file. Keys are the stable vocabulary - wire codes and\n"
+            + "shape keys - never wording, which is why rewording a default breaks no pack.";
         pack.AddBaseType(PackInterface);
 
         var entries = pack.AddField(
-            TypeDefinition.Get(typeof(KeyValuePair<string, string>)).MakeArray(), "Entries");
+            TypeDefinition.Get(typeof(KeyValuePair<string, string>)).MakeArray(),
+            "Entries"
+        );
 
-        entries.Modifiers = ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
-        entries.InitializeValue = new CodeOutputComponent(EntriesInitializer(model)) { Indented = false };
+        entries.Modifiers =
+            ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
+        entries.InitializeValue = new CodeOutputComponent(EntriesInitializer(model))
+        {
+            Indented = false,
+        };
 
         var culture = pack.AddProperty(typeof(string), "Culture");
 
@@ -62,7 +76,9 @@ public sealed class LanguagePackEmitter {
         culture.Get.AddIndentedStatement(Literal(model.Culture));
 
         var templates = pack.AddProperty(
-            TypeDefinition.Get(typeof(IReadOnlyList<KeyValuePair<string, string>>)), "Templates");
+            TypeDefinition.Get(typeof(IReadOnlyList<KeyValuePair<string, string>>)),
+            "Templates"
+        );
 
         templates.Set = null;
         templates.Get.LambdaSyntax = true;
@@ -75,12 +91,14 @@ public sealed class LanguagePackEmitter {
     /// The array initializer, one pair per line: readable in the emitted file, and every string a
     /// literal so identical keys across an assembly's packs share one heap entry.
     /// </summary>
-    private static string EntriesInitializer(LanguagePackModel model) {
+    private static string EntriesInitializer(LanguagePackModel model)
+    {
         var builder = new StringBuilder();
 
         builder.Append("new ").Append(Pair).Append("[]\n        {\n");
 
-        foreach (var entry in model.Entries) {
+        foreach (var entry in model.Entries)
+        {
             builder
                 .Append("            new(")
                 .Append(Literal(entry.Key))

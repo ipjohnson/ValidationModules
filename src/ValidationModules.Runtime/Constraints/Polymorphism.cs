@@ -20,8 +20,8 @@ namespace ValidationModules.Constraints;
 /// boundaries, reintroducing the exact problem it exists to prevent.
 /// </para>
 /// </remarks>
-public enum Polymorphism {
-
+public enum Polymorphism
+{
     /// <summary>
     /// The declared type's rules and nothing else. Emits no switch and costs nothing.
     /// </summary>

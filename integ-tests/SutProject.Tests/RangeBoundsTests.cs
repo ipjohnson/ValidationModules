@@ -12,17 +12,20 @@ namespace SutProject.Tests;
 /// These assert the comparison it compiles to accepts and rejects the right values, including at
 /// the bound itself, which is where an off-by-one lands.
 /// </remarks>
-public class RangeBoundsTests {
-
-    private static Booking Valid() => new() {
-        Starts = new DateOnly(2020, 6, 15),
-        Price = 4.99m,
-        Window = TimeSpan.FromHours(12),
-        Effective = new DateTime(2020, 6, 15),
-    };
+public class RangeBoundsTests
+{
+    private static Booking Valid() =>
+        new()
+        {
+            Starts = new DateOnly(2020, 6, 15),
+            Price = 4.99m,
+            Window = TimeSpan.FromHours(12),
+            Effective = new DateTime(2020, 6, 15),
+        };
 
     [Fact]
-    public void CleanValue_IsValid() {
+    public void CleanValue_IsValid()
+    {
         Assert.True(new BookingValidator().IsValid(Valid()));
     }
 
@@ -35,8 +38,14 @@ public class RangeBoundsTests {
     [InlineData(0, false)]
     [InlineData(1, true)]
     [InlineData(int.MaxValue, true)]
-    public void RangeWithOnlyAMinimum_HasNoUpperBound(int value, bool expected) {
-        var allocation = new Allocation { AtLeastOne = value, AtMostNinetyNine = 1, Fractional = 1m };
+    public void RangeWithOnlyAMinimum_HasNoUpperBound(int value, bool expected)
+    {
+        var allocation = new Allocation
+        {
+            AtLeastOne = value,
+            AtMostNinetyNine = 1,
+            Fractional = 1m,
+        };
 
         Assert.Equal(expected, new AllocationValidator().IsValid(allocation));
     }
@@ -45,16 +54,29 @@ public class RangeBoundsTests {
     [InlineData(int.MinValue, true)]
     [InlineData(99, true)]
     [InlineData(100, false)]
-    public void RangeWithOnlyAMaximum_HasNoLowerBound(int value, bool expected) {
-        var allocation = new Allocation { AtLeastOne = 1, AtMostNinetyNine = value, Fractional = 1m };
+    public void RangeWithOnlyAMaximum_HasNoLowerBound(int value, bool expected)
+    {
+        var allocation = new Allocation
+        {
+            AtLeastOne = 1,
+            AtMostNinetyNine = value,
+            Fractional = 1m,
+        };
 
         Assert.Equal(expected, new AllocationValidator().IsValid(allocation));
     }
 
     [Fact]
-    public void OneSidedRange_NamesOnlyTheBoundThatWasDeclared() {
+    public void OneSidedRange_NamesOnlyTheBoundThatWasDeclared()
+    {
         var result = new AllocationValidator().Validate(
-            new Allocation { AtLeastOne = 0, AtMostNinetyNine = 1, Fractional = 1m });
+            new Allocation
+            {
+                AtLeastOne = 0,
+                AtMostNinetyNine = 1,
+                Fractional = 1m,
+            }
+        );
 
         var error = Assert.Single(result.Errors);
         Assert.Equal(ValidationCodes.Range, error.Code);
@@ -71,8 +93,13 @@ public class RangeBoundsTests {
     [InlineData("0.5", true)]
     [InlineData("9.99", true)]
     [InlineData("10.00", false)]
-    public void RangeWithAFractionalNumericBound_ComparesAgainstADecimal(string value, bool expected) {
-        var allocation = new Allocation {
+    public void RangeWithAFractionalNumericBound_ComparesAgainstADecimal(
+        string value,
+        bool expected
+    )
+    {
+        var allocation = new Allocation
+        {
             AtLeastOne = 1,
             AtMostNinetyNine = 1,
             Fractional = decimal.Parse(value, System.Globalization.CultureInfo.InvariantCulture),
@@ -83,13 +110,22 @@ public class RangeBoundsTests {
 
     [Theory]
     [InlineData(1999, 12, 31, false)]
-    [InlineData(2000, 1, 1, true)]      // the lower bound itself — inclusive
-    [InlineData(2100, 12, 31, true)]    // the upper bound itself — inclusive
+    [InlineData(2000, 1, 1, true)] // the lower bound itself — inclusive
+    [InlineData(2100, 12, 31, true)] // the upper bound itself — inclusive
     [InlineData(2101, 1, 1, false)]
-    public void DateOnlyBounds_AreInclusiveAndParsedInTheRightOrder(int year, int month, int day, bool expected) {
+    public void DateOnlyBounds_AreInclusiveAndParsedInTheRightOrder(
+        int year,
+        int month,
+        int day,
+        bool expected
+    )
+    {
         // 2100-12-31 rather than 2100-01-31, so a day/month transposition fails here rather than
         // passing by coincidence.
-        var booking = Valid() with { Starts = new DateOnly(year, month, day) };
+        var booking = Valid() with
+        {
+            Starts = new DateOnly(year, month, day),
+        };
 
         Assert.Equal(expected, new BookingValidator().IsValid(booking));
     }
@@ -99,9 +135,13 @@ public class RangeBoundsTests {
     [InlineData("0.00", true)]
     [InlineData("9.99", true)]
     [InlineData("10.00", false)]
-    public void DecimalBounds_KeepTheirPrecision(string price, bool expected) {
+    public void DecimalBounds_KeepTheirPrecision(string price, bool expected)
+    {
         // The suffix matters: without it the bound is a double, and 9.99 as a double is not 9.99.
-        var booking = Valid() with { Price = decimal.Parse(price, System.Globalization.CultureInfo.InvariantCulture) };
+        var booking = Valid() with
+        {
+            Price = decimal.Parse(price, System.Globalization.CultureInfo.InvariantCulture),
+        };
 
         Assert.Equal(expected, new BookingValidator().IsValid(booking));
     }
@@ -111,21 +151,33 @@ public class RangeBoundsTests {
     [InlineData(0, true)]
     [InlineData(86_399, true)]
     [InlineData(86_400, false)]
-    public void TimeSpanBounds_AreParsedAsAnElapsedDuration(int seconds, bool expected) {
+    public void TimeSpanBounds_AreParsedAsAnElapsedDuration(int seconds, bool expected)
+    {
         var booking = Valid() with { Window = TimeSpan.FromSeconds(seconds) };
 
         Assert.Equal(expected, new BookingValidator().IsValid(booking));
     }
 
     [Fact]
-    public void ExclusiveUpperBound_RejectsTheBoundItself() {
-        Assert.False(new BookingValidator().IsValid(Valid() with { Effective = new DateTime(2100, 1, 1) }));
-        Assert.True(new BookingValidator().IsValid(Valid() with { Effective = new DateTime(2099, 12, 31) }));
+    public void ExclusiveUpperBound_RejectsTheBoundItself()
+    {
+        Assert.False(
+            new BookingValidator().IsValid(Valid() with { Effective = new DateTime(2100, 1, 1) })
+        );
+        Assert.True(
+            new BookingValidator().IsValid(Valid() with { Effective = new DateTime(2099, 12, 31) })
+        );
     }
 
     [Fact]
-    public void OutOfRange_ReportsTheRangeCode() {
-        var result = new BookingValidator().Validate(Valid() with { Starts = new DateOnly(1999, 1, 1) });
+    public void OutOfRange_ReportsTheRangeCode()
+    {
+        var result = new BookingValidator().Validate(
+            Valid() with
+            {
+                Starts = new DateOnly(1999, 1, 1),
+            }
+        );
 
         var error = Assert.Single(result.Errors);
         Assert.Equal(ValidationCodes.Range, error.Code);
@@ -133,10 +185,16 @@ public class RangeBoundsTests {
     }
 
     [Fact]
-    public void OutOfRange_RendersTheBoundsInTheMessage() {
+    public void OutOfRange_RendersTheBoundsInTheMessage()
+    {
         // The message and the comparison take the same expression, so this also pins that they
         // cannot disagree about what the bound is.
-        var result = new BookingValidator().Validate(Valid() with { Starts = new DateOnly(1999, 1, 1) });
+        var result = new BookingValidator().Validate(
+            Valid() with
+            {
+                Starts = new DateOnly(1999, 1, 1),
+            }
+        );
 
         var message = Assert.Single(result.Errors).Message;
 
@@ -145,8 +203,10 @@ public class RangeBoundsTests {
     }
 
     [Fact]
-    public void EveryBoundedPropertyFailsIndependently() {
-        var booking = new Booking {
+    public void EveryBoundedPropertyFailsIndependently()
+    {
+        var booking = new Booking
+        {
             Starts = new DateOnly(1999, 1, 1),
             Price = 99.99m,
             Window = TimeSpan.FromDays(2),

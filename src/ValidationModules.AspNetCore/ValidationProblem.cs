@@ -12,8 +12,8 @@ namespace ValidationModules.AspNetCore;
 /// shape. <see cref="ValidationEndpointFilter{T}"/> uses it; so can a controller, a middleware, or
 /// anything else holding a result.
 /// </remarks>
-public static class ValidationProblem {
-
+public static class ValidationProblem
+{
     /// <summary>
     /// Groups <paramref name="result"/>'s failures by field, in the shape ASP.NET Core's own
     /// model-binding failures use.
@@ -24,35 +24,44 @@ public static class ValidationProblem {
     /// characters" is reading them in the order the rules were written.
     /// </remarks>
     public static Dictionary<string, string[]> ToDictionary(
-        ValidationResult result, ValidationProblemOptions? options = null) {
+        ValidationResult result,
+        ValidationProblemOptions? options = null
+    )
+    {
         ArgumentNullException.ThrowIfNull(result);
 
         options ??= new ValidationProblemOptions();
 
         var grouped = new Dictionary<string, List<string>>(StringComparer.Ordinal);
 
-        for (var i = 0; i < result.Errors.Count; i++) {
+        for (var i = 0; i < result.Errors.Count; i++)
+        {
             var error = result.Errors[i];
 
-            if (!options.IncludeNonErrors && error.Severity != ValidationSeverity.Error) {
+            if (!options.IncludeNonErrors && error.Severity != ValidationSeverity.Error)
+            {
                 continue;
             }
 
-            if (!grouped.TryGetValue(error.Field, out var messages)) {
+            if (!grouped.TryGetValue(error.Field, out var messages))
+            {
                 grouped[error.Field] = messages = new List<string>(1);
             }
 
             // The read-side render: a configured formatter, otherwise the error's own default.
             // This line is where "the message is data until someone reads it" becomes a response
             // body - the codes dictionary below stays formatter-independent on purpose.
-            messages.Add(options.MessageFormatter is { } formatter
-                ? formatter.Format(in error)
-                : error.Message);
+            messages.Add(
+                options.MessageFormatter is { } formatter
+                    ? formatter.Format(in error)
+                    : error.Message
+            );
         }
 
         var byField = new Dictionary<string, string[]>(grouped.Count, StringComparer.Ordinal);
 
-        foreach (var pair in grouped) {
+        foreach (var pair in grouped)
+        {
             byField[pair.Key] = pair.Value.ToArray();
         }
 
@@ -63,21 +72,27 @@ public static class ValidationProblem {
     /// The same grouping over each failure's machine-readable code rather than its message.
     /// </summary>
     public static Dictionary<string, string[]> ToCodeDictionary(
-        ValidationResult result, ValidationProblemOptions? options = null) {
+        ValidationResult result,
+        ValidationProblemOptions? options = null
+    )
+    {
         ArgumentNullException.ThrowIfNull(result);
 
         options ??= new ValidationProblemOptions();
 
         var grouped = new Dictionary<string, List<string>>(StringComparer.Ordinal);
 
-        for (var i = 0; i < result.Errors.Count; i++) {
+        for (var i = 0; i < result.Errors.Count; i++)
+        {
             var error = result.Errors[i];
 
-            if (!options.IncludeNonErrors && error.Severity != ValidationSeverity.Error) {
+            if (!options.IncludeNonErrors && error.Severity != ValidationSeverity.Error)
+            {
                 continue;
             }
 
-            if (!grouped.TryGetValue(error.Field, out var codes)) {
+            if (!grouped.TryGetValue(error.Field, out var codes))
+            {
                 grouped[error.Field] = codes = new List<string>(1);
             }
 
@@ -86,7 +101,8 @@ public static class ValidationProblem {
 
         var byField = new Dictionary<string, string[]>(grouped.Count, StringComparer.Ordinal);
 
-        foreach (var pair in grouped) {
+        foreach (var pair in grouped)
+        {
             byField[pair.Key] = pair.Value.ToArray();
         }
 
@@ -97,18 +113,23 @@ public static class ValidationProblem {
     /// Builds the <see cref="ValidationProblemDetails"/> body for a failed result.
     /// </summary>
     public static ValidationProblemDetails ToProblemDetails(
-        ValidationResult result, ValidationProblemOptions? options = null) {
+        ValidationResult result,
+        ValidationProblemOptions? options = null
+    )
+    {
         ArgumentNullException.ThrowIfNull(result);
 
         options ??= new ValidationProblemOptions();
 
-        var problem = new ValidationProblemDetails(ToDictionary(result, options)) {
+        var problem = new ValidationProblemDetails(ToDictionary(result, options))
+        {
             Title = options.Title,
             Type = options.Type,
             Status = options.StatusCode,
         };
 
-        if (options.IncludeCodes) {
+        if (options.IncludeCodes)
+        {
             problem.Extensions["validationCodes"] = ToCodeDictionary(result, options);
         }
 
@@ -123,7 +144,11 @@ public static class ValidationProblem {
     /// serialised in a Native AOT app whose JSON context knows only the consumer's own types, and
     /// the second drops the codes extension. See <see cref="ValidationProblemResult"/>.
     /// </remarks>
-    public static IResult ToResult(ValidationResult result, ValidationProblemOptions? options = null) {
+    public static IResult ToResult(
+        ValidationResult result,
+        ValidationProblemOptions? options = null
+    )
+    {
         options ??= new ValidationProblemOptions();
 
         return new ValidationProblemResult(ToProblemDetails(result, options), options.StatusCode);

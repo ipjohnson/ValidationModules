@@ -30,19 +30,25 @@ namespace ValidationModules.AspNetCore;
 /// in registration order and the first to handle wins.
 /// </para>
 /// </remarks>
-internal sealed class BadRequestStatusHandler : IExceptionHandler {
-
+internal sealed class BadRequestStatusHandler : IExceptionHandler
+{
     /// <inheritdoc/>
     public
 #if NET9_0_OR_GREATER
-        ValueTask<bool>
+    ValueTask<bool>
 #else
-        async ValueTask<bool>
+    async ValueTask<bool>
 #endif
-        TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken) {
+    TryHandleAsync(
+        HttpContext httpContext,
+        Exception exception,
+        CancellationToken cancellationToken
+    )
+    {
         ArgumentNullException.ThrowIfNull(httpContext);
 
-        if (exception is not BadHttpRequestException badRequest) {
+        if (exception is not BadHttpRequestException badRequest)
+        {
 #if NET9_0_OR_GREATER
             return ValueTask.FromResult(false);
 #else
@@ -56,16 +62,20 @@ internal sealed class BadRequestStatusHandler : IExceptionHandler {
         // Declining leaves the body to whatever the application configured, status now correct.
         return ValueTask.FromResult(false);
 #else
-        var problem = new ProblemDetails {
+        var problem = new ProblemDetails
+        {
             Status = badRequest.StatusCode,
             Title = ReasonFor(badRequest.StatusCode),
             Type = TypeFor(badRequest.StatusCode),
         };
 
-        await httpContext.Response
-            .WriteAsJsonAsync(
-                problem, ValidationProblemJsonContext.Default.ProblemDetails,
-                "application/problem+json", cancellationToken)
+        await httpContext
+            .Response.WriteAsJsonAsync(
+                problem,
+                ValidationProblemJsonContext.Default.ProblemDetails,
+                "application/problem+json",
+                cancellationToken
+            )
             .ConfigureAwait(false);
 
         return true;
@@ -73,18 +83,24 @@ internal sealed class BadRequestStatusHandler : IExceptionHandler {
     }
 
 #if !NET9_0_OR_GREATER
-    private static string ReasonFor(int statusCode) => statusCode switch {
-        StatusCodes.Status400BadRequest => "Bad Request",
-        StatusCodes.Status413PayloadTooLarge => "Payload Too Large",
-        StatusCodes.Status415UnsupportedMediaType => "Unsupported Media Type",
-        _ => "Request Error",
-    };
+    private static string ReasonFor(int statusCode) =>
+        statusCode switch
+        {
+            StatusCodes.Status400BadRequest => "Bad Request",
+            StatusCodes.Status413PayloadTooLarge => "Payload Too Large",
+            StatusCodes.Status415UnsupportedMediaType => "Unsupported Media Type",
+            _ => "Request Error",
+        };
 
-    private static string TypeFor(int statusCode) => statusCode switch {
-        StatusCodes.Status400BadRequest => "https://tools.ietf.org/html/rfc9110#section-15.5.1",
-        StatusCodes.Status413PayloadTooLarge => "https://tools.ietf.org/html/rfc9110#section-15.5.14",
-        StatusCodes.Status415UnsupportedMediaType => "https://tools.ietf.org/html/rfc9110#section-15.5.16",
-        _ => "https://tools.ietf.org/html/rfc9110#section-15.5.1",
-    };
+    private static string TypeFor(int statusCode) =>
+        statusCode switch
+        {
+            StatusCodes.Status400BadRequest => "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+            StatusCodes.Status413PayloadTooLarge =>
+                "https://tools.ietf.org/html/rfc9110#section-15.5.14",
+            StatusCodes.Status415UnsupportedMediaType =>
+                "https://tools.ietf.org/html/rfc9110#section-15.5.16",
+            _ => "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+        };
 #endif
 }

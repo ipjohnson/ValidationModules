@@ -19,19 +19,25 @@ namespace ValidationModules.Benchmarks.Comparative.Engines;
 /// generated approach exists to remove. That cost is real whether or not the engine descends.
 /// </para>
 /// </remarks>
-public static class DataAnnotationsEngine {
-
+public static class DataAnnotationsEngine
+{
     /// <summary>
     /// Validates one object, reusing the caller's results list so the comparison is not dominated by
     /// allocating a fresh one per call.
     /// </summary>
     /// <param name="instance">The object to validate.</param>
     /// <param name="results">Receives the failures. Cleared first.</param>
-    public static bool TryValidate(object instance, List<DataAnnotations.ValidationResult> results) {
+    public static bool TryValidate(object instance, List<DataAnnotations.ValidationResult> results)
+    {
         results.Clear();
 
         var context = new DataAnnotations.ValidationContext(instance);
 
-        return DataAnnotations.Validator.TryValidateObject(instance, context, results, validateAllProperties: true);
+        return DataAnnotations.Validator.TryValidateObject(
+            instance,
+            context,
+            results,
+            validateAllProperties: true
+        );
     }
 }

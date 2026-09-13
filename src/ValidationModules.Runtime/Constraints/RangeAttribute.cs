@@ -17,8 +17,8 @@ namespace ValidationModules.Constraints;
 /// [Range(Min = 1)]                                public int Quantity { get; init; }
 /// </code>
 /// </example>
-public sealed class RangeAttribute : ValidationConstraintAttribute {
-
+public sealed class RangeAttribute : ValidationConstraintAttribute
+{
     /// <summary>
     /// Bounds set through <see cref="Min"/> and <see cref="Max"/>, for declaring only one of them.
     /// </summary>
@@ -30,19 +30,22 @@ public sealed class RangeAttribute : ValidationConstraintAttribute {
     public RangeAttribute() { }
 
     /// <summary>Integral bounds.</summary>
-    public RangeAttribute(int min, int max) {
+    public RangeAttribute(int min, int max)
+    {
         Min = min;
         Max = max;
     }
 
     /// <summary>Long integral bounds.</summary>
-    public RangeAttribute(long min, long max) {
+    public RangeAttribute(long min, long max)
+    {
         Min = min;
         Max = max;
     }
 
     /// <summary>Floating-point bounds.</summary>
-    public RangeAttribute(double min, double max) {
+    public RangeAttribute(double min, double max)
+    {
         Min = min;
         Max = max;
     }
@@ -51,7 +54,8 @@ public sealed class RangeAttribute : ValidationConstraintAttribute {
     /// Bounds for types with no constant form - decimal, DateTime, DateOnly, TimeSpan. Parsed
     /// invariantly against the property's type at generation time.
     /// </summary>
-    public RangeAttribute(string min, string max) {
+    public RangeAttribute(string min, string max)
+    {
         Min = min;
         Max = max;
     }

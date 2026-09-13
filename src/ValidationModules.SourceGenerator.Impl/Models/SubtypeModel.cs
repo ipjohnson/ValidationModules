@@ -8,7 +8,8 @@ namespace ValidationModules.SourceGenerator.Impl.Models;
 /// reference the runtime - it is loaded into the compiler, not into the application - so the two
 /// are kept in step by ordinal, the same way every other constraint argument crosses this boundary.
 /// </remarks>
-public enum PolymorphismMode {
+public enum PolymorphismMode
+{
     DeclaredOnly = 0,
     CompileTime = 1,
     Runtime = 2,
@@ -25,7 +26,5 @@ public enum PolymorphismMode {
 /// <c>case Premium : Card</c> makes the second arm unreachable - <b>CS8120</b>, inside a generated
 /// file, which is the class of error the no-emit-after-diagnostic work exists to prevent.
 /// </param>
-public sealed record SubtypeModel(
-    string QualifiedTypeName,
-    string ValidatorName,
-    int Depth) : IEquatable<SubtypeModel>;
+public sealed record SubtypeModel(string QualifiedTypeName, string ValidatorName, int Depth)
+    : IEquatable<SubtypeModel>;

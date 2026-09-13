@@ -16,8 +16,8 @@ namespace ValidationModules.Naming;
 /// and emits which one it used, so the adapter can resolve the matching namer instead of guessing.
 /// </para>
 /// </remarks>
-public interface IValidationFieldNamer {
-
+public interface IValidationFieldNamer
+{
     /// <summary>
     /// Converts one CLR property name - <c>PostalCode</c> - to its field name - <c>postalCode</c>.
     /// </summary>

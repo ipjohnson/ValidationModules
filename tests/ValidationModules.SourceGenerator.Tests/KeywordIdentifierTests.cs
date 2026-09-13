@@ -21,11 +21,13 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// That one is reachable by writing perfectly normal C#, so it is the likelier of the two.
 /// </para>
 /// </remarks>
-public class KeywordIdentifierTests {
-
+public class KeywordIdentifierTests
+{
     [Fact]
-    public void Generate_PropertyNamedWithAKeyword_EmitsCompilableCode() {
-        var result = GeneratorHarness.Run("""
+    public void Generate_PropertyNamedWithAKeyword_EmitsCompilableCode()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Api;
@@ -34,7 +36,8 @@ public class KeywordIdentifierTests {
                 [Required, StringLength(min: 1, max: 10)]
                 public string? @object { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
     }
@@ -55,8 +58,10 @@ public class KeywordIdentifierTests {
     [InlineData("@params")]
     [InlineData("@operator")]
     [InlineData("@namespace")]
-    public void Generate_EveryKeywordAsAScalarProperty_EmitsCompilableCode(string property) {
-        var result = GeneratorHarness.Run($$"""
+    public void Generate_EveryKeywordAsAScalarProperty_EmitsCompilableCode(string property)
+    {
+        var result = GeneratorHarness.Run(
+            $$"""
             using ValidationModules.Constraints;
 
             namespace Api;
@@ -65,7 +70,8 @@ public class KeywordIdentifierTests {
                 [Required]
                 public string? {{property}} { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
     }
@@ -77,8 +83,10 @@ public class KeywordIdentifierTests {
     /// silently change every payload the property appears in.
     /// </summary>
     [Fact]
-    public void Generate_KeywordProperty_KeepsTheAtSignOutOfTheFieldName() {
-        var result = GeneratorHarness.Run("""
+    public void Generate_KeywordProperty_KeepsTheAtSignOutOfTheFieldName()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Api;
@@ -87,7 +95,8 @@ public class KeywordIdentifierTests {
                 [Required]
                 public string? @object { get; init; }
             }
-            """);
+            """
+        );
 
         var source = result.Sources["Api.PayloadValidator.g.cs"];
 
@@ -110,8 +119,12 @@ public class KeywordIdentifierTests {
     [InlineData("Namespace")]
     [InlineData("Lock")]
     [InlineData("Params")]
-    public void Generate_NestedPropertyThatCamelCasesOntoAKeyword_EmitsCompilableCode(string property) {
-        var result = GeneratorHarness.Run($$"""
+    public void Generate_NestedPropertyThatCamelCasesOntoAKeyword_EmitsCompilableCode(
+        string property
+    )
+    {
+        var result = GeneratorHarness.Run(
+            $$"""
             using ValidationModules.Constraints;
 
             namespace Api;
@@ -124,14 +137,17 @@ public class KeywordIdentifierTests {
                 [ValidateNested]
                 public Address? {{property}} { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
-    public void Generate_NestedPropertyNamedWithAKeyword_EmitsCompilableCode() {
-        var result = GeneratorHarness.Run("""
+    public void Generate_NestedPropertyNamedWithAKeyword_EmitsCompilableCode()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Api;
@@ -144,14 +160,17 @@ public class KeywordIdentifierTests {
                 [ValidateNested]
                 public Address? @object { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
-    public void Generate_CollectionPropertyNamedWithAKeyword_EmitsCompilableCode() {
-        var result = GeneratorHarness.Run("""
+    public void Generate_CollectionPropertyNamedWithAKeyword_EmitsCompilableCode()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using System.Collections.Generic;
             using ValidationModules.Constraints;
 
@@ -165,14 +184,17 @@ public class KeywordIdentifierTests {
                 [ItemCount(min: 1, max: 10), ValidateNested]
                 public IReadOnlyList<Line> @event { get; init; } = [];
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
-    public void Generate_DictionaryPropertyNamedWithAKeyword_EmitsCompilableCode() {
-        var result = GeneratorHarness.Run("""
+    public void Generate_DictionaryPropertyNamedWithAKeyword_EmitsCompilableCode()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using System.Collections.Generic;
             using ValidationModules.Constraints;
 
@@ -186,14 +208,17 @@ public class KeywordIdentifierTests {
                 [ValidateNested]
                 public Dictionary<string, Line> @class { get; init; } = new();
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
-    public void Generate_ValidatedTypeNamedWithAKeyword_EmitsCompilableCode() {
-        var result = GeneratorHarness.Run("""
+    public void Generate_ValidatedTypeNamedWithAKeyword_EmitsCompilableCode()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Api;
@@ -201,14 +226,17 @@ public class KeywordIdentifierTests {
             public record @object {
                 [Required] public string? Name { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
-    public void Generate_NamespaceSegmentNamedWithAKeyword_EmitsCompilableCode() {
-        var result = GeneratorHarness.Run("""
+    public void Generate_NamespaceSegmentNamedWithAKeyword_EmitsCompilableCode()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace @object.Models;
@@ -216,7 +244,8 @@ public class KeywordIdentifierTests {
             public record Payload {
                 [Required] public string? Name { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
 
@@ -231,8 +260,10 @@ public class KeywordIdentifierTests {
     /// across the escape rather than only declare one inside it.
     /// </summary>
     [Fact]
-    public void Generate_NestedTypeInAKeywordNamespace_EmitsCompilableCode() {
-        var result = GeneratorHarness.Run("""
+    public void Generate_NestedTypeInAKeywordNamespace_EmitsCompilableCode()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace @object.Models;
@@ -244,7 +275,8 @@ public class KeywordIdentifierTests {
             public record Payload {
                 [ValidateNested] public Address? Home { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
         Assert.Contains("object.Models.PayloadValidator.g.cs", result.Sources.Keys);
@@ -262,8 +294,10 @@ public class KeywordIdentifierTests {
     [InlineData("var")]
     [InlineData("async")]
     [InlineData("nameof")]
-    public void Generate_ContextualKeywordAsAProperty_EmitsCompilableCode(string property) {
-        var result = GeneratorHarness.Run($$"""
+    public void Generate_ContextualKeywordAsAProperty_EmitsCompilableCode(string property)
+    {
+        var result = GeneratorHarness.Run(
+            $$"""
             using ValidationModules.Constraints;
 
             namespace Api;
@@ -272,7 +306,8 @@ public class KeywordIdentifierTests {
                 [Required]
                 public string? {{property}} { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
     }
@@ -282,8 +317,10 @@ public class KeywordIdentifierTests {
     /// reaches the same problem from the other side.
     /// </summary>
     [Fact]
-    public void Generate_KeywordShapedAssemblyName_EmitsCompilableRegistration() {
-        var result = GeneratorHarness.Run("""
+    public void Generate_KeywordShapedAssemblyName_EmitsCompilableRegistration()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Api;
@@ -291,7 +328,9 @@ public class KeywordIdentifierTests {
             public record Payload {
                 [Required] public string? Name { get; init; }
             }
-            """, assemblyName: "object");
+            """,
+            assemblyName: "object"
+        );
 
         Assert.Empty(result.CompilationErrors);
     }

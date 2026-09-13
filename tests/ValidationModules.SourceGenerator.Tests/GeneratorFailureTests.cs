@@ -14,15 +14,17 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// <c>[ValidateNested]</c> on a <c>List&lt;List&lt;T&gt;&gt;</c>; that trigger is now VM1502, and
 /// VM5002 is the backstop for the class.
 /// </remarks>
-public class GeneratorFailureTests {
-
+public class GeneratorFailureTests
+{
     [Fact]
-    public void AnEmitStageThatThrows_IsAVM5002Error() {
+    public void AnEmitStageThatThrows_IsAVM5002Error()
+    {
         // A rules-class descent into a nested generic keeps its machinery - the region's
         // transcribed text owns the walk - so the constructed generic name still reaches the
         // emitter, whose TypeRef refuses it. That throw is the one remaining reachable trigger,
         // which makes it the honest way to drive the backstop.
-        var result = GeneratorHarness.Run("""
+        var result = GeneratorHarness.Run(
+            """
             using System.Collections.Generic;
             using ValidationModules;
             using ValidationModules.Constraints;
@@ -42,7 +44,8 @@ public class GeneratorFailureTests {
                     rules.Each(x.Rows);
                 }
             }
-            """);
+            """
+        );
 
         var failure = result.Diagnostics.First(d => d.Id == "VM5002");
 
@@ -51,8 +54,10 @@ public class GeneratorFailureTests {
     }
 
     [Fact]
-    public void AHealthyCompilation_ReportsNoVM5002() {
-        var result = GeneratorHarness.Run("""
+    public void AHealthyCompilation_ReportsNoVM5002()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -60,7 +65,8 @@ public class GeneratorFailureTests {
             public record Pet {
                 [Required] public string? Name { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM5002");
         Assert.Empty(result.CompilationErrors);

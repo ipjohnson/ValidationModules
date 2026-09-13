@@ -15,8 +15,8 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// themselves instead of referencing ASP.NET Core - only the genuine package declares
 /// <c>Microsoft.AspNetCore.Builder.ValidationModulesEndpointExtensions</c>.
 /// </remarks>
-public class ValidateCallAnalyzerTests {
-
+public class ValidateCallAnalyzerTests
+{
     private const string EndpointShape = """
         namespace Microsoft.AspNetCore.Builder {
             public sealed class RouteHandlerBuilder { }
@@ -28,14 +28,17 @@ public class ValidateCallAnalyzerTests {
         }
         """;
 
-    private static ImmutableArray<Diagnostic> Analyze(string source) {
+    private static ImmutableArray<Diagnostic> Analyze(string source)
+    {
         var compilation = CSharpCompilation.Create(
             "AnalyzerTests",
             new[] { CSharpSyntaxTree.ParseText(source), CSharpSyntaxTree.ParseText(EndpointShape) },
             GeneratorHarness.ReferencesIncluding(),
             new CSharpCompilationOptions(
                 OutputKind.DynamicallyLinkedLibrary,
-                nullableContextOptions: NullableContextOptions.Enable));
+                nullableContextOptions: NullableContextOptions.Enable
+            )
+        );
 
         return compilation
             .WithAnalyzers(ImmutableArray.Create<DiagnosticAnalyzer>(new ValidateCallAnalyzer()))
@@ -54,17 +57,21 @@ public class ValidateCallAnalyzerTests {
         """;
 
     [Fact]
-    public void ARulelessDeclaredType_IsVM5003() {
-        var diagnostics = Analyze(Usings + """
+    public void ARulelessDeclaredType_IsVM5003()
+    {
+        var diagnostics = Analyze(
+            Usings
+                + """
 
-            public sealed record Coupon {
-                public string? Code { get; init; }
-            }
+                public sealed record Coupon {
+                    public string? Code { get; init; }
+                }
 
-            public static class Wiring {
-                public static void Map(RouteHandlerBuilder builder) => builder.Validate<Coupon>();
-            }
-            """);
+                public static class Wiring {
+                    public static void Map(RouteHandlerBuilder builder) => builder.Validate<Coupon>();
+                }
+                """
+        );
 
         var diagnostic = Assert.Single(diagnostics, d => d.Id == "VM5003");
 
@@ -73,115 +80,139 @@ public class ValidateCallAnalyzerTests {
     }
 
     [Fact]
-    public void AListOfARulelessDeclaredType_IsVM5003AtTheElement() {
-        var diagnostics = Analyze(Usings + """
+    public void AListOfARulelessDeclaredType_IsVM5003AtTheElement()
+    {
+        var diagnostics = Analyze(
+            Usings
+                + """
 
-            public sealed record Coupon {
-                public string? Code { get; init; }
-            }
+                public sealed record Coupon {
+                    public string? Code { get; init; }
+                }
 
-            public static class Wiring {
-                public static void Map(RouteHandlerBuilder builder) => builder.Validate<List<Coupon>>();
-            }
-            """);
+                public static class Wiring {
+                    public static void Map(RouteHandlerBuilder builder) => builder.Validate<List<Coupon>>();
+                }
+                """
+        );
 
         Assert.Contains("Coupon", Assert.Single(diagnostics, d => d.Id == "VM5003").GetMessage());
     }
 
     [Fact]
-    public void AConstrainedType_AndItsListAndArray_AreSilent() {
-        var diagnostics = Analyze(Usings + """
+    public void AConstrainedType_AndItsListAndArray_AreSilent()
+    {
+        var diagnostics = Analyze(
+            Usings
+                + """
 
-            public sealed record Order {
-                [Required] public string? Reference { get; init; }
-            }
-
-            public static class Wiring {
-                public static void Map(RouteHandlerBuilder builder) {
-                    builder.Validate<Order>();
-                    builder.Validate<List<Order>>();
-                    builder.Validate<Order[]>();
+                public sealed record Order {
+                    [Required] public string? Reference { get; init; }
                 }
-            }
-            """);
+
+                public static class Wiring {
+                    public static void Map(RouteHandlerBuilder builder) {
+                        builder.Validate<Order>();
+                        builder.Validate<List<Order>>();
+                        builder.Validate<Order[]>();
+                    }
+                }
+                """
+        );
 
         Assert.DoesNotContain(diagnostics, d => d.Id == "VM5003");
     }
 
     [Fact]
-    public void ARulesClassTarget_IsSilent() {
+    public void ARulesClassTarget_IsSilent()
+    {
         // The compilation-wide half: the type carries nothing, and its rules live elsewhere.
-        var diagnostics = Analyze(Usings + """
+        var diagnostics = Analyze(
+            Usings
+                + """
 
-            public sealed record Coupon {
-                public string? Code { get; init; }
-            }
-
-            public sealed class CouponRules : IValidationRulesFor<Coupon> {
-                public static void Describe(ValidationRules<Coupon> rules, Coupon x) {
-                    rules.Require(x.Code);
+                public sealed record Coupon {
+                    public string? Code { get; init; }
                 }
-            }
 
-            public static class Wiring {
-                public static void Map(RouteHandlerBuilder builder) => builder.Validate<Coupon>();
-            }
-            """);
+                public sealed class CouponRules : IValidationRulesFor<Coupon> {
+                    public static void Describe(ValidationRules<Coupon> rules, Coupon x) {
+                        rules.Require(x.Code);
+                    }
+                }
+
+                public static class Wiring {
+                    public static void Map(RouteHandlerBuilder builder) => builder.Validate<Coupon>();
+                }
+                """
+        );
 
         Assert.DoesNotContain(diagnostics, d => d.Id == "VM5003");
     }
 
     [Fact]
-    public void AHandWrittenValidatorTarget_IsSilent() {
+    public void AHandWrittenValidatorTarget_IsSilent()
+    {
         // A hand-registered IValidatorFor<T> satisfies the startup check, so the analyzer must
         // not be louder than the check it fronts.
-        var diagnostics = Analyze(Usings + """
+        var diagnostics = Analyze(
+            Usings
+                + """
 
-            public sealed record Coupon {
-                public string? Code { get; init; }
-            }
+                public sealed record Coupon {
+                    public string? Code { get; init; }
+                }
 
-            public sealed class CouponValidator : IValidatorFor<Coupon> {
-                public ValidationFlow Validate(ref ValidationContext context, Coupon value) =>
-                    ValidationFlow.Continue;
-            }
+                public sealed class CouponValidator : IValidatorFor<Coupon> {
+                    public ValidationFlow Validate(ref ValidationContext context, Coupon value) =>
+                        ValidationFlow.Continue;
+                }
 
-            public static class Wiring {
-                public static void Map(RouteHandlerBuilder builder) => builder.Validate<Coupon>();
-            }
-            """);
+                public static class Wiring {
+                    public static void Map(RouteHandlerBuilder builder) => builder.Validate<Coupon>();
+                }
+                """
+        );
 
         Assert.DoesNotContain(diagnostics, d => d.Id == "VM5003");
     }
 
     [Fact]
-    public void ATypeFromAnotherAssembly_IsSilent() {
+    public void ATypeFromAnotherAssembly_IsSilent()
+    {
         // The cross-assembly caution VM1501 set: a metadata type may carry a validator generated
         // over there, so the startup check owns it.
-        var diagnostics = Analyze(Usings + """
+        var diagnostics = Analyze(
+            Usings
+                + """
 
-            public static class Wiring {
-                public static void Map(RouteHandlerBuilder builder) =>
-                    builder.Validate<System.Text.StringBuilder>();
-            }
-            """);
+                public static class Wiring {
+                    public static void Map(RouteHandlerBuilder builder) =>
+                        builder.Validate<System.Text.StringBuilder>();
+                }
+                """
+        );
 
         Assert.DoesNotContain(diagnostics, d => d.Id == "VM5003");
     }
 
     [Fact]
-    public void AGenerateValidatorMarkedType_IsSilent() {
-        var diagnostics = Analyze(Usings + """
+    public void AGenerateValidatorMarkedType_IsSilent()
+    {
+        var diagnostics = Analyze(
+            Usings
+                + """
 
-            [GenerateValidator]
-            public sealed record Coupon {
-                public string? Code { get; init; }
-            }
+                [GenerateValidator]
+                public sealed record Coupon {
+                    public string? Code { get; init; }
+                }
 
-            public static class Wiring {
-                public static void Map(RouteHandlerBuilder builder) => builder.Validate<Coupon>();
-            }
-            """);
+                public static class Wiring {
+                    public static void Map(RouteHandlerBuilder builder) => builder.Validate<Coupon>();
+                }
+                """
+        );
 
         Assert.DoesNotContain(diagnostics, d => d.Id == "VM5003");
     }

@@ -19,8 +19,8 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// shape §6 of the plan is built around, so this is the case profiles walk straight into.
 /// </para>
 /// </remarks>
-public class HintNameCollisionTests {
-
+public class HintNameCollisionTests
+{
     private const string SameNameInTwoNamespaces = """
         using ValidationModules.Constraints;
 
@@ -39,7 +39,8 @@ public class HintNameCollisionTests {
         """;
 
     [Fact]
-    public void Generate_SameTypeNameInTwoNamespaces_EmitsBothValidators() {
+    public void Generate_SameTypeNameInTwoNamespaces_EmitsBothValidators()
+    {
         var result = GeneratorHarness.Run(SameNameInTwoNamespaces);
 
         Assert.Empty(result.CompilationErrors);
@@ -48,7 +49,8 @@ public class HintNameCollisionTests {
     }
 
     [Fact]
-    public void Generate_SameTypeNameInTwoNamespaces_KeepsEachValidatorInItsOwnNamespace() {
+    public void Generate_SameTypeNameInTwoNamespaces_KeepsEachValidatorInItsOwnNamespace()
+    {
         var result = GeneratorHarness.Run(SameNameInTwoNamespaces);
 
         Assert.Contains("namespace Api.V1;", result.Sources["Api.V1.CustomerValidator.g.cs"]);
@@ -60,7 +62,8 @@ public class HintNameCollisionTests {
     }
 
     [Fact]
-    public void Generate_SameTypeNameInTwoNamespaces_RegistersBoth() {
+    public void Generate_SameTypeNameInTwoNamespaces_RegistersBoth()
+    {
         var result = GeneratorHarness.Run(SameNameInTwoNamespaces);
 
         var registration = result.Sources["GeneratedValidatorRegistration.g.cs"];
@@ -76,8 +79,10 @@ public class HintNameCollisionTests {
     /// - and a global-namespace type must still not collide with a namespaced one of the same name.
     /// </summary>
     [Fact]
-    public void Generate_GlobalNamespaceAlongsideNamespaced_EmitsBoth() {
-        var result = GeneratorHarness.Run("""
+    public void Generate_GlobalNamespaceAlongsideNamespaced_EmitsBoth()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             public record Customer {
@@ -89,7 +94,8 @@ public class HintNameCollisionTests {
                     [Required] public string? Name { get; init; }
                 }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
         Assert.Contains("CustomerValidator.g.cs", result.Sources.Keys);

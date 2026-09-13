@@ -9,8 +9,8 @@ namespace ValidationModules;
 /// <c>object[]</c> would box it on every indexed descent - an allocation per element, which is the
 /// one thing a descent must not do.
 /// </remarks>
-internal struct PathSegment {
-
+internal struct PathSegment
+{
     public string Name;
 
     public string? Key;

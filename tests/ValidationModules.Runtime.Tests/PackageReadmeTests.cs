@@ -23,14 +23,15 @@ namespace ValidationModules.Runtime.Tests;
 /// because nuget.org generates heading ids - the anchor test below checks each one resolves.
 /// </para>
 /// </remarks>
-public class PackageReadmeTests {
-
+public class PackageReadmeTests
+{
     /// <summary>
     /// The README with fenced code blocks and HTML comments removed: what nuget.org actually
     /// interprets. Comments are dropped by the renderer, and a fence's contents are shown as
     /// text.
     /// </summary>
-    private static string Interpreted() {
+    private static string Interpreted()
+    {
         var text = Readme();
         var withoutFences = Regex.Replace(text, "```.*?```", string.Empty, RegexOptions.Singleline);
 
@@ -38,22 +39,28 @@ public class PackageReadmeTests {
     }
 
     [Fact]
-    public void TheReadme_CarriesNoRawHtml() {
+    public void TheReadme_CarriesNoRawHtml()
+    {
         // <https://…> is CommonMark's autolink, not an HTML tag.
-        var tags = Regex.Matches(Interpreted(), @"</?[a-zA-Z][^>\n]*>")
+        var tags = Regex
+            .Matches(Interpreted(), @"</?[a-zA-Z][^>\n]*>")
             .Select(match => match.Value)
             .Where(tag => !tag.StartsWith("<http", StringComparison.Ordinal))
             .ToList();
 
-        Assert.True(tags.Count == 0,
-            "nuget.org escapes raw HTML into visible text on the package page. Use CommonMark " +
-            $"instead:{Environment.NewLine}  {string.Join(Environment.NewLine + "  ", tags)}");
+        Assert.True(
+            tags.Count == 0,
+            "nuget.org escapes raw HTML into visible text on the package page. Use CommonMark "
+                + $"instead:{Environment.NewLine}  {string.Join(Environment.NewLine + "  ", tags)}"
+        );
     }
 
     [Fact]
-    public void EveryLink_IsAbsoluteOrAResolvingAnchor() {
+    public void EveryLink_IsAbsoluteOrAResolvingAnchor()
+    {
         var body = Interpreted();
-        var links = Regex.Matches(body, @"!?\]\(([^)]+)\)")
+        var links = Regex
+            .Matches(body, @"!?\]\(([^)]+)\)")
             .Select(match => match.Groups[1].Value)
             .ToList();
 
@@ -64,16 +71,22 @@ public class PackageReadmeTests {
             .Where(link => !link.StartsWith("#", StringComparison.Ordinal))
             .ToList();
 
-        Assert.True(relative.Count == 0,
-            "nuget.org resolves no relative path; link to the absolute URL on github.com " +
-            $"instead:{Environment.NewLine}  {string.Join(Environment.NewLine + "  ", relative)}");
+        Assert.True(
+            relative.Count == 0,
+            "nuget.org resolves no relative path; link to the absolute URL on github.com "
+                + $"instead:{Environment.NewLine}  {string.Join(Environment.NewLine + "  ", relative)}"
+        );
 
         // Anchors are fine, but only to a heading that exists - nuget.org slugifies headings the
         // same way, so a stale anchor is a dead link on the package page.
-        var headings = Regex.Matches(Readme(), "^#+ (.+)$", RegexOptions.Multiline)
-            .Select(match => Regex.Replace(match.Groups[1].Value.ToLowerInvariant(), "[^a-z0-9 -]", string.Empty)
-                .Trim()
-                .Replace(' ', '-'))
+        var headings = Regex
+            .Matches(Readme(), "^#+ (.+)$", RegexOptions.Multiline)
+            .Select(match =>
+                Regex
+                    .Replace(match.Groups[1].Value.ToLowerInvariant(), "[^a-z0-9 -]", string.Empty)
+                    .Trim()
+                    .Replace(' ', '-')
+            )
             .ToHashSet(StringComparer.Ordinal);
 
         var dangling = links
@@ -81,8 +94,10 @@ public class PackageReadmeTests {
             .Where(link => !headings.Contains(link.Substring(1)))
             .ToList();
 
-        Assert.True(dangling.Count == 0,
-            $"Anchors naming no heading:{Environment.NewLine}  {string.Join(Environment.NewLine + "  ", dangling)}");
+        Assert.True(
+            dangling.Count == 0,
+            $"Anchors naming no heading:{Environment.NewLine}  {string.Join(Environment.NewLine + "  ", dangling)}"
+        );
     }
 
     /// <summary>
@@ -91,10 +106,14 @@ public class PackageReadmeTests {
     /// its own background.
     /// </summary>
     [Fact]
-    public void TheHeaderImage_IsTheSelfContainedReadmeMark() {
+    public void TheHeaderImage_IsTheSelfContainedReadmeMark()
+    {
         var image = Assert.Single(
-            Regex.Matches(Interpreted(), @"!\[[^\]]*\]\(([^)]+)\)").Select(match => match.Groups[1].Value),
-            url => url.Contains("/assets/", StringComparison.Ordinal));
+            Regex
+                .Matches(Interpreted(), @"!\[[^\]]*\]\(([^)]+)\)")
+                .Select(match => match.Groups[1].Value),
+            url => url.Contains("/assets/", StringComparison.Ordinal)
+        );
 
         Assert.EndsWith("/assets/logo-readme.svg", image, StringComparison.Ordinal);
         Assert.StartsWith("https://raw.githubusercontent.com/", image, StringComparison.Ordinal);
@@ -111,29 +130,37 @@ public class PackageReadmeTests {
 
     /// <summary>Alt text on every image: nuget.org prints a placeholder in its place.</summary>
     [Fact]
-    public void EveryImage_CarriesAltText() {
-        var untexted = Regex.Matches(Interpreted(), @"!\[([^\]]*)\]\(([^)]+)\)")
+    public void EveryImage_CarriesAltText()
+    {
+        var untexted = Regex
+            .Matches(Interpreted(), @"!\[([^\]]*)\]\(([^)]+)\)")
             .Where(match => match.Groups[1].Value.Trim().Length == 0)
             .Select(match => match.Groups[2].Value)
             .ToList();
 
-        Assert.True(untexted.Count == 0,
-            "nuget.org replaces missing alt text with \"alternate text is missing from this " +
-            $"package README image\":{Environment.NewLine}  {string.Join(Environment.NewLine + "  ", untexted)}");
+        Assert.True(
+            untexted.Count == 0,
+            "nuget.org replaces missing alt text with \"alternate text is missing from this "
+                + $"package README image\":{Environment.NewLine}  {string.Join(Environment.NewLine + "  ", untexted)}"
+        );
     }
 
     private static string Readme() => File.ReadAllText(Path.Combine(RepositoryRoot, "README.md"));
 
     private static string RepositoryRoot { get; } = ResolveRepositoryRoot();
 
-    private static string ResolveRepositoryRoot() {
-        var configured = typeof(PackageReadmeTests).Assembly
-            .GetCustomAttributes<AssemblyMetadataAttribute>()
-            .FirstOrDefault(attribute => attribute.Key == "RepositoryRoot")?.Value;
+    private static string ResolveRepositoryRoot()
+    {
+        var configured = typeof(PackageReadmeTests)
+            .Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(attribute => attribute.Key == "RepositoryRoot")
+            ?.Value;
 
-        if (configured is null || !File.Exists(Path.Combine(configured, "README.md"))) {
+        if (configured is null || !File.Exists(Path.Combine(configured, "README.md")))
+        {
             throw new InvalidOperationException(
-                "RepositoryRoot assembly metadata is missing or does not contain README.md.");
+                "RepositoryRoot assembly metadata is missing or does not contain README.md."
+            );
         }
 
         return configured;

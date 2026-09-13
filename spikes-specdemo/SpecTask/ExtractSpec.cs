@@ -20,20 +20,29 @@ namespace SpecTask;
 /// opens the yaml - it reads what this produced, which also means it needs no yaml parser and
 /// none of the embedded-dependency machinery that would come with one.
 /// </remarks>
-public sealed class ExtractSpec : Task {
-    [Required] public ITaskItem[] Specs { get; set; } = Array.Empty<ITaskItem>();
-    [Required] public string PatternsFile { get; set; } = "";
-    [Required] public string ModelFile { get; set; } = "";
+public sealed class ExtractSpec : Task
+{
+    [Required]
+    public ITaskItem[] Specs { get; set; } = Array.Empty<ITaskItem>();
 
-    public override bool Execute() {
+    [Required]
+    public string PatternsFile { get; set; } = "";
+
+    [Required]
+    public string ModelFile { get; set; } = "";
+
+    public override bool Execute()
+    {
         var patterns = new Dictionary<string, string>(StringComparer.Ordinal);
         var model = new StringBuilder();
 
-        foreach (var spec in Specs) {
+        foreach (var spec in Specs)
+        {
             var path = spec.GetMetadata("FullPath");
             Log.LogMessage(MessageImportance.Normal, $"ExtractSpec reading {path}");
 
-            foreach (var line in ParseSpec(File.ReadAllLines(path), patterns)) {
+            foreach (var line in ParseSpec(File.ReadAllLines(path), patterns))
+            {
                 model.AppendLine(line);
             }
         }
@@ -45,7 +54,8 @@ public sealed class ExtractSpec : Task {
         source.AppendLine("namespace Spec.Generated;");
         source.AppendLine();
         source.AppendLine("public static partial class SpecPatterns {");
-        foreach (var entry in patterns) {
+        foreach (var entry in patterns)
+        {
             source.AppendLine($"    [GeneratedRegex(@\"{entry.Value.Replace("\"", "\"\"")}\")]");
             source.AppendLine($"    public static partial Regex {entry.Key}();");
             source.AppendLine();
@@ -62,51 +72,69 @@ public sealed class ExtractSpec : Task {
     /// A deliberately small stand-in for a real OpenAPI reader. The mechanism under test is the
     /// hand-off, not the parsing - a real task would use the same reader the generator uses today.
     /// </summary>
-    private static IEnumerable<string> ParseSpec(string[] lines, Dictionary<string, string> patterns) {
+    private static IEnumerable<string> ParseSpec(
+        string[] lines,
+        Dictionary<string, string> patterns
+    )
+    {
         string? type = null;
         string? property = null;
 
-        foreach (var raw in lines) {
+        foreach (var raw in lines)
+        {
             var line = raw.TrimEnd();
-            if (line.Length == 0 || line.TrimStart().StartsWith("#")) continue;
+            if (line.Length == 0 || line.TrimStart().StartsWith("#"))
+                continue;
 
             var indent = line.Length - line.TrimStart().Length;
             var text = line.Trim();
 
-            if (indent == 0 && text.EndsWith(":")) {
+            if (indent == 0 && text.EndsWith(":"))
+            {
                 type = text.TrimEnd(':');
                 yield return $"type|{type}";
-            } else if (indent == 2 && text.EndsWith(":")) {
+            }
+            else if (indent == 2 && text.EndsWith(":"))
+            {
                 property = text.TrimEnd(':');
-            } else if (indent == 4 && type != null && property != null) {
+            }
+            else if (indent == 4 && type != null && property != null)
+            {
                 var split = text.IndexOf(':');
                 var key = text.Substring(0, split).Trim();
                 var value = text.Substring(split + 1).Trim().Trim('"');
 
-                if (key == "pattern") {
+                if (key == "pattern")
+                {
                     // The task names the member and tells the generator what it is, so the two
                     // never have to agree on a naming convention independently.
                     var member = "P_" + Hash(value);
                     patterns[member] = value;
                     yield return $"prop|{property}|pattern|{member}";
-                } else if (key == "required" && value == "true") {
+                }
+                else if (key == "required" && value == "true")
+                {
                     yield return $"prop|{property}|required|";
                 }
             }
         }
     }
 
-    private static string Hash(string value) {
+    private static string Hash(string value)
+    {
         using var sha = SHA256.Create();
         var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(value));
         var builder = new StringBuilder();
-        for (var i = 0; i < 6; i++) builder.Append(bytes[i].ToString("x2"));
+        for (var i = 0; i < 6; i++)
+            builder.Append(bytes[i].ToString("x2"));
         return builder.ToString();
     }
 
-    private static void WriteIfDifferent(string path, string content) {
+    private static void WriteIfDifferent(string path, string content)
+    {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        if (File.Exists(path) && File.ReadAllText(path) == content) return;
+        if (File.Exists(path) && File.ReadAllText(path) == content)
+            return;
         File.WriteAllText(path, content);
     }
 }

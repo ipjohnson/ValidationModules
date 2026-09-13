@@ -25,8 +25,8 @@ namespace ValidationModules.Benchmarks.Comparative.Comparisons;
 /// </remarks>
 [MemoryDiagnoser]
 [BenchmarkCategory(ComparativeCategories.Nested)]
-public class NestedValidationComparison {
-
+public class NestedValidationComparison
+{
     // Hoisted: constructing per invocation would put an allocation on the measured path.
     private static readonly OrderValidator OrderValidatorShared = new();
     private readonly List<DataAnnotations.ValidationResult> _annotationResults = [];
@@ -53,7 +53,8 @@ public class NestedValidationComparison {
             : throw new InvalidOperationException(_dataAnnotationsDivergence);
 
     [GlobalSetup]
-    public void Setup() {
+    public void Setup()
+    {
         // In the measured process, not just the host: under Native AOT this class runs in its
         // own AOT-compiled binary, and an engine that quietly stopped validating there would
         // otherwise be reported as fast. See EngineParity's remarks.
@@ -81,10 +82,12 @@ public class NestedValidationComparison {
         OrderFluentValidator.Instance.Validate(_valid);
 
     [Benchmark(Description = "DataAnnotations - clean, TOP LEVEL ONLY (does not descend)")]
-    public bool Da_Clean() => DataAnnotationsEngine.TryValidate(CheckedAnnotations(_validAnnotated), _annotationResults);
+    public bool Da_Clean() =>
+        DataAnnotationsEngine.TryValidate(CheckedAnnotations(_validAnnotated), _annotationResults);
 
     [Benchmark(Description = "ValidationModules - clean, pooled collector (no FV/DA equivalent)")]
-    public bool Vm_Clean_Pooled() {
+    public bool Vm_Clean_Pooled()
+    {
         _pooled.Reset();
 
         OrderValidatorShared.ValidateInto(_pooled, _valid);
@@ -107,5 +110,9 @@ public class NestedValidationComparison {
         OrderFluentValidator.Instance.Validate(_invalid);
 
     [Benchmark(Description = "DataAnnotations - failing, TOP LEVEL ONLY (finds 1 of 4)")]
-    public bool Da_Failing() => DataAnnotationsEngine.TryValidate(CheckedAnnotations(_invalidAnnotated), _annotationResults);
+    public bool Da_Failing() =>
+        DataAnnotationsEngine.TryValidate(
+            CheckedAnnotations(_invalidAnnotated),
+            _annotationResults
+        );
 }

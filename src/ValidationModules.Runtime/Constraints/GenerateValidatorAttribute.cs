@@ -9,5 +9,4 @@ namespace ValidationModules.Constraints;
 /// when <c>IValidatorFor&lt;T&gt;</c> should be injectable regardless.
 /// </remarks>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Interface)]
-public sealed class GenerateValidatorAttribute : Attribute {
-}
+public sealed class GenerateValidatorAttribute : Attribute { }

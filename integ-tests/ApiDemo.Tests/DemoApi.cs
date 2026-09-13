@@ -13,12 +13,14 @@ namespace ApiDemo.Tests;
 /// body throws in Development and is a silent 400 outside it. Both paths have to end somewhere a
 /// client can read, and only running both proves it.
 /// </remarks>
-internal sealed class DemoApi(string environment) : WebApplicationFactory<Program> {
+internal sealed class DemoApi(string environment) : WebApplicationFactory<Program>
+{
     public static DemoApi Development() => new("Development");
 
     public static DemoApi Production() => new("Production");
 
-    protected override IHost CreateHost(IHostBuilder builder) {
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
         builder.UseEnvironment(environment);
         return base.CreateHost(builder);
     }

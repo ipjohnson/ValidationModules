@@ -21,23 +21,35 @@ namespace ValidationModules.AspNetCore.Tests;
 /// A unit test over <c>InvokeAsync</c> would exercise the branch and prove nothing about status
 /// codes, content types or the shape a client parses - which is the entire value of the package.
 /// </remarks>
-public class EndpointFilterTests {
-
-    private static HttpClient Server(Action<IServiceCollection>? configure = null) {
-        var builder = new HostBuilder().ConfigureWebHost(web => {
+public class EndpointFilterTests
+{
+    private static HttpClient Server(Action<IServiceCollection>? configure = null)
+    {
+        var builder = new HostBuilder().ConfigureWebHost(web =>
+        {
             web.UseTestServer();
-            web.ConfigureServices(services => {
+            web.ConfigureServices(services =>
+            {
                 services.AddRouting();
                 services.AddValidationModulesAspNetCoreTestsValidators();
                 configure?.Invoke(services);
             });
-            web.Configure(app => {
+            web.Configure(app =>
+            {
                 app.UseRouting();
-                app.UseEndpoints(endpoints => {
-                    endpoints.MapPost("/orders", (CreateOrder order) => Results.Ok(new { accepted = true }))
+                app.UseEndpoints(endpoints =>
+                {
+                    endpoints
+                        .MapPost(
+                            "/orders",
+                            (CreateOrder order) => Results.Ok(new { accepted = true })
+                        )
                         .Validate<CreateOrder>();
 
-                    endpoints.MapPost("/orders/unvalidated", (CreateOrder order) => Results.Ok(new { accepted = true }));
+                    endpoints.MapPost(
+                        "/orders/unvalidated",
+                        (CreateOrder order) => Results.Ok(new { accepted = true })
+                    );
                 });
             });
         });
@@ -52,7 +64,8 @@ public class EndpointFilterTests {
     private static CreateOrder Valid() => new() { Reference = "ORD-100", Quantity = 3 };
 
     [Fact]
-    public async Task ValidRequest_ReachesTheHandler() {
+    public async Task ValidRequest_ReachesTheHandler()
+    {
         using var client = Server();
 
         var response = await client.PostAsJsonAsync("/orders", Valid(), Ct);
@@ -61,20 +74,30 @@ public class EndpointFilterTests {
     }
 
     [Fact]
-    public async Task InvalidRequest_NeverReachesTheHandler() {
+    public async Task InvalidRequest_NeverReachesTheHandler()
+    {
         using var client = Server();
 
-        var response = await client.PostAsJsonAsync("/orders", new CreateOrder { Reference = null, Quantity = 9999 }, Ct);
+        var response = await client.PostAsJsonAsync(
+            "/orders",
+            new CreateOrder { Reference = null, Quantity = 9999 },
+            Ct
+        );
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
     }
 
     [Fact]
-    public async Task InvalidRequest_ReportsFieldsAndMessagesInTheStandardShape() {
+    public async Task InvalidRequest_ReportsFieldsAndMessagesInTheStandardShape()
+    {
         using var client = Server();
 
-        var response = await client.PostAsJsonAsync("/orders", new CreateOrder { Reference = null, Quantity = 9999 }, Ct);
+        var response = await client.PostAsJsonAsync(
+            "/orders",
+            new CreateOrder { Reference = null, Quantity = 9999 },
+            Ct
+        );
         var problem = await response.Content.ReadFromJsonAsync<Problem>(Json, Ct);
 
         Assert.NotNull(problem);
@@ -85,12 +108,17 @@ public class EndpointFilterTests {
     }
 
     [Fact]
-    public async Task InvalidRequest_CarriesTheMachineReadableCodes() {
+    public async Task InvalidRequest_CarriesTheMachineReadableCodes()
+    {
         // The reason this package does not just call Results.ValidationProblem: the codes are the
         // stable vocabulary, and dropping them at the HTTP boundary leaves a client parsing English.
         using var client = Server();
 
-        var response = await client.PostAsJsonAsync("/orders", new CreateOrder { Reference = null, Quantity = 9999 }, Ct);
+        var response = await client.PostAsJsonAsync(
+            "/orders",
+            new CreateOrder { Reference = null, Quantity = 9999 },
+            Ct
+        );
         var problem = await response.Content.ReadFromJsonAsync<Problem>(Json, Ct);
 
         Assert.NotNull(problem);
@@ -100,11 +128,17 @@ public class EndpointFilterTests {
     }
 
     [Fact]
-    public async Task CodesCanBeTurnedOff() {
+    public async Task CodesCanBeTurnedOff()
+    {
         using var client = Server(services =>
-            services.AddValidationProblemDetails(options => options.IncludeCodes = false));
+            services.AddValidationProblemDetails(options => options.IncludeCodes = false)
+        );
 
-        var response = await client.PostAsJsonAsync("/orders", new CreateOrder { Reference = null, Quantity = 1 }, Ct);
+        var response = await client.PostAsJsonAsync(
+            "/orders",
+            new CreateOrder { Reference = null, Quantity = 1 },
+            Ct
+        );
         var problem = await response.Content.ReadFromJsonAsync<Problem>(Json, Ct);
 
         Assert.NotNull(problem);
@@ -113,14 +147,21 @@ public class EndpointFilterTests {
     }
 
     [Fact]
-    public async Task TitleAndStatusAreConfigurable() {
+    public async Task TitleAndStatusAreConfigurable()
+    {
         using var client = Server(services =>
-            services.AddValidationProblemDetails(options => {
+            services.AddValidationProblemDetails(options =>
+            {
                 options.Title = "Nope";
                 options.StatusCode = 422;
-            }));
+            })
+        );
 
-        var response = await client.PostAsJsonAsync("/orders", new CreateOrder { Reference = null, Quantity = 1 }, Ct);
+        var response = await client.PostAsJsonAsync(
+            "/orders",
+            new CreateOrder { Reference = null, Quantity = 1 },
+            Ct
+        );
         var problem = await response.Content.ReadFromJsonAsync<Problem>(Json, Ct);
 
         Assert.NotNull(problem);
@@ -129,16 +170,22 @@ public class EndpointFilterTests {
     }
 
     [Fact]
-    public async Task NestedAndCollectionPathsSurviveIntoTheResponse() {
+    public async Task NestedAndCollectionPathsSurviveIntoTheResponse()
+    {
         // The paths are the library's output; this asserts nothing mangles them on the way out.
         using var client = Server();
 
-        var response = await client.PostAsJsonAsync("/orders", new CreateOrder {
-            Reference = "ORD-1",
-            Quantity = 1,
-            ShipTo = new Address { Postcode = null },
-            Lines = [new OrderLine { Sku = "OK" }, new OrderLine { Sku = null }],
-        }, Ct);
+        var response = await client.PostAsJsonAsync(
+            "/orders",
+            new CreateOrder
+            {
+                Reference = "ORD-1",
+                Quantity = 1,
+                ShipTo = new Address { Postcode = null },
+                Lines = [new OrderLine { Sku = "OK" }, new OrderLine { Sku = null }],
+            },
+            Ct
+        );
 
         var problem = await response.Content.ReadFromJsonAsync<Problem>(Json, Ct);
 
@@ -148,23 +195,32 @@ public class EndpointFilterTests {
     }
 
     [Fact]
-    public async Task AnEndpointWithoutTheFilter_IsUntouched() {
+    public async Task AnEndpointWithoutTheFilter_IsUntouched()
+    {
         // The filter is opt-in per endpoint, so an unvalidated route must still accept junk.
         using var client = Server();
 
-        var response = await client.PostAsJsonAsync("/orders/unvalidated", new CreateOrder { Reference = null }, Ct);
+        var response = await client.PostAsJsonAsync(
+            "/orders/unvalidated",
+            new CreateOrder { Reference = null },
+            Ct
+        );
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]
-    public async Task WarningsDoNotFailARequest() {
+    public async Task WarningsDoNotFailARequest()
+    {
         // IsValid is false only for Error severity, and a request that was not rejected must not
         // be told it was.
         using var client = Endpoints(
-            endpoints => endpoints.MapPost("/coupons", (Coupon coupon) => Results.Ok(new { accepted = true }))
-                .Validate<Coupon>(),
-            services => services.AddSingleton<IValidatorFor<Coupon>, WarnOnlyCouponValidator>());
+            endpoints =>
+                endpoints
+                    .MapPost("/coupons", (Coupon coupon) => Results.Ok(new { accepted = true }))
+                    .Validate<Coupon>(),
+            services => services.AddSingleton<IValidatorFor<Coupon>, WarnOnlyCouponValidator>()
+        );
 
         var response = await client.PostAsJsonAsync("/coupons", new Coupon { Code = "SAVE" }, Ct);
 
@@ -172,12 +228,14 @@ public class EndpointFilterTests {
     }
 
     [Fact]
-    public async Task AsyncBusinessRules_RunThroughTheFilter() {
+    public async Task AsyncBusinessRules_RunThroughTheFilter()
+    {
         // The filter prefers ValidationRunner<T> precisely so this happens. Resolving the plain
         // IValidatorFor<T> instead would skip business rules and nobody would notice until a
         // duplicate landed in the database.
         using var client = Server(services =>
-            services.AddScoped<IAsyncValidatorFor<CreateOrder>, RejectingBusinessRule>());
+            services.AddScoped<IAsyncValidatorFor<CreateOrder>, RejectingBusinessRule>()
+        );
 
         var response = await client.PostAsJsonAsync("/orders", Valid(), Ct);
         var problem = await response.Content.ReadFromJsonAsync<Problem>(Json, Ct);
@@ -188,32 +246,46 @@ public class EndpointFilterTests {
     }
 
     [Fact]
-    public async Task AnUnregisteredType_FailsWhenTheEndpointIsBuilt() {
+    public async Task AnUnregisteredType_FailsWhenTheEndpointIsBuilt()
+    {
         // .Validate<T>() naming a type nothing validates used to compile clean and then answer
         // every request - valid bodies included - with a 500 from the filter's own throw. The
         // check now runs beside CanReceive, when the endpoint is built.
         using var client = Endpoints(endpoints =>
-            endpoints.MapPost("/coupons", (Coupon coupon) => Results.Ok()).Validate<Coupon>());
+            endpoints.MapPost("/coupons", (Coupon coupon) => Results.Ok()).Validate<Coupon>()
+        );
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => client.PostAsJsonAsync("/coupons", new Coupon(), Ct));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            client.PostAsJsonAsync("/coupons", new Coupon(), Ct)
+        );
 
         Assert.Contains("no validator is registered", error.Message, StringComparison.Ordinal);
         Assert.Contains(nameof(Coupon), error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task AListBody_ValidatesEachElementWithIndexedPaths() {
+    public async Task AListBody_ValidatesEachElementWithIndexedPaths()
+    {
         // The most ordinary batch shape there is: a JSON array body. The generated registration
         // registers a CollectionValidatorFor per validated type, so Validate<List<T>> resolves.
         using var client = Endpoints(endpoints =>
-            endpoints.MapPost("/orders/batch", (List<CreateOrder> orders) => Results.Ok(new { count = orders.Count }))
-                .Validate<List<CreateOrder>>());
+            endpoints
+                .MapPost(
+                    "/orders/batch",
+                    (List<CreateOrder> orders) => Results.Ok(new { count = orders.Count })
+                )
+                .Validate<List<CreateOrder>>()
+        );
 
-        var response = await client.PostAsJsonAsync("/orders/batch", new[] {
-            Valid(),
-            new CreateOrder { Reference = null, Quantity = 9999 },
-        }, Ct);
+        var response = await client.PostAsJsonAsync(
+            "/orders/batch",
+            new[]
+            {
+                Valid(),
+                new CreateOrder { Reference = null, Quantity = 9999 },
+            },
+            Ct
+        );
 
         var problem = await response.Content.ReadFromJsonAsync<Problem>(Json, Ct);
 
@@ -221,29 +293,53 @@ public class EndpointFilterTests {
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(["reference is required."], problem.Errors["[1].reference"]);
         Assert.Contains("[1].quantity", problem.Errors.Keys);
-        Assert.DoesNotContain(problem.Errors.Keys, key => key.StartsWith("[0]", StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            problem.Errors.Keys,
+            key => key.StartsWith("[0]", StringComparison.Ordinal)
+        );
     }
 
     [Fact]
-    public async Task AValidListBody_ReachesTheHandler() {
+    public async Task AValidListBody_ReachesTheHandler()
+    {
         using var client = Endpoints(endpoints =>
-            endpoints.MapPost("/orders/batch", (List<CreateOrder> orders) => Results.Ok(new { count = orders.Count }))
-                .Validate<List<CreateOrder>>());
+            endpoints
+                .MapPost(
+                    "/orders/batch",
+                    (List<CreateOrder> orders) => Results.Ok(new { count = orders.Count })
+                )
+                .Validate<List<CreateOrder>>()
+        );
 
-        var response = await client.PostAsJsonAsync("/orders/batch", new[] { Valid(), Valid() }, Ct);
+        var response = await client.PostAsJsonAsync(
+            "/orders/batch",
+            new[] { Valid(), Valid() },
+            Ct
+        );
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]
-    public async Task AnArrayBody_ValidatesLikeAList() {
+    public async Task AnArrayBody_ValidatesLikeAList()
+    {
         using var client = Endpoints(endpoints =>
-            endpoints.MapPost("/orders/batch", (CreateOrder[] orders) => Results.Ok(new { count = orders.Length }))
-                .Validate<CreateOrder[]>());
+            endpoints
+                .MapPost(
+                    "/orders/batch",
+                    (CreateOrder[] orders) => Results.Ok(new { count = orders.Length })
+                )
+                .Validate<CreateOrder[]>()
+        );
 
-        var response = await client.PostAsJsonAsync("/orders/batch", new[] {
-            new CreateOrder { Reference = null, Quantity = 1 },
-        }, Ct);
+        var response = await client.PostAsJsonAsync(
+            "/orders/batch",
+            new[]
+            {
+                new CreateOrder { Reference = null, Quantity = 1 },
+            },
+            Ct
+        );
 
         var problem = await response.Content.ReadFromJsonAsync<Problem>(Json, Ct);
 
@@ -253,27 +349,40 @@ public class EndpointFilterTests {
     }
 
     [Fact]
-    public async Task PathModeFull_RendersEveryPathSegment() {
+    public async Task PathModeFull_RendersEveryPathSegment()
+    {
         // Three descents deep - list element, shipTo, location - is where Bounded starts eliding
         // the middle. Full is the documented answer for a client that keys on complete paths, and
         // ValidationPathMode.Full was previously unreachable from the web path.
         static void Batch(IEndpointRouteBuilder endpoints) =>
-            endpoints.MapPost("/orders/batch", (List<CreateOrder> orders) => Results.Ok())
+            endpoints
+                .MapPost("/orders/batch", (List<CreateOrder> orders) => Results.Ok())
                 .Validate<List<CreateOrder>>();
 
-        var deep = new[] {
+        var deep = new[]
+        {
             Valid(),
-            Valid() with { ShipTo = new Address { Postcode = "AB1", Location = new GeoPoint() } },
+            Valid() with
+            {
+                ShipTo = new Address { Postcode = "AB1", Location = new GeoPoint() },
+            },
         };
 
         using var bounded = Endpoints(Batch);
-        using var full = Endpoints(Batch, services =>
-            services.AddValidationProblemDetails(options => options.PathMode = ValidationPathMode.Full));
+        using var full = Endpoints(
+            Batch,
+            services =>
+                services.AddValidationProblemDetails(options =>
+                    options.PathMode = ValidationPathMode.Full
+                )
+        );
 
-        var boundedProblem = await (await bounded.PostAsJsonAsync("/orders/batch", deep, Ct))
-            .Content.ReadFromJsonAsync<Problem>(Json, Ct);
-        var fullProblem = await (await full.PostAsJsonAsync("/orders/batch", deep, Ct))
-            .Content.ReadFromJsonAsync<Problem>(Json, Ct);
+        var boundedProblem = await (
+            await bounded.PostAsJsonAsync("/orders/batch", deep, Ct)
+        ).Content.ReadFromJsonAsync<Problem>(Json, Ct);
+        var fullProblem = await (
+            await full.PostAsJsonAsync("/orders/batch", deep, Ct)
+        ).Content.ReadFromJsonAsync<Problem>(Json, Ct);
 
         Assert.NotNull(boundedProblem);
         Assert.NotNull(fullProblem);
@@ -282,13 +391,17 @@ public class EndpointFilterTests {
     }
 
     [Fact]
-    public async Task AListBody_RunsElementBusinessRulesThroughTheRunner() {
+    public async Task AListBody_RunsElementBusinessRulesThroughTheRunner()
+    {
         // The list's runner gates and merges exactly as a scalar's does: structural first, then
         // the element type's async rules per element, with indexed paths.
         using var client = Endpoints(
-            endpoints => endpoints.MapPost("/orders/batch", (List<CreateOrder> orders) => Results.Ok())
-                .Validate<List<CreateOrder>>(),
-            services => services.AddScoped<IAsyncValidatorFor<CreateOrder>, RejectingBusinessRule>());
+            endpoints =>
+                endpoints
+                    .MapPost("/orders/batch", (List<CreateOrder> orders) => Results.Ok())
+                    .Validate<List<CreateOrder>>(),
+            services => services.AddScoped<IAsyncValidatorFor<CreateOrder>, RejectingBusinessRule>()
+        );
 
         var response = await client.PostAsJsonAsync("/orders/batch", new[] { Valid() }, Ct);
         var problem = await response.Content.ReadFromJsonAsync<Problem>(Json, Ct);
@@ -299,18 +412,20 @@ public class EndpointFilterTests {
     }
 
     [Fact]
-    public async Task NamingATypeTheHandlerDoesNotTake_Fails() {
+    public async Task NamingATypeTheHandlerDoesNotTake_Fails()
+    {
         // The whole point of the check: this endpoint would otherwise answer every body as valid,
         // forever, with nothing in a build or a test run to say so.
         //
         // It fails when the endpoint is built, which minimal APIs do lazily - so the failure lands
         // on the first request rather than at boot. See EndpointBuildIsLazy_SoTheCheckIsNotAtBoot.
         using var client = Endpoints(endpoints =>
-            endpoints.MapPost("/orders", (CreateOrder order) => Results.Ok())
-                .Validate<Coupon>());
+            endpoints.MapPost("/orders", (CreateOrder order) => Results.Ok()).Validate<Coupon>()
+        );
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => client.PostAsJsonAsync("/orders", Valid(), Ct));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            client.PostAsJsonAsync("/orders", Valid(), Ct)
+        );
 
         Assert.Contains("takes no", error.Message, StringComparison.Ordinal);
         Assert.Contains(nameof(Coupon), error.Message, StringComparison.Ordinal);
@@ -318,39 +433,47 @@ public class EndpointFilterTests {
     }
 
     [Fact]
-    public async Task AHandlerWithNoParametersAtAll_Fails() {
+    public async Task AHandlerWithNoParametersAtAll_Fails()
+    {
         using var client = Endpoints(endpoints =>
-            endpoints.MapPost("/ping", () => Results.Ok()).Validate<CreateOrder>());
+            endpoints.MapPost("/ping", () => Results.Ok()).Validate<CreateOrder>()
+        );
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => client.PostAsJsonAsync("/ping", Valid(), Ct));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            client.PostAsJsonAsync("/ping", Valid(), Ct)
+        );
 
         Assert.Contains("it takes no parameters", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task AMismatchAnywhere_FailsTheFirstRequestToEveryEndpoint() {
+    public async Task AMismatchAnywhere_FailsTheFirstRequestToEveryEndpoint()
+    {
         // Endpoint build is all-or-nothing: RouteEndpointDataSource.get_Endpoints() constructs
         // every endpoint in the application, so one bad Validate<T>() cannot hide behind a route
         // nobody calls. The blast radius is the point - it is what makes a smoke test or a health
         // probe enough to catch this, rather than needing traffic on the affected route.
         using var client = Endpoints(endpoints =>
-            endpoints.MapPost("/orders", (CreateOrder order) => Results.Ok())
-                .Validate<Coupon>());
+            endpoints.MapPost("/orders", (CreateOrder order) => Results.Ok()).Validate<Coupon>()
+        );
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => client.PostAsJsonAsync("/healthy", Valid(), Ct));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            client.PostAsJsonAsync("/healthy", Valid(), Ct)
+        );
 
         Assert.Contains(nameof(Coupon), error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task AParameterDeclaredAsABaseType_IsAccepted() {
+    public async Task AParameterDeclaredAsABaseType_IsAccepted()
+    {
         // The filter matches on `is T`, so a parameter that could hold a T at run time must not be
         // rejected - turning a working endpoint into a failure is the worse trade.
         using var client = Endpoints(endpoints =>
-            endpoints.MapPost("/loose", (object body) => Results.Ok(new { accepted = true }))
-                .Validate<CreateOrder>());
+            endpoints
+                .MapPost("/loose", (object body) => Results.Ok(new { accepted = true }))
+                .Validate<CreateOrder>()
+        );
 
         var response = await client.PostAsJsonAsync("/loose", Valid(), Ct);
 
@@ -358,10 +481,12 @@ public class EndpointFilterTests {
     }
 
     [Fact]
-    public async Task AGroupSkipsHandlersThatTakeNoT_RatherThanThrowing() {
+    public async Task AGroupSkipsHandlersThatTakeNoT_RatherThanThrowing()
+    {
         // A group is a mixed bag by construction: the POST validates, the GET has nothing to
         // validate and must still boot and still work.
-        using var client = Endpoints(endpoints => {
+        using var client = Endpoints(endpoints =>
+        {
             var group = endpoints.MapGroup("/catalogue").Validate<CreateOrder>();
 
             group.MapPost("/orders", (CreateOrder order) => Results.Ok(new { accepted = true }));
@@ -369,7 +494,10 @@ public class EndpointFilterTests {
         });
 
         var rejected = await client.PostAsJsonAsync(
-            "/catalogue/orders", new CreateOrder { Reference = null }, Ct);
+            "/catalogue/orders",
+            new CreateOrder { Reference = null },
+            Ct
+        );
         var untouched = await client.GetAsync("/catalogue/orders/abc", Ct);
 
         Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
@@ -381,20 +509,30 @@ public class EndpointFilterTests {
     /// rather than about a response.
     /// </summary>
     private static HttpClient Endpoints(
-        Action<IEndpointRouteBuilder> routes, Action<IServiceCollection>? configure = null) {
-        var builder = new HostBuilder().ConfigureWebHost(web => {
+        Action<IEndpointRouteBuilder> routes,
+        Action<IServiceCollection>? configure = null
+    )
+    {
+        var builder = new HostBuilder().ConfigureWebHost(web =>
+        {
             web.UseTestServer();
-            web.ConfigureServices(services => {
+            web.ConfigureServices(services =>
+            {
                 services.AddRouting();
                 services.AddValidationModulesAspNetCoreTestsValidators();
                 configure?.Invoke(services);
             });
-            web.Configure(app => {
+            web.Configure(app =>
+            {
                 app.UseRouting();
-                app.UseEndpoints(endpoints => {
+                app.UseEndpoints(endpoints =>
+                {
                     // An endpoint with nothing wrong with it, so a test can tell "the host is up"
                     // from "the host refused to start".
-                    endpoints.MapPost("/healthy", (CreateOrder order) => Results.Ok(new { ok = true }));
+                    endpoints.MapPost(
+                        "/healthy",
+                        (CreateOrder order) => Results.Ok(new { ok = true })
+                    );
 
                     routes(endpoints);
                 });
@@ -404,21 +542,33 @@ public class EndpointFilterTests {
         return builder.Start().GetTestClient();
     }
 
-    private sealed class RejectingBusinessRule : IAsyncValidatorFor<CreateOrder> {
+    private sealed class RejectingBusinessRule : IAsyncValidatorFor<CreateOrder>
+    {
         public async ValueTask ValidateAsync(
-            ValidationContext context, CreateOrder value, CancellationToken cancellationToken = default) {
+            ValidationContext context,
+            CreateOrder value,
+            CancellationToken cancellationToken = default
+        )
+        {
             await Task.Yield();
 
             context.Report("reference", "conflict", "reference is already taken.");
         }
     }
 
-    private sealed class WarnOnlyCouponValidator : IValidatorFor<Coupon> {
+    private sealed class WarnOnlyCouponValidator : IValidatorFor<Coupon>
+    {
         public ValidationFlow Validate(ref ValidationContext context, Coupon value) =>
-            context.Report("code", "deprecated", "this coupon format is being retired.", ValidationSeverity.Warning);
+            context.Report(
+                "code",
+                "deprecated",
+                "this coupon format is being retired.",
+                ValidationSeverity.Warning
+            );
     }
 
-    private sealed record Problem {
+    private sealed record Problem
+    {
         public string? Title { get; init; }
         public int Status { get; init; }
         public Dictionary<string, string[]> Errors { get; init; } = new();
@@ -428,7 +578,8 @@ public class EndpointFilterTests {
     }
 }
 
-public sealed record CreateOrder {
+public sealed record CreateOrder
+{
     [Required, StringLength(min: 3, max: 40)]
     public string? Reference { get; init; }
 
@@ -442,7 +593,8 @@ public sealed record CreateOrder {
     public IReadOnlyList<OrderLine> Lines { get; init; } = [];
 }
 
-public sealed record Address {
+public sealed record Address
+{
     [Required]
     public string? Postcode { get; init; }
 
@@ -450,17 +602,20 @@ public sealed record Address {
     public GeoPoint? Location { get; init; }
 }
 
-public sealed record GeoPoint {
+public sealed record GeoPoint
+{
     [Required]
     public string? Latitude { get; init; }
 }
 
-public sealed record OrderLine {
+public sealed record OrderLine
+{
     [Required]
     public string? Sku { get; init; }
 }
 
 /// <summary>A type with no constraints, so only the hand-written validator applies to it.</summary>
-public sealed record Coupon {
+public sealed record Coupon
+{
     public string? Code { get; init; }
 }

@@ -21,7 +21,8 @@ namespace ValidationModules.Benchmarks.Components;
 /// </remarks>
 [MemoryDiagnoser]
 [BenchmarkCategory(BenchmarkCategories.Component)]
-public class ValidationContextBenchmarks {
+public class ValidationContextBenchmarks
+{
     private readonly ValidationErrorCollector _collector = new();
 
     /// <summary>
@@ -38,7 +39,8 @@ public class ValidationContextBenchmarks {
     public int Depth { get; set; }
 
     [Benchmark(Baseline = true, Description = "Add at the root - no path to walk")]
-    public int Add_AtRoot() {
+    public int Add_AtRoot()
+    {
         _collector.Reset();
 
         var context = new ValidationContext(_collector);
@@ -48,11 +50,13 @@ public class ValidationContextBenchmarks {
     }
 
     [Benchmark(Description = "Push to depth, add nothing - the clean pass, must be 0 B")]
-    public int Push_NoAdd() {
+    public int Push_NoAdd()
+    {
         _collector.Reset();
 
         var context = new ValidationContext(_collector);
-        for (var i = 0; i < Depth; i++) {
+        for (var i = 0; i < Depth; i++)
+        {
             context = context.Push("home");
         }
 
@@ -60,11 +64,13 @@ public class ValidationContextBenchmarks {
     }
 
     [Benchmark(Description = "Push to depth, then add - object nesting")]
-    public int Push_ThenAdd() {
+    public int Push_ThenAdd()
+    {
         _collector.Reset();
 
         var context = new ValidationContext(_collector);
-        for (var i = 0; i < Depth; i++) {
+        for (var i = 0; i < Depth; i++)
+        {
             context = context.Push("home");
         }
 
@@ -74,11 +80,13 @@ public class ValidationContextBenchmarks {
     }
 
     [Benchmark(Description = "PushIndex to depth, then add - collection nesting")]
-    public int PushIndex_ThenAdd() {
+    public int PushIndex_ThenAdd()
+    {
         _collector.Reset();
 
         var context = new ValidationContext(_collector);
-        for (var i = 0; i < Depth; i++) {
+        for (var i = 0; i < Depth; i++)
+        {
             context = context.PushIndex("lines", i);
         }
 
@@ -88,11 +96,13 @@ public class ValidationContextBenchmarks {
     }
 
     [Benchmark(Description = "PushKey to depth, then add - dictionary nesting")]
-    public int PushKey_ThenAdd() {
+    public int PushKey_ThenAdd()
+    {
         _collector.Reset();
 
         var context = new ValidationContext(_collector);
-        for (var i = 0; i < Depth; i++) {
+        for (var i = 0; i < Depth; i++)
+        {
             context = context.PushKey("items", "sku-1");
         }
 
@@ -107,11 +117,13 @@ public class ValidationContextBenchmarks {
     /// appending the field name costs.
     /// </summary>
     [Benchmark(Description = "AddHere at depth - a type-level rule")]
-    public int AddHere_AtDepth() {
+    public int AddHere_AtDepth()
+    {
         _collector.Reset();
 
         var context = new ValidationContext(_collector);
-        for (var i = 0; i < Depth; i++) {
+        for (var i = 0; i < Depth; i++)
+        {
             context = context.Push("home");
         }
 
@@ -127,11 +139,13 @@ public class ValidationContextBenchmarks {
     /// <see cref="ValidationContext"/>.
     /// </summary>
     [Benchmark(Description = "Sibling pushes, one error each - a collection pass")]
-    public int Siblings_EachAdd() {
+    public int Siblings_EachAdd()
+    {
         _collector.Reset();
 
         var root = new ValidationContext(_collector);
-        for (var i = 0; i < Depth; i++) {
+        for (var i = 0; i < Depth; i++)
+        {
             root.PushIndex("lines", i).ReportRequired("sku");
         }
 

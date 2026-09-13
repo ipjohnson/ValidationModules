@@ -19,4 +19,5 @@ namespace ValidationModules;
 /// <param name="Factory">Produces the instance.</param>
 public readonly record struct ValidatorRegistration(
     Type ServiceType,
-    Func<IServiceProvider, object> Factory);
+    Func<IServiceProvider, object> Factory
+);

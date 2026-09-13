@@ -31,8 +31,8 @@ namespace ValidationModules;
 /// ordinary answer.
 /// </para>
 /// </remarks>
-public abstract class ValidationMessageFormatter {
-
+public abstract class ValidationMessageFormatter
+{
     /// <summary>
     /// The message for <paramref name="error"/>. Implementations answer for every error they are
     /// handed; <see cref="ValidationError.Message"/> is the fallback with nothing to override.

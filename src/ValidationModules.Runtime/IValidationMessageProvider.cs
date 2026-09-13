@@ -19,8 +19,8 @@ namespace ValidationModules;
 /// code or severity if it has reason to; most read nothing.
 /// </para>
 /// </remarks>
-public interface IValidationMessageProvider {
-
+public interface IValidationMessageProvider
+{
     /// <summary>The template to render for this error, holes included.</summary>
     /// <param name="error">The error being rendered.</param>
     string Template(in ValidationError error);

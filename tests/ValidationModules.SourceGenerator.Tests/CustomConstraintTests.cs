@@ -8,8 +8,8 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// claims under test are the feature: a direct static call with the constructor's constants, the
 /// base's knobs working unchanged, and every wrong shape caught at build time as VM1601.
 /// </summary>
-public class CustomConstraintTests {
-
+public class CustomConstraintTests
+{
     private const string SkuAttribute = """
         using System;
         using ValidationModules.Constraints;
@@ -22,14 +22,18 @@ public class CustomConstraintTests {
         """;
 
     [Fact]
-    public void CustomConstraint_CompilesToADirectStaticCall() {
-        var result = GeneratorHarness.Run(SkuAttribute + """
+    public void CustomConstraint_CompilesToADirectStaticCall()
+    {
+        var result = GeneratorHarness.Run(
+            SkuAttribute
+                + """
 
-            public record Product {
-                [Sku]
-                public string? Code { get; init; }
-            }
-            """);
+                public record Product {
+                    [Sku]
+                    public string? Code { get; init; }
+                }
+                """
+        );
 
         Assert.Empty(result.Diagnostics);
 
@@ -38,14 +42,18 @@ public class CustomConstraintTests {
         // Null passes, like every structural constraint; the check is the author's static, called
         // directly with nothing constructed and nothing boxed.
         Assert.Contains(
-            "value.Code is not null && !global::Sample.SkuAttribute.IsValid(value.Code)", emitted);
+            "value.Code is not null && !global::Sample.SkuAttribute.IsValid(value.Code)",
+            emitted
+        );
         Assert.Contains("ReportCustom", emitted);
         Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
-    public void CustomConstraint_ConstructorArgumentsFlowIntoTheCall() {
-        var result = GeneratorHarness.Run("""
+    public void CustomConstraint_ConstructorArgumentsFlowIntoTheCall()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -60,26 +68,32 @@ public class CustomConstraintTests {
                 [Divisible(3)]
                 public int Count { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.Diagnostics);
         Assert.Contains(
             "!global::Sample.DivisibleAttribute.IsValid(value.Count, 3)",
-            result.Sources["Sample.ProductValidator.g.cs"]);
+            result.Sources["Sample.ProductValidator.g.cs"]
+        );
         Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
-    public void CustomConstraint_TheBaseKnobsWorkUnchanged() {
-        var result = GeneratorHarness.Run(SkuAttribute + """
+    public void CustomConstraint_TheBaseKnobsWorkUnchanged()
+    {
+        var result = GeneratorHarness.Run(
+            SkuAttribute
+                + """
 
-            public record Product {
-                public bool IsCatalogued { get; init; }
+                public record Product {
+                    public bool IsCatalogued { get; init; }
 
-                [Sku(Code = "sku_shape", Message = "sku must start with SKU-", When = nameof(IsCatalogued))]
-                public string? Code { get; init; }
-            }
-            """);
+                    [Sku(Code = "sku_shape", Message = "sku must start with SKU-", When = nameof(IsCatalogued))]
+                    public string? Code { get; init; }
+                }
+                """
+        );
 
         Assert.Empty(result.Diagnostics);
 
@@ -93,8 +107,10 @@ public class CustomConstraintTests {
     }
 
     [Fact]
-    public void CustomConstraint_NullableValueTypeMember_IsGuardedAndUnwrapped() {
-        var result = GeneratorHarness.Run("""
+    public void CustomConstraint_NullableValueTypeMember_IsGuardedAndUnwrapped()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -107,24 +123,30 @@ public class CustomConstraintTests {
                 [Even]
                 public int? Count { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.Diagnostics);
         Assert.Contains(
             "value.Count is not null && !global::Sample.EvenAttribute.IsValid(value.Count.Value)",
-            result.Sources["Sample.ProductValidator.g.cs"]);
+            result.Sources["Sample.ProductValidator.g.cs"]
+        );
         Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
-    public void CustomConstraint_ParticipatesInTheBooleanFastPath() {
-        var result = GeneratorHarness.Run(SkuAttribute + """
+    public void CustomConstraint_ParticipatesInTheBooleanFastPath()
+    {
+        var result = GeneratorHarness.Run(
+            SkuAttribute
+                + """
 
-            public record Product {
-                [Sku]
-                public string? Code { get; init; }
-            }
-            """);
+                public record Product {
+                    [Sku]
+                    public string? Code { get; init; }
+                }
+                """
+        );
 
         var emitted = result.Sources["Sample.ProductValidator.g.cs"];
         var fastPath = emitted.Substring(emitted.IndexOf("public bool IsValid"));
@@ -136,13 +158,23 @@ public class CustomConstraintTests {
 
     [Theory]
     [InlineData("", "declares no public static bool IsValid")]
-    [InlineData("public bool IsValid(string value) => true;", "declares no public static bool IsValid")]
-    [InlineData("public static string IsValid(string value) => \"\";", "declares no public static bool IsValid")]
+    [InlineData(
+        "public bool IsValid(string value) => true;",
+        "declares no public static bool IsValid"
+    )]
+    [InlineData(
+        "public static string IsValid(string value) => \"\";",
+        "declares no public static bool IsValid"
+    )]
     [InlineData("public static bool IsValid(int value) => true;", "cannot accept this member")]
-    [InlineData("public static bool IsValid(string value, int extra) => true;",
-        "the constructor supplies 0")]
-    public void CustomConstraint_WrongShape_IsVM1601(string method, string reason) {
-        var result = GeneratorHarness.Run($$"""
+    [InlineData(
+        "public static bool IsValid(string value, int extra) => true;",
+        "the constructor supplies 0"
+    )]
+    public void CustomConstraint_WrongShape_IsVM1601(string method, string reason)
+    {
+        var result = GeneratorHarness.Run(
+            $$"""
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -155,7 +187,8 @@ public class CustomConstraintTests {
                 [Broken]
                 public string? Code { get; init; }
             }
-            """);
+            """
+        );
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1601");
 
@@ -164,8 +197,10 @@ public class CustomConstraintTests {
     }
 
     [Fact]
-    public void CustomConstraint_ConstructorParameterTypeMismatch_IsVM1601() {
-        var result = GeneratorHarness.Run("""
+    public void CustomConstraint_ConstructorParameterTypeMismatch_IsVM1601()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -180,18 +215,22 @@ public class CustomConstraintTests {
                 [Broken("3")]
                 public int Count { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Contains(
             "constructor's matching parameter is 'string'",
-            Assert.Single(result.Diagnostics, d => d.Id == "VM1601").GetMessage());
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1601").GetMessage()
+        );
     }
 
     [Fact]
-    public void CustomConstraint_ACustomPropertySetter_IsVM1601() {
+    public void CustomConstraint_ACustomPropertySetter_IsVM1601()
+    {
         // A static check has no instance to read the property from, so setting one would be an
         // argument that silently never arrives - the failure shape this library refuses.
-        var result = GeneratorHarness.Run("""
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -206,21 +245,27 @@ public class CustomConstraintTests {
                 [Sized(Limit = 5)]
                 public string? Code { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Contains(
             "pass it through the constructor",
-            Assert.Single(result.Diagnostics, d => d.Id == "VM1601").GetMessage());
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1601").GetMessage()
+        );
     }
 
     [Fact]
-    public void CustomConstraint_OnARecordParameter_IsVM1008LikeAnyConstraint() {
+    public void CustomConstraint_OnARecordParameter_IsVM1008LikeAnyConstraint()
+    {
         // The attribute lands on the parameter and is never read - the same silent failure VM1008
         // exists to catch for the built-ins, so a custom constraint gets the same net.
-        var result = GeneratorHarness.Run(SkuAttribute + """
+        var result = GeneratorHarness.Run(
+            SkuAttribute
+                + """
 
-            public record Product([Sku] string? Code);
-            """);
+                public record Product([Sku] string? Code);
+                """
+        );
 
         Assert.Single(result.Diagnostics, d => d.Id == "VM1008");
     }
@@ -247,13 +292,17 @@ public class CustomConstraintTests {
     /// check - code is invisible here, a constant is not.
     /// </summary>
     [Fact]
-    public void AuthorDefaults_ApplyWhenTheApplicationSetsNothing() {
-        var result = GeneratorHarness.Run(SkuWithDefaults + """
+    public void AuthorDefaults_ApplyWhenTheApplicationSetsNothing()
+    {
+        var result = GeneratorHarness.Run(
+            SkuWithDefaults
+                + """
 
-            public record Product {
-                [Sku] public string? Sku { get; init; }
-            }
-            """);
+                public record Product {
+                    [Sku] public string? Sku { get; init; }
+                }
+                """
+        );
 
         Assert.Empty(result.CompilationErrors);
 
@@ -265,14 +314,18 @@ public class CustomConstraintTests {
 
     /// <summary>The use site still wins, same as overriding a built-in's composed text.</summary>
     [Fact]
-    public void AuthorDefaults_LoseToTheUseSite() {
-        var result = GeneratorHarness.Run(SkuWithDefaults + """
+    public void AuthorDefaults_LoseToTheUseSite()
+    {
+        var result = GeneratorHarness.Run(
+            SkuWithDefaults
+                + """
 
-            public record Product {
-                [Sku(Message = "warehouse skus start with SKU-", Code = "warehouse_sku")]
-                public string? Sku { get; init; }
-            }
-            """);
+                public record Product {
+                    [Sku(Message = "warehouse skus start with SKU-", Code = "warehouse_sku")]
+                    public string? Sku { get; init; }
+                }
+                """
+        );
 
         var emitted = result.Sources["Sample.ProductValidator.g.cs"];
 
@@ -283,8 +336,10 @@ public class CustomConstraintTests {
 
     /// <summary>A default declared on a shared base attribute serves every derived check.</summary>
     [Fact]
-    public void AuthorDefaults_AreInheritedFromABaseAttribute() {
-        var result = GeneratorHarness.Run("""
+    public void AuthorDefaults_AreInheritedFromABaseAttribute()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -301,11 +356,13 @@ public class CustomConstraintTests {
             public record Product {
                 [Sku] public string? Sku { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
         Assert.Contains(
             "\"value is not in the required format\"",
-            result.Sources["Sample.ProductValidator.g.cs"]);
+            result.Sources["Sample.ProductValidator.g.cs"]
+        );
     }
 }

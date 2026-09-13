@@ -13,16 +13,15 @@ namespace SutProject.Tests;
 /// check <c>[StringLength]</c> already implements - a <c>for</c> loop over
 /// <c>rules.Context.Report</c>, because a rule declaration inside a loop is VM3003.
 /// </remarks>
-public class ElementRulesTests {
-
+public class ElementRulesTests
+{
     private static ValidationResult Validate(Procedure procedure) =>
         new ProcedureValidator().Validate(procedure);
 
     [Fact]
-    public void AnElementThatBreaksTheRule_ReportsAtItsIndexWithTheConstraintCode() {
-        var result = Validate(new Procedure {
-            Steps = ["ok", "this step is long enough to pass"],
-        });
+    public void AnElementThatBreaksTheRule_ReportsAtItsIndexWithTheConstraintCode()
+    {
+        var result = Validate(new Procedure { Steps = ["ok", "this step is long enough to pass"] });
 
         var error = Assert.Single(result.Errors);
 
@@ -32,16 +31,18 @@ public class ElementRulesTests {
     }
 
     [Fact]
-    public void EveryFailingElement_ReportsItsOwnIndex() {
-        var result = Validate(new Procedure {
-            Steps = ["ok", "this step is long enough to pass", "no"],
-        });
+    public void EveryFailingElement_ReportsItsOwnIndex()
+    {
+        var result = Validate(
+            new Procedure { Steps = ["ok", "this step is long enough to pass", "no"] }
+        );
 
         Assert.Equal(["steps[0]", "steps[2]"], result.Errors.Select(e => e.Field).ToArray());
     }
 
     [Fact]
-    public void TheCollectionRule_AndTheElementRules_ComposeInOneChain() {
+    public void TheCollectionRule_AndTheElementRules_ComposeInOneChain()
+    {
         // An empty list fails the Count and has no elements to walk; the two rules are one
         // statement and one suppression unit.
         var result = Validate(new Procedure { Steps = [] });
@@ -53,11 +54,11 @@ public class ElementRulesTests {
     }
 
     [Fact]
-    public void AnArrayOfStrings_WalksByLengthRatherThanCount() {
-        var result = Validate(new Procedure {
-            Steps = ["a step long enough to pass"],
-            Tags = ["x", "reasonable"],
-        });
+    public void AnArrayOfStrings_WalksByLengthRatherThanCount()
+    {
+        var result = Validate(
+            new Procedure { Steps = ["a step long enough to pass"], Tags = ["x", "reasonable"] }
+        );
 
         var error = Assert.Single(result.Errors);
 
@@ -65,11 +66,15 @@ public class ElementRulesTests {
     }
 
     [Fact]
-    public void CleanElements_Pass() {
-        var result = Validate(new Procedure {
-            Steps = ["first step, long enough", "second step, also fine"],
-            Tags = ["ok", "fine"],
-        });
+    public void CleanElements_Pass()
+    {
+        var result = Validate(
+            new Procedure
+            {
+                Steps = ["first step, long enough", "second step, also fine"],
+                Tags = ["ok", "fine"],
+            }
+        );
 
         Assert.True(result.IsValid);
     }

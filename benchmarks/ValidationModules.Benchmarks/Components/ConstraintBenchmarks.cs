@@ -21,8 +21,8 @@ namespace ValidationModules.Benchmarks.Components;
 /// </remarks>
 [MemoryDiagnoser]
 [BenchmarkCategory(BenchmarkCategories.Component)]
-public class ConstraintBenchmarks {
-
+public class ConstraintBenchmarks
+{
     // Hoisted: constructing per invocation would put an allocation on the measured path.
     private static readonly AllowedValuesOnlyValidator AllowedValuesOnlyValidatorShared = new();
     private static readonly ItemCountOnlyValidator ItemCountOnlyValidatorShared = new();
@@ -44,9 +44,13 @@ public class ConstraintBenchmarks {
     public bool Failing { get; set; }
 
     [GlobalSetup]
-    public void Setup() {
+    public void Setup()
+    {
         _required = new RequiredOnly { Value = Failing ? null : "present" };
-        _stringLength = new StringLengthOnly { Value = Failing ? new string('x', 101) : "within bounds" };
+        _stringLength = new StringLengthOnly
+        {
+            Value = Failing ? new string('x', 101) : "within bounds",
+        };
         _range = new RangeOnly { Value = Failing ? 500 : 42 };
         _pattern = new PatternOnly { Value = Failing ? "nope" : "ABC-1234" };
         _allowedValues = new AllowedValuesOnly { Value = Failing ? "platinum" : "gold" };
@@ -54,7 +58,8 @@ public class ConstraintBenchmarks {
     }
 
     [Benchmark(Baseline = true, Description = "[Required] - string.IsNullOrWhiteSpace")]
-    public int Required() {
+    public int Required()
+    {
         _collector.Reset();
 
         RequiredOnlyValidatorShared.ValidateInto(_collector, _required);
@@ -63,7 +68,8 @@ public class ConstraintBenchmarks {
     }
 
     [Benchmark(Description = "[StringLength] - two integer comparisons")]
-    public int StringLength() {
+    public int StringLength()
+    {
         _collector.Reset();
 
         StringLengthOnlyValidatorShared.ValidateInto(_collector, _stringLength);
@@ -72,7 +78,8 @@ public class ConstraintBenchmarks {
     }
 
     [Benchmark(Description = "[Range] - two comparisons, no boxing")]
-    public int Range() {
+    public int Range()
+    {
         _collector.Reset();
 
         RangeOnlyValidatorShared.ValidateInto(_collector, _range);
@@ -85,7 +92,8 @@ public class ConstraintBenchmarks {
     /// <c>Design/RegexStrategyBenchmarks</c> prices the alternatives the emitter could have used.
     /// </summary>
     [Benchmark(Description = "[Pattern] - a [GeneratedRegex] match")]
-    public int Pattern() {
+    public int Pattern()
+    {
         _collector.Reset();
 
         PatternOnlyValidatorShared.ValidateInto(_collector, _pattern);
@@ -99,7 +107,8 @@ public class ConstraintBenchmarks {
     /// up if it were not.
     /// </summary>
     [Benchmark(Description = "[AllowedValues] - a chain of string comparisons")]
-    public int AllowedValues() {
+    public int AllowedValues()
+    {
         _collector.Reset();
 
         AllowedValuesOnlyValidatorShared.ValidateInto(_collector, _allowedValues);
@@ -108,7 +117,8 @@ public class ConstraintBenchmarks {
     }
 
     [Benchmark(Description = "[ItemCount] - a Count read and two comparisons")]
-    public int ItemCount() {
+    public int ItemCount()
+    {
         _collector.Reset();
 
         ItemCountOnlyValidatorShared.ValidateInto(_collector, _itemCount);

@@ -22,8 +22,8 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// asking for it.
 /// </para>
 /// </remarks>
-public class CrossAssemblyMetadataSpike {
-
+public class CrossAssemblyMetadataSpike
+{
     private const string BaseAssembly = """
         using ValidationModules.Constraints;
 
@@ -63,7 +63,8 @@ public class CrossAssemblyMetadataSpike {
         }
         """;
 
-    private static INamedTypeSymbol Lookup(string metadataName) {
+    private static INamedTypeSymbol Lookup(string metadataName)
+    {
         var reference = GeneratorHarness.CompileToReference(BaseAssembly, "Shared.Fixture");
 
         var compilation = CSharpCompilation.Create(
@@ -72,16 +73,21 @@ public class CrossAssemblyMetadataSpike {
             GeneratorHarness.ReferencesIncluding(reference),
             new CSharpCompilationOptions(
                 OutputKind.DynamicallyLinkedLibrary,
-                nullableContextOptions: NullableContextOptions.Enable));
+                nullableContextOptions: NullableContextOptions.Enable
+            )
+        );
 
-        Assert.Empty(compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error));
+        Assert.Empty(
+            compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error)
+        );
 
         return compilation.GetTypeByMetadataName(metadataName)
             ?? throw new InvalidOperationException($"'{metadataName}' did not resolve.");
     }
 
     [Fact]
-    public void ConstraintAttributesOnAMetadataBaseType_AreVisibleToTheDerivedType() {
+    public void ConstraintAttributesOnAMetadataBaseType_AreVisibleToTheDerivedType()
+    {
         var derived = Lookup("Consumer.CreateOrder");
         var baseType = derived.BaseType;
 
@@ -89,9 +95,11 @@ public class CrossAssemblyMetadataSpike {
         Assert.Equal("Shared.Fixture", baseType!.ContainingAssembly.Name);
 
         var correlationId = Assert.IsAssignableFrom<IPropertySymbol>(
-            Assert.Single(baseType.GetMembers("CorrelationId")));
+            Assert.Single(baseType.GetMembers("CorrelationId"))
+        );
 
-        var names = correlationId.GetAttributes()
+        var names = correlationId
+            .GetAttributes()
             .Select(attribute => attribute.AttributeClass?.Name)
             .ToList();
 
@@ -105,12 +113,14 @@ public class CrossAssemblyMetadataSpike {
     /// read back at all.
     /// </summary>
     [Fact]
-    public void ConstructorArgumentsSurviveTheMetadataRoundTrip() {
+    public void ConstructorArgumentsSurviveTheMetadataRoundTrip()
+    {
         var baseType = Lookup("Consumer.CreateOrder").BaseType!;
 
         var correlationId = (IPropertySymbol)baseType.GetMembers("CorrelationId").Single();
 
-        var stringLength = correlationId.GetAttributes()
+        var stringLength = correlationId
+            .GetAttributes()
             .Single(attribute => attribute.AttributeClass?.Name == "StringLengthAttribute");
 
         Assert.Equal([1, 64], stringLength.ConstructorArguments.Select(argument => argument.Value));
@@ -121,7 +131,8 @@ public class CrossAssemblyMetadataSpike {
     /// metadata; the implementing property in source carries none of its own.
     /// </summary>
     [Fact]
-    public void ConstraintAttributesOnAMetadataInterface_ResolveToTheImplementingMember() {
+    public void ConstraintAttributesOnAMetadataInterface_ResolveToTheImplementingMember()
+    {
         var document = Lookup("Consumer.Document");
 
         var contract = Assert.Single(document.AllInterfaces, i => i.Name == "IAudited");
@@ -129,7 +140,8 @@ public class CrossAssemblyMetadataSpike {
 
         Assert.Contains(
             declared.GetAttributes(),
-            attribute => attribute.AttributeClass?.Name == "RequiredAttribute");
+            attribute => attribute.AttributeClass?.Name == "RequiredAttribute"
+        );
 
         // The half the walk actually needs: getting from the interface declaration to the property
         // the generated validator will read.

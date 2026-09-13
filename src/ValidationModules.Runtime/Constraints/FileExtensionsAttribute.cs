@@ -23,8 +23,8 @@ namespace ValidationModules.Constraints;
 /// [FileExtensions(Extensions = "pdf,docx")] public string? Attachment { get; init; }
 /// </code>
 /// </example>
-public sealed class FileExtensionsAttribute : ValidationConstraintAttribute {
-
+public sealed class FileExtensionsAttribute : ValidationConstraintAttribute
+{
     /// <summary>
     /// The permitted extensions, comma-separated, dots optional. Defaults to the BCL's own set:
     /// <c>png,jpg,jpeg,gif</c>.

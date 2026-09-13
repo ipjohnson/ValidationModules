@@ -18,8 +18,8 @@ namespace ValidationModules.Constraints;
 /// Does not recurse into a value that failed <see cref="RequiredAttribute"/>.
 /// </para>
 /// </remarks>
-public sealed class ValidateNestedAttribute : ValidationConstraintAttribute {
-
+public sealed class ValidateNestedAttribute : ValidationConstraintAttribute
+{
     /// <summary>Descend into the declared type only.</summary>
     public ValidateNestedAttribute() { }
 
@@ -29,7 +29,8 @@ public sealed class ValidateNestedAttribute : ValidationConstraintAttribute {
     /// <param name="polymorphism">
     /// How to handle a value whose runtime type is more derived than this property's declared type.
     /// </param>
-    public ValidateNestedAttribute(Polymorphism polymorphism) {
+    public ValidateNestedAttribute(Polymorphism polymorphism)
+    {
         Polymorphism = polymorphism;
     }
 

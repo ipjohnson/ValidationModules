@@ -17,10 +17,11 @@ namespace ValidationModules.Runtime.Tests;
 ///     UPDATE_SNAPSHOTS=1 dotnet test tests/ValidationModules.Runtime.Tests
 /// then read the diff before committing it.
 /// </summary>
-public class PublicApiTests {
-
+public class PublicApiTests
+{
     [Fact]
-    public void RuntimeApi() {
+    public void RuntimeApi()
+    {
         Snapshot.Match(ApiOf(typeof(IValidatorFor<>)));
     }
 
@@ -36,13 +37,19 @@ public class PublicApiTests {
     /// appears here, someone has widened it and should say why.
     /// </remarks>
     [Fact]
-    public void OptionsApi() {
-        Snapshot.Match(ApiOf(typeof(Microsoft.Extensions.DependencyInjection.ValidationModulesOptionsExtensions)));
+    public void OptionsApi()
+    {
+        Snapshot.Match(
+            ApiOf(
+                typeof(Microsoft.Extensions.DependencyInjection.ValidationModulesOptionsExtensions)
+            )
+        );
     }
 
     private static string ApiOf(Type typeFromAssembly) =>
         typeFromAssembly.Assembly.GeneratePublicApi(
-            new ApiGeneratorOptions {
+            new ApiGeneratorOptions
+            {
                 // PublicApiGenerator denies the System.* and Microsoft.* prefixes by default, on the
                 // assumption that anything there is the BCL leaking in. Our IServiceCollection
                 // extensions live in Microsoft.Extensions.DependencyInjection by MS convention, so
@@ -52,12 +59,14 @@ public class PublicApiTests {
 
                 // Assembly-level attributes are build metadata, not API, and several of them
                 // (SourceLink, InternalsVisibleTo, TFM) change with build configuration.
-                ExcludeAttributes = [
+                ExcludeAttributes =
+                [
                     "System.Runtime.Versioning.TargetFrameworkAttribute",
                     "System.Reflection.AssemblyMetadataAttribute",
                     "System.Runtime.CompilerServices.InternalsVisibleToAttribute",
                     "System.Diagnostics.DebuggableAttribute",
                     "System.Runtime.CompilerServices.CompilationRelaxationsAttribute",
                 ],
-            });
+            }
+        );
 }

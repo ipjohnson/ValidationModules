@@ -26,24 +26,30 @@ namespace ValidationModules.AspNetCore;
 /// fixes these member names, so there is nothing here a naming policy should be reshaping.
 /// </para>
 /// </remarks>
-internal sealed class ValidationProblemResult : IResult {
+internal sealed class ValidationProblemResult : IResult
+{
     private readonly ValidationProblemDetails _problem;
     private readonly int _statusCode;
 
-    internal ValidationProblemResult(ValidationProblemDetails problem, int statusCode) {
+    internal ValidationProblemResult(ValidationProblemDetails problem, int statusCode)
+    {
         _problem = problem;
         _statusCode = statusCode;
     }
 
-    public async Task ExecuteAsync(HttpContext httpContext) {
+    public async Task ExecuteAsync(HttpContext httpContext)
+    {
         ArgumentNullException.ThrowIfNull(httpContext);
 
         httpContext.Response.StatusCode = _problem.Status ?? _statusCode;
 
-        await httpContext.Response.WriteAsJsonAsync(
-            _problem,
-            ValidationProblemJsonContext.Default.ValidationProblemDetails,
-            "application/problem+json",
-            httpContext.RequestAborted).ConfigureAwait(false);
+        await httpContext
+            .Response.WriteAsJsonAsync(
+                _problem,
+                ValidationProblemJsonContext.Default.ValidationProblemDetails,
+                "application/problem+json",
+                httpContext.RequestAborted
+            )
+            .ConfigureAwait(false);
     }
 }

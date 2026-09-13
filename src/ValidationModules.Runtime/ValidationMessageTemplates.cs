@@ -25,34 +25,39 @@ namespace ValidationModules;
 /// that pin exact text, deliberately: a reworded default should be a decision, not drift.
 /// </para>
 /// </remarks>
-public static class ValidationMessageTemplates {
-
+public static class ValidationMessageTemplates
+{
     /// <summary>A required value was missing.</summary>
     public static readonly string Required = "{field} is required.";
 
     /// <summary>String length, both bounds declared.</summary>
-    public static readonly string StringLengthBetween = "{field} must be between {0} and {1} characters.";
+    public static readonly string StringLengthBetween =
+        "{field} must be between {0} and {1} characters.";
 
     /// <summary>String length, both bounds declared, upper bound of one.</summary>
-    public static readonly string StringLengthBetweenSingular = "{field} must be between {0} and {1} character.";
+    public static readonly string StringLengthBetweenSingular =
+        "{field} must be between {0} and {1} character.";
 
     /// <summary>String length, upper bound only.</summary>
     public static readonly string StringLengthAtMost = "{field} must be at most {0} characters.";
 
     /// <summary>String length, upper bound of one.</summary>
-    public static readonly string StringLengthAtMostSingular = "{field} must be at most {0} character.";
+    public static readonly string StringLengthAtMostSingular =
+        "{field} must be at most {0} character.";
 
     /// <summary>String length, lower bound only.</summary>
     public static readonly string StringLengthAtLeast = "{field} must be at least {0} characters.";
 
     /// <summary>String length, lower bound of one.</summary>
-    public static readonly string StringLengthAtLeastSingular = "{field} must be at least {0} character.";
+    public static readonly string StringLengthAtLeastSingular =
+        "{field} must be at least {0} character.";
 
     /// <summary>Element count, both bounds declared.</summary>
     public static readonly string ItemCountBetween = "{field} must be between {0} and {1} items.";
 
     /// <summary>Element count, both bounds declared, upper bound of one.</summary>
-    public static readonly string ItemCountBetweenSingular = "{field} must be between {0} and {1} item.";
+    public static readonly string ItemCountBetweenSingular =
+        "{field} must be between {0} and {1} item.";
 
     /// <summary>Element count, upper bound only.</summary>
     public static readonly string ItemCountAtMost = "{field} must be at most {0} items.";
@@ -70,13 +75,16 @@ public static class ValidationMessageTemplates {
     public static readonly string RangeBetween = "{field} must be between {0} and {1}.";
 
     /// <summary>Range, exclusive lower and inclusive upper bound.</summary>
-    public static readonly string RangeGreaterAndAtMost = "{field} must be greater than {0} and at most {1}.";
+    public static readonly string RangeGreaterAndAtMost =
+        "{field} must be greater than {0} and at most {1}.";
 
     /// <summary>Range, inclusive lower and exclusive upper bound.</summary>
-    public static readonly string RangeAtLeastAndLess = "{field} must be at least {0} and less than {1}.";
+    public static readonly string RangeAtLeastAndLess =
+        "{field} must be at least {0} and less than {1}.";
 
     /// <summary>Range, both bounds exclusive.</summary>
-    public static readonly string RangeGreaterAndLess = "{field} must be greater than {0} and less than {1}.";
+    public static readonly string RangeGreaterAndLess =
+        "{field} must be greater than {0} and less than {1}.";
 
     /// <summary>Range, inclusive lower bound only.</summary>
     public static readonly string RangeAtLeast = "{field} must be at least {0}.";
@@ -128,7 +136,8 @@ public static class ValidationMessageTemplates {
     public static readonly string Base64 = "{field} is not a valid Base64 string.";
 
     /// <summary>A file name's extension was not in the permitted set. <c>{0}</c> is the joined set.</summary>
-    public static readonly string FileExtension = "{field} must have one of these file extensions: {0}.";
+    public static readonly string FileExtension =
+        "{field} must have one of these file extensions: {0}.";
 
     /// <summary>A custom constraint failed and declared no message of its own.</summary>
     public static readonly string Custom = "{field} is invalid.";
@@ -146,7 +155,8 @@ public static class ValidationMessageTemplates {
     /// of keys that are not wording.
     /// </remarks>
     public static IReadOnlyDictionary<string, string> TemplatesByKey { get; } =
-        new Dictionary<string, string>(StringComparer.Ordinal) {
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
             ["required"] = Required,
             ["string_length.between"] = StringLengthBetween,
             ["string_length.between_singular"] = StringLengthBetweenSingular,
@@ -184,7 +194,8 @@ public static class ValidationMessageTemplates {
         };
 
     /// <summary>The key vocabulary, for pack tooling and the coverage check.</summary>
-    public static IReadOnlyCollection<string> KnownKeys => TemplatesByKey.Keys as IReadOnlyCollection<string> ?? [.. TemplatesByKey.Keys];
+    public static IReadOnlyCollection<string> KnownKeys =>
+        TemplatesByKey.Keys as IReadOnlyCollection<string> ?? [.. TemplatesByKey.Keys];
 
     /// <summary>
     /// The checksum of every shape key paired with its argument count.
@@ -219,10 +230,12 @@ public static class ValidationMessageTemplates {
 
     private static readonly Dictionary<string, string> KeysByTemplate = BuildReverse();
 
-    private static Dictionary<string, string> BuildReverse() {
+    private static Dictionary<string, string> BuildReverse()
+    {
         var reverse = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        foreach (var pair in TemplatesByKey) {
+        foreach (var pair in TemplatesByKey)
+        {
             reverse[pair.Value] = pair.Key;
         }
 

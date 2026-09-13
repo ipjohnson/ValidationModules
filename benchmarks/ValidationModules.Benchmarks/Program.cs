@@ -18,6 +18,4 @@ using ValidationModules.Benchmarks;
 // Types are discovered rather than listed, so a new benchmark class is picked up by existing it.
 var (config, forwarded) = BenchmarkArguments.Parse(args);
 
-BenchmarkSwitcher
-    .FromAssembly(Assembly.GetExecutingAssembly())
-    .Run(forwarded, config);
+BenchmarkSwitcher.FromAssembly(Assembly.GetExecutingAssembly()).Run(forwarded, config);

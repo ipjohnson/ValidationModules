@@ -27,22 +27,32 @@ namespace ValidationModules.AspNetCore.Tests;
 /// <c>UPDATE_SNAPSHOTS=1 dotnet test tests/ValidationModules.AspNetCore.Tests</c>
 /// </para>
 /// </remarks>
-public class PublicApiTests {
-
+public class PublicApiTests
+{
     [Fact]
-    public void AspNetCoreApi() {
-        Snapshot.Match(typeof(ValidationProblem).Assembly.GeneratePublicApi(
-            new ApiGeneratorOptions {
-                // The endpoint and DI extensions live in Microsoft.* namespaces by MS convention,
-                // so without this the two entry points a consumer actually calls go unpinned.
-                AllowNamespacePrefixes = ["Microsoft.AspNetCore", "Microsoft.Extensions.DependencyInjection"],
-                ExcludeAttributes = [
-                    "System.Runtime.Versioning.TargetFrameworkAttribute",
-                    "System.Reflection.AssemblyMetadataAttribute",
-                    "System.Runtime.CompilerServices.InternalsVisibleToAttribute",
-                    "System.Diagnostics.DebuggableAttribute",
-                    "System.Runtime.CompilerServices.CompilationRelaxationsAttribute",
-                ],
-            }));
+    public void AspNetCoreApi()
+    {
+        Snapshot.Match(
+            typeof(ValidationProblem).Assembly.GeneratePublicApi(
+                new ApiGeneratorOptions
+                {
+                    // The endpoint and DI extensions live in Microsoft.* namespaces by MS convention,
+                    // so without this the two entry points a consumer actually calls go unpinned.
+                    AllowNamespacePrefixes =
+                    [
+                        "Microsoft.AspNetCore",
+                        "Microsoft.Extensions.DependencyInjection",
+                    ],
+                    ExcludeAttributes =
+                    [
+                        "System.Runtime.Versioning.TargetFrameworkAttribute",
+                        "System.Reflection.AssemblyMetadataAttribute",
+                        "System.Runtime.CompilerServices.InternalsVisibleToAttribute",
+                        "System.Diagnostics.DebuggableAttribute",
+                        "System.Runtime.CompilerServices.CompilationRelaxationsAttribute",
+                    ],
+                }
+            )
+        );
     }
 }

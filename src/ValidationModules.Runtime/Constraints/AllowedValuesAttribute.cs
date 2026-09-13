@@ -13,13 +13,14 @@ namespace ValidationModules.Constraints;
 /// [AllowedValues("available", "pending", "sold")] public string Status { get; init; }
 /// </code>
 /// </example>
-public sealed class AllowedValuesAttribute : ValidationConstraintAttribute {
-
+public sealed class AllowedValuesAttribute : ValidationConstraintAttribute
+{
     /// <summary>
     /// The permitted values. Must be compile-time constants of the property's type.
     /// </summary>
     /// <param name="values">The permitted values.</param>
-    public AllowedValuesAttribute(params object[] values) {
+    public AllowedValuesAttribute(params object[] values)
+    {
         ArgumentNullException.ThrowIfNull(values);
 
         Values = values;

@@ -14,23 +14,27 @@ namespace ValidationModules.AspNetCore.Tests;
 /// against are invisible from the outside: a missing fallback renderer only shows up as a 500 on an
 /// exception nothing else handles, and a duplicated handler only shows up as work done twice.
 /// </remarks>
-public class RegistrationTests {
-
+public class RegistrationTests
+{
     [Fact]
-    public void RegistersAProblemDetailsFallback_SoUseExceptionHandlerCanBuild() {
+    public void RegistersAProblemDetailsFallback_SoUseExceptionHandlerCanBuild()
+    {
         var services = new ServiceCollection().AddValidationProblemDetails();
 
         Assert.Contains(services, d => d.ServiceType == typeof(IProblemDetailsService));
     }
 
     [Fact]
-    public void RegistersTheValidationHandler() {
+    public void RegistersTheValidationHandler()
+    {
         var services = new ServiceCollection().AddValidationProblemDetails();
 
         Assert.Contains(
             services,
-            d => d.ServiceType == typeof(IExceptionHandler)
-                 && d.ImplementationType == typeof(ValidationExceptionHandler));
+            d =>
+                d.ServiceType == typeof(IExceptionHandler)
+                && d.ImplementationType == typeof(ValidationExceptionHandler)
+        );
     }
 
     /// <summary>
@@ -38,7 +42,8 @@ public class RegistrationTests {
     /// each handler in the chain - harmless until one of them does work that is not idempotent.
     /// </summary>
     [Fact]
-    public void CallingItTwice_AddsEachHandlerOnce() {
+    public void CallingItTwice_AddsEachHandlerOnce()
+    {
         var services = new ServiceCollection()
             .AddValidationProblemDetails()
             .AddValidationProblemDetails();
@@ -52,13 +57,16 @@ public class RegistrationTests {
     }
 
     [Fact]
-    public void ConfigureIsApplied() {
+    public void ConfigureIsApplied()
+    {
         var provider = new ServiceCollection()
-            .AddValidationProblemDetails(options => options.StatusCode = StatusCodes.Status422UnprocessableEntity)
+            .AddValidationProblemDetails(options =>
+                options.StatusCode = StatusCodes.Status422UnprocessableEntity
+            )
             .BuildServiceProvider();
 
-        var options = provider.GetRequiredService<
-            Microsoft.Extensions.Options.IOptions<ValidationProblemOptions>>();
+        var options =
+            provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<ValidationProblemOptions>>();
 
         Assert.Equal(StatusCodes.Status422UnprocessableEntity, options.Value.StatusCode);
     }

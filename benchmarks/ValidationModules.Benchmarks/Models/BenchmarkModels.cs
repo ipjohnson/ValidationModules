@@ -7,7 +7,8 @@ namespace ValidationModules.Benchmarks.Models;
 /// A flat API payload covering every constraint kind exactly once. The shape most request bodies
 /// actually have, and the baseline the nested and collection models are read against.
 /// </summary>
-public sealed record Customer {
+public sealed record Customer
+{
     [Required]
     [StringLength(min: 1, max: 100)]
     public string? Name { get; init; }
@@ -39,7 +40,8 @@ public sealed record Customer {
 /// Nesting plus a bounded collection: one object two levels down and a list of children, which is
 /// where the path-building machinery starts doing real work.
 /// </summary>
-public sealed record Order {
+public sealed record Order
+{
     [Required]
     [Pattern(typeof(BenchmarkPatterns), nameof(BenchmarkPatterns.Sku))]
     public string? Reference { get; init; }
@@ -55,7 +57,8 @@ public sealed record Order {
     public IReadOnlyList<OrderLine> Lines { get; init; } = [];
 }
 
-public sealed record Address {
+public sealed record Address
+{
     [Required]
     [StringLength(min: 1, max: 120)]
     public string? Line1 { get; init; }
@@ -72,7 +75,8 @@ public sealed record Address {
     public string? PostalCode { get; init; }
 }
 
-public sealed record OrderLine {
+public sealed record OrderLine
+{
     [Required]
     [Pattern(typeof(BenchmarkPatterns), nameof(BenchmarkPatterns.Sku))]
     public string? Sku { get; init; }
@@ -88,7 +92,8 @@ public sealed record OrderLine {
 /// An unbounded collection of validated elements, so element count can be a benchmark parameter
 /// without <c>[ItemCount]</c> failing at the top of every pass and changing what is measured.
 /// </summary>
-public sealed record Basket {
+public sealed record Basket
+{
     [Required]
     public string? Id { get; init; }
 
@@ -102,7 +107,8 @@ public sealed record Basket {
 /// <c>ValidationContext</c> against the depth it carries - is what stops a genuine cycle, and is
 /// deliberately not exercised here.
 /// </summary>
-public sealed record Node {
+public sealed record Node
+{
     [Required]
     public string? Label { get; init; }
 
@@ -114,32 +120,38 @@ public sealed record Node {
 // real generated code. Measuring one of them against Customer is how a surprising per-constraint
 // number gets attributed to the constraint rather than to the pass around it.
 
-public sealed record RequiredOnly {
+public sealed record RequiredOnly
+{
     [Required]
     public string? Value { get; init; }
 }
 
-public sealed record StringLengthOnly {
+public sealed record StringLengthOnly
+{
     [StringLength(min: 1, max: 100)]
     public string? Value { get; init; }
 }
 
-public sealed record RangeOnly {
+public sealed record RangeOnly
+{
     [Range(0, 120)]
     public int Value { get; init; }
 }
 
-public sealed record PatternOnly {
+public sealed record PatternOnly
+{
     [Pattern(typeof(BenchmarkPatterns), nameof(BenchmarkPatterns.Sku))]
     public string? Value { get; init; }
 }
 
-public sealed record AllowedValuesOnly {
+public sealed record AllowedValuesOnly
+{
     [AllowedValues("gold", "silver", "bronze")]
     public string? Value { get; init; }
 }
 
-public sealed record ItemCountOnly {
+public sealed record ItemCountOnly
+{
     [ItemCount(min: 1, max: 10)]
     public IReadOnlyList<string> Value { get; init; } = [];
 }
@@ -153,8 +165,8 @@ public sealed record ItemCountOnly {
 /// AOT-facing consumer writes - benchmarking the other one would price a shape the library steers
 /// people away from.
 /// </remarks>
-public static partial class BenchmarkPatterns {
-
+public static partial class BenchmarkPatterns
+{
     [GeneratedRegex("^[A-Z]{3}-[0-9]{4}$")]
     public static partial Regex Sku();
 

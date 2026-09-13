@@ -12,20 +12,24 @@ namespace SutProject.Declared;
 /// pairing them with <c>As</c> would declare the same rules twice. <c>As</c> exists for exactly
 /// the rules inheritance cannot see - a rules class targeting the facet.
 /// </remarks>
-public interface IAudited {
+public interface IAudited
+{
     string? CreatedBy { get; }
 
     int Version { get; }
 }
 
-public sealed class AuditRules : IValidationRulesFor<IAudited> {
-    public static void Describe(ValidationRules<IAudited> rules, IAudited x) {
+public sealed class AuditRules : IValidationRulesFor<IAudited>
+{
+    public static void Describe(ValidationRules<IAudited> rules, IAudited x)
+    {
         rules.Require(x.CreatedBy);
         rules.RangeAtLeast(x.Version, 1);
     }
 }
 
-public sealed record Shipment : IAudited {
+public sealed record Shipment : IAudited
+{
     public string? CreatedBy { get; init; }
 
     public int Version { get; init; }
@@ -33,8 +37,10 @@ public sealed record Shipment : IAudited {
     public string? Carrier { get; init; }
 }
 
-public sealed class ShipmentRules : IValidationRulesFor<Shipment> {
-    public static void Describe(ValidationRules<Shipment> rules, Shipment x) {
+public sealed class ShipmentRules : IValidationRulesFor<Shipment>
+{
+    public static void Describe(ValidationRules<Shipment> rules, Shipment x)
+    {
         rules.Require(x.Carrier);
 
         // Same-compilation binding: the generator sees IAuditedValidator here and binds

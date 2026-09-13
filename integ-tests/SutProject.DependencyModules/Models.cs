@@ -8,7 +8,8 @@ namespace SutProject.Dm;
 [DependencyModule]
 public partial class ApplicationModule;
 
-public sealed record Account {
+public sealed record Account
+{
     [Required]
     [StringLength(min: 3, max: 20)]
     public string? Handle { get; init; }
@@ -22,7 +23,8 @@ public sealed record Account {
 /// results merge - a business rule must not be able to make a structural constraint disappear.
 /// </summary>
 [SingletonService]
-public sealed class AccountReservedHandleValidator : IValidatorFor<Account> {
+public sealed class AccountReservedHandleValidator : IValidatorFor<Account>
+{
     private static readonly string[] Reserved = { "admin", "root", "system" };
 
     public ValidationFlow Validate(ref ValidationContext context, Account value) =>
@@ -36,30 +38,41 @@ public sealed class AccountReservedHandleValidator : IValidatorFor<Account> {
 /// and runs only when structural validation found nothing.
 /// </summary>
 [ScopedService]
-public sealed class AccountUniquenessValidator : IAsyncValidatorFor<Account> {
+public sealed class AccountUniquenessValidator : IAsyncValidatorFor<Account>
+{
     private readonly IHandleDirectory _directory;
 
-    public AccountUniquenessValidator(IHandleDirectory directory) {
+    public AccountUniquenessValidator(IHandleDirectory directory)
+    {
         _directory = directory;
     }
 
-    public async ValueTask ValidateAsync(ValidationContext context, Account value, CancellationToken cancellationToken) {
-        if (value.Handle is null) {
+    public async ValueTask ValidateAsync(
+        ValidationContext context,
+        Account value,
+        CancellationToken cancellationToken
+    )
+    {
+        if (value.Handle is null)
+        {
             return;
         }
 
-        if (await _directory.IsTakenAsync(value.Handle, cancellationToken)) {
+        if (await _directory.IsTakenAsync(value.Handle, cancellationToken))
+        {
             context.Report("handle", "duplicate", "handle is already taken.");
         }
     }
 }
 
-public interface IHandleDirectory {
+public interface IHandleDirectory
+{
     ValueTask<bool> IsTakenAsync(string handle, CancellationToken cancellationToken);
 }
 
 [SingletonService]
-public sealed class InMemoryHandleDirectory : IHandleDirectory {
+public sealed class InMemoryHandleDirectory : IHandleDirectory
+{
     public ValueTask<bool> IsTakenAsync(string handle, CancellationToken cancellationToken) =>
         new(handle == "taken");
 }
@@ -70,16 +83,20 @@ public sealed class InMemoryHandleDirectory : IHandleDirectory {
 /// <c>IValidatorFor&lt;IAudited&gt;</c> through the pass's services - composed by calling
 /// SutProject's own <c>AddSutProjectValidators()</c>, per plan §7.3, and loud when it was not.
 /// </summary>
-public sealed record Deployment : SutProject.Declared.IAudited {
+public sealed record Deployment : SutProject.Declared.IAudited
+{
     public string? CreatedBy { get; init; }
 
     public int Version { get; init; }
 
-    [Required] public string? Environment { get; init; }
+    [Required]
+    public string? Environment { get; init; }
 }
 
-public sealed class DeploymentRules : IValidationRulesFor<Deployment> {
-    public static void Describe(ValidationRules<Deployment> rules, Deployment x) {
+public sealed class DeploymentRules : IValidationRulesFor<Deployment>
+{
+    public static void Describe(ValidationRules<Deployment> rules, Deployment x)
+    {
         rules.As<SutProject.Declared.IAudited>(x);
     }
 }

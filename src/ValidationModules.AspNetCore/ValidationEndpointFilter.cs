@@ -38,7 +38,8 @@ namespace ValidationModules.AspNetCore;
 /// </para>
 /// </remarks>
 /// <typeparam name="T">The type to validate.</typeparam>
-internal sealed class ValidationEndpointFilter<T> : IEndpointFilter {
+internal sealed class ValidationEndpointFilter<T> : IEndpointFilter
+{
     private readonly ValidationProblemOptions _options;
     private readonly int? _statusCode;
 
@@ -53,7 +54,11 @@ internal sealed class ValidationEndpointFilter<T> : IEndpointFilter {
     /// <see cref="ValidationEndpointFilterFactory"/> calls this directly, so the accessibility can
     /// now say what it means.
     /// </remarks>
-    internal ValidationEndpointFilter(IOptions<ValidationProblemOptions> options, int? statusCode = null) {
+    internal ValidationEndpointFilter(
+        IOptions<ValidationProblemOptions> options,
+        int? statusCode = null
+    )
+    {
         ArgumentNullException.ThrowIfNull(options);
 
         _options = options.Value;
@@ -61,17 +66,23 @@ internal sealed class ValidationEndpointFilter<T> : IEndpointFilter {
     }
 
     /// <inheritdoc/>
-    public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next) {
+    public async ValueTask<object?> InvokeAsync(
+        EndpointFilterInvocationContext context,
+        EndpointFilterDelegate next
+    )
+    {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(next);
 
-        if (!TryFindArgument(context, out var value)) {
+        if (!TryFindArgument(context, out var value))
+        {
             return await next(context).ConfigureAwait(false);
         }
 
         var result = await ValidateAsync(context.HttpContext, value).ConfigureAwait(false);
 
-        if (result.IsValid) {
+        if (result.IsValid)
+        {
             return await next(context).ConfigureAwait(false);
         }
 
@@ -80,7 +91,9 @@ internal sealed class ValidationEndpointFilter<T> : IEndpointFilter {
         var options = _statusCode is { } status ? _options.WithStatusCode(status) : _options;
 
         return ValidationProblem.ToResult(
-            result, options.WithFormatterFrom(context.HttpContext.RequestServices));
+            result,
+            options.WithFormatterFrom(context.HttpContext.RequestServices)
+        );
     }
 
     /// <summary>
@@ -88,9 +101,12 @@ internal sealed class ValidationEndpointFilter<T> : IEndpointFilter {
     /// nullable return, because <typeparamref name="T"/> may be a struct now that the generator's
     /// own reach includes them - and a struct has no null to stand for "not found".
     /// </summary>
-    private static bool TryFindArgument(EndpointFilterInvocationContext context, out T value) {
-        for (var i = 0; i < context.Arguments.Count; i++) {
-            if (context.Arguments[i] is T match) {
+    private static bool TryFindArgument(EndpointFilterInvocationContext context, out T value)
+    {
+        for (var i = 0; i < context.Arguments.Count; i++)
+        {
+            if (context.Arguments[i] is T match)
+            {
                 value = match;
                 return true;
             }
@@ -118,22 +134,28 @@ internal sealed class ValidationEndpointFilter<T> : IEndpointFilter {
     /// throws rather than passing the request through as valid.
     /// </para>
     /// </remarks>
-    private async ValueTask<ValidationResult> ValidateAsync(HttpContext http, T value) {
+    private async ValueTask<ValidationResult> ValidateAsync(HttpContext http, T value)
+    {
         var services = http.RequestServices;
 
-        if (services.GetService<ValidationRunner<T>>() is { } runner) {
-            return await runner.ValidateAsync(value, _options.PathMode, http.RequestAborted).ConfigureAwait(false);
+        if (services.GetService<ValidationRunner<T>>() is { } runner)
+        {
+            return await runner
+                .ValidateAsync(value, _options.PathMode, http.RequestAborted)
+                .ConfigureAwait(false);
         }
 
-        if (services.GetService<IValidatorFor<T>>() is { } validator) {
+        if (services.GetService<IValidatorFor<T>>() is { } validator)
+        {
             return validator.Validate(value, _options.PathMode);
         }
 
         throw new InvalidOperationException(
-            $"No validator is registered for {typeof(T)}. Call the generated " +
-            "Add<Assembly>Validators() at startup, or register an IValidatorFor<T> by hand. A " +
-            "collection body validates element-wise when declared as List<T> or T[] of a " +
-            "validated type. Validating nothing and reporting success would be worse than this " +
-            "exception.");
+            $"No validator is registered for {typeof(T)}. Call the generated "
+                + "Add<Assembly>Validators() at startup, or register an IValidatorFor<T> by hand. A "
+                + "collection body validates element-wise when declared as List<T> or T[] of a "
+                + "validated type. Validating nothing and reporting success would be worse than this "
+                + "exception."
+        );
     }
 }

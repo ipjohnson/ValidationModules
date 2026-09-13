@@ -12,7 +12,8 @@ namespace SutProject.Inheritance;
 /// one - as is an audited-entity interface, and a plain class hierarchy. All three produced a
 /// validator that checked only the most-derived type's own properties.
 /// </remarks>
-public record BaseRequest {
+public record BaseRequest
+{
     [Required]
     public string? CorrelationId { get; init; }
 
@@ -20,7 +21,8 @@ public record BaseRequest {
     public string? TenantId { get; init; }
 }
 
-public record CreateOrder : BaseRequest {
+public record CreateOrder : BaseRequest
+{
     [Required]
     public string? Sku { get; init; }
 }
@@ -31,24 +33,28 @@ public record CreateOrder : BaseRequest {
 /// </summary>
 public record Ping : BaseRequest;
 
-public interface IAudited {
+public interface IAudited
+{
     [Required]
     string? ModifiedBy { get; }
 }
 
-public record Document : IAudited {
+public record Document : IAudited
+{
     [Required]
     public string? Title { get; init; }
 
     public string? ModifiedBy { get; init; }
 }
 
-public class BaseDto {
+public class BaseDto
+{
     [Required]
     public string? A { get; set; }
 }
 
-public class DerivedDto : BaseDto {
+public class DerivedDto : BaseDto
+{
     [Required]
     public string? B { get; set; }
 }
@@ -57,12 +63,14 @@ public class DerivedDto : BaseDto {
 /// An interface constraint and the implementer's own on one property. The interface is a contract
 /// the type opted into, so both apply - this is the one place declarations merge.
 /// </summary>
-public interface IStamped {
+public interface IStamped
+{
     [Required]
     string? Stamp { get; }
 }
 
-public record Envelope : IStamped {
+public record Envelope : IStamped
+{
     [StringLength(4, 8)]
     public string? Stamp { get; init; }
 }

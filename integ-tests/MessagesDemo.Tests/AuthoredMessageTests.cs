@@ -18,10 +18,14 @@ namespace MessagesDemo.Tests;
 /// same class, same culture. Generated sites now report authored text through
 /// <c>ReportAuthored</c>, which the formatter returns before any table lookup.
 /// </remarks>
-public class AuthoredMessageTests {
-
-    private static Dictionary<string, string> Render<T>(T value, string culture) where T : class {
-        using var services = new ServiceCollection().AddMessagesDemoValidators().BuildServiceProvider();
+public class AuthoredMessageTests
+{
+    private static Dictionary<string, string> Render<T>(T value, string culture)
+        where T : class
+    {
+        using var services = new ServiceCollection()
+            .AddMessagesDemoValidators()
+            .BuildServiceProvider();
 
         var validator = services.GetRequiredService<IValidatorFor<T>>();
         var formatter = services.GetRequiredService<ValidationMessageFormatter>();
@@ -31,18 +35,24 @@ public class AuthoredMessageTests {
 
         var previous = CultureInfo.CurrentUICulture;
 
-        try {
+        try
+        {
             CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo(culture);
 
-            return result.Errors.ToDictionary(error => error.Field, error => error.ToMessage(formatter));
+            return result.Errors.ToDictionary(
+                error => error.Field,
+                error => error.ToMessage(formatter)
+            );
         }
-        finally {
+        finally
+        {
             CultureInfo.CurrentUICulture = previous;
         }
     }
 
     [Fact]
-    public void CustomMessages_SurviveTheGermanPack_WhetherOrNotItCarriesABareKeyForTheCode() {
+    public void CustomMessages_SurviveTheGermanPack_WhetherOrNotItCarriesABareKeyForTheCode()
+    {
         var messages = Render(new Signup { Handle = null, Notes = "ab" }, "de-DE");
 
         // The de pack carries a bare `required` key; the override still wins.
@@ -54,7 +64,8 @@ public class AuthoredMessageTests {
     }
 
     [Fact]
-    public void WithoutACustomMessage_TheSameCodesStillTranslate() {
+    public void WithoutACustomMessage_TheSameCodesStillTranslate()
+    {
         // The counterpart claim: dropping the Message hands the text back to the packs.
         var messages = Render(new Reservation { Name = null, PartySize = 4 }, "de-DE");
 

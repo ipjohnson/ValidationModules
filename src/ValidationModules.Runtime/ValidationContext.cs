@@ -34,8 +34,8 @@ namespace ValidationModules;
 /// which is faster than sharing one anyway.
 /// </para>
 /// </remarks>
-public readonly struct ValidationContext : IValidationContextReporter {
-
+public readonly struct ValidationContext : IValidationContextReporter
+{
     /// <summary>The index value meaning "this segment is not a collection element".</summary>
     private const int NoIndex = -1;
 
@@ -73,12 +73,17 @@ public readonly struct ValidationContext : IValidationContextReporter {
     /// Starts a pass over a buffer the caller owns. Its length is the depth limit, so a caller that
     /// wants to fail earlier on a cycle passes a shorter one.
     /// </summary>
-    internal ValidationContext(ValidationErrorCollector collector, PathSegment[] path) {
+    internal ValidationContext(ValidationErrorCollector collector, PathSegment[] path)
+    {
         ArgumentNullException.ThrowIfNull(collector);
         ArgumentNullException.ThrowIfNull(path);
 
-        if (path.Length == 0) {
-            throw new ArgumentException("A validation path buffer needs room for at least one segment.", nameof(path));
+        if (path.Length == 0)
+        {
+            throw new ArgumentException(
+                "A validation path buffer needs room for at least one segment.",
+                nameof(path)
+            );
         }
 
         _collector = collector;
@@ -86,7 +91,13 @@ public readonly struct ValidationContext : IValidationContextReporter {
         _depth = 0;
     }
 
-    private ValidationContext(ValidationErrorCollector collector, PathSegment[] path, int depth, long stamp) {
+    private ValidationContext(
+        ValidationErrorCollector collector,
+        PathSegment[] path,
+        int depth,
+        long stamp
+    )
+    {
         _collector = collector;
         _path = path;
         _depth = depth;
@@ -164,8 +175,13 @@ public readonly struct ValidationContext : IValidationContextReporter {
         string field,
         string code,
         string message,
-        ValidationSeverity severity = ValidationSeverity.Error) {
-        var error = new ValidationError(BuildPath(Normalized(field)), code, message) { Severity = severity };
+        ValidationSeverity severity = ValidationSeverity.Error
+    )
+    {
+        var error = new ValidationError(BuildPath(Normalized(field)), code, message)
+        {
+            Severity = severity,
+        };
 
         return _collector.AddDirect(in error);
     }
@@ -185,8 +201,13 @@ public readonly struct ValidationContext : IValidationContextReporter {
         string code,
         object? value,
         ValidationMessageInfo messageInfo,
-        ValidationSeverity severity = ValidationSeverity.Error) {
-        var error = new ValidationError(BuildPath(Normalized(field)), code, value, messageInfo) { Severity = severity };
+        ValidationSeverity severity = ValidationSeverity.Error
+    )
+    {
+        var error = new ValidationError(BuildPath(Normalized(field)), code, value, messageInfo)
+        {
+            Severity = severity,
+        };
 
         return _collector.AddDirect(in error);
     }
@@ -217,13 +238,16 @@ public readonly struct ValidationContext : IValidationContextReporter {
     /// and grow every pass - clean ones included - while this path only ever runs on a failure.
     /// </para>
     /// </remarks>
-    private string Normalized(string field) {
-        if (field.Length == 0 || field.IndexOfAny(FieldShaping) >= 0) {
+    private string Normalized(string field)
+    {
+        if (field.Length == 0 || field.IndexOfAny(FieldShaping) >= 0)
+        {
             return field;
         }
 
-        return _collector.Services?.GetService(typeof(Naming.IValidationFieldNamer))
-            is Naming.IValidationFieldNamer namer
+        return
+            _collector.Services?.GetService(typeof(Naming.IValidationFieldNamer))
+                is Naming.IValidationFieldNamer namer
             ? namer.ToFieldName(field)
             : field;
     }
@@ -249,8 +273,11 @@ public readonly struct ValidationContext : IValidationContextReporter {
         string field,
         string code,
         string message,
-        ValidationSeverity severity = ValidationSeverity.Error) {
-        var error = new ValidationError(BuildPath(Normalized(field)), code, message) {
+        ValidationSeverity severity = ValidationSeverity.Error
+    )
+    {
+        var error = new ValidationError(BuildPath(Normalized(field)), code, message)
+        {
             Severity = severity,
             MessageIsAuthored = true,
         };
@@ -267,7 +294,9 @@ public readonly struct ValidationContext : IValidationContextReporter {
     public ValidationFlow ReportHere(
         string code,
         string message,
-        ValidationSeverity severity = ValidationSeverity.Error) {
+        ValidationSeverity severity = ValidationSeverity.Error
+    )
+    {
         var error = new ValidationError(BuildPath(null), code, message) { Severity = severity };
 
         return _collector.AddDirect(in error);
@@ -300,13 +329,16 @@ public readonly struct ValidationContext : IValidationContextReporter {
     /// render from having to special-case printing it twice. Every push after that overwrites the
     /// parent, which is exactly the middle of the path being dropped.
     /// </summary>
-    private ValidationContext Descend(string segment, int index, string? key) {
+    private ValidationContext Descend(string segment, int index, string? key)
+    {
         // The buffer's length is the limit: one number, so a buffer and a guard cannot disagree.
-        if (_depth >= _path.Length) {
+        if (_depth >= _path.Length)
+        {
             throw new InvalidOperationException(
-                $"Validation nested more than {_path.Length} levels deep at '{BuildPath(segment)}'. " +
-                "That is the length of the path buffer this pass was given. Either the object graph " +
-                "contains a cycle, or a deeper buffer is needed.");
+                $"Validation nested more than {_path.Length} levels deep at '{BuildPath(segment)}'. "
+                    + "That is the length of the path buffer this pass was given. Either the object graph "
+                    + "contains a cycle, or a deeper buffer is needed."
+            );
         }
 
         var stamp = _collector.NextStamp();
@@ -324,8 +356,10 @@ public readonly struct ValidationContext : IValidationContextReporter {
     /// what keeps a clean pass at zero allocations, and it reads nothing outside this struct, which
     /// is what lets it run without the collector's lock.
     /// </summary>
-    private string BuildPath(string? field) {
-        if (_depth == 0) {
+    private string BuildPath(string? field)
+    {
+        if (_depth == 0)
+        {
             return field ?? string.Empty;
         }
 
@@ -336,10 +370,12 @@ public readonly struct ValidationContext : IValidationContextReporter {
             : BuildBoundedPath(field);
     }
 
-    private string BuildBoundedPath(string? field) {
+    private string BuildBoundedPath(string? field)
+    {
         var head = Segment(_path[0]);
 
-        if (_depth == 1) {
+        if (_depth == 1)
+        {
             return field is null ? head : string.Concat(head, ".", field);
         }
 
@@ -347,36 +383,41 @@ public readonly struct ValidationContext : IValidationContextReporter {
         var joiner = _depth >= 3 ? "..." : ".";
         var tail = Segment(_path[_depth - 1]);
 
-        return field is null
-            ? string.Concat(head, joiner, tail)
-            : $"{head}{joiner}{tail}.{field}";
+        return field is null ? string.Concat(head, joiner, tail) : $"{head}{joiner}{tail}.{field}";
     }
 
-    private string BuildFullPath(string? field) {
+    private string BuildFullPath(string? field)
+    {
         var builder = new System.Text.StringBuilder();
 
-        for (var i = 0; i < _depth; i++) {
-            if (i > 0) {
+        for (var i = 0; i < _depth; i++)
+        {
+            if (i > 0)
+            {
                 builder.Append('.');
             }
 
             Append(builder, _path[i]);
         }
 
-        if (field is not null) {
+        if (field is not null)
+        {
             builder.Append('.').Append(field);
         }
 
         return builder.ToString();
     }
 
-    private static void Append(System.Text.StringBuilder builder, in PathSegment segment) {
+    private static void Append(System.Text.StringBuilder builder, in PathSegment segment)
+    {
         builder.Append(segment.Name);
 
-        if (segment.Key is not null) {
+        if (segment.Key is not null)
+        {
             builder.Append('[').Append(segment.Key).Append(']');
         }
-        else if (segment.Index >= 0) {
+        else if (segment.Index >= 0)
+        {
             builder.Append('[').Append(segment.Index).Append(']');
         }
     }
@@ -399,33 +440,41 @@ public readonly struct ValidationContext : IValidationContextReporter {
     /// an error is being recorded, so a clean pass never pays for it.
     /// </para>
     /// </remarks>
-    private void EnsurePathIsIntact() {
-        if (_path[_depth - 1].Stamp == _stamp) {
+    private void EnsurePathIsIntact()
+    {
+        if (_path[_depth - 1].Stamp == _stamp)
+        {
             var intact = true;
 
-            for (var i = 1; i < _depth; i++) {
-                if (_path[i - 1].Stamp >= _path[i].Stamp) {
+            for (var i = 1; i < _depth; i++)
+            {
+                if (_path[i - 1].Stamp >= _path[i].Stamp)
+                {
                     intact = false;
                     break;
                 }
             }
 
-            if (intact) {
+            if (intact)
+            {
                 return;
             }
         }
 
         throw new InvalidOperationException(
-            "This validation context no longer describes where it was created. Its path was " +
-            "overwritten by another descent in the same pass, which happens when two contexts from " +
-            "the same parent are held at once and the earlier one is used after the later one was " +
-            "created. A pass walks depth-first: descend, validate, let it unwind, then descend " +
-            "again. Reporting the path as it now stands would attribute the error to the wrong " +
-            "place, so it fails here instead.");
+            "This validation context no longer describes where it was created. Its path was "
+                + "overwritten by another descent in the same pass, which happens when two contexts from "
+                + "the same parent are held at once and the earlier one is used after the later one was "
+                + "created. A pass walks depth-first: descend, validate, let it unwind, then descend "
+                + "again. Reporting the path as it now stands would attribute the error to the wrong "
+                + "place, so it fails here instead."
+        );
     }
 
-    private static string Segment(in PathSegment segment) {
-        if (segment.Key is not null) {
+    private static string Segment(in PathSegment segment)
+    {
+        if (segment.Key is not null)
+        {
             return string.Concat(segment.Name, "[", segment.Key, "]");
         }
 

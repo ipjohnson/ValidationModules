@@ -38,14 +38,15 @@ namespace ValidationModules.Constraints;
 /// }
 /// </code>
 /// </example>
-public sealed class PatternAttribute : ValidationConstraintAttribute {
-
+public sealed class PatternAttribute : ValidationConstraintAttribute
+{
     /// <summary>
     /// The inline form. The pattern must be a compile-time constant and is validated at generation
     /// time.
     /// </summary>
     /// <param name="pattern">A .NET regular expression.</param>
-    public PatternAttribute(string pattern) {
+    public PatternAttribute(string pattern)
+    {
         ArgumentNullException.ThrowIfNull(pattern);
 
         Pattern = pattern;
@@ -61,7 +62,8 @@ public sealed class PatternAttribute : ValidationConstraintAttribute {
     /// </remarks>
     /// <param name="regexProvider">The type declaring the regex member.</param>
     /// <param name="regexMember">Its name. Use <c>nameof</c> so a rename cannot silently break it.</param>
-    public PatternAttribute(Type regexProvider, string regexMember) {
+    public PatternAttribute(Type regexProvider, string regexMember)
+    {
         ArgumentNullException.ThrowIfNull(regexProvider);
         ArgumentNullException.ThrowIfNull(regexMember);
 

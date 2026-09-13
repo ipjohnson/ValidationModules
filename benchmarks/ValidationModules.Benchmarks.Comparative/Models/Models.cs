@@ -20,7 +20,8 @@ namespace ValidationModules.Benchmarks.Comparative.Models;
 /// identical model set of its own in <c>AnnotatedModels.cs</c>.
 /// </para>
 /// </remarks>
-public sealed record Customer {
+public sealed record Customer
+{
     [Required]
     [StringLength(min: 1, max: 100)]
     public string? Name { get; init; }
@@ -39,7 +40,8 @@ public sealed record Customer {
     public string? Notes { get; init; }
 }
 
-public sealed record Order {
+public sealed record Order
+{
     [Required]
     [Pattern(typeof(Patterns), nameof(Patterns.Reference))]
     public string? Reference { get; init; }
@@ -55,7 +57,8 @@ public sealed record Order {
     public IReadOnlyList<OrderLine> Lines { get; init; } = [];
 }
 
-public sealed record Address {
+public sealed record Address
+{
     [Required]
     [StringLength(min: 1, max: 120)]
     public string? Line1 { get; init; }
@@ -69,7 +72,8 @@ public sealed record Address {
     public string? PostalCode { get; init; }
 }
 
-public sealed record OrderLine {
+public sealed record OrderLine
+{
     [Required]
     [Pattern(typeof(Patterns), nameof(Patterns.Sku))]
     public string? Sku { get; init; }
@@ -82,7 +86,8 @@ public sealed record OrderLine {
 /// An unbounded collection, so element count can be a benchmark parameter without an
 /// <c>[ItemCount]</c> ceiling failing every large payload and changing what is compared.
 /// </summary>
-public sealed record Basket {
+public sealed record Basket
+{
     [Required]
     public string? Id { get; init; }
 
@@ -106,8 +111,8 @@ public sealed record Basket {
 /// honest direction to err in.
 /// </para>
 /// </remarks>
-public static partial class Patterns {
-
+public static partial class Patterns
+{
     [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[a-zA-Z]{2,}$")]
     public static partial Regex Email();
 

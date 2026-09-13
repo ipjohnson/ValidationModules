@@ -10,8 +10,8 @@ namespace Microsoft.Extensions.DependencyInjection;
 /// <summary>
 /// Wires validation responses into an ASP.NET Core application.
 /// </summary>
-public static class ValidationModulesAspNetCoreExtensions {
-
+public static class ValidationModulesAspNetCoreExtensions
+{
     /// <summary>
     /// Registers the problem-response options and the handler that maps a thrown
     /// <see cref="ValidationException"/> onto them.
@@ -36,12 +36,15 @@ public static class ValidationModulesAspNetCoreExtensions {
     /// <param name="configure">Adjusts the response shape.</param>
     public static IServiceCollection AddValidationProblemDetails(
         this IServiceCollection services,
-        Action<ValidationProblemOptions>? configure = null) {
+        Action<ValidationProblemOptions>? configure = null
+    )
+    {
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddOptions<ValidationProblemOptions>();
 
-        if (configure is not null) {
+        if (configure is not null)
+        {
             services.Configure(configure);
         }
 
@@ -52,9 +55,11 @@ public static class ValidationModulesAspNetCoreExtensions {
         // TryAddEnumerable rather than AddExceptionHandler: a library and its host both calling this
         // would otherwise put two of each handler in the chain.
         services.TryAddEnumerable(
-            ServiceDescriptor.Singleton<IExceptionHandler, BadRequestStatusHandler>());
+            ServiceDescriptor.Singleton<IExceptionHandler, BadRequestStatusHandler>()
+        );
         services.TryAddEnumerable(
-            ServiceDescriptor.Singleton<IExceptionHandler, ValidationExceptionHandler>());
+            ServiceDescriptor.Singleton<IExceptionHandler, ValidationExceptionHandler>()
+        );
 
         return services;
     }

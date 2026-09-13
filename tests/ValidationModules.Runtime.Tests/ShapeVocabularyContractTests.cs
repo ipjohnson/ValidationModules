@@ -30,14 +30,16 @@ namespace ValidationModules.Runtime.Tests;
 /// against a constant in product source so that accepting the snapshot is deliberately not enough.
 /// </para>
 /// </remarks>
-public class ShapeVocabularyContractTests {
-
+public class ShapeVocabularyContractTests
+{
     /// <summary>
     /// A template's argument count, read from its highest numbered hole. Derived rather than
     /// declared so the count cannot drift from the template it describes.
     /// </summary>
-    private static int ArityOf(string template) {
-        var holes = Regex.Matches(template, @"\{(\d)\}")
+    private static int ArityOf(string template)
+    {
+        var holes = Regex
+            .Matches(template, @"\{(\d)\}")
             .Cast<Match>()
             .Select(match => int.Parse(match.Groups[1].Value))
             .ToList();
@@ -46,19 +48,22 @@ public class ShapeVocabularyContractTests {
     }
 
     private static IEnumerable<(string Key, int Arity)> Vocabulary() =>
-        ValidationMessageTemplates.TemplatesByKey
-            .Select(entry => (entry.Key, ArityOf(entry.Value)))
+        ValidationMessageTemplates
+            .TemplatesByKey.Select(entry => (entry.Key, ArityOf(entry.Value)))
             .OrderBy(entry => entry.Key, StringComparer.Ordinal);
 
     [Fact]
-    public void TheVocabulary_IsTheseKeysAndArities() {
+    public void TheVocabulary_IsTheseKeysAndArities()
+    {
         var builder = new StringBuilder();
 
-        builder.Append("Shape vocabulary: ")
+        builder
+            .Append("Shape vocabulary: ")
             .Append(ValidationMessageTemplates.TemplatesByKey.Count)
             .Append(" keys\n\n");
 
-        foreach (var (key, arity) in Vocabulary()) {
+        foreach (var (key, arity) in Vocabulary())
+        {
             builder.Append(key).Append("  ").Append(arity).Append('\n');
         }
 
@@ -66,7 +71,8 @@ public class ShapeVocabularyContractTests {
     }
 
     [Fact]
-    public void TheVocabulary_MatchesTheChecksumInProductSource() {
+    public void TheVocabulary_MatchesTheChecksumInProductSource()
+    {
         var actual = Checksum(Vocabulary().Select(entry => entry.Key + "=" + entry.Arity));
 
         Assert.True(
@@ -88,41 +94,52 @@ public class ShapeVocabularyContractTests {
 
             expected {ValidationMessageTemplates.ShapeVocabularyChecksum}
             actual   {actual}
-            """);
+            """
+        );
     }
 
     [Fact]
-    public void EveryKey_IsLowerSnakeCase() {
+    public void EveryKey_IsLowerSnakeCase()
+    {
         // The vocabulary is authored by hand in JSON, so a key that does not follow the convention
         // is one a pack author will spell the other way and lose to a silent skip.
-        Assert.All(ValidationMessageTemplates.TemplatesByKey.Keys,
-            key => Assert.Matches(@"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)?$", key));
+        Assert.All(
+            ValidationMessageTemplates.TemplatesByKey.Keys,
+            key => Assert.Matches(@"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)?$", key)
+        );
     }
 
     [Fact]
-    public void EveryKeysFirstSegment_IsAKnownCode() {
+    public void EveryKeysFirstSegment_IsAKnownCode()
+    {
         // The generator's typo heuristic keys on the segment before the first dot: an unknown key
         // whose prefix is a known code is judged a misspelling and reported, and anything else is
         // taken for the consumer's own code and compiled untouched. A shape key whose prefix is not
         // a code would put every misspelling of it in the second bucket, silently.
         var codes = typeof(ValidationCodes)
-            .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+            .GetFields(
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static
+            )
             .Where(field => field.FieldType == typeof(string))
             .Select(field => (string)field.GetValue(null)!)
             .ToHashSet(StringComparer.Ordinal);
 
-        var orphans = ValidationMessageTemplates.TemplatesByKey.Keys
-            .Select(key => key.Split('.')[0])
+        var orphans = ValidationMessageTemplates
+            .TemplatesByKey.Keys.Select(key => key.Split('.')[0])
             .Where(prefix => !codes.Contains(prefix))
             .Distinct(StringComparer.Ordinal)
             .OrderBy(prefix => prefix, StringComparer.Ordinal)
             .ToList();
 
-        Assert.True(orphans.Count == 0,
-            "Shape keys whose first segment is not a ValidationCodes value: " + string.Join(", ", orphans));
+        Assert.True(
+            orphans.Count == 0,
+            "Shape keys whose first segment is not a ValidationCodes value: "
+                + string.Join(", ", orphans)
+        );
     }
 
-    private static string Checksum(IEnumerable<string> lines) {
+    private static string Checksum(IEnumerable<string> lines)
+    {
         using var sha = SHA256.Create();
 
         var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(string.Join("\n", lines)));

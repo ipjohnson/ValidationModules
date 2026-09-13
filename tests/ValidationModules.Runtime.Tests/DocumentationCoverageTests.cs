@@ -22,13 +22,17 @@ namespace ValidationModules.Runtime.Tests;
 /// only shrink truthfully.
 /// </para>
 /// </remarks>
-public class DocumentationCoverageTests {
-
+public class DocumentationCoverageTests
+{
     /// <summary>
     /// Types deliberately not named in the documentation, and why. Reaching for this file to add
     /// an entry is the moment to ask whether the type should be documented instead.
     /// </summary>
-    private static readonly IReadOnlyDictionary<string, string> Undocumented = new Dictionary<string, string> {
+    private static readonly IReadOnlyDictionary<string, string> Undocumented = new Dictionary<
+        string,
+        string
+    >
+    {
         // Extension-method holders: a reader calls the methods, which the guides show on their
         // subjects; the holder's name appears only in metadata and stack traces.
         ["ValidatorForExtensions"] = "extension-method holder",
@@ -50,23 +54,29 @@ public class DocumentationCoverageTests {
     // ---- W0.1: every public type is named somewhere ---------------------------------------
 
     [Fact]
-    public void EveryPublicType_IsNamedSomewhereInTheDocumentation() {
+    public void EveryPublicType_IsNamedSomewhereInTheDocumentation()
+    {
         var documentation = DocumentationText();
         var missing = new List<string>();
 
-        foreach (var type in PublicTypes()) {
-            if (Undocumented.ContainsKey(type)) {
+        foreach (var type in PublicTypes())
+        {
+            if (Undocumented.ContainsKey(type))
+            {
                 continue;
             }
 
-            if (!MentionedIn(documentation, type)) {
+            if (!MentionedIn(documentation, type))
+            {
                 missing.Add(type);
             }
         }
 
-        Assert.True(missing.Count == 0,
-            "Public types no page under website/ names (document them, or add them to the " +
-            $"allow-list with a reason):{Environment.NewLine}  {string.Join(Environment.NewLine + "  ", missing)}");
+        Assert.True(
+            missing.Count == 0,
+            "Public types no page under website/ names (document them, or add them to the "
+                + $"allow-list with a reason):{Environment.NewLine}  {string.Join(Environment.NewLine + "  ", missing)}"
+        );
     }
 
     /// <summary>
@@ -74,21 +84,28 @@ public class DocumentationCoverageTests {
     /// leaves the API, is stale and fails here rather than lingering as a silent exemption.
     /// </summary>
     [Fact]
-    public void TheAllowList_CarriesNoStaleEntries() {
+    public void TheAllowList_CarriesNoStaleEntries()
+    {
         var documentation = DocumentationText();
         var types = PublicTypes().ToHashSet(StringComparer.Ordinal);
         var stale = new List<string>();
 
-        foreach (var entry in Undocumented.Keys) {
-            if (!types.Contains(entry)) {
+        foreach (var entry in Undocumented.Keys)
+        {
+            if (!types.Contains(entry))
+            {
                 stale.Add($"{entry} (no longer in the public API)");
-            } else if (MentionedIn(documentation, entry)) {
+            }
+            else if (MentionedIn(documentation, entry))
+            {
                 stale.Add($"{entry} (now documented - remove the exemption)");
             }
         }
 
-        Assert.True(stale.Count == 0,
-            $"Stale allow-list entries:{Environment.NewLine}  {string.Join(Environment.NewLine + "  ", stale)}");
+        Assert.True(
+            stale.Count == 0,
+            $"Stale allow-list entries:{Environment.NewLine}  {string.Join(Environment.NewLine + "  ", stale)}"
+        );
     }
 
     // ---- W0.2: the reference tables are complete ------------------------------------------
@@ -99,55 +116,86 @@ public class DocumentationCoverageTests {
     /// bracketed form a reader would type.
     /// </summary>
     [Fact]
-    public void EveryConstraintAttribute_HasItsSectionInTheAttributesReference() {
+    public void EveryConstraintAttribute_HasItsSectionInTheAttributesReference()
+    {
         var reference = File.ReadAllText(Path.Combine(WebsiteRoot, "reference", "attributes.md"));
         var missing = new List<string>();
 
-        foreach (var attribute in ConcreteAttributeTypes()) {
+        foreach (var attribute in ConcreteAttributeTypes())
+        {
             var bare = attribute.Substring(0, attribute.Length - "Attribute".Length);
 
-            if (!Regex.IsMatch(reference, $@"^#+ .*\[{Regex.Escape(bare)}\]", RegexOptions.Multiline)) {
+            if (
+                !Regex.IsMatch(
+                    reference,
+                    $@"^#+ .*\[{Regex.Escape(bare)}\]",
+                    RegexOptions.Multiline
+                )
+            )
+            {
                 missing.Add($"[{bare}]");
             }
         }
 
-        Assert.True(missing.Count == 0,
-            "Constraint attributes with no section in reference/attributes.md:" +
-            $"{Environment.NewLine}  {string.Join(Environment.NewLine + "  ", missing)}");
+        Assert.True(
+            missing.Count == 0,
+            "Constraint attributes with no section in reference/attributes.md:"
+                + $"{Environment.NewLine}  {string.Join(Environment.NewLine + "  ", missing)}"
+        );
     }
 
     [Fact]
-    public void EveryValidationCode_AppearsInTheCodesReference() {
+    public void EveryValidationCode_AppearsInTheCodesReference()
+    {
         var reference = File.ReadAllText(Path.Combine(WebsiteRoot, "reference", "codes.md"));
         var missing = new List<string>();
 
-        foreach (Match code in Regex.Matches(
-                     RuntimeSnapshot(), @"public const string \w+ = ""([a-z0-9_]+)"";")) {
+        foreach (
+            Match code in Regex.Matches(
+                RuntimeSnapshot(),
+                @"public const string \w+ = ""([a-z0-9_]+)"";"
+            )
+        )
+        {
             var value = code.Groups[1].Value;
 
-            if (!Regex.IsMatch(reference, $@"(?<![a-z0-9_]){Regex.Escape(value)}(?![a-z0-9_])")) {
+            if (!Regex.IsMatch(reference, $@"(?<![a-z0-9_]){Regex.Escape(value)}(?![a-z0-9_])"))
+            {
                 missing.Add(value);
             }
         }
 
-        Assert.True(missing.Count == 0,
-            $"Codes missing from reference/codes.md:{Environment.NewLine}  {string.Join(Environment.NewLine + "  ", missing)}");
+        Assert.True(
+            missing.Count == 0,
+            $"Codes missing from reference/codes.md:{Environment.NewLine}  {string.Join(Environment.NewLine + "  ", missing)}"
+        );
     }
 
     // ---- parsing --------------------------------------------------------------------------
 
-    private static IEnumerable<string> PublicTypes() {
+    private static IEnumerable<string> PublicTypes()
+    {
         var text = RuntimeSnapshot() + Environment.NewLine + AspNetCoreSnapshot();
         var names = new SortedSet<string>(StringComparer.Ordinal);
 
-        foreach (Match declaration in Regex.Matches(
-                     text, @"\b(?:class|interface|struct|enum)\s+([A-Za-z_][A-Za-z0-9_]*)")) {
+        foreach (
+            Match declaration in Regex.Matches(
+                text,
+                @"\b(?:class|interface|struct|enum)\s+([A-Za-z_][A-Za-z0-9_]*)"
+            )
+        )
+        {
             names.Add(declaration.Groups[1].Value);
         }
 
         // Delegates carry their name between the return type and the parameter list.
-        foreach (Match declaration in Regex.Matches(
-                     text, @"\bdelegate\b[^;\n(]*?([A-Za-z_][A-Za-z0-9_]*)\s*[(<]")) {
+        foreach (
+            Match declaration in Regex.Matches(
+                text,
+                @"\bdelegate\b[^;\n(]*?([A-Za-z_][A-Za-z0-9_]*)\s*[(<]"
+            )
+        )
+        {
             names.Add(declaration.Groups[1].Value);
         }
 
@@ -155,19 +203,26 @@ public class DocumentationCoverageTests {
     }
 
     private static IEnumerable<string> ConcreteAttributeTypes() =>
-        Regex.Matches(RuntimeSnapshot(), @"\bpublic (?:sealed )?class ([A-Za-z0-9_]+Attribute)\b")
+        Regex
+            .Matches(RuntimeSnapshot(), @"\bpublic (?:sealed )?class ([A-Za-z0-9_]+Attribute)\b")
             .Select(match => match.Groups[1].Value);
 
     /// <summary>
     /// Whether the documentation names the type. The <c>Attribute</c> suffix matches in both
     /// directions, because the docs write <c>[Pattern]</c> for <c>PatternAttribute</c>.
     /// </summary>
-    private static bool MentionedIn(string documentation, string type) {
-        if (Regex.IsMatch(documentation, $@"\b{Regex.Escape(type)}\b")) {
+    private static bool MentionedIn(string documentation, string type)
+    {
+        if (Regex.IsMatch(documentation, $@"\b{Regex.Escape(type)}\b"))
+        {
             return true;
         }
 
-        if (type.EndsWith("Attribute", StringComparison.Ordinal) && type.Length > "Attribute".Length) {
+        if (
+            type.EndsWith("Attribute", StringComparison.Ordinal)
+            && type.Length > "Attribute".Length
+        )
+        {
             var bare = type.Substring(0, type.Length - "Attribute".Length);
             return Regex.IsMatch(documentation, $@"\b{Regex.Escape(bare)}\b");
         }
@@ -175,34 +230,54 @@ public class DocumentationCoverageTests {
         return false;
     }
 
-    private static string DocumentationText() {
-        var pages = Directory.EnumerateFiles(WebsiteRoot, "*.md", SearchOption.AllDirectories)
+    private static string DocumentationText()
+    {
+        var pages = Directory
+            .EnumerateFiles(WebsiteRoot, "*.md", SearchOption.AllDirectories)
             .Where(file => !file.Contains("node_modules", StringComparison.Ordinal))
             .Select(File.ReadAllText);
 
         return string.Join(Environment.NewLine, pages);
     }
 
-    private static string RuntimeSnapshot() => File.ReadAllText(Path.Combine(
-        RepositoryRoot, "tests", "ValidationModules.Runtime.Tests",
-        "Snapshots", "PublicApiTests.RuntimeApi.verified.txt"));
+    private static string RuntimeSnapshot() =>
+        File.ReadAllText(
+            Path.Combine(
+                RepositoryRoot,
+                "tests",
+                "ValidationModules.Runtime.Tests",
+                "Snapshots",
+                "PublicApiTests.RuntimeApi.verified.txt"
+            )
+        );
 
-    private static string AspNetCoreSnapshot() => File.ReadAllText(Path.Combine(
-        RepositoryRoot, "tests", "ValidationModules.AspNetCore.Tests",
-        "Snapshots", "PublicApiTests.AspNetCoreApi.verified.txt"));
+    private static string AspNetCoreSnapshot() =>
+        File.ReadAllText(
+            Path.Combine(
+                RepositoryRoot,
+                "tests",
+                "ValidationModules.AspNetCore.Tests",
+                "Snapshots",
+                "PublicApiTests.AspNetCoreApi.verified.txt"
+            )
+        );
 
     private static string WebsiteRoot => Path.Combine(RepositoryRoot, "website");
 
     private static string RepositoryRoot { get; } = ResolveRepositoryRoot();
 
-    private static string ResolveRepositoryRoot() {
-        var configured = typeof(DocumentationCoverageTests).Assembly
-            .GetCustomAttributes<AssemblyMetadataAttribute>()
-            .FirstOrDefault(attribute => attribute.Key == "RepositoryRoot")?.Value;
+    private static string ResolveRepositoryRoot()
+    {
+        var configured = typeof(DocumentationCoverageTests)
+            .Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(attribute => attribute.Key == "RepositoryRoot")
+            ?.Value;
 
-        if (configured is null || !Directory.Exists(Path.Combine(configured, "website"))) {
+        if (configured is null || !Directory.Exists(Path.Combine(configured, "website")))
+        {
             throw new InvalidOperationException(
-                "RepositoryRoot assembly metadata is missing or does not contain website/.");
+                "RepositoryRoot assembly metadata is missing or does not contain website/."
+            );
         }
 
         return configured;

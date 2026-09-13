@@ -8,7 +8,8 @@ namespace SutProject.DataAnnotations;
 /// annotated for EF Core or Swashbuckle gets a validator with no edits.
 /// </summary>
 [ValidationModules.Constraints.GenerateValidator]
-public sealed class Customer {
+public sealed class Customer
+{
     [Required]
     [StringLength(20, MinimumLength = 2)]
     public string? Name { get; set; }

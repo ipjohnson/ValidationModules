@@ -11,35 +11,42 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// so two engines would evaluate a condition the same number of times; with one engine, what the
 /// code says is the spec - a condition evaluates where written, every time it is reached.
 /// </remarks>
-public class ControlFlowTests {
+public class ControlFlowTests
+{
+    private static GeneratorHarness.Result Run(string body, string extraTypes = "") =>
+        GeneratorHarness.Run(
+            $$"""
+            using System;
+            using ValidationModules;
 
-    private static GeneratorHarness.Result Run(string body, string extraTypes = "") => GeneratorHarness.Run($$"""
-        using System;
-        using ValidationModules;
+            namespace Sample;
 
-        namespace Sample;
-
-        public sealed record Claim {
-            public bool IsAuto { get; init; }
-            public bool IsExpedited { get; init; }
-            public int Tier { get; init; }
-            public string? Plate { get; init; }
-            public string? Reason { get; init; }
-            public string? Reference { get; init; }
-        }
-        {{extraTypes}}
-        public sealed class ClaimRules : IValidationRulesFor<Claim> {
-            public static void Describe(ValidationRules<Claim> rules, Claim x) {
-        {{body}}
+            public sealed record Claim {
+                public bool IsAuto { get; init; }
+                public bool IsExpedited { get; init; }
+                public int Tier { get; init; }
+                public string? Plate { get; init; }
+                public string? Reason { get; init; }
+                public string? Reference { get; init; }
             }
-        }
-        """);
+            {{extraTypes}}
+            public sealed class ClaimRules : IValidationRulesFor<Claim> {
+                public static void Describe(ValidationRules<Claim> rules, Claim x) {
+            {{body}}
+                }
+            }
+            """
+        );
 
-    private static string Region(string body, string extraTypes = "") {
+    private static string Region(string body, string extraTypes = "")
+    {
         var result = Run(body, extraTypes);
 
         Assert.Empty(result.CompilationErrors);
-        Assert.DoesNotContain(result.Diagnostics, d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error);
+        Assert.DoesNotContain(
+            result.Diagnostics,
+            d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error
+        );
 
         return result.Sources.Single(source => source.Key.Contains("_Rules")).Value;
     }
@@ -47,21 +54,29 @@ public class ControlFlowTests {
     // -- if/else -------------------------------------------------------------------------------
 
     [Fact]
-    public void AnIfGuardedChain_ExpandsInsideTheBranch() {
-        var region = Region("""
+    public void AnIfGuardedChain_ExpandsInsideTheBranch()
+    {
+        var region = Region(
+            """
                     if (x.IsExpedited) {
                         rules.Require(x.Reason).Length(2, 500);
                     }
-            """);
+            """
+        );
 
         Assert.Contains("if (x.IsExpedited) {", region);
         Assert.Contains("var missingReason = string.IsNullOrWhiteSpace(x.Reason);", region);
-        Assert.Contains("!missingReason && (x.Reason is not null && (x.Reason.Length < 2 || x.Reason.Length > 500))", region);
+        Assert.Contains(
+            "!missingReason && (x.Reason is not null && (x.Reason.Length < 2 || x.Reason.Length > 500))",
+            region
+        );
     }
 
     [Fact]
-    public void ElseBranches_CarryTheirOwnIslands() {
-        var region = Region("""
+    public void ElseBranches_CarryTheirOwnIslands()
+    {
+        var region = Region(
+            """
                     if (x.IsAuto) {
                         rules.Require(x.Plate);
                     } else if (x.Tier > 2) {
@@ -69,7 +84,8 @@ public class ControlFlowTests {
                     } else {
                         rules.Require(x.Reason);
                     }
-            """);
+            """
+        );
 
         Assert.Contains("if (x.IsAuto) {", region);
         Assert.Contains("} else if (x.Tier > 2) {", region);
@@ -80,8 +96,10 @@ public class ControlFlowTests {
     }
 
     [Fact]
-    public void ASwitchStatement_CarriesIslandsPerSection() {
-        var region = Region("""
+    public void ASwitchStatement_CarriesIslandsPerSection()
+    {
+        var region = Region(
+            """
                     switch (x.Tier) {
                         case 1:
                             rules.Require(x.Reason);
@@ -90,7 +108,8 @@ public class ControlFlowTests {
                             rules.Require(x.Reference);
                             break;
                     }
-            """);
+            """
+        );
 
         Assert.Contains("switch (x.Tier) {", region);
         Assert.Contains("case 1:", region);
@@ -105,7 +124,8 @@ public class ControlFlowTests {
     /// would agree. One engine, one rule: a condition written twice evaluates twice.
     /// </summary>
     [Fact]
-    public void AConditionWrittenTwice_EvaluatesWhereWritten() {
+    public void AConditionWrittenTwice_EvaluatesWhereWritten()
+    {
         var region = Region(
             """
                     if (Gate.Open()) {
@@ -120,34 +140,44 @@ public class ControlFlowTests {
             public static class Gate {
                 public static bool Open() => true;
             }
-            """);
+            """
+        );
 
         Assert.Equal(2, region.Split("Gate.Open()").Length - 1);
     }
 
     [Fact]
-    public void ComputationFeedingACondition_Transcribes() {
-        var region = Region("""
+    public void ComputationFeedingACondition_Transcribes()
+    {
+        var region = Region(
+            """
                     var digits = x.Plate?.Length ?? 0;
                     if (digits > 3) {
                         rules.Length(x.Plate, 4, 10);
                     }
-            """);
+            """
+        );
 
         Assert.Contains("var digits = x.Plate?.Length ?? 0;", region);
         Assert.Contains("if (digits > 3) {", region);
     }
 
     [Fact]
-    public void AnEnsureUnderAnIf_IsGuardedByTheBranchAlone() {
-        var region = Region("""
+    public void AnEnsureUnderAnIf_IsGuardedByTheBranchAlone()
+    {
+        var region = Region(
+            """
                     if (x.IsExpedited) {
                         rules.Ensure(x.Tier >= 2, code: "expedite_tier");
                     }
-            """);
+            """
+        );
 
         Assert.Contains("if (x.IsExpedited) {", region);
-        Assert.Contains("if (!(x.Tier >= 2) && ctx.Report(\"tier\", \"expedite_tier\", \"tier >= 2.\").ShouldStop)", region);
+        Assert.Contains(
+            "if (!(x.Tier >= 2) && ctx.Report(\"tier\", \"expedite_tier\", \"tier >= 2.\").ShouldStop)",
+            region
+        );
     }
 
     /// <summary>
@@ -155,13 +185,16 @@ public class ControlFlowTests {
     /// and the attribute region and other rules classes still run.
     /// </summary>
     [Fact]
-    public void AnEarlyReturn_EndsTheRegionWithContinue() {
-        var region = Region("""
+    public void AnEarlyReturn_EndsTheRegionWithContinue()
+    {
+        var region = Region(
+            """
                     if (x.IsAuto) {
                         return;
                     }
                     rules.Require(x.Reason);
-            """);
+            """
+        );
 
         Assert.Contains("return global::ValidationModules.ValidationFlow.Continue;", region);
         Assert.Contains("ReportRequired(ctx, \"reason\")", region);
@@ -171,14 +204,17 @@ public class ControlFlowTests {
     /// Statements keep body order through mixed control flow - the body is the validator.
     /// </summary>
     [Fact]
-    public void BodyOrder_IsEmissionOrder() {
-        var region = Region("""
+    public void BodyOrder_IsEmissionOrder()
+    {
+        var region = Region(
+            """
                     rules.Require(x.Plate);
                     if (x.IsExpedited) {
                         rules.Require(x.Reason);
                     }
                     rules.Require(x.Reference);
-            """);
+            """
+        );
 
         var plate = region.IndexOf("\"plate\"", StringComparison.Ordinal);
         var reason = region.IndexOf("\"reason\"", StringComparison.Ordinal);

@@ -12,8 +12,8 @@ namespace SutProject.Tests;
 /// guarding neither reorders anything nor changes what a guard that did not run can suppress, and
 /// that a condition's evaluation count is exactly what the body says it is.
 /// </remarks>
-public class ControlFlowConformanceTests {
-
+public class ControlFlowConformanceTests
+{
     private static readonly IValidatorFor<Claim> Validator = new ClaimValidator();
 
     private static IEnumerable<string> Fields(Claim value) =>
@@ -24,32 +24,43 @@ public class ControlFlowConformanceTests {
     /// reference off, and the else half asks for notes.
     /// </summary>
     [Fact]
-    public void ConditionsFalse_LeaveOnlyTheElseHalf() {
-        Assert.Equal(
-            ["reference", "notes"],
-            Fields(new Claim { IsDraft = false }));
+    public void ConditionsFalse_LeaveOnlyTheElseHalf()
+    {
+        Assert.Equal(["reference", "notes"], Fields(new Claim { IsDraft = false }));
     }
 
     [Fact]
-    public void AGuardedChain_GuardsBothOfItsConstraints() {
+    public void AGuardedChain_GuardsBothOfItsConstraints()
+    {
         // Expedited on, reason present but too short: the Length half of the same chain fires.
-        var errors = Validator.Validate(new Claim {
-            IsExpedited = true, Reason = "x", Reference = "R", Notes = "n",
-        }).Errors;
+        var errors = Validator
+            .Validate(
+                new Claim
+                {
+                    IsExpedited = true,
+                    Reason = "x",
+                    Reference = "R",
+                    Notes = "n",
+                }
+            )
+            .Errors;
 
         Assert.Equal(
             ValidationCodes.StringLength,
-            Assert.Single(errors, error => error.Field == "reason").Code);
+            Assert.Single(errors, error => error.Field == "reason").Code
+        );
     }
 
     [Fact]
-    public void ANegatedGuard_IsJustANegation() {
+    public void ANegatedGuard_IsJustANegation()
+    {
         Assert.DoesNotContain("reference", Fields(new Claim { IsDraft = true, Notes = "n" }));
         Assert.Contains("reference", Fields(new Claim { IsDraft = false, Notes = "n" }));
     }
 
     [Fact]
-    public void IfAndElse_AreExclusive() {
+    public void IfAndElse_AreExclusive()
+    {
         Assert.Equal(["plate"], Fields(new Claim { IsAuto = true, IsDraft = true }));
         Assert.Equal(["notes"], Fields(new Claim { IsAuto = false, IsDraft = true }));
     }
@@ -58,7 +69,8 @@ public class ControlFlowConformanceTests {
     /// A guarded <c>Require</c> that does not run records nothing, so it suppresses nothing.
     /// </summary>
     [Fact]
-    public void GuardedRequireThatDoesNotRun_SuppressesNothing() {
+    public void GuardedRequireThatDoesNotRun_SuppressesNothing()
+    {
         // Not expedited, so Reason's Require is off - and so is its Length, being the same chain.
         // Nothing on reason at all.
         Assert.DoesNotContain("reason", Fields(new Claim { IsDraft = true, Notes = "n" }));
@@ -68,14 +80,24 @@ public class ControlFlowConformanceTests {
     /// And when it runs and fails, it suppresses the rest of its own chain as always.
     /// </summary>
     [Fact]
-    public void GuardedRequireThatRunsAndFails_SuppressesItsChain() {
-        var errors = Validator.Validate(new Claim {
-            IsExpedited = true, IsDraft = true, Notes = "n", Reason = null,
-        }).Errors;
+    public void GuardedRequireThatRunsAndFails_SuppressesItsChain()
+    {
+        var errors = Validator
+            .Validate(
+                new Claim
+                {
+                    IsExpedited = true,
+                    IsDraft = true,
+                    Notes = "n",
+                    Reason = null,
+                }
+            )
+            .Errors;
 
         Assert.Equal(
             ValidationCodes.Required,
-            Assert.Single(errors, error => error.Field == "reason").Code);
+            Assert.Single(errors, error => error.Field == "reason").Code
+        );
     }
 
     /// <summary>
@@ -83,10 +105,12 @@ public class ControlFlowConformanceTests {
     /// part of the flow rather than a change of position.
     /// </summary>
     [Fact]
-    public void Ordering_IsUnchangedByGuarding() {
+    public void Ordering_IsUnchangedByGuarding()
+    {
         Assert.Equal(
             ["reason", "reference", "plate"],
-            Fields(new Claim { IsExpedited = true, IsAuto = true }));
+            Fields(new Claim { IsExpedited = true, IsAuto = true })
+        );
     }
 
     // -- evaluated where written -----------------------------------------------------------------
@@ -99,7 +123,8 @@ public class ControlFlowConformanceTests {
     /// says it.
     /// </summary>
     [Fact]
-    public void ACondition_EvaluatesOncePerPassWhenWrittenOnce() {
+    public void ACondition_EvaluatesOncePerPassWhenWrittenOnce()
+    {
         Metered.Evaluations = 0;
 
         MeteredValidator.Validate(new Metered { Gate = true });
@@ -108,7 +133,8 @@ public class ControlFlowConformanceTests {
     }
 
     [Fact]
-    public void ACondition_EvaluatesEvenWhenItGuardsNothingOff() {
+    public void ACondition_EvaluatesEvenWhenItGuardsNothingOff()
+    {
         Metered.Evaluations = 0;
 
         MeteredValidator.Validate(new Metered { Gate = false });
@@ -124,12 +150,21 @@ public class ControlFlowConformanceTests {
     /// running - and it now runs against the real generated region.
     /// </summary>
     [Fact]
-    public void GuardedCleanPass_AllocatesNothing() {
+    public void GuardedCleanPass_AllocatesNothing()
+    {
         var validator = new ClaimValidator();
         var collector = new ValidationErrorCollector();
-        var claim = new Claim { IsAuto = true, IsExpedited = true, Reason = "reason", Reference = "R", Plate = "P" };
+        var claim = new Claim
+        {
+            IsAuto = true,
+            IsExpedited = true,
+            Reason = "reason",
+            Reference = "R",
+            Plate = "P",
+        };
 
-        for (var i = 0; i < 200; i++) {
+        for (var i = 0; i < 200; i++)
+        {
             collector.Reset();
             validator.ValidateInto(collector, claim);
         }
@@ -138,10 +173,12 @@ public class ControlFlowConformanceTests {
         // allocates. A validator that genuinely allocated per call would allocate in every window.
         var best = long.MaxValue;
 
-        for (var window = 0; window < 5; window++) {
+        for (var window = 0; window < 5; window++)
+        {
             var before = GC.GetAllocatedBytesForCurrentThread();
 
-            for (var i = 0; i < 500; i++) {
+            for (var i = 0; i < 500; i++)
+            {
                 collector.Reset();
                 validator.ValidateInto(collector, claim);
             }

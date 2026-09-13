@@ -29,8 +29,8 @@ namespace ValidationModules;
 /// straight back at every call site that has an implicit conversion available.
 /// </para>
 /// </remarks>
-public readonly struct ValidationFlow : IEquatable<ValidationFlow> {
-
+public readonly struct ValidationFlow : IEquatable<ValidationFlow>
+{
     private readonly bool _stop;
 
     private ValidationFlow(bool stop) => _stop = stop;
@@ -60,5 +60,6 @@ public readonly struct ValidationFlow : IEquatable<ValidationFlow> {
     public static bool operator ==(ValidationFlow left, ValidationFlow right) => left.Equals(right);
 
     /// <summary>Whether two flows disagree.</summary>
-    public static bool operator !=(ValidationFlow left, ValidationFlow right) => !left.Equals(right);
+    public static bool operator !=(ValidationFlow left, ValidationFlow right) =>
+        !left.Equals(right);
 }

@@ -14,32 +14,42 @@ namespace ValidationModules.Runtime.Tests;
 /// registration were written the obvious way, and none of them is visible from reading a passing
 /// functional test — so they are asserted directly.
 /// </remarks>
-public class ServiceCollectionExtensionsTests {
-
-    private sealed record Widget {
+public class ServiceCollectionExtensionsTests
+{
+    private sealed record Widget
+    {
         public string? Name { get; init; }
     }
 
-    private sealed class SampleValidator : IValidatorFor<Widget> {
+    private sealed class SampleValidator : IValidatorFor<Widget>
+    {
         public static readonly SampleValidator Instance = new();
 
         public ValidationFlow Validate(ref ValidationContext context, Widget value) =>
-            string.IsNullOrWhiteSpace(value.Name) ? context.ReportRequired("name") : ValidationFlow.Continue;
+            string.IsNullOrWhiteSpace(value.Name)
+                ? context.ReportRequired("name")
+                : ValidationFlow.Continue;
     }
 
-    private static ValidatorRegistration[] Table() => [
-        new ValidatorRegistration(typeof(IValidatorFor<Widget>), static _ => SampleValidator.Instance),
-    ];
+    private static ValidatorRegistration[] Table() =>
+        [
+            new ValidatorRegistration(
+                typeof(IValidatorFor<Widget>),
+                static _ => SampleValidator.Instance
+            ),
+        ];
 
     [Fact]
-    public void AddValidationModules_RegistersEachEntryUnderItsServiceType() {
+    public void AddValidationModules_RegistersEachEntryUnderItsServiceType()
+    {
         var provider = new ServiceCollection().AddValidationModules(Table()).BuildServiceProvider();
 
         Assert.Same(SampleValidator.Instance, provider.GetRequiredService<IValidatorFor<Widget>>());
     }
 
     [Fact]
-    public void AddValidationModules_RegistersValidatorsAsSingletons() {
+    public void AddValidationModules_RegistersValidatorsAsSingletons()
+    {
         // Rule graphs are built once, never per validation call. A scoped registration is how
         // FluentValidation ends up rebuilding its graph every request — measured at ~2,163 ns.
         var provider = new ServiceCollection().AddValidationModules(Table()).BuildServiceProvider();
@@ -49,11 +59,13 @@ public class ServiceCollectionExtensionsTests {
 
         Assert.Same(
             first.ServiceProvider.GetRequiredService<IValidatorFor<Widget>>(),
-            second.ServiceProvider.GetRequiredService<IValidatorFor<Widget>>());
+            second.ServiceProvider.GetRequiredService<IValidatorFor<Widget>>()
+        );
     }
 
     [Fact]
-    public void AddValidationModules_UsesTheFactoryRatherThanConstructingTheType() {
+    public void AddValidationModules_UsesTheFactoryRatherThanConstructingTheType()
+    {
         // The factory is what keeps ActivatorUtilities out of the path. Observed by registering a
         // factory that could not be reproduced by construction.
         var sentinel = new SampleValidator();
@@ -67,15 +79,20 @@ public class ServiceCollectionExtensionsTests {
     }
 
     [Fact]
-    public void AddValidationModules_PassesTheProviderToTheFactory() {
+    public void AddValidationModules_PassesTheProviderToTheFactory()
+    {
         IServiceProvider? seen = null;
 
         var provider = new ServiceCollection()
             .AddValidationModules([
-                new ValidatorRegistration(typeof(IValidatorFor<Widget>), resolved => {
-                    seen = resolved;
-                    return SampleValidator.Instance;
-                }),
+                new ValidatorRegistration(
+                    typeof(IValidatorFor<Widget>),
+                    resolved =>
+                    {
+                        seen = resolved;
+                        return SampleValidator.Instance;
+                    }
+                ),
             ])
             .BuildServiceProvider();
 
@@ -85,14 +102,16 @@ public class ServiceCollectionExtensionsTests {
     }
 
     [Fact]
-    public void AddValidationModules_RegistersTheDefaultFieldNamer() {
+    public void AddValidationModules_RegistersTheDefaultFieldNamer()
+    {
         var provider = new ServiceCollection().AddValidationModules(Table()).BuildServiceProvider();
 
         Assert.IsType<CamelCaseFieldNamer>(provider.GetRequiredService<IValidationFieldNamer>());
     }
 
     [Fact]
-    public void AddValidationModules_KeepsAFieldNamerTheConsumerRegisteredFirst() {
+    public void AddValidationModules_KeepsAFieldNamerTheConsumerRegisteredFirst()
+    {
         // TryAdd, so a consumer's own naming policy survives. Registering ours over theirs would
         // put the generated literals and the adapter's renaming out of step, which is the one thing
         // a single namer exists to prevent.
@@ -107,7 +126,8 @@ public class ServiceCollectionExtensionsTests {
     }
 
     [Fact]
-    public void AddValidationModules_WithAnEmptyTable_IsANoOpThatStillRegistersTheNamer() {
+    public void AddValidationModules_WithAnEmptyTable_IsANoOpThatStillRegistersTheNamer()
+    {
         var provider = new ServiceCollection().AddValidationModules([]).BuildServiceProvider();
 
         Assert.NotNull(provider.GetService<IValidationFieldNamer>());
@@ -115,13 +135,20 @@ public class ServiceCollectionExtensionsTests {
     }
 
     [Fact]
-    public void AddValidationModules_RegistersEveryEntryWhenTwoShareAServiceType() {
+    public void AddValidationModules_RegistersEveryEntryWhenTwoShareAServiceType()
+    {
         // ValidationRunner<T> merges every registered IValidatorFor<T>, so Add rather than TryAdd
         // is deliberate: a structural validator and a hand-written one must both run.
         var provider = new ServiceCollection()
             .AddValidationModules([
-                new ValidatorRegistration(typeof(IValidatorFor<Widget>), static _ => SampleValidator.Instance),
-                new ValidatorRegistration(typeof(IValidatorFor<Widget>), static _ => new SampleValidator()),
+                new ValidatorRegistration(
+                    typeof(IValidatorFor<Widget>),
+                    static _ => SampleValidator.Instance
+                ),
+                new ValidatorRegistration(
+                    typeof(IValidatorFor<Widget>),
+                    static _ => new SampleValidator()
+                ),
             ])
             .BuildServiceProvider();
 
@@ -131,17 +158,25 @@ public class ServiceCollectionExtensionsTests {
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void AddValidationModules_NullArgument_Throws(bool nullServices) {
-        if (nullServices) {
+    public void AddValidationModules_NullArgument_Throws(bool nullServices)
+    {
+        if (nullServices)
+        {
             Assert.Throws<ArgumentNullException>(() =>
-                ValidationModulesServiceCollectionExtensions.AddValidationModules(null!, Table()));
-        } else {
-            Assert.Throws<ArgumentNullException>(() => new ServiceCollection().AddValidationModules(null!));
+                ValidationModulesServiceCollectionExtensions.AddValidationModules(null!, Table())
+            );
+        }
+        else
+        {
+            Assert.Throws<ArgumentNullException>(() =>
+                new ServiceCollection().AddValidationModules(null!)
+            );
         }
     }
 
     [Fact]
-    public void AddValidationRunner_RegistersTheRunnerScoped() {
+    public void AddValidationRunner_RegistersTheRunnerScoped()
+    {
         var provider = new ServiceCollection()
             .AddValidationModules(Table())
             .AddValidationRunner<Widget>()
@@ -153,7 +188,8 @@ public class ServiceCollectionExtensionsTests {
     }
 
     [Fact]
-    public void AddValidationRunner_IsClosedSoNothingResolvesThroughAnOpenGeneric() {
+    public void AddValidationRunner_IsClosedSoNothingResolvesThroughAnOpenGeneric()
+    {
         // AddScoped(typeof(ValidationRunner<>)) would have MS.DI construct it reflectively, which
         // is exactly what a Native AOT publish cannot do. The generator emits one call per type.
         var provider = new ServiceCollection()
@@ -165,17 +201,22 @@ public class ServiceCollectionExtensionsTests {
     }
 
     [Fact]
-    public void AddValidationRunner_CalledTwice_RegistersOne() {
+    public void AddValidationRunner_CalledTwice_RegistersOne()
+    {
         var services = new ServiceCollection()
             .AddValidationModules(Table())
             .AddValidationRunner<Widget>()
             .AddValidationRunner<Widget>();
 
-        Assert.Single(services, descriptor => descriptor.ServiceType == typeof(ValidationRunner<Widget>));
+        Assert.Single(
+            services,
+            descriptor => descriptor.ServiceType == typeof(ValidationRunner<Widget>)
+        );
     }
 
     [Fact]
-    public void AddValidationRunner_ResolvesARunnerThatActuallyValidates() {
+    public void AddValidationRunner_ResolvesARunnerThatActuallyValidates()
+    {
         var provider = new ServiceCollection()
             .AddValidationModules(Table())
             .AddValidationRunner<Widget>()
@@ -187,5 +228,4 @@ public class ServiceCollectionExtensionsTests {
         Assert.False(runner.Validate(new Widget { Name = null }).IsValid);
         Assert.True(runner.Validate(new Widget { Name = "Rex" }).IsValid);
     }
-
 }

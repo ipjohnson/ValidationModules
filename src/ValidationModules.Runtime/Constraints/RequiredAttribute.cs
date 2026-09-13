@@ -15,8 +15,8 @@ namespace ValidationModules.Constraints;
 /// <c>RequiredRule</c> already does - so neither incumbent's users are surprised.
 /// </para>
 /// </remarks>
-public sealed class RequiredAttribute : ValidationConstraintAttribute {
-
+public sealed class RequiredAttribute : ValidationConstraintAttribute
+{
     /// <summary>
     /// When true, only null fails - an empty or whitespace-only string passes.
     /// </summary>

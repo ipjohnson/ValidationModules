@@ -35,8 +35,8 @@ namespace ValidationModules.Constraints;
 /// public double Ratio { get; init; }
 /// </code>
 /// </example>
-public sealed class MultipleOfAttribute : ValidationConstraintAttribute {
-
+public sealed class MultipleOfAttribute : ValidationConstraintAttribute
+{
     /// <summary>An integral divisor.</summary>
     public MultipleOfAttribute(int divisor) => Divisor = divisor;
 

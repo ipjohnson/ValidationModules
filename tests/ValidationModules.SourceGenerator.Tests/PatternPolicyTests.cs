@@ -13,8 +13,8 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// [GeneratedRegex]. So the diagnostic is about a doubling of the binary, not a broken build, and
 /// it only fires where that matters.
 /// </remarks>
-public class PatternPolicyTests {
-
+public class PatternPolicyTests
+{
     private const string InlinePattern = """
         using ValidationModules.Constraints;
 
@@ -44,17 +44,20 @@ public class PatternPolicyTests {
         """;
 
     [Fact]
-    public void InlinePattern_NotAotFacing_IsAccepted() {
+    public void InlinePattern_NotAotFacing_IsAccepted()
+    {
         var result = GeneratorHarness.Run(InlinePattern);
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1301");
         Assert.Contains(
             "new global::System.Text.RegularExpressions.Regex(",
-            result.Sources["Sample.PetValidator.g.cs"]);
+            result.Sources["Sample.PetValidator.g.cs"]
+        );
     }
 
     [Fact]
-    public void InlinePattern_PublishAot_IsAnError() {
+    public void InlinePattern_PublishAot_IsAnError()
+    {
         var result = GeneratorHarness.Run(InlinePattern, ("PublishAot", "true"));
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1301");
@@ -62,7 +65,8 @@ public class PatternPolicyTests {
     }
 
     [Fact]
-    public void InlinePattern_IsAotCompatible_IsAlsoAnError() {
+    public void InlinePattern_IsAotCompatible_IsAlsoAnError()
+    {
         // PublishAot is only ever true in the executable. A class library holding the models would
         // never see it, so gating on that alone would push the failure onto somebody else's publish.
         var result = GeneratorHarness.Run(InlinePattern, ("IsAotCompatible", "true"));
@@ -71,7 +75,8 @@ public class PatternPolicyTests {
     }
 
     [Fact]
-    public void InlinePattern_RejectedUnderAot_IsDroppedWhileTheRestOfTheTypeIsStillEmitted() {
+    public void InlinePattern_RejectedUnderAot_IsDroppedWhileTheRestOfTheTypeIsStillEmitted()
+    {
         var source = """
             using ValidationModules.Constraints;
 
@@ -94,39 +99,55 @@ public class PatternPolicyTests {
         var emitted = result.Sources["Sample.PetValidator.g.cs"];
         Assert.DoesNotContain("new global::System.Text.RegularExpressions.Regex(", emitted);
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\", value: value.Name)", emitted);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\", value: value.Name)",
+            emitted
+        );
     }
 
     [Fact]
-    public void InlinePattern_PolicyWarn_ReportsButStillEmits() {
-        var result = GeneratorHarness.Run(InlinePattern,
-            ("PublishAot", "true"), ("ValidationModules_PatternPolicy", "Warn"));
+    public void InlinePattern_PolicyWarn_ReportsButStillEmits()
+    {
+        var result = GeneratorHarness.Run(
+            InlinePattern,
+            ("PublishAot", "true"),
+            ("ValidationModules_PatternPolicy", "Warn")
+        );
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1301");
         Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
         Assert.Contains(
             "new global::System.Text.RegularExpressions.Regex(",
-            result.Sources["Sample.PetValidator.g.cs"]);
+            result.Sources["Sample.PetValidator.g.cs"]
+        );
     }
 
     [Fact]
-    public void InlinePattern_PolicyAllow_IsSilentEvenUnderAot() {
-        var result = GeneratorHarness.Run(InlinePattern,
-            ("PublishAot", "true"), ("ValidationModules_PatternPolicy", "Allow"));
+    public void InlinePattern_PolicyAllow_IsSilentEvenUnderAot()
+    {
+        var result = GeneratorHarness.Run(
+            InlinePattern,
+            ("PublishAot", "true"),
+            ("ValidationModules_PatternPolicy", "Allow")
+        );
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1301");
     }
 
     [Fact]
-    public void InlinePattern_PolicyError_FiresWithoutAnyAotSignal() {
+    public void InlinePattern_PolicyError_FiresWithoutAnyAotSignal()
+    {
         // What a library shipping to AOT consumers sets, so the failure lands on its own build.
-        var result = GeneratorHarness.Run(InlinePattern, ("ValidationModules_PatternPolicy", "Error"));
+        var result = GeneratorHarness.Run(
+            InlinePattern,
+            ("ValidationModules_PatternPolicy", "Error")
+        );
 
         Assert.Single(result.Diagnostics, d => d.Id == "VM1301");
     }
 
     [Fact]
-    public void ReferencedPattern_UnderAot_IsAcceptedAndCallsTheMember() {
+    public void ReferencedPattern_UnderAot_IsAcceptedAndCallsTheMember()
+    {
         var result = GeneratorHarness.Run(ReferencedPattern, ("PublishAot", "true"));
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1301");
@@ -140,7 +161,8 @@ public class PatternPolicyTests {
     [InlineData("public static int Sku() => 0;", "does not return Regex")]
     [InlineData("public Regex Sku() => null!;", "is not static")]
     [InlineData("public static Regex Sku(int x) => null!;", "takes parameters")]
-    public void ReferencedPattern_UnusableMember_IsAnError(string member, string reason) {
+    public void ReferencedPattern_UnusableMember_IsAnError(string member, string reason)
+    {
         var source = $$"""
             using System.Text.RegularExpressions;
             using ValidationModules.Constraints;
@@ -162,7 +184,8 @@ public class PatternPolicyTests {
     }
 
     [Fact]
-    public void ReferencedPattern_MissingMember_IsAnError() {
+    public void ReferencedPattern_MissingMember_IsAnError()
+    {
         var source = """
             using ValidationModules.Constraints;
 
@@ -178,16 +201,21 @@ public class PatternPolicyTests {
 
         var result = GeneratorHarness.Run(source, ("PublishAot", "true"));
 
-        Assert.Contains("does not exist", Assert.Single(result.Diagnostics, d => d.Id == "VM1107").GetMessage());
+        Assert.Contains(
+            "does not exist",
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1107").GetMessage()
+        );
     }
 
     // MatchTimeoutMilliseconds - the attribute's only ReDoS mitigation.
 
     [Fact]
-    public void MatchTimeout_IsPassedToTheEmittedRegex() {
+    public void MatchTimeout_IsPassedToTheEmittedRegex()
+    {
         // The property was public, documented, and had exactly one occurrence in src/ - its own
         // declaration. A catastrophic pattern ran to completion however it was set.
-        var result = GeneratorHarness.Run("""
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -196,7 +224,8 @@ public class PatternPolicyTests {
                 [Pattern("^(a+)+$", MatchTimeoutMilliseconds = 250)]
                 public string? Sku { get; init; }
             }
-            """);
+            """
+        );
 
         var emitted = result.Sources["Sample.PetValidator.g.cs"];
 
@@ -204,7 +233,8 @@ public class PatternPolicyTests {
     }
 
     [Fact]
-    public void NoMatchTimeout_KeepsTheSingleArgumentConstructor() {
+    public void NoMatchTimeout_KeepsTheSingleArgumentConstructor()
+    {
         // Zero means no timeout, and the single-argument form is load-bearing: it lets ILC prove
         // RegexOptions.Compiled is never set and trim the RegexCompiler path with it, measured at
         // 713 KB. Honouring the timeout must not cost that where nobody asked for one.

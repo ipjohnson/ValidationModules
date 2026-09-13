@@ -28,60 +28,123 @@ namespace ValidationModules.SourceGenerator;
 /// </para>
 /// </remarks>
 [Generator]
-public sealed class ValidationSourceGenerator : IIncrementalGenerator {
+public sealed class ValidationSourceGenerator : IIncrementalGenerator
+{
+    public void Initialize(IncrementalGeneratorInitializationContext context)
+    {
+        var options = context.AnalyzerConfigOptionsProvider.Select(
+            static (provider, _) =>
+            {
+                provider.GlobalOptions.TryGetValue(
+                    "build_property.ValidationModules_Registration",
+                    out var registration
+                );
+                provider.GlobalOptions.TryGetValue(
+                    "build_property.ValidationModules_FieldNaming",
+                    out var naming
+                );
+                provider.GlobalOptions.TryGetValue(
+                    "build_property.ValidationModules_DataAnnotations",
+                    out var dataAnnotations
+                );
+                provider.GlobalOptions.TryGetValue(
+                    "build_property.ValidationModules_PatternPolicy",
+                    out var patternPolicy
+                );
+                provider.GlobalOptions.TryGetValue(
+                    "build_property.ValidationModules_FailFast",
+                    out var failFast
+                );
+                provider.GlobalOptions.TryGetValue(
+                    "build_property.ValidationModules_CaptureValues",
+                    out var captureValues
+                );
+                provider.GlobalOptions.TryGetValue(
+                    Impl.CodeNaming.BuildProperty,
+                    out var codeNamespace
+                );
+                provider.GlobalOptions.TryGetValue(
+                    Impl.Emitters.GeneratedCodeStyle.BuildProperty,
+                    out var codeStyle
+                );
+                provider.GlobalOptions.TryGetValue("build_property.PublishAot", out var publishAot);
+                provider.GlobalOptions.TryGetValue(
+                    "build_property.IsAotCompatible",
+                    out var aotCompatible
+                );
 
-    public void Initialize(IncrementalGeneratorInitializationContext context) {
-        var options = context.AnalyzerConfigOptionsProvider.Select(static (provider, _) => {
-            provider.GlobalOptions.TryGetValue("build_property.ValidationModules_Registration", out var registration);
-            provider.GlobalOptions.TryGetValue("build_property.ValidationModules_FieldNaming", out var naming);
-            provider.GlobalOptions.TryGetValue("build_property.ValidationModules_DataAnnotations", out var dataAnnotations);
-            provider.GlobalOptions.TryGetValue("build_property.ValidationModules_PatternPolicy", out var patternPolicy);
-            provider.GlobalOptions.TryGetValue("build_property.ValidationModules_FailFast", out var failFast);
-            provider.GlobalOptions.TryGetValue("build_property.ValidationModules_CaptureValues", out var captureValues);
-            provider.GlobalOptions.TryGetValue(Impl.CodeNaming.BuildProperty, out var codeNamespace);
-            provider.GlobalOptions.TryGetValue(Impl.Emitters.GeneratedCodeStyle.BuildProperty, out var codeStyle);
-            provider.GlobalOptions.TryGetValue("build_property.PublishAot", out var publishAot);
-            provider.GlobalOptions.TryGetValue("build_property.IsAotCompatible", out var aotCompatible);
-
-            return new GeneratorOptions(registration, naming, dataAnnotations, patternPolicy, failFast,
-                IsTrue(publishAot) || IsTrue(aotCompatible), codeStyle, captureValues, codeNamespace);
-        });
+                return new GeneratorOptions(
+                    registration,
+                    naming,
+                    dataAnnotations,
+                    patternPolicy,
+                    failFast,
+                    IsTrue(publishAot) || IsTrue(aotCompatible),
+                    codeStyle,
+                    captureValues,
+                    codeNamespace
+                );
+            }
+        );
 
         // Probed once. An IncrementalValueProvider<bool> so downstream stages invalidate only when
         // the answer flips, rather than on every edit to the compilation.
-        var hasDependencyModules = context.CompilationProvider.Select(static (compilation, _) =>
-            compilation.GetTypeByMetadataName(KnownTypes.DependencyModule) is not null);
+        var hasDependencyModules = context.CompilationProvider.Select(
+            static (compilation, _) =>
+                compilation.GetTypeByMetadataName(KnownTypes.DependencyModule) is not null
+        );
 
         // Version lockstep. Projected to an int rather than the Compilation so the stage caches on
         // the answer, not on every edit. Plan §7.5.
-        var runtimeContract = context.CompilationProvider.Select(static (compilation, _) =>
-            EmitterContract.ResolveRuntimeContract(compilation));
+        var runtimeContract = context.CompilationProvider.Select(
+            static (compilation, _) => EmitterContract.ResolveRuntimeContract(compilation)
+        );
 
-        context.RegisterSourceOutput(runtimeContract, static (production, found) => {
-            if (found < EmitterContract.RequiredRuntimeContract) {
-                production.ReportDiagnostic(Diagnostic.Create(
-                    ValidationDiagnostics.RuntimeContractTooOld, Location.None,
-                    EmitterContract.RequiredRuntimeContract, found));
+        context.RegisterSourceOutput(
+            runtimeContract,
+            static (production, found) =>
+            {
+                if (found < EmitterContract.RequiredRuntimeContract)
+                {
+                    production.ReportDiagnostic(
+                        Diagnostic.Create(
+                            ValidationDiagnostics.RuntimeContractTooOld,
+                            Location.None,
+                            EmitterContract.RequiredRuntimeContract,
+                            found
+                        )
+                    );
+                }
             }
-        });
+        );
 
         // An assembly name is not necessarily a valid namespace: "My-App" emitted `namespace My-App;`
         // and broke the consumer's build in generated code.
-        var assemblyNamespace = context.CompilationProvider.Select(static (compilation, _) =>
-            SanitizeNamespace(compilation.AssemblyName));
+        var assemblyNamespace = context.CompilationProvider.Select(
+            static (compilation, _) => SanitizeNamespace(compilation.AssemblyName)
+        );
 
         // Language packs ride AdditionalFiles, so the same feature serves every provenance: a
         // file in the project, one delivered by a package's props, or a pack author's own build.
         // Item order is preserved, and it is the layering order.
-        var languagePackFiles = context.AdditionalTextsProvider
-            .Where(static text => text.Path.EndsWith(".validation-messages.json", StringComparison.OrdinalIgnoreCase))
-            .Select(static (text, token) => new LanguagePackFile(text.Path, text.GetText(token)?.ToString() ?? string.Empty))
+        var languagePackFiles = context
+            .AdditionalTextsProvider.Where(static text =>
+                text.Path.EndsWith(".validation-messages.json", StringComparison.OrdinalIgnoreCase)
+            )
+            .Select(
+                static (text, token) =>
+                    new LanguagePackFile(text.Path, text.GetText(token)?.ToString() ?? string.Empty)
+            )
             .Collect();
 
-        var candidates = context.SyntaxProvider
-            .CreateSyntaxProvider(
-                static (node, _) => node is Microsoft.CodeAnalysis.CSharp.Syntax.TypeDeclarationSyntax,
-                static (syntaxContext, _) => syntaxContext.SemanticModel.GetDeclaredSymbol(syntaxContext.Node) as INamedTypeSymbol)
+        var candidates = context
+            .SyntaxProvider.CreateSyntaxProvider(
+                static (node, _) =>
+                    node is Microsoft.CodeAnalysis.CSharp.Syntax.TypeDeclarationSyntax,
+                static (syntaxContext, _) =>
+                    syntaxContext.SemanticModel.GetDeclaredSymbol(syntaxContext.Node)
+                    as INamedTypeSymbol
+            )
             .Where(static symbol => symbol is not null)
             .Select(static (symbol, _) => symbol!);
 
@@ -94,148 +157,230 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             .Collect()
             .Combine(context.CompilationProvider)
             .Combine(options)
-            .Select(static (input, _) => {
-                // The coarse backstop under the per-target catches inside BuildModels. An exception
-                // that escapes a Select surfaces as a CS8785 warning and the build succeeds with no
-                // generated source at all - in a model-only class library nothing references a
-                // generated symbol, so every validator silently disappears. VM5002 is an error, so
-                // the same defect fails the build instead.
-                try {
-                    return BuildModels(input.Left.Left, input.Left.Right, input.Right);
-                } catch (Exception exception) {
-                    return ImmutableArray.Create(FailureResult("the validation model set", exception));
+            .Select(
+                static (input, _) =>
+                {
+                    // The coarse backstop under the per-target catches inside BuildModels. An exception
+                    // that escapes a Select surfaces as a CS8785 warning and the build succeeds with no
+                    // generated source at all - in a model-only class library nothing references a
+                    // generated symbol, so every validator silently disappears. VM5002 is an error, so
+                    // the same defect fails the build instead.
+                    try
+                    {
+                        return BuildModels(input.Left.Left, input.Left.Right, input.Right);
+                    }
+                    catch (Exception exception)
+                    {
+                        return ImmutableArray.Create(
+                            FailureResult("the validation model set", exception)
+                        );
+                    }
                 }
-            });
+            );
 
         // The settings the validator stage needs, projected together so the stage caches on
         // the tuple rather than re-running on unrelated option edits. Naming rides along for the
         // DataAnnotations bridge: custom rules can report member names at run time, and the
         // emitted namer has to be the policy the literals were baked with.
-        var emitterSettings = options.Select(static (option, _) =>
-            (option.EmitFailFast, option.CodeStyle, option.Naming, option.CaptureValues));
+        var emitterSettings = options.Select(
+            static (option, _) =>
+                (option.EmitFailFast, option.CodeStyle, option.Naming, option.CaptureValues)
+        );
 
-        context.RegisterSourceOutput(models.Combine(emitterSettings), static (production, input) => {
-            var (results, (emitFailFast, codeStyle, naming, captureValues)) = (input.Left, input.Right);
+        context.RegisterSourceOutput(
+            models.Combine(emitterSettings),
+            static (production, input) =>
+            {
+                var (results, (emitFailFast, codeStyle, naming, captureValues)) = (
+                    input.Left,
+                    input.Right
+                );
 
-            // An IDynamicValidator adapter is only worth emitting for an assembly that actually
-            // dispatches dynamically. Registering one per validated type roots every adapter, so
-            // ILC cannot trim them - which would charge every consumer for a mode most never use.
-            // Emitted for all of this assembly's types once any of them needs it, so that a miss
-            // still means "this assembly never registered" rather than "this type had no rules".
-            var dispatchesDynamically = results.Any(result =>
-                result.Model is { } model
-                && model.Properties.Any(property => property.Polymorphism == PolymorphismMode.Runtime));
+                // An IDynamicValidator adapter is only worth emitting for an assembly that actually
+                // dispatches dynamically. Registering one per validated type roots every adapter, so
+                // ILC cannot trim them - which would charge every consumer for a mode most never use.
+                // Emitted for all of this assembly's types once any of them needs it, so that a miss
+                // still means "this assembly never registered" rather than "this type had no rules".
+                var dispatchesDynamically = results.Any(result =>
+                    result.Model is { } model
+                    && model.Properties.Any(property =>
+                        property.Polymorphism == PolymorphismMode.Runtime
+                    )
+                );
 
-            // Built over every model in the compilation, which this loop already has in hand - so
-            // knowing which nested descents come back round costs nothing in incrementality. A
-            // validator on a cycle cannot take its nested validator as a constructor dependency
-            // without making the container refuse to build, and cannot carry the straight-line
-            // IsValid without risking the process on cyclic data.
-            var nesting = NestingGraph.Build(
-                results.Select(result => result.Model).Where(model => model is not null).Select(model => model!));
+                // Built over every model in the compilation, which this loop already has in hand - so
+                // knowing which nested descents come back round costs nothing in incrementality. A
+                // validator on a cycle cannot take its nested validator as a constructor dependency
+                // without making the container refuse to build, and cannot carry the straight-line
+                // IsValid without risking the process on cyclic data.
+                var nesting = NestingGraph.Build(
+                    results
+                        .Select(result => result.Model)
+                        .Where(model => model is not null)
+                        .Select(model => model!)
+                );
 
-            foreach (var result in results) {
-                foreach (var diagnostic in result.Diagnostics) {
-                    production.ReportDiagnostic(diagnostic);
-                }
+                foreach (var result in results)
+                {
+                    foreach (var diagnostic in result.Diagnostics)
+                    {
+                        production.ReportDiagnostic(diagnostic);
+                    }
 
-                if (result.Model is { } model) {
-                    // Per model, so one model that cannot be emitted fails the build with VM5002
-                    // naming it, while every other validator in the compilation is still generated.
-                    try {
-                        production.AddSource(
-                            HintNameFor(model),
-                            new ValidatorEmitter().Emit(
-                                model, dispatchesDynamically, emitFailFast, nesting, codeStyle, naming,
-                                captureValues));
-                    } catch (Exception exception) {
-                        ReportEmitFailure(
-                            production, $"the validator for '{model.QualifiedTypeName}'", exception);
+                    if (result.Model is { } model)
+                    {
+                        // Per model, so one model that cannot be emitted fails the build with VM5002
+                        // naming it, while every other validator in the compilation is still generated.
+                        try
+                        {
+                            production.AddSource(
+                                HintNameFor(model),
+                                new ValidatorEmitter().Emit(
+                                    model,
+                                    dispatchesDynamically,
+                                    emitFailFast,
+                                    nesting,
+                                    codeStyle,
+                                    naming,
+                                    captureValues
+                                )
+                            );
+                        }
+                        catch (Exception exception)
+                        {
+                            ReportEmitFailure(
+                                production,
+                                $"the validator for '{model.QualifiedTypeName}'",
+                                exception
+                            );
+                        }
+                    }
+
+                    if (result.Predicates is { } predicates)
+                    {
+                        production.AddSource(result.PredicateHintName!, predicates);
                     }
                 }
-
-                if (result.Predicates is { } predicates) {
-                    production.AddSource(result.PredicateHintName!, predicates);
-                }
             }
-        });
+        );
 
         context.RegisterSourceOutput(
             languagePackFiles.Combine(assemblyNamespace).Combine(emitterSettings),
-            static (production, input) => {
+            static (production, input) =>
+            {
                 var ((files, ns), settings) = input;
 
-                for (var i = 0; i < files.Length; i++) {
-                    try {
+                for (var i = 0; i < files.Length; i++)
+                {
+                    try
+                    {
                         var outcome = LanguagePackReader.Read(files[i], i);
 
-                        foreach (var diagnostic in outcome.Diagnostics) {
+                        foreach (var diagnostic in outcome.Diagnostics)
+                        {
                             production.ReportDiagnostic(diagnostic);
                         }
 
-                        if (outcome.Model is { } pack) {
+                        if (outcome.Model is { } pack)
+                        {
                             production.AddSource(
-                                pack.HintName, new LanguagePackEmitter().Emit(pack, ns, settings.CodeStyle));
+                                pack.HintName,
+                                new LanguagePackEmitter().Emit(pack, ns, settings.CodeStyle)
+                            );
                         }
-                    } catch (Exception exception) {
+                    }
+                    catch (Exception exception)
+                    {
                         ReportEmitFailure(
-                            production, $"the language pack '{files[i].Path}'", exception);
+                            production,
+                            $"the language pack '{files[i].Path}'",
+                            exception
+                        );
                     }
                 }
-            });
+            }
+        );
 
         var registrationInput = models
-            .SelectMany(static (results, _) => results
-                .Select(result => result.Model)
-                .Where(model => model is not null)
-                .Select(model => model!))
+            .SelectMany(
+                static (results, _) =>
+                    results
+                        .Select(result => result.Model)
+                        .Where(model => model is not null)
+                        .Select(model => model!)
+            )
             .Collect()
             .Combine(hasDependencyModules)
             .Combine(options)
             .Combine(assemblyNamespace)
             .Combine(languagePackFiles);
 
-        context.RegisterSourceOutput(registrationInput, static (production, input) => {
-            var ((((collected, hasDm), generatorOptions), ns), packFiles) = input;
+        context.RegisterSourceOutput(
+            registrationInput,
+            static (production, input) =>
+            {
+                var ((((collected, hasDm), generatorOptions), ns), packFiles) = input;
 
-            // Re-read rather than re-plumbed: the read is deterministic and cheap, and carrying
-            // the models through a second provider would double-report their diagnostics.
-            var languagePacks = new List<LanguagePackModel>(packFiles.Length);
+                // Re-read rather than re-plumbed: the read is deterministic and cheap, and carrying
+                // the models through a second provider would double-report their diagnostics.
+                var languagePacks = new List<LanguagePackModel>(packFiles.Length);
 
-            for (var i = 0; i < packFiles.Length; i++) {
-                if (LanguagePackReader.Read(packFiles[i], i).Model is { } pack) {
-                    languagePacks.Add(pack);
+                for (var i = 0; i < packFiles.Length; i++)
+                {
+                    if (LanguagePackReader.Read(packFiles[i], i).Model is { } pack)
+                    {
+                        languagePacks.Add(pack);
+                    }
+                }
+
+                var mode = generatorOptions.Registration switch
+                {
+                    "DependencyModules" => RegistrationMode.DependencyModules,
+                    "ServiceCollection" => RegistrationMode.ServiceCollection,
+                    "None" => RegistrationMode.None,
+                    _ => hasDm
+                        ? RegistrationMode.DependencyModules
+                        : RegistrationMode.ServiceCollection,
+                };
+
+                // Ordered by name so the emitted table does not reshuffle between builds, which would
+                // otherwise turn every incremental compile into a diff. Namespace first, because the
+                // validator name alone is not unique - two namespaces may each declare a Customer.
+                var ordered = collected
+                    .OrderBy(model => model.Namespace, StringComparer.Ordinal)
+                    .ThenBy(model => model.ValidatorName, StringComparer.Ordinal)
+                    .ToArray();
+
+                var withAdapters = ordered.Any(model =>
+                    model.Properties.Any(property =>
+                        property.Polymorphism == PolymorphismMode.Runtime
+                    )
+                );
+
+                try
+                {
+                    if (
+                        new RegistrationEmitter().Emit(
+                            ordered,
+                            mode,
+                            ns,
+                            generatorOptions.Naming,
+                            withAdapters,
+                            generatorOptions.CodeStyle,
+                            languagePacks
+                        ) is
+                        { } source
+                    )
+                    {
+                        production.AddSource("GeneratedValidatorRegistration.g.cs", source);
+                    }
+                }
+                catch (Exception exception)
+                {
+                    ReportEmitFailure(production, "the validator registration", exception);
                 }
             }
-
-            var mode = generatorOptions.Registration switch {
-                "DependencyModules" => RegistrationMode.DependencyModules,
-                "ServiceCollection" => RegistrationMode.ServiceCollection,
-                "None" => RegistrationMode.None,
-                _ => hasDm ? RegistrationMode.DependencyModules : RegistrationMode.ServiceCollection,
-            };
-
-            // Ordered by name so the emitted table does not reshuffle between builds, which would
-            // otherwise turn every incremental compile into a diff. Namespace first, because the
-            // validator name alone is not unique - two namespaces may each declare a Customer.
-            var ordered = collected
-                .OrderBy(model => model.Namespace, StringComparer.Ordinal)
-                .ThenBy(model => model.ValidatorName, StringComparer.Ordinal)
-                .ToArray();
-
-            var withAdapters = ordered.Any(model =>
-                model.Properties.Any(property => property.Polymorphism == PolymorphismMode.Runtime));
-
-            try {
-                if (new RegistrationEmitter().Emit(
-                        ordered, mode, ns, generatorOptions.Naming, withAdapters,
-                        generatorOptions.CodeStyle, languagePacks) is { } source) {
-                    production.AddSource("GeneratedValidatorRegistration.g.cs", source);
-                }
-            } catch (Exception exception) {
-                ReportEmitFailure(production, "the validator registration", exception);
-            }
-        });
+        );
     }
 
     /// <summary>
@@ -275,8 +420,11 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
     /// the declarations by target and running the model build once per target.
     /// </remarks>
     private static ImmutableArray<ModelResult> BuildModels(
-        ImmutableArray<INamedTypeSymbol> candidates, Compilation compilation, GeneratorOptions options) {
-
+        ImmutableArray<INamedTypeSymbol> candidates,
+        Compilation compilation,
+        GeneratorOptions options
+    )
+    {
         var results = ImmutableArray.CreateBuilder<ModelResult>();
         var declarations = new List<RulesDeclaration>();
 
@@ -284,18 +432,26 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         // rules class later in the candidate list is not accused of having none.
         var declaredTargets = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
 
-        foreach (var candidate in candidates) {
+        foreach (var candidate in candidates)
+        {
             var contract = candidate.AllInterfaces.FirstOrDefault(i =>
-                i.ConstructedFrom.ToDisplayString() == KnownTypes.ValidationRulesForInterface);
+                i.ConstructedFrom.ToDisplayString() == KnownTypes.ValidationRulesForInterface
+            );
 
-            if (contract is { TypeArguments.Length: 1 } &&
-                contract.TypeArguments[0] is INamedTypeSymbol declaredTarget) {
+            if (
+                contract is { TypeArguments.Length: 1 }
+                && contract.TypeArguments[0] is INamedTypeSymbol declaredTarget
+            )
+            {
                 declaredTargets.Add(declaredTarget);
             }
         }
 
         var rulesFrontEnd = new RulesFrontEnd(
-            options.FieldNamer, declaredTargets.Contains, options.CodeNamespace);
+            options.FieldNamer,
+            declaredTargets.Contains,
+            options.CodeNamespace
+        );
         var plain = new List<INamedTypeSymbol>();
         var subtypes = InvertBaseChains(candidates);
 
@@ -304,12 +460,16 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
                 ? found
                 : Array.Empty<(INamedTypeSymbol, int)>();
 
-        foreach (var candidate in candidates) {
+        foreach (var candidate in candidates)
+        {
             var declared = rulesFrontEnd.Build(candidate, compilation);
 
-            if (declared.Count > 0) {
+            if (declared.Count > 0)
+            {
                 declarations.AddRange(declared);
-            } else {
+            }
+            else
+            {
                 plain.Add(candidate);
             }
         }
@@ -317,16 +477,25 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         // Ordinal by name so two rules classes for one type contribute deterministically, with the
         // target as tiebreak - a multi-target class contributes several declarations, and an
         // unstable sort must not reshuffle its regions between builds.
-        declarations.Sort(static (left, right) => {
-            var byClass = string.CompareOrdinal(left.RulesClass.Name, right.RulesClass.Name);
+        declarations.Sort(
+            static (left, right) =>
+            {
+                var byClass = string.CompareOrdinal(left.RulesClass.Name, right.RulesClass.Name);
 
-            return byClass != 0 ? byClass : string.CompareOrdinal(left.Target.Name, right.Target.Name);
-        });
+                return byClass != 0
+                    ? byClass
+                    : string.CompareOrdinal(left.Target.Name, right.Target.Name);
+            }
+        );
 
-        var byTarget = new Dictionary<INamedTypeSymbol, List<RulesDeclaration>>(SymbolEqualityComparer.Default);
+        var byTarget = new Dictionary<INamedTypeSymbol, List<RulesDeclaration>>(
+            SymbolEqualityComparer.Default
+        );
 
-        foreach (var declaration in declarations) {
-            if (!byTarget.TryGetValue(declaration.Target, out var list)) {
+        foreach (var declaration in declarations)
+        {
+            if (!byTarget.TryGetValue(declaration.Target, out var list))
+            {
                 byTarget[declaration.Target] = list = new List<RulesDeclaration>();
             }
 
@@ -335,33 +504,56 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
 
         // One companion file per rules class, whatever it targets: a multi-target class becomes
         // one container of Describe overloads, and one hint name.
-        foreach (var companion in declarations
-                     .GroupBy(static declaration => declaration.RulesClass, SymbolEqualityComparer.Default)) {
+        foreach (
+            var companion in declarations.GroupBy(
+                static declaration => declaration.RulesClass,
+                SymbolEqualityComparer.Default
+            )
+        )
+        {
             var rulesClass = (INamedTypeSymbol)companion.Key!;
 
-            try {
-                results.Add(new ModelResult(
-                    null,
-                    ImmutableArray<Diagnostic>.Empty,
-                    new RegionEmitter().EmitRegion(companion.ToList(), options.CodeStyle),
-                    HintSafe($"{QualifiedName(rulesClass)}_Rules.g.cs")));
-            } catch (Exception exception) {
-                results.Add(FailureResult($"the region for '{QualifiedName(rulesClass)}'", exception));
+            try
+            {
+                results.Add(
+                    new ModelResult(
+                        null,
+                        ImmutableArray<Diagnostic>.Empty,
+                        new RegionEmitter().EmitRegion(companion.ToList(), options.CodeStyle),
+                        HintSafe($"{QualifiedName(rulesClass)}_Rules.g.cs")
+                    )
+                );
+            }
+            catch (Exception exception)
+            {
+                results.Add(
+                    FailureResult($"the region for '{QualifiedName(rulesClass)}'", exception)
+                );
             }
         }
 
         // Fragment containers are shared across every rules class that called into them, so they
         // are emitted once per pass, after every candidate has been read.
-        foreach (var container in rulesFrontEnd.FragmentContainers) {
-            try {
-                if (new RegionEmitter().EmitFragments(container, options.CodeStyle) is { } fragments) {
-                    var hint = container.Namespace.Length == 0
-                        ? $"{container.Name}.g.cs"
-                        : HintSafe($"{container.Namespace}.{container.Name}.g.cs");
+        foreach (var container in rulesFrontEnd.FragmentContainers)
+        {
+            try
+            {
+                if (
+                    new RegionEmitter().EmitFragments(container, options.CodeStyle) is { } fragments
+                )
+                {
+                    var hint =
+                        container.Namespace.Length == 0
+                            ? $"{container.Name}.g.cs"
+                            : HintSafe($"{container.Namespace}.{container.Name}.g.cs");
 
-                    results.Add(new ModelResult(null, ImmutableArray<Diagnostic>.Empty, fragments, hint));
+                    results.Add(
+                        new ModelResult(null, ImmutableArray<Diagnostic>.Empty, fragments, hint)
+                    );
                 }
-            } catch (Exception exception) {
+            }
+            catch (Exception exception)
+            {
                 results.Add(FailureResult($"the fragments of '{container.Name}'", exception));
             }
         }
@@ -369,38 +561,65 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         // Snapshotted before the loop below starts removing from byTarget, because VM1501 asks
         // whether a *nested* type has rules declared anywhere - a question whose answer must not
         // depend on how far through the candidates we happen to be.
-        var ruleTargets = new HashSet<INamedTypeSymbol>(byTarget.Keys, SymbolEqualityComparer.Default);
+        var ruleTargets = new HashSet<INamedTypeSymbol>(
+            byTarget.Keys,
+            SymbolEqualityComparer.Default
+        );
         bool HasRulesClass(INamedTypeSymbol type) => ruleTargets.Contains(type);
 
-        foreach (var candidate in plain) {
+        foreach (var candidate in plain)
+        {
             byTarget.TryGetValue(candidate, out var declared);
             byTarget.Remove(candidate);
 
-            try {
-                if (Build(candidate, declared, compilation, options, HasRulesClass, SubtypesOf) is { } result) {
+            try
+            {
+                if (
+                    Build(candidate, declared, compilation, options, HasRulesClass, SubtypesOf) is
+                    { } result
+                )
+                {
                     results.Add(result);
                 }
-            } catch (Exception exception) {
-                results.Add(FailureResult($"the model for '{QualifiedName(candidate)}'", exception));
+            }
+            catch (Exception exception)
+            {
+                results.Add(
+                    FailureResult($"the model for '{QualifiedName(candidate)}'", exception)
+                );
             }
         }
 
         // Whatever is left targets a type this compilation does not declare - the case the feature
         // exists for. Its model has no attributes to merge with, only the rules class's own.
-        foreach (var pair in byTarget) {
+        foreach (var pair in byTarget)
+        {
             var target = (INamedTypeSymbol)pair.Key;
 
-            try {
-                if (Build(target, pair.Value, compilation, options, HasRulesClass, SubtypesOf) is { } result) {
+            try
+            {
+                if (
+                    Build(target, pair.Value, compilation, options, HasRulesClass, SubtypesOf) is
+                    { } result
+                )
+                {
                     results.Add(result);
                 }
-            } catch (Exception exception) {
+            }
+            catch (Exception exception)
+            {
                 results.Add(FailureResult($"the model for '{QualifiedName(target)}'", exception));
             }
         }
 
-        results.AddRange(rulesFrontEnd.Diagnostics.Select(static diagnostic =>
-            new ModelResult(null, ImmutableArray.Create(diagnostic), null, null)));
+        results.AddRange(
+            rulesFrontEnd.Diagnostics.Select(static diagnostic => new ModelResult(
+                null,
+                ImmutableArray.Create(diagnostic),
+                null,
+                null
+            ))
+        );
 
         return results.ToImmutable();
     }
@@ -411,32 +630,49 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         Compilation compilation,
         GeneratorOptions options,
         Func<INamedTypeSymbol, bool> hasRulesClass,
-        Func<INamedTypeSymbol, IReadOnlyList<(INamedTypeSymbol Type, int Depth)>> subtypesOf) {
-
+        Func<INamedTypeSymbol, IReadOnlyList<(INamedTypeSymbol Type, int Depth)>> subtypesOf
+    )
+    {
         var frontEnd = new AttributeFrontEnd(
-            compilation, options.CompileDataAnnotations, options.FieldNamer, options.ResolvedPatternPolicy,
-            options.CodeNamespace);
+            compilation,
+            options.CompileDataAnnotations,
+            options.FieldNamer,
+            options.ResolvedPatternPolicy,
+            options.CodeNamespace
+        );
 
         var model = frontEnd.Build(
             target,
             static type => $"{type.Name}Validator",
             // A region's descents merge as nesting-only rules, so the validator grows the injected
             // machinery the region call passes; the walk itself lives in the region's text.
-            declared?.SelectMany(static declaration => declaration.Dependencies
-                .Select(static dependency => new DeclaredRule(
-                    dependency.Property, null,
-                    null,
-                    dependency.Elements ? Nesting.Elements : Nesting.Object)))
+            declared
+                ?.SelectMany(static declaration =>
+                    declaration.Dependencies.Select(static dependency => new DeclaredRule(
+                        dependency.Property,
+                        null,
+                        null,
+                        dependency.Elements ? Nesting.Elements : Nesting.Object
+                    ))
+                )
                 .ToArray(),
             declared?.SelectMany(static declaration => declaration.AppliedRules).ToArray(),
             hasRulesClass,
             subtypesOf,
-            declared?.Select(static declaration => new RegionModel(
-                CompanionQualifiedName(declaration.RulesClass),
-                "Describe",
-                new EquatableArray<string>(ImmutableArray.CreateRange(
-                    declaration.Dependencies.Select(static dependency => dependency.AccessorName)))))
-                .ToArray());
+            declared
+                ?.Select(static declaration => new RegionModel(
+                    CompanionQualifiedName(declaration.RulesClass),
+                    "Describe",
+                    new EquatableArray<string>(
+                        ImmutableArray.CreateRange(
+                            declaration.Dependencies.Select(static dependency =>
+                                dependency.AccessorName
+                            )
+                        )
+                    )
+                ))
+                .ToArray()
+        );
 
         var diagnostics = frontEnd.Diagnostics.ToImmutableArray();
 
@@ -468,29 +704,41 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
     /// or not the two reach the target by the same route.
     /// </para>
     /// </remarks>
-    private static Dictionary<INamedTypeSymbol, List<(INamedTypeSymbol Type, int Depth)>> InvertBaseChains(
-        ImmutableArray<INamedTypeSymbol> candidates) {
+    private static Dictionary<
+        INamedTypeSymbol,
+        List<(INamedTypeSymbol Type, int Depth)>
+    > InvertBaseChains(ImmutableArray<INamedTypeSymbol> candidates)
+    {
+        var index = new Dictionary<INamedTypeSymbol, List<(INamedTypeSymbol, int)>>(
+            SymbolEqualityComparer.Default
+        );
 
-        var index = new Dictionary<INamedTypeSymbol, List<(INamedTypeSymbol, int)>>(SymbolEqualityComparer.Default);
-
-        foreach (var candidate in candidates) {
+        foreach (var candidate in candidates)
+        {
             var depth = 0;
 
-            for (INamedTypeSymbol? ancestor = candidate.BaseType;
-                 ancestor is not null && ancestor.SpecialType != SpecialType.System_Object;
-                 ancestor = ancestor.BaseType) {
+            for (
+                INamedTypeSymbol? ancestor = candidate.BaseType;
+                ancestor is not null && ancestor.SpecialType != SpecialType.System_Object;
+                ancestor = ancestor.BaseType
+            )
+            {
                 depth++;
             }
 
-            for (INamedTypeSymbol? ancestor = candidate.BaseType;
-                 ancestor is not null && ancestor.SpecialType != SpecialType.System_Object;
-                 ancestor = ancestor.BaseType) {
+            for (
+                INamedTypeSymbol? ancestor = candidate.BaseType;
+                ancestor is not null && ancestor.SpecialType != SpecialType.System_Object;
+                ancestor = ancestor.BaseType
+            )
+            {
                 Add(index, ancestor, candidate, depth);
             }
 
             // Interfaces are dispatch targets too - a [ValidateNested] IPayment is as ordinary as a
             // [ValidateNested] Payment.
-            foreach (var contract in candidate.AllInterfaces) {
+            foreach (var contract in candidate.AllInterfaces)
+            {
                 Add(index, contract, candidate, depth);
             }
         }
@@ -502,9 +750,11 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         Dictionary<INamedTypeSymbol, List<(INamedTypeSymbol, int)>> index,
         INamedTypeSymbol ancestor,
         INamedTypeSymbol candidate,
-        int depth) {
-
-        if (!index.TryGetValue(ancestor, out var list)) {
+        int depth
+    )
+    {
+        if (!index.TryGetValue(ancestor, out var list))
+        {
             index[ancestor] = list = new List<(INamedTypeSymbol, int)>();
         }
 
@@ -520,7 +770,8 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         ValidatedTypeModel? Model,
         ImmutableArray<Diagnostic> Diagnostics,
         string? Predicates,
-        string? PredicateHintName);
+        string? PredicateHintName
+    );
 
     /// <summary>
     /// An unhandled exception in a stage, reported as VM5002 at Error severity.
@@ -533,52 +784,75 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
     /// every model silently validates nothing.
     /// </remarks>
     private static void ReportEmitFailure(
-        SourceProductionContext production, string what, Exception exception) =>
-        production.ReportDiagnostic(FailureDiagnostic(what, exception));
+        SourceProductionContext production,
+        string what,
+        Exception exception
+    ) => production.ReportDiagnostic(FailureDiagnostic(what, exception));
 
     private static ModelResult FailureResult(string what, Exception exception) =>
         new(null, ImmutableArray.Create(FailureDiagnostic(what, exception)), null, null);
 
     private static Diagnostic FailureDiagnostic(string what, Exception exception) =>
         Diagnostic.Create(
-            ValidationDiagnostics.GeneratorFailed, Location.None,
-            what, exception.GetType().Name, exception.Message);
+            ValidationDiagnostics.GeneratorFailed,
+            Location.None,
+            what,
+            exception.GetType().Name,
+            exception.Message
+        );
 
-    private static string SanitizeNamespace(string? assemblyName) {
-        if (string.IsNullOrEmpty(assemblyName)) {
+    private static string SanitizeNamespace(string? assemblyName)
+    {
+        if (string.IsNullOrEmpty(assemblyName))
+        {
             return "Generated";
         }
 
         var builder = new System.Text.StringBuilder(assemblyName!.Length);
 
-        foreach (var part in assemblyName.Split('.')) {
-            if (part.Length == 0) {
+        foreach (var part in assemblyName.Split('.'))
+        {
+            if (part.Length == 0)
+            {
                 continue;
             }
 
-            if (builder.Length > 0) {
+            if (builder.Length > 0)
+            {
                 builder.Append('.');
             }
 
-            if (!char.IsLetter(part[0]) && part[0] != '_') {
+            if (!char.IsLetter(part[0]) && part[0] != '_')
+            {
                 builder.Append('_');
             }
 
-            foreach (var character in part) {
-                builder.Append(char.IsLetterOrDigit(character) || character == '_' ? character : '_');
+            foreach (var character in part)
+            {
+                builder.Append(
+                    char.IsLetterOrDigit(character) || character == '_' ? character : '_'
+                );
             }
         }
 
         return builder.Length == 0 ? "Generated" : builder.ToString();
     }
 
-    private static bool IsTrue(string? value) => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+    private static bool IsTrue(string? value) =>
+        string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
 
     private sealed record GeneratorOptions(
-        string? Registration, string? Naming, string? DataAnnotations, string? PatternPolicySetting,
-        string? FailFastSetting, bool IsAotFacing, string? CodeStyleSetting = null,
-        string? CaptureValuesSetting = null, string? CodeNamespace = null) {
-
+        string? Registration,
+        string? Naming,
+        string? DataAnnotations,
+        string? PatternPolicySetting,
+        string? FailFastSetting,
+        bool IsAotFacing,
+        string? CodeStyleSetting = null,
+        string? CaptureValuesSetting = null,
+        string? CodeNamespace = null
+    )
+    {
         /// <summary>
         /// Whether report sites pass the failing member as <c>ValidationError.Value</c>. On by
         /// default - the value is a reference to data the application already holds, and no
@@ -588,8 +862,8 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         /// switch cannot give. Both spellings accepted for the same reason FailFast takes both.
         /// </summary>
         public bool CaptureValues =>
-            !string.Equals(CaptureValuesSetting, "Disabled", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(CaptureValuesSetting, "false", StringComparison.OrdinalIgnoreCase);
+            !string.Equals(CaptureValuesSetting, "Disabled", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(CaptureValuesSetting, "false", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
         /// The brace style generated files are written in, from the shared
@@ -604,12 +878,14 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         /// catching that is the difference between the diagnostic landing on the library's build
         /// and landing on somebody else's publish.
         /// </summary>
-        public PatternPolicy ResolvedPatternPolicy => PatternPolicySetting switch {
-            "Error" => PatternPolicy.Error,
-            "Warn" => PatternPolicy.Warn,
-            "Allow" => PatternPolicy.Allow,
-            _ => IsAotFacing ? PatternPolicy.Error : PatternPolicy.Allow,
-        };
+        public PatternPolicy ResolvedPatternPolicy =>
+            PatternPolicySetting switch
+            {
+                "Error" => PatternPolicy.Error,
+                "Warn" => PatternPolicy.Warn,
+                "Allow" => PatternPolicy.Allow,
+                _ => IsAotFacing ? PatternPolicy.Error : PatternPolicy.Allow,
+            };
 
         public bool CompileDataAnnotations =>
             !string.Equals(DataAnnotations, "Ignore", StringComparison.OrdinalIgnoreCase);
@@ -637,14 +913,16 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         /// </para>
         /// </remarks>
         public bool EmitFailFast =>
-            !string.Equals(FailFastSetting, "Disabled", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(FailFastSetting, "false", StringComparison.OrdinalIgnoreCase);
+            !string.Equals(FailFastSetting, "Disabled", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(FailFastSetting, "false", StringComparison.OrdinalIgnoreCase);
 
-        public Func<string, string> FieldNamer => Naming switch {
-            "PascalCase" or "AsDeclared" => static name => name,
-            "SnakeCase" => SnakeCase,
-            _ => CamelCase,
-        };
+        public Func<string, string> FieldNamer =>
+            Naming switch
+            {
+                "PascalCase" or "AsDeclared" => static name => name,
+                "SnakeCase" => SnakeCase,
+                _ => CamelCase,
+            };
 
         /// <summary>
         /// <c>JsonNamingPolicy.CamelCase</c>'s algorithm, which is what the runtime's
@@ -653,22 +931,28 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
         /// through the adapter, so a divergence gives the same property two spellings depending on
         /// which engine found the error.
         /// </summary>
-        private static string CamelCase(string name) {
-            if (name.Length == 0 || !char.IsUpper(name[0])) {
+        private static string CamelCase(string name)
+        {
+            if (name.Length == 0 || !char.IsUpper(name[0]))
+            {
                 return name;
             }
 
             var characters = name.ToCharArray();
 
-            for (var i = 0; i < characters.Length; i++) {
-                if (i == 1 && !char.IsUpper(characters[i])) {
+            for (var i = 0; i < characters.Length; i++)
+            {
+                if (i == 1 && !char.IsUpper(characters[i]))
+                {
                     break;
                 }
 
                 var hasNext = i + 1 < characters.Length;
 
-                if (i > 0 && hasNext && !char.IsUpper(characters[i + 1])) {
-                    if (characters[i + 1] == ' ') {
+                if (i > 0 && hasNext && !char.IsUpper(characters[i + 1]))
+                {
+                    if (characters[i + 1] == ' ')
+                    {
                         characters[i] = char.ToLowerInvariant(characters[i]);
                     }
 
@@ -681,22 +965,32 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator {
             return new string(characters);
         }
 
-        private static string SnakeCase(string name) {
+        private static string SnakeCase(string name)
+        {
             var builder = new System.Text.StringBuilder(name.Length + 4);
 
-            for (var i = 0; i < name.Length; i++) {
+            for (var i = 0; i < name.Length; i++)
+            {
                 var character = name[i];
 
-                if (char.IsUpper(character)) {
-                    var startsWord = i > 0 &&
-                        (!char.IsUpper(name[i - 1]) || (i + 1 < name.Length && char.IsLower(name[i + 1])));
+                if (char.IsUpper(character))
+                {
+                    var startsWord =
+                        i > 0
+                        && (
+                            !char.IsUpper(name[i - 1])
+                            || (i + 1 < name.Length && char.IsLower(name[i + 1]))
+                        );
 
-                    if (startsWord) {
+                    if (startsWord)
+                    {
                         builder.Append('_');
                     }
 
                     builder.Append(char.ToLowerInvariant(character));
-                } else {
+                }
+                else
+                {
                     builder.Append(character);
                 }
             }

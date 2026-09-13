@@ -3,17 +3,19 @@ using Xunit;
 
 namespace ValidationModules.Runtime.Tests;
 
-public class ValidationErrorCollectorTests {
-
+public class ValidationErrorCollectorTests
+{
     [Fact]
-    public void ToResult_NoErrors_ReturnsTheSharedValidInstance() {
+    public void ToResult_NoErrors_ReturnsTheSharedValidInstance()
+    {
         var collector = new ValidationErrorCollector();
 
         Assert.Same(ValidationResult.Valid, collector.ToResult());
     }
 
     [Fact]
-    public void Reset_ClearsErrors() {
+    public void Reset_ClearsErrors()
+    {
         var collector = new ValidationErrorCollector();
         new ValidationContext(collector).Push("home").Report("postalCode", "required", "x");
 
@@ -24,21 +26,27 @@ public class ValidationErrorCollectorTests {
     }
 
     [Fact]
-    public void Reset_ReusedAcrossManyPasses_KeepsPathsCorrect() {
+    public void Reset_ReusedAcrossManyPasses_KeepsPathsCorrect()
+    {
         var collector = new ValidationErrorCollector();
 
-        for (var pass = 0; pass < 50; pass++) {
+        for (var pass = 0; pass < 50; pass++)
+        {
             collector.Reset();
 
             var context = new ValidationContext(collector);
             context.PushIndex("toys", pass).Push("owner").Report("name", "required", "x");
 
-            Assert.Equal($"toys[{pass}].owner.name", Assert.Single(collector.ToResult().Errors).Field);
+            Assert.Equal(
+                $"toys[{pass}].owner.name",
+                Assert.Single(collector.ToResult().Errors).Field
+            );
         }
     }
 
     [Fact]
-    public void ToResult_SnapshotsRatherThanWrapping() {
+    public void ToResult_SnapshotsRatherThanWrapping()
+    {
         // A pooled collector resets under a result the caller is still holding. If ToResult wrapped
         // the live list instead of copying it, that result would silently empty.
         var collector = new ValidationErrorCollector();
@@ -51,13 +59,15 @@ public class ValidationErrorCollectorTests {
     }
 
     [Fact]
-    public void Push_ManySequentialSiblings_EachKeepsItsOwnPath() {
+    public void Push_ManySequentialSiblings_EachKeepsItsOwnPath()
+    {
         var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
 
         // One at a time, as a generated loop does: the buffer slot for this depth is rewritten per
         // iteration and read before the next iteration touches it.
-        for (var i = 0; i < 100; i++) {
+        for (var i = 0; i < 100; i++)
+        {
             context.PushIndex("toys", i).Report("name", "required", "x");
         }
 
@@ -68,17 +78,20 @@ public class ValidationErrorCollectorTests {
     }
 
     [Fact]
-    public void Reset_RepeatedPasses_KeepOrderAndCarryNothingOver() {
+    public void Reset_RepeatedPasses_KeepOrderAndCarryNothingOver()
+    {
         // The chain is stored newest-first and unwound by ToResult, so declaration order depends on
         // that reversal rather than on the order things were linked. Getting it wrong shows up as
         // reversed errors or a stale one reappearing, neither of which a single-pass test catches.
         var collector = new ValidationErrorCollector();
 
-        for (var pass = 0; pass < 5; pass++) {
+        for (var pass = 0; pass < 5; pass++)
+        {
             collector.Reset();
 
             var context = new ValidationContext(collector);
-            for (var i = 0; i < 4 + pass; i++) {
+            for (var i = 0; i < 4 + pass; i++)
+            {
                 context.Report($"field{i}", "required", $"pass {pass}");
             }
 
@@ -87,17 +100,20 @@ public class ValidationErrorCollectorTests {
             Assert.Equal(4 + pass, errors.Count);
             Assert.Equal(
                 Enumerable.Range(0, 4 + pass).Select(i => $"field{i}"),
-                errors.Select(error => error.Field));
+                errors.Select(error => error.Field)
+            );
             Assert.All(errors, error => Assert.Equal($"pass {pass}", error.Message));
         }
     }
 
     [Fact]
-    public void Reset_ShrinkingPass_DoesNotLeakTheLongerPassBehindIt() {
+    public void Reset_ShrinkingPass_DoesNotLeakTheLongerPassBehindIt()
+    {
         var collector = new ValidationErrorCollector();
         var first = new ValidationContext(collector);
 
-        for (var i = 0; i < 10; i++) {
+        for (var i = 0; i < 10; i++)
+        {
             first.Report($"field{i}", "required", "x");
         }
 
@@ -109,7 +125,8 @@ public class ValidationErrorCollectorTests {
     }
 
     [Fact]
-    public void Add_PrePathedError_IsTakenAsGiven() {
+    public void Add_PrePathedError_IsTakenAsGiven()
+    {
         var collector = new ValidationErrorCollector();
 
         collector.Add(new ValidationError("Home.PostalCode", "required", "x"));
@@ -118,7 +135,8 @@ public class ValidationErrorCollectorTests {
     }
 
     [Fact]
-    public async Task ConcurrentValidations_EachWithItsOwnCollector_RecordEveryPathExactly() {
+    public async Task ConcurrentValidations_EachWithItsOwnCollector_RecordEveryPathExactly()
+    {
         // A pass is single-threaded: its contexts share one depth-indexed path buffer, so two
         // branches walking at once would overwrite each other's segments. Concurrency is supported
         // by giving each branch its own collector and merging, which also measured faster than
@@ -127,20 +145,29 @@ public class ValidationErrorCollectorTests {
 
         using var gate = new SemaphoreSlim(0);
 
-        var tasks = Enumerable.Range(0, branches).Select(i => Task.Run(async () => {
-            await gate.WaitAsync(TestContext.Current.CancellationToken);
+        var tasks = Enumerable
+            .Range(0, branches)
+            .Select(i =>
+                Task.Run(async () =>
+                {
+                    await gate.WaitAsync(TestContext.Current.CancellationToken);
 
-            var collector = new ValidationErrorCollector();
-            var context = new ValidationContext(collector);
-            context.PushIndex("toys", i).Report("name", "required", "x");
+                    var collector = new ValidationErrorCollector();
+                    var context = new ValidationContext(collector);
+                    context.PushIndex("toys", i).Report("name", "required", "x");
 
-            return collector.ToResult();
-        })).ToArray();
+                    return collector.ToResult();
+                })
+            )
+            .ToArray();
 
         gate.Release(branches);
         var results = await Task.WhenAll(tasks);
 
-        var fields = results.SelectMany(result => result.Errors).Select(error => error.Field).ToArray();
+        var fields = results
+            .SelectMany(result => result.Errors)
+            .Select(error => error.Field)
+            .ToArray();
 
         Assert.Equal(branches, fields.Length);
         Assert.Equal(branches, fields.Distinct().Count());

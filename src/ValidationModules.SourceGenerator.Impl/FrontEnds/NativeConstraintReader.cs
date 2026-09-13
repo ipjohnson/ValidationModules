@@ -6,50 +6,64 @@ using ValidationModules.SourceGenerator.Impl.Models;
 namespace ValidationModules.SourceGenerator.Impl.FrontEnds;
 
 /// <summary>Reads a <c>ValidationModules.Constraints</c> attribute into the IR.</summary>
-public static class NativeConstraintReader {
-
-    public static ConstraintModel? Read(AttributeData attribute, string attributeName) {
+public static class NativeConstraintReader
+{
+    public static ConstraintModel? Read(AttributeData attribute, string attributeName)
+    {
         var common = ReadCommon(attribute);
 
-        switch (attributeName) {
+        switch (attributeName)
+        {
             case "RequiredAttribute":
-                return common with {
+                return common with
+                {
                     Kind = ConstraintKind.Required,
-                    AllowEmptyStrings = Named(attribute, "AllowEmptyStrings") is bool allow && allow,
+                    AllowEmptyStrings =
+                        Named(attribute, "AllowEmptyStrings") is bool allow && allow,
                 };
 
             case "StringLengthAttribute":
-            case "ItemCountAttribute": {
-                var kind = attributeName == "StringLengthAttribute" ? ConstraintKind.StringLength : ConstraintKind.ItemCount;
+            case "ItemCountAttribute":
+            {
+                var kind =
+                    attributeName == "StringLengthAttribute"
+                        ? ConstraintKind.StringLength
+                        : ConstraintKind.ItemCount;
                 var (min, max) = ReadBounds(attribute);
                 return common with { Kind = kind, Min = min, Max = max };
             }
 
-            case "RangeAttribute": {
+            case "RangeAttribute":
+            {
                 var args = attribute.ConstructorArguments;
-                if (args.Length is not (0 or 2)) {
+                if (args.Length is not (0 or 2))
+                {
                     return null;
                 }
 
                 string? min = null;
                 string? max = null;
 
-                if (args.Length == 2) {
+                if (args.Length == 2)
+                {
                     min = Literal(args[0]);
                     max = Literal(args[1]);
                 }
 
                 // Named wins where set, the same arrangement ReadBounds has. A null bound stays
                 // null rather than becoming the type's extreme - see RangeAttribute's own remarks.
-                if (NamedConstant(attribute, "Min") is { IsNull: false } namedMin) {
+                if (NamedConstant(attribute, "Min") is { IsNull: false } namedMin)
+                {
                     min = Literal(namedMin);
                 }
 
-                if (NamedConstant(attribute, "Max") is { IsNull: false } namedMax) {
+                if (NamedConstant(attribute, "Max") is { IsNull: false } namedMax)
+                {
                     max = Literal(namedMax);
                 }
 
-                return common with {
+                return common with
+                {
                     Kind = ConstraintKind.Range,
                     Min = min,
                     Max = max,
@@ -58,15 +72,21 @@ public static class NativeConstraintReader {
                 };
             }
 
-            case "MultipleOfAttribute": {
+            case "MultipleOfAttribute":
+            {
                 var args = attribute.ConstructorArguments;
-                if (args.Length != 1) {
+                if (args.Length != 1)
+                {
                     return null;
                 }
 
                 // Carried through as written. Resolving it needs the member's type, which is the
                 // front end's to supply - the same division of labour [Range] bounds already have.
-                return common with { Kind = ConstraintKind.MultipleOf, Divisor = Literal(args[0]) };
+                return common with
+                {
+                    Kind = ConstraintKind.MultipleOf,
+                    Divisor = Literal(args[0]),
+                };
             }
 
             // Presence is the constraint; there is nothing to read.
@@ -78,42 +98,59 @@ public static class NativeConstraintReader {
             case "EnumDefinedAttribute":
                 return common with { Kind = ConstraintKind.EnumDefined };
 
-            case "PatternAttribute": {
+            case "PatternAttribute":
+            {
                 var args = attribute.ConstructorArguments;
 
                 // The reference form. The member is resolved and checked in the front end, which
                 // has the symbols; here it is only carried through.
-                if (args.Length == 2 && args[0].Value is INamedTypeSymbol && args[1].Value is string) {
+                if (
+                    args.Length == 2
+                    && args[0].Value is INamedTypeSymbol
+                    && args[1].Value is string
+                )
+                {
                     return common with { Kind = ConstraintKind.Pattern };
                 }
 
-                if (args.Length != 1 || args[0].Value is not string pattern) {
+                if (args.Length != 1 || args[0].Value is not string pattern)
+                {
                     return null;
                 }
 
-                return common with {
+                return common with
+                {
                     Kind = ConstraintKind.Pattern,
                     Pattern = pattern,
                     Anchored = Named(attribute, "Anchored") is bool anchored && anchored,
                     RegexOptions = Named(attribute, "Options") is int options ? options : 0,
-                    MatchTimeoutMilliseconds =
-                        Named(attribute, "MatchTimeoutMilliseconds") is int timeout ? timeout : 0,
+                    MatchTimeoutMilliseconds = Named(attribute, "MatchTimeoutMilliseconds")
+                        is int timeout
+                        ? timeout
+                        : 0,
                 };
             }
 
             case "AllowedValuesAttribute":
-            case "DeniedValuesAttribute": {
-                var declared = attribute.ConstructorArguments.Length == 1 &&
-                               attribute.ConstructorArguments[0].Kind == TypedConstantKind.Array
-                    ? attribute.ConstructorArguments[0].Values
-                    : ImmutableArray<TypedConstant>.Empty;
+            case "DeniedValuesAttribute":
+            {
+                var declared =
+                    attribute.ConstructorArguments.Length == 1
+                    && attribute.ConstructorArguments[0].Kind == TypedConstantKind.Array
+                        ? attribute.ConstructorArguments[0].Values
+                        : ImmutableArray<TypedConstant>.Empty;
 
                 // [DeniedValues] is the same membership check negated - one kind, one code, the
                 // arrangement the DataAnnotations bridge already reads the BCL pair into.
-                return common with {
+                return common with
+                {
                     Kind = ConstraintKind.AllowedValues,
-                    Values = new EquatableArray<string>(declared.Select(Literal).ToImmutableArray()),
-                    ValueDisplays = new EquatableArray<string>(declared.Select(Display).ToImmutableArray()),
+                    Values = new EquatableArray<string>(
+                        declared.Select(Literal).ToImmutableArray()
+                    ),
+                    ValueDisplays = new EquatableArray<string>(
+                        declared.Select(Display).ToImmutableArray()
+                    ),
                     Negated = attributeName == "DeniedValuesAttribute",
                 };
             }
@@ -136,14 +173,20 @@ public static class NativeConstraintReader {
             case "Base64StringAttribute":
                 return common with { Kind = ConstraintKind.Base64 };
 
-            case "FileExtensionsAttribute": {
+            case "FileExtensionsAttribute":
+            {
                 var extensions = DataAnnotationsConstraintReader.NormalizedFileExtensions(
-                    Named(attribute, "Extensions") as string);
+                    Named(attribute, "Extensions") as string
+                );
 
-                return common with {
+                return common with
+                {
                     Kind = ConstraintKind.FileExtension,
                     Values = new EquatableArray<string>(
-                        extensions.Select(e => SymbolDisplay.FormatLiteral(e, quote: true)).ToImmutableArray()),
+                        extensions
+                            .Select(e => SymbolDisplay.FormatLiteral(e, quote: true))
+                            .ToImmutableArray()
+                    ),
                     ValueDisplays = new EquatableArray<string>(extensions),
                 };
             }
@@ -154,29 +197,35 @@ public static class NativeConstraintReader {
         }
     }
 
-    private static ConstraintModel ReadCommon(AttributeData attribute) => new(
-        ConstraintKind.Required,
-        Code: Named(attribute, "Code") as string,
-        Message: Named(attribute, "Message") as string,
-        WhenMember: Named(attribute, "When") as string,
-        UnlessMember: Named(attribute, "Unless") as string);
+    private static ConstraintModel ReadCommon(AttributeData attribute) =>
+        new(
+            ConstraintKind.Required,
+            Code: Named(attribute, "Code") as string,
+            Message: Named(attribute, "Message") as string,
+            WhenMember: Named(attribute, "When") as string,
+            UnlessMember: Named(attribute, "Unless") as string
+        );
 
-    private static (string Min, string Max) ReadBounds(AttributeData attribute) {
+    private static (string Min, string Max) ReadBounds(AttributeData attribute)
+    {
         // Positional (min, max) and the named Min/Max form are both legal; named wins where set,
         // because the parameterless constructor is what makes declaring only one bound readable.
         var min = "0";
         var max = int.MaxValue.ToString();
 
-        if (attribute.ConstructorArguments.Length == 2) {
+        if (attribute.ConstructorArguments.Length == 2)
+        {
             min = Literal(attribute.ConstructorArguments[0]);
             max = Literal(attribute.ConstructorArguments[1]);
         }
 
-        if (Named(attribute, "Min") is int namedMin) {
+        if (Named(attribute, "Min") is int namedMin)
+        {
             min = namedMin.ToString();
         }
 
-        if (Named(attribute, "Max") is int namedMax) {
+        if (Named(attribute, "Max") is int namedMax)
+        {
             max = namedMax.ToString();
         }
 
@@ -191,9 +240,12 @@ public static class NativeConstraintReader {
     /// what <see cref="Literal"/> needs to render a bound: an <c>object</c>-typed <c>Min</c> holding
     /// the string "0.00" and one holding the double 0.0 unwrap to values that render differently.
     /// </remarks>
-    internal static TypedConstant? NamedConstant(AttributeData attribute, string name) {
-        foreach (var argument in attribute.NamedArguments) {
-            if (argument.Key == name) {
+    internal static TypedConstant? NamedConstant(AttributeData attribute, string name)
+    {
+        foreach (var argument in attribute.NamedArguments)
+        {
+            if (argument.Key == name)
+            {
                 return argument.Value;
             }
         }
@@ -201,9 +253,12 @@ public static class NativeConstraintReader {
         return null;
     }
 
-    internal static object? Named(AttributeData attribute, string name) {
-        foreach (var argument in attribute.NamedArguments) {
-            if (argument.Key == name) {
+    internal static object? Named(AttributeData attribute, string name)
+    {
+        foreach (var argument in attribute.NamedArguments)
+        {
+            if (argument.Key == name)
+            {
                 return argument.Value.Value;
             }
         }
@@ -231,12 +286,17 @@ public static class NativeConstraintReader {
     /// <c>[Flags]</c> members - so this falls back to a cast over the underlying value, which
     /// compiles and compares identically.
     /// </remarks>
-    private static string EnumLiteral(TypedConstant constant) {
+    private static string EnumLiteral(TypedConstant constant)
+    {
         var type = constant.Type!.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
-        foreach (var member in constant.Type.GetMembers()) {
-            if (member is IFieldSymbol { HasConstantValue: true } field &&
-                Equals(field.ConstantValue, constant.Value)) {
+        foreach (var member in constant.Type.GetMembers())
+        {
+            if (
+                member is IFieldSymbol { HasConstantValue: true } field
+                && Equals(field.ConstantValue, constant.Value)
+            )
+            {
                 return type + "." + field.Name;
             }
         }
@@ -253,8 +313,10 @@ public static class NativeConstraintReader {
     /// <c>global::My.Tier.Pro</c> to bind at all; a caller told "must be one of:
     /// global::My.Tier.Pro" has been told less than one told "must be one of: Pro".
     /// </remarks>
-    internal static string Display(TypedConstant constant) {
-        if (constant.Kind != TypedConstantKind.Enum || constant.Type is null) {
+    internal static string Display(TypedConstant constant)
+    {
+        if (constant.Kind != TypedConstantKind.Enum || constant.Type is null)
+        {
             var scalar = Scalar(constant);
 
             return scalar.Length >= 2 && scalar[0] == '"'
@@ -267,7 +329,8 @@ public static class NativeConstraintReader {
         // A value with no member of its own rendered as a cast, and there is no name to show. The
         // underlying number is what a caller would have sent, so it is what the message names -
         // "must be one of: Pro, 7" rather than leaking a cast expression into an error string.
-        if (qualified.EndsWith(")", StringComparison.Ordinal)) {
+        if (qualified.EndsWith(")", StringComparison.Ordinal))
+        {
             return Scalar(constant);
         }
 
@@ -276,20 +339,24 @@ public static class NativeConstraintReader {
         return dot >= 0 ? qualified.Substring(dot + 1) : qualified;
     }
 
-    private static string Scalar(TypedConstant constant) => constant.Value switch {
-        null => "null",
-        string text => SymbolDisplay.FormatLiteral(text, quote: true),
-        bool flag => flag ? "true" : "false",
-        char character => SymbolDisplay.FormatLiteral(character, quote: true),
-        double number => double.IsNaN(number) || double.IsInfinity(number)
-            ? NonFinite("double", number)
-            : number.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
-        float number => float.IsNaN(number) || float.IsInfinity(number)
-            ? NonFinite("float", number)
-            : number.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "f",
-        decimal number => number.ToString(System.Globalization.CultureInfo.InvariantCulture) + "m",
-        var other => Convert.ToString(other, System.Globalization.CultureInfo.InvariantCulture) ?? "null",
-    };
+    private static string Scalar(TypedConstant constant) =>
+        constant.Value switch
+        {
+            null => "null",
+            string text => SymbolDisplay.FormatLiteral(text, quote: true),
+            bool flag => flag ? "true" : "false",
+            char character => SymbolDisplay.FormatLiteral(character, quote: true),
+            double number => double.IsNaN(number) || double.IsInfinity(number)
+                ? NonFinite("double", number)
+                : number.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+            float number => float.IsNaN(number) || float.IsInfinity(number)
+                ? NonFinite("float", number)
+                : number.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "f",
+            decimal number => number.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + "m",
+            var other => Convert.ToString(other, System.Globalization.CultureInfo.InvariantCulture)
+                ?? "null",
+        };
 
     /// <summary>
     /// The named form of a non-finite bound. <c>double.NegativeInfinity</c> is a constant, so it is

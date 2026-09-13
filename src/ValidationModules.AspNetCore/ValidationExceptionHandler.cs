@@ -25,7 +25,8 @@ namespace ValidationModules.AspNetCore;
 /// worth pinning into 1.0.0.
 /// </para>
 /// </remarks>
-internal sealed class ValidationExceptionHandler : IExceptionHandler {
+internal sealed class ValidationExceptionHandler : IExceptionHandler
+{
     private readonly ValidationProblemOptions _options;
 
     /// <summary>
@@ -36,7 +37,8 @@ internal sealed class ValidationExceptionHandler : IExceptionHandler {
     /// through <c>ActivatorUtilities</c>, which only considers public constructors. The type is
     /// internal, so this pins nothing.
     /// </remarks>
-    public ValidationExceptionHandler(IOptions<ValidationProblemOptions> options) {
+    public ValidationExceptionHandler(IOptions<ValidationProblemOptions> options)
+    {
         ArgumentNullException.ThrowIfNull(options);
 
         _options = options.Value;
@@ -44,20 +46,32 @@ internal sealed class ValidationExceptionHandler : IExceptionHandler {
 
     /// <inheritdoc/>
     public async ValueTask<bool> TryHandleAsync(
-        HttpContext httpContext, Exception exception, CancellationToken cancellationToken) {
+        HttpContext httpContext,
+        Exception exception,
+        CancellationToken cancellationToken
+    )
+    {
         ArgumentNullException.ThrowIfNull(httpContext);
 
-        if (exception is not ValidationException validation) {
+        if (exception is not ValidationException validation)
+        {
             return false;
         }
 
         var problem = ValidationProblem.ToProblemDetails(
-            validation.Result, _options.WithFormatterFrom(httpContext.RequestServices));
+            validation.Result,
+            _options.WithFormatterFrom(httpContext.RequestServices)
+        );
 
         httpContext.Response.StatusCode = problem.Status ?? _options.StatusCode;
 
-        await httpContext.Response
-            .WriteAsJsonAsync(problem, ValidationProblemJsonContext.Default.ValidationProblemDetails, "application/problem+json", cancellationToken)
+        await httpContext
+            .Response.WriteAsJsonAsync(
+                problem,
+                ValidationProblemJsonContext.Default.ValidationProblemDetails,
+                "application/problem+json",
+                cancellationToken
+            )
             .ConfigureAwait(false);
 
         return true;

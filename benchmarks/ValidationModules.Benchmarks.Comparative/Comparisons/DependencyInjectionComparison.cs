@@ -26,8 +26,8 @@ namespace ValidationModules.Benchmarks.Comparative.Comparisons;
 /// </remarks>
 [MemoryDiagnoser]
 [BenchmarkCategory(ComparativeCategories.DependencyInjection)]
-public class DependencyInjectionComparison {
-
+public class DependencyInjectionComparison
+{
     // Hoisted: constructing per invocation would put an allocation on the measured path.
     private static readonly AddressValidator AddressValidatorShared = new();
     private static readonly BasketValidator BasketValidatorShared = new();
@@ -56,16 +56,18 @@ public class DependencyInjectionComparison {
     /// carries the DataAnnotations model set, which the front-end generates validators for too, and
     /// registering those would charge ValidationModules for types the comparison does not use.
     /// </summary>
-    private static ValidatorRegistration[] Registrations() => [
-        new(typeof(IValidatorFor<Customer>), static _ => CustomerValidatorShared),
-        new(typeof(IValidatorFor<Address>), static _ => AddressValidatorShared),
-        new(typeof(IValidatorFor<OrderLine>), static _ => OrderLineValidatorShared),
-        new(typeof(IValidatorFor<Order>), static _ => OrderValidatorShared),
-        new(typeof(IValidatorFor<Basket>), static _ => BasketValidatorShared),
-    ];
+    private static ValidatorRegistration[] Registrations() =>
+        [
+            new(typeof(IValidatorFor<Customer>), static _ => CustomerValidatorShared),
+            new(typeof(IValidatorFor<Address>), static _ => AddressValidatorShared),
+            new(typeof(IValidatorFor<OrderLine>), static _ => OrderLineValidatorShared),
+            new(typeof(IValidatorFor<Order>), static _ => OrderValidatorShared),
+            new(typeof(IValidatorFor<Basket>), static _ => BasketValidatorShared),
+        ];
 
     [GlobalSetup]
-    public void Setup() {
+    public void Setup()
+    {
         var vmServices = new ServiceCollection();
         vmServices.AddValidationModules(Registrations());
         _vmProvider = vmServices.BuildServiceProvider();
@@ -74,7 +76,8 @@ public class DependencyInjectionComparison {
         // use, and measuring that once would say nothing about steady state.
         _ = _vmProvider.GetRequiredService<IValidatorFor<Customer>>();
 
-        try {
+        try
+        {
             var fvServices = new ServiceCollection();
             fvServices.AddValidatorsFromAssemblyContaining<CustomerFluentValidator>();
             var provider = fvServices.BuildServiceProvider();
@@ -83,13 +86,16 @@ public class DependencyInjectionComparison {
             _ = scope.ServiceProvider.GetRequiredService<IValidator<Customer>>();
 
             _fvProvider = provider;
-        } catch (Exception exception) {
+        }
+        catch (Exception exception)
+        {
             _fluentValidationUnavailable = exception;
         }
     }
 
     [GlobalCleanup]
-    public void Cleanup() {
+    public void Cleanup()
+    {
         _vmProvider.Dispose();
         _fvProvider?.Dispose();
     }
@@ -103,14 +109,17 @@ public class DependencyInjectionComparison {
     /// number for a path that does not run.
     /// </remarks>
     private ServiceProvider FluentValidationProvider =>
-        _fvProvider ?? throw new InvalidOperationException(
+        _fvProvider
+        ?? throw new InvalidOperationException(
             "FluentValidation's container could not be built on this runtime.",
-            _fluentValidationUnavailable);
+            _fluentValidationUnavailable
+        );
 
     // ---- Startup ---------------------------------------------------------------------------------
 
     [Benchmark(Baseline = true, Description = "ValidationModules - register the generated table")]
-    public ServiceProvider Vm_Register() {
+    public ServiceProvider Vm_Register()
+    {
         var services = new ServiceCollection();
         services.AddValidationModules(Registrations());
 
@@ -118,7 +127,8 @@ public class DependencyInjectionComparison {
     }
 
     [Benchmark(Description = "FluentValidation - AddValidatorsFromAssemblyContaining (scans)")]
-    public ServiceProvider Fv_Register_Scanning() {
+    public ServiceProvider Fv_Register_Scanning()
+    {
         var services = new ServiceCollection();
         services.AddValidatorsFromAssemblyContaining<CustomerFluentValidator>();
 
@@ -132,7 +142,8 @@ public class DependencyInjectionComparison {
     /// for both.
     /// </summary>
     [Benchmark(Description = "FluentValidation - explicit registration, no scan")]
-    public ServiceProvider Fv_Register_Explicit() {
+    public ServiceProvider Fv_Register_Explicit()
+    {
         var services = new ServiceCollection();
         services.AddScoped<IValidator<Customer>>(static _ => CustomerFluentValidator.Instance);
         services.AddScoped<IValidator<Address>>(static _ => AddressFluentValidator.Instance);
@@ -159,7 +170,8 @@ public class DependencyInjectionComparison {
     /// pays and is included deliberately.
     /// </summary>
     [Benchmark(Description = "FluentValidation - scope + resolve IValidator<T> (scoped)")]
-    public IValidator<Customer> Fv_Resolve() {
+    public IValidator<Customer> Fv_Resolve()
+    {
         using var scope = FluentValidationProvider.CreateScope();
 
         return scope.ServiceProvider.GetRequiredService<IValidator<Customer>>();

@@ -19,9 +19,10 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// - the check was simply not written - and a golden file is what pins the absence closed.
 /// </para>
 /// </remarks>
-public class InheritedConstraintTests {
-
-    private static string Body(GeneratorHarness.Result result, string validator) {
+public class InheritedConstraintTests
+{
+    private static string Body(GeneratorHarness.Result result, string validator)
+    {
         Assert.Empty(result.CompilationErrors);
 
         return result.Sources.Single(source => source.Key.Contains(validator)).Value;
@@ -49,15 +50,22 @@ public class InheritedConstraintTests {
         """;
 
     [Fact]
-    public void BaseClassConstraints_AreCheckedByTheDerivedValidator() {
+    public void BaseClassConstraints_AreCheckedByTheDerivedValidator()
+    {
         var body = Body(GeneratorHarness.Run(BaseChain), "CreateOrderValidator");
 
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"correlationId\", value: value.CorrelationId)", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"correlationId\", value: value.CorrelationId)",
+            body
+        );
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"tenantId\", value: value.TenantId)", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"tenantId\", value: value.TenantId)",
+            body
+        );
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"sku\", value: value.Sku)", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"sku\", value: value.Sku)",
+            body
+        );
     }
 
     /// <summary>
@@ -66,13 +74,15 @@ public class InheritedConstraintTests {
     /// the two declarations one above the other.
     /// </summary>
     [Fact]
-    public void InheritedConstraints_AreCheckedBeforeTheTypesOwn() {
+    public void InheritedConstraints_AreCheckedBeforeTheTypesOwn()
+    {
         var body = Body(GeneratorHarness.Run(BaseChain), "CreateOrderValidator");
 
         Assert.True(
             body.IndexOf("correlationId", StringComparison.Ordinal)
-            < body.IndexOf("sku", StringComparison.Ordinal),
-            "the base's fields should be checked before the derived type's");
+                < body.IndexOf("sku", StringComparison.Ordinal),
+            "the base's fields should be checked before the derived type's"
+        );
     }
 
     /// <summary>
@@ -80,8 +90,10 @@ public class InheritedConstraintTests {
     /// toward "saw something", a type adding no constraints of its own produces no validator.
     /// </summary>
     [Fact]
-    public void DerivedTypeAddingNothingOfItsOwn_StillGetsAValidator() {
-        var result = GeneratorHarness.Run("""
+    public void DerivedTypeAddingNothingOfItsOwn_StillGetsAValidator()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -92,16 +104,20 @@ public class InheritedConstraintTests {
             }
 
             public record Ping : BaseRequest;
-            """);
+            """
+        );
 
         Assert.Contains(
             "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"correlationId\", value: value.CorrelationId)",
-            Body(result, "PingValidator"));
+            Body(result, "PingValidator")
+        );
     }
 
     [Fact]
-    public void MultiLevelInheritance_CollectsEveryLevel() {
-        var result = GeneratorHarness.Run("""
+    public void MultiLevelInheritance_CollectsEveryLevel()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -109,16 +125,23 @@ public class InheritedConstraintTests {
             public class Root { [Required] public string? A { get; set; } }
             public class Middle : Root { [Required] public string? B { get; set; } }
             public class Leaf : Middle { [Required] public string? C { get; set; } }
-            """);
+            """
+        );
 
         var body = Body(result, "LeafValidator");
 
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"a\", value: value.A)", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"a\", value: value.A)",
+            body
+        );
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"b\", value: value.B)", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"b\", value: value.B)",
+            body
+        );
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"c\", value: value.C)", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"c\", value: value.C)",
+            body
+        );
     }
 
     // -- interfaces --------------------------------------------------------------------------
@@ -129,8 +152,10 @@ public class InheritedConstraintTests {
     /// uniform across both vocabularies.
     /// </summary>
     [Fact]
-    public void InterfaceConstraints_FlowToTheImplementingMember() {
-        var result = GeneratorHarness.Run("""
+    public void InterfaceConstraints_FlowToTheImplementingMember()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -146,14 +171,19 @@ public class InheritedConstraintTests {
 
                 public string? ModifiedBy { get; init; }
             }
-            """);
+            """
+        );
 
         var body = Body(result, "DocumentValidator");
 
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"title\", value: value.Title)", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"title\", value: value.Title)",
+            body
+        );
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"modifiedBy\", value: value.ModifiedBy)", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"modifiedBy\", value: value.ModifiedBy)",
+            body
+        );
     }
 
     /// <summary>
@@ -162,8 +192,10 @@ public class InheritedConstraintTests {
     /// declarations of one property do not merge.
     /// </summary>
     [Fact]
-    public void InterfaceConstraints_MergeWithTheImplementersOwn() {
-        var result = GeneratorHarness.Run("""
+    public void InterfaceConstraints_MergeWithTheImplementersOwn()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -177,14 +209,19 @@ public class InheritedConstraintTests {
                 [StringLength(1, 64)]
                 public string? ModifiedBy { get; init; }
             }
-            """);
+            """
+        );
 
         var body = Body(result, "DocumentValidator");
 
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"modifiedBy\", value: value.ModifiedBy)", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"modifiedBy\", value: value.ModifiedBy)",
+            body
+        );
         Assert.Contains(
-            "ctx.Report(\"modifiedBy\", global::ValidationModules.ValidationCodes.StringLength, value.ModifiedBy, _message", body);
+            "ctx.Report(\"modifiedBy\", global::ValidationModules.ValidationCodes.StringLength, value.ModifiedBy, _message",
+            body
+        );
     }
 
     // -- shadowing ---------------------------------------------------------------------------
@@ -195,8 +232,10 @@ public class InheritedConstraintTests {
     /// says so out loud, because the alternative is constraints disappearing on a `new` keyword.
     /// </summary>
     [Fact]
-    public void ShadowedProperty_TakesOverEveryConstraintAndReportsVM1009() {
-        var result = GeneratorHarness.Run("""
+    public void ShadowedProperty_TakesOverEveryConstraintAndReportsVM1009()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -211,15 +250,20 @@ public class InheritedConstraintTests {
                 [StringLength(1, 200)]
                 public new string? Name { get; set; }
             }
-            """);
+            """
+        );
 
         var body = Body(result, "DerivedValidator");
 
         Assert.Contains(
-            "ctx.Report(\"name\", global::ValidationModules.ValidationCodes.StringLength, value.Name, _message", body);
+            "ctx.Report(\"name\", global::ValidationModules.ValidationCodes.StringLength, value.Name, _message",
+            body
+        );
         Assert.DoesNotContain("1, 10", body);
         Assert.DoesNotContain(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\", value: value.Name)", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\", value: value.Name)",
+            body
+        );
 
         Assert.Contains(result.Diagnostics, d => d.Id == "VM1009");
     }
@@ -228,8 +272,10 @@ public class InheritedConstraintTests {
     /// An override is one declaration, not two, so nothing is hidden and nothing is dropped.
     /// </summary>
     [Fact]
-    public void OverriddenProperty_IsNotReportedAsHiding() {
-        var result = GeneratorHarness.Run("""
+    public void OverriddenProperty_IsNotReportedAsHiding()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -242,12 +288,14 @@ public class InheritedConstraintTests {
             public class Derived : Base {
                 public override string? Name { get; set; }
             }
-            """);
+            """
+        );
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1009");
         Assert.Contains(
             "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"name\", value: value.Name)",
-            Body(result, "DerivedValidator"));
+            Body(result, "DerivedValidator")
+        );
     }
 
     // -- across an assembly boundary ---------------------------------------------------------
@@ -258,7 +306,8 @@ public class InheritedConstraintTests {
     /// this rests on.
     /// </summary>
     [Fact]
-    public void BaseTypeFromAReferencedAssembly_ContributesItsConstraints() {
+    public void BaseTypeFromAReferencedAssembly_ContributesItsConstraints()
+    {
         var result = GeneratorHarness.RunWithReference(
             """
             using ValidationModules.Constraints;
@@ -283,16 +332,23 @@ public class InheritedConstraintTests {
                 [Required]
                 public string? Sku { get; init; }
             }
-            """);
+            """
+        );
 
         var body = Body(result, "CreateOrderValidator");
 
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"correlationId\", value: value.CorrelationId)", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"correlationId\", value: value.CorrelationId)",
+            body
+        );
         Assert.Contains(
-            "ctx.Report(\"tenantId\", global::ValidationModules.ValidationCodes.StringLength, value.TenantId, _message", body);
+            "ctx.Report(\"tenantId\", global::ValidationModules.ValidationCodes.StringLength, value.TenantId, _message",
+            body
+        );
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"sku\", value: value.Sku)", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"sku\", value: value.Sku)",
+            body
+        );
     }
 
     /// <summary>
@@ -301,7 +357,8 @@ public class InheritedConstraintTests {
     /// The error would otherwise land inside generated code.
     /// </summary>
     [Fact]
-    public void InternalBasePropertyFromAnotherAssembly_IsSkippedRatherThanEmitted() {
+    public void InternalBasePropertyFromAnotherAssembly_IsSkippedRatherThanEmitted()
+    {
         var result = GeneratorHarness.RunWithReference(
             """
             using ValidationModules.Constraints;
@@ -326,12 +383,15 @@ public class InheritedConstraintTests {
                 [Required]
                 public string? Sku { get; init; }
             }
-            """);
+            """
+        );
 
         var body = Body(result, "CreateOrderValidator");
 
         Assert.Contains(
-            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"visible\", value: value.Visible)", body);
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"visible\", value: value.Visible)",
+            body
+        );
         Assert.DoesNotContain("Hidden", body);
     }
 
@@ -341,7 +401,8 @@ public class InheritedConstraintTests {
     /// location the consumer cannot edit.
     /// </summary>
     [Fact]
-    public void ConstraintDiagnosticsFromAReferencedBase_AreNotRepeatedOnTheDerivedType() {
+    public void ConstraintDiagnosticsFromAReferencedBase_AreNotRepeatedOnTheDerivedType()
+    {
         var result = GeneratorHarness.RunWithReference(
             """
             using ValidationModules.Constraints;
@@ -364,7 +425,8 @@ public class InheritedConstraintTests {
                 [Required]
                 public string? Sku { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1001");
     }

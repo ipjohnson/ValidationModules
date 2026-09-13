@@ -17,8 +17,8 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// day a type moved to a package - and unearned confidence is worse than no feature.
 /// </para>
 /// </remarks>
-public class PolymorphicDescentTests {
-
+public class PolymorphicDescentTests
+{
     private const string Hierarchy = """
         public abstract record Payment {
             [Required]
@@ -41,8 +41,10 @@ public class PolymorphicDescentTests {
         }
         """;
 
-    private static GeneratedResult Run(string nested) {
-        var result = GeneratorHarness.Run($$"""
+    private static GeneratedResult Run(string nested)
+    {
+        var result = GeneratorHarness.Run(
+            $$"""
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -53,21 +55,27 @@ public class PolymorphicDescentTests {
                 {{nested}}
                 public Payment? Payment { get; init; }
             }
-            """);
+            """
+        );
 
         return new GeneratedResult(result);
     }
 
-    private sealed record GeneratedResult(GeneratorHarness.Result Result) {
-        public string Checkout {
-            get {
+    private sealed record GeneratedResult(GeneratorHarness.Result Result)
+    {
+        public string Checkout
+        {
+            get
+            {
                 // The strongest assertion in the file, and it is this one: emitting the switch arms
                 // in the wrong order is CS8120 - "the switch case has already been handled by a
                 // previous case" - inside a generated file, which is exactly the class of error
                 // the no-emit-after-diagnostic work exists to prevent.
                 Assert.Empty(Result.CompilationErrors);
 
-                return Result.Sources.Single(source => source.Key.Contains("CheckoutValidator")).Value;
+                return Result
+                    .Sources.Single(source => source.Key.Contains("CheckoutValidator"))
+                    .Value;
             }
         }
     }
@@ -75,7 +83,8 @@ public class PolymorphicDescentTests {
     // -- modes ---------------------------------------------------------------------------------
 
     [Fact]
-    public void CompileTime_EmitsATypeSwitchOverTheSubtypes() {
+    public void CompileTime_EmitsATypeSwitchOverTheSubtypes()
+    {
         var body = Run("[ValidateNested(Polymorphism.CompileTime)]").Checkout;
 
         Assert.Contains("switch (nestedPayment)", body);
@@ -90,13 +99,15 @@ public class PolymorphicDescentTests {
     /// it, and getting it wrong is a compile error rather than a wrong answer.
     /// </summary>
     [Fact]
-    public void SwitchArms_AreOrderedMostDerivedFirst() {
+    public void SwitchArms_AreOrderedMostDerivedFirst()
+    {
         var body = Run("[ValidateNested(Polymorphism.CompileTime)]").Checkout;
 
         Assert.True(
             body.IndexOf("case global::Sample.Premium", StringComparison.Ordinal)
-            < body.IndexOf("case global::Sample.Card", StringComparison.Ordinal),
-            "Premium derives from Card, so its arm has to come first or the Card arm swallows it");
+                < body.IndexOf("case global::Sample.Card", StringComparison.Ordinal),
+            "Premium derives from Card, so its arm has to come first or the Card arm swallows it"
+        );
     }
 
     /// <summary>
@@ -106,7 +117,8 @@ public class PolymorphicDescentTests {
     /// dispatch rather than a companion to it.
     /// </summary>
     [Fact]
-    public void DeclaredTypeValidators_RunOnlyInTheDefaultArm() {
+    public void DeclaredTypeValidators_RunOnlyInTheDefaultArm()
+    {
         var body = Run("[ValidateNested(Polymorphism.CompileTime)]").Checkout;
 
         var switchStart = body.IndexOf("switch (nestedPayment)", StringComparison.Ordinal);
@@ -119,7 +131,8 @@ public class PolymorphicDescentTests {
     }
 
     [Fact]
-    public void DeclaredOnly_EmitsNoSwitchAtAll() {
+    public void DeclaredOnly_EmitsNoSwitchAtAll()
+    {
         var body = Run("[ValidateNested(Polymorphism.DeclaredOnly)]").Checkout;
 
         Assert.DoesNotContain("switch (", body);
@@ -127,7 +140,8 @@ public class PolymorphicDescentTests {
     }
 
     [Fact]
-    public void NoModeAtAll_BehavesAsDeclaredOnly() {
+    public void NoModeAtAll_BehavesAsDeclaredOnly()
+    {
         var body = Run("[ValidateNested]").Checkout;
 
         Assert.DoesNotContain("switch (", body);
@@ -138,7 +152,8 @@ public class PolymorphicDescentTests {
     /// validator costs 24 bytes to build.
     /// </summary>
     [Fact]
-    public void SubtypeValidators_AreHeldInLazyFields() {
+    public void SubtypeValidators_AreHeldInLazyFields()
+    {
         var body = Run("[ValidateNested(Polymorphism.CompileTime)]").Checkout;
 
         Assert.Contains("private global::Sample.PremiumValidator? _dispatch", body);
@@ -146,7 +161,8 @@ public class PolymorphicDescentTests {
     }
 
     [Fact]
-    public void IsValid_MirrorsTheSwitch() {
+    public void IsValid_MirrorsTheSwitch()
+    {
         var body = Run("[ValidateNested(Polymorphism.CompileTime)]").Checkout;
         var isValid = body[body.IndexOf("public bool IsValid", StringComparison.Ordinal)..];
 
@@ -163,13 +179,16 @@ public class PolymorphicDescentTests {
     /// whole design exists to avoid.
     /// </summary>
     [Fact]
-    public void UnsealedTargetWithNoMode_IsVM1503() {
+    public void UnsealedTargetWithNoMode_IsVM1503()
+    {
         Assert.Contains(Run("[ValidateNested]").Result.Diagnostics, d => d.Id == "VM1503");
     }
 
     [Fact]
-    public void SealedTarget_NeedsNoModeAndDoesNotWarn() {
-        var result = GeneratorHarness.Run("""
+    public void SealedTarget_NeedsNoModeAndDoesNotWarn()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -183,7 +202,8 @@ public class PolymorphicDescentTests {
                 [ValidateNested]
                 public Address? Home { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1503");
     }
@@ -194,7 +214,8 @@ public class PolymorphicDescentTests {
     [Theory]
     [InlineData("[ValidateNested(Polymorphism.DeclaredOnly)]")]
     [InlineData("[ValidateNested(Polymorphism.CompileTime)]")]
-    public void AnExplicitMode_SilencesVM1503(string nested) {
+    public void AnExplicitMode_SilencesVM1503(string nested)
+    {
         Assert.DoesNotContain(Run(nested).Result.Diagnostics, d => d.Id == "VM1503");
     }
 
@@ -206,8 +227,10 @@ public class PolymorphicDescentTests {
     /// <c>ctx.Push</c>, which is what lets them compose without either knowing about the other.
     /// </summary>
     [Fact]
-    public void ADescentCanBeBothConditionalAndPolymorphic() {
-        var result = GeneratorHarness.Run($$"""
+    public void ADescentCanBeBothConditionalAndPolymorphic()
+    {
+        var result = GeneratorHarness.Run(
+            $$"""
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -220,7 +243,8 @@ public class PolymorphicDescentTests {
                 [ValidateNested(Polymorphism.CompileTime, When = nameof(IsPaid))]
                 public Payment? Payment { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
 
@@ -235,8 +259,10 @@ public class PolymorphicDescentTests {
     /// Dispatch reaches collection elements too - a list of payments is as ordinary as one payment.
     /// </summary>
     [Fact]
-    public void CollectionElements_DispatchThroughTheSameSwitch() {
-        var result = GeneratorHarness.Run($$"""
+    public void CollectionElements_DispatchThroughTheSameSwitch()
+    {
+        var result = GeneratorHarness.Run(
+            $$"""
             using System.Collections.Generic;
             using ValidationModules.Constraints;
 
@@ -248,7 +274,8 @@ public class PolymorphicDescentTests {
                 [ValidateNested(Polymorphism.CompileTime)]
                 public List<Payment> Payments { get; init; } = new();
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
 
@@ -263,8 +290,10 @@ public class PolymorphicDescentTests {
     /// its base's - so there is a class for the arm to name.
     /// </summary>
     [Fact]
-    public void SubtypeAddingNothingOfItsOwn_StillGetsAnArm() {
-        var result = GeneratorHarness.Run("""
+    public void SubtypeAddingNothingOfItsOwn_StillGetsAnArm()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -280,24 +309,28 @@ public class PolymorphicDescentTests {
                 [ValidateNested(Polymorphism.CompileTime)]
                 public Payment? Payment { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Empty(result.CompilationErrors);
         Assert.Contains(
             "case global::Sample.Cash __typed:",
-            result.Sources.Single(s => s.Key.Contains("CheckoutValidator")).Value);
+            result.Sources.Single(s => s.Key.Contains("CheckoutValidator")).Value
+        );
     }
 
     // -- Polymorphism.Runtime --------------------------------------------------------------------
 
     [Fact]
-    public void Runtime_ResolvesThroughTheContextRatherThanEmittingASwitch() {
+    public void Runtime_ResolvesThroughTheContextRatherThanEmittingASwitch()
+    {
         var body = Run("[ValidateNested(Polymorphism.Runtime)]").Checkout;
 
         Assert.Contains(
-            "if (global::ValidationModules.DynamicValidation.Validate(ref ctxPayment, nestedPayment, " +
-            "\"payment\", \"Checkout\").ShouldStop)",
-            body);
+            "if (global::ValidationModules.DynamicValidation.Validate(ref ctxPayment, nestedPayment, "
+                + "\"payment\", \"Checkout\").ShouldStop)",
+            body
+        );
         Assert.Contains("return global::ValidationModules.ValidationFlow.Stop;", body);
 
         Assert.DoesNotContain("switch (", body);
@@ -309,12 +342,14 @@ public class PolymorphicDescentTests {
     /// not free, and the same trade an applied rule already makes.
     /// </summary>
     [Fact]
-    public void Runtime_SuppressesTheBooleanFastPath() {
+    public void Runtime_SuppressesTheBooleanFastPath()
+    {
         // The typed signature, not the bare name: the adapter beside the validator declares an
         // IsValid(object) of its own, and that one is meant to be there.
         Assert.DoesNotContain(
             "public bool IsValid(global::Sample.Checkout value)",
-            Run("[ValidateNested(Polymorphism.Runtime)]").Checkout);
+            Run("[ValidateNested(Polymorphism.Runtime)]").Checkout
+        );
     }
 
     /// <summary>
@@ -322,7 +357,8 @@ public class PolymorphicDescentTests {
     /// that dispatches dynamically, so a registry miss can only mean the assembly never registered.
     /// </summary>
     [Fact]
-    public void Runtime_EmitsAnAdapterForEveryValidatedType() {
+    public void Runtime_EmitsAnAdapterForEveryValidatedType()
+    {
         var result = Run("[ValidateNested(Polymorphism.Runtime)]").Result;
 
         Assert.Empty(result.CompilationErrors);
@@ -330,15 +366,22 @@ public class PolymorphicDescentTests {
         var emitted = string.Concat(result.Sources.Values);
 
         Assert.Contains(
-            "internal sealed class CardDynamicValidator : global::ValidationModules.IDynamicValidator", emitted);
+            "internal sealed class CardDynamicValidator : global::ValidationModules.IDynamicValidator",
+            emitted
+        );
         Assert.Contains(
-            "internal sealed class PremiumDynamicValidator : global::ValidationModules.IDynamicValidator", emitted);
+            "internal sealed class PremiumDynamicValidator : global::ValidationModules.IDynamicValidator",
+            emitted
+        );
         Assert.Contains(
-            "internal sealed class CheckoutDynamicValidator : global::ValidationModules.IDynamicValidator", emitted);
+            "internal sealed class CheckoutDynamicValidator : global::ValidationModules.IDynamicValidator",
+            emitted
+        );
         Assert.Contains(
-            "global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton<" +
-            "global::ValidationModules.IDynamicValidator, global::Sample.CardDynamicValidator>(services);",
-            emitted);
+            "global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton<"
+                + "global::ValidationModules.IDynamicValidator, global::Sample.CardDynamicValidator>(services);",
+            emitted
+        );
         Assert.Contains("new global::ValidationModules.DynamicValidatorRegistry(", emitted);
     }
 
@@ -349,7 +392,8 @@ public class PolymorphicDescentTests {
     [Theory]
     [InlineData("[ValidateNested(Polymorphism.CompileTime)]")]
     [InlineData("[ValidateNested(Polymorphism.DeclaredOnly)]")]
-    public void WithoutARuntimeDescent_NoAdaptersAreEmitted(string nested) {
+    public void WithoutARuntimeDescent_NoAdaptersAreEmitted(string nested)
+    {
         var emitted = string.Concat(Run(nested).Result.Sources.Values);
 
         Assert.DoesNotContain("IDynamicValidator", emitted);
@@ -361,8 +405,10 @@ public class PolymorphicDescentTests {
     /// on it buys a container lookup and nothing else.
     /// </summary>
     [Fact]
-    public void RuntimeOnASealedTarget_IsVM1504() {
-        var result = GeneratorHarness.Run("""
+    public void RuntimeOnASealedTarget_IsVM1504()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -376,17 +422,22 @@ public class PolymorphicDescentTests {
                 [ValidateNested(Polymorphism.Runtime)]
                 public Address? Home { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.Contains(result.Diagnostics, d => d.Id == "VM1504");
     }
 
-    private static int Occurrences(string text, string value) {
+    private static int Occurrences(string text, string value)
+    {
         var count = 0;
 
-        for (var i = text.IndexOf(value, StringComparison.Ordinal);
-             i >= 0;
-             i = text.IndexOf(value, i + value.Length, StringComparison.Ordinal)) {
+        for (
+            var i = text.IndexOf(value, StringComparison.Ordinal);
+            i >= 0;
+            i = text.IndexOf(value, i + value.Length, StringComparison.Ordinal)
+        )
+        {
             count++;
         }
 

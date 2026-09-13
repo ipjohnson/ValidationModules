@@ -9,8 +9,8 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// <c>IValidationLanguagePack</c> out, registration folded into the assembly extension - and the
 /// diagnostic suite that is the reason packs compile instead of load.
 /// </summary>
-public class LanguagePackGenerationTests {
-
+public class LanguagePackGenerationTests
+{
     private const string Model = """
         using ValidationModules.Constraints;
 
@@ -35,37 +35,62 @@ public class LanguagePackGenerationTests {
         """;
 
     [Fact]
-    public void APackFile_BecomesAClassAndARegistration() {
-        var result = GeneratorHarness.RunWithFiles(Model, [("packs/fr.validation-messages.json", FullFrench)]);
+    public void APackFile_BecomesAClassAndARegistration()
+    {
+        var result = GeneratorHarness.RunWithFiles(
+            Model,
+            [("packs/fr.validation-messages.json", FullFrench)]
+        );
 
         Assert.Empty(result.CompilationErrors);
 
         var pack = result.Sources["LanguagePack.fr.0.g.cs"];
 
-        Assert.Contains("internal sealed class FrLanguagePack0 : global::ValidationModules.IValidationLanguagePack", pack);
-        Assert.Contains("new(\"string_length.between\", \"{field} doit contenir entre {0} et {1} caractères.\")", pack);
+        Assert.Contains(
+            "internal sealed class FrLanguagePack0 : global::ValidationModules.IValidationLanguagePack",
+            pack
+        );
+        Assert.Contains(
+            "new(\"string_length.between\", \"{field} doit contenir entre {0} et {1} caractères.\")",
+            pack
+        );
         Assert.Contains("Templates => Entries;", pack);
 
         var registration = result.Sources["GeneratedValidatorRegistration.g.cs"];
 
-        Assert.Contains("AddSingleton<global::ValidationModules.IValidationLanguagePack, global::GeneratorTests.FrLanguagePack0>", registration);
-        Assert.Contains("TryAddSingleton<global::ValidationModules.ValidationMessageFormatter>", registration);
+        Assert.Contains(
+            "AddSingleton<global::ValidationModules.IValidationLanguagePack, global::GeneratorTests.FrLanguagePack0>",
+            registration
+        );
+        Assert.Contains(
+            "TryAddSingleton<global::ValidationModules.ValidationMessageFormatter>",
+            registration
+        );
         Assert.Contains("new global::ValidationModules.LanguagePackFormatter", registration);
     }
 
     [Fact]
-    public void APackOnlyAssembly_StillGetsItsRegistration() {
+    public void APackOnlyAssembly_StillGetsItsRegistration()
+    {
         var result = GeneratorHarness.RunWithFiles(
             "namespace Sample { public class Nothing { } }",
-            [("fr.validation-messages.json", FullFrench)]);
+            [("fr.validation-messages.json", FullFrench)]
+        );
 
         Assert.Empty(result.CompilationErrors);
-        Assert.Contains("AddGeneratorTestsValidators", result.Sources["GeneratedValidatorRegistration.g.cs"]);
+        Assert.Contains(
+            "AddGeneratorTestsValidators",
+            result.Sources["GeneratedValidatorRegistration.g.cs"]
+        );
     }
 
     [Fact]
-    public void MalformedJson_IsVM4001_AndTheFileIsSkipped() {
-        var result = GeneratorHarness.RunWithFiles(Model, [("fr.validation-messages.json", "{ not json")]);
+    public void MalformedJson_IsVM4001_AndTheFileIsSkipped()
+    {
+        var result = GeneratorHarness.RunWithFiles(
+            Model,
+            [("fr.validation-messages.json", "{ not json")]
+        );
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM4001");
 
@@ -74,18 +99,33 @@ public class LanguagePackGenerationTests {
     }
 
     [Fact]
-    public void MissingCulture_IsVM4001() {
+    public void MissingCulture_IsVM4001()
+    {
         var result = GeneratorHarness.RunWithFiles(
-            Model, [("fr.validation-messages.json", """{ "templates": { "required": "x" } }""")]);
+            Model,
+            [("fr.validation-messages.json", """{ "templates": { "required": "x" } }""")]
+        );
 
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM4001" && d.GetMessage().Contains("culture"));
+        Assert.Contains(
+            result.Diagnostics,
+            d => d.Id == "VM4001" && d.GetMessage().Contains("culture")
+        );
     }
 
     [Fact]
-    public void AMisspelledShapeKey_IsVM4002_WithTheNearestMatch() {
-        var result = GeneratorHarness.RunWithFiles(Model, [("fr.validation-messages.json", """
-            { "culture": "fr", "templates": { "string_length.atmost": "{field} : {0} max." } }
-            """)]);
+    public void AMisspelledShapeKey_IsVM4002_WithTheNearestMatch()
+    {
+        var result = GeneratorHarness.RunWithFiles(
+            Model,
+            [
+                (
+                    "fr.validation-messages.json",
+                    """
+                    { "culture": "fr", "templates": { "string_length.atmost": "{field} : {0} max." } }
+                    """
+                ),
+            ]
+        );
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM4002");
 
@@ -94,10 +134,19 @@ public class LanguagePackGenerationTests {
     }
 
     [Fact]
-    public void AHoleBeyondTheShapesArguments_IsVM4003_AndTheEntryIsSkipped() {
-        var result = GeneratorHarness.RunWithFiles(Model, [("fr.validation-messages.json", """
-            { "culture": "fr", "templates": { "string_length.at_most": "{field} doit … {1}." } }
-            """)]);
+    public void AHoleBeyondTheShapesArguments_IsVM4003_AndTheEntryIsSkipped()
+    {
+        var result = GeneratorHarness.RunWithFiles(
+            Model,
+            [
+                (
+                    "fr.validation-messages.json",
+                    """
+                    { "culture": "fr", "templates": { "string_length.at_most": "{field} doit … {1}." } }
+                    """
+                ),
+            ]
+        );
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM4003");
 
@@ -106,10 +155,19 @@ public class LanguagePackGenerationTests {
     }
 
     [Fact]
-    public void ADuplicateKey_IsVM4004() {
-        var result = GeneratorHarness.RunWithFiles(Model, [("fr.validation-messages.json", """
-            { "culture": "fr", "templates": { "required": "a", "required": "b" } }
-            """)]);
+    public void ADuplicateKey_IsVM4004()
+    {
+        var result = GeneratorHarness.RunWithFiles(
+            Model,
+            [
+                (
+                    "fr.validation-messages.json",
+                    """
+                    { "culture": "fr", "templates": { "required": "a", "required": "b" } }
+                    """
+                ),
+            ]
+        );
 
         Assert.Single(result.Diagnostics, d => d.Id == "VM4004");
         Assert.Contains("new(\"required\", \"a\")", result.Sources["LanguagePack.fr.0.g.cs"]);
@@ -117,16 +175,24 @@ public class LanguagePackGenerationTests {
     }
 
     [Fact]
-    public void AFileNamedForOneCulture_DeclaringAnother_IsVM4005_AndTheBodyWins() {
-        var result = GeneratorHarness.RunWithFiles(Model, [("packs/de.validation-messages.json", FullFrench)]);
+    public void AFileNamedForOneCulture_DeclaringAnother_IsVM4005_AndTheBodyWins()
+    {
+        var result = GeneratorHarness.RunWithFiles(
+            Model,
+            [("packs/de.validation-messages.json", FullFrench)]
+        );
 
         Assert.Single(result.Diagnostics, d => d.Id == "VM4005");
         Assert.Contains("Culture => \"fr\";", result.Sources["LanguagePack.fr.0.g.cs"]);
     }
 
     [Fact]
-    public void PartialCoverage_IsAnInfo_NamingWhatIsMissing() {
-        var result = GeneratorHarness.RunWithFiles(Model, [("fr.validation-messages.json", FullFrench)]);
+    public void PartialCoverage_IsAnInfo_NamingWhatIsMissing()
+    {
+        var result = GeneratorHarness.RunWithFiles(
+            Model,
+            [("fr.validation-messages.json", FullFrench)]
+        );
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM4006");
 
@@ -135,17 +201,27 @@ public class LanguagePackGenerationTests {
     }
 
     [Fact]
-    public void UserCodes_CompileSilently_TypoHeuristicUntouched() {
-        var result = GeneratorHarness.RunWithFiles(Model, [("fr.validation-messages.json", """
-            { "culture": "fr", "templates": { "date_order": "la date de fin doit suivre la date de début." } }
-            """)]);
+    public void UserCodes_CompileSilently_TypoHeuristicUntouched()
+    {
+        var result = GeneratorHarness.RunWithFiles(
+            Model,
+            [
+                (
+                    "fr.validation-messages.json",
+                    """
+                    { "culture": "fr", "templates": { "date_order": "la date de fin doit suivre la date de début." } }
+                    """
+                ),
+            ]
+        );
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM4002");
         Assert.Contains("date_order", result.Sources["LanguagePack.fr.0.g.cs"]);
     }
 
     [Fact]
-    public void TheImplInventory_MatchesTheRuntimeVocabulary_KeysAndArities() {
+    public void TheImplInventory_MatchesTheRuntimeVocabulary_KeysAndArities()
+    {
         // The generator validates against its own mirror of the runtime's key inventory; this is
         // the pin that stops the two drifting. Arity ground truth is the runtime template itself -
         // the highest hole each one carries.
@@ -153,13 +229,17 @@ public class LanguagePackGenerationTests {
 
         Assert.Equal(
             runtime.Keys.OrderBy(k => k, StringComparer.Ordinal),
-            LanguagePackReader.ShapeInventory.Keys.OrderBy(k => k, StringComparer.Ordinal));
+            LanguagePackReader.ShapeInventory.Keys.OrderBy(k => k, StringComparer.Ordinal)
+        );
 
-        foreach (var pair in runtime) {
+        foreach (var pair in runtime)
+        {
             var arity = 0;
 
-            for (var hole = 0; hole <= 9; hole++) {
-                if (pair.Value.Contains($"{{{hole}}}", StringComparison.Ordinal)) {
+            for (var hole = 0; hole <= 9; hole++)
+            {
+                if (pair.Value.Contains($"{{{hole}}}", StringComparison.Ordinal))
+                {
                     arity = hole + 1;
                 }
             }

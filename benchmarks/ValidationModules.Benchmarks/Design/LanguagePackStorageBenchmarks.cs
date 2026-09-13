@@ -30,8 +30,8 @@ namespace ValidationModules.Benchmarks.Design;
 /// </remarks>
 [MemoryDiagnoser]
 [BenchmarkCategory(BenchmarkCategories.Design)]
-public class LanguagePackStorageBenchmarks {
-
+public class LanguagePackStorageBenchmarks
+{
     private const int Probes = 10;
 
     private static readonly string[] Misses = ["missing_key_a", "string_length.nope"];
@@ -51,7 +51,8 @@ public class LanguagePackStorageBenchmarks {
     private FrozenDictionary<string, string> _merged = null!;
 
     [GlobalSetup]
-    public void Setup() {
+    public void Setup()
+    {
         _dictionary35 = ToDictionary(LanguagePackStorageData.Entries35);
         _dictionary150 = ToDictionary(LanguagePackStorageData.Entries150);
         _dictionary400 = ToDictionary(LanguagePackStorageData.Entries400);
@@ -68,7 +69,8 @@ public class LanguagePackStorageBenchmarks {
         // The merged shape: the one-entry override layered over the full pack, resolved once.
         var merged = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        foreach (var pair in LanguagePackStorageData.Entries35) {
+        foreach (var pair in LanguagePackStorageData.Entries35)
+        {
             merged[pair.Key] = pair.Value;
         }
 
@@ -118,30 +120,38 @@ public class LanguagePackStorageBenchmarks {
 
     /// <summary>Per render today: shape then code against the override, then the full pack.</summary>
     [Benchmark]
-    public string? Layered_WalkPacksPerRender() {
+    public string? Layered_WalkPacksPerRender()
+    {
         // The override pack (one entry) misses both probes; the full pack answers the second.
-        return OverridePack("range.greater_than") ?? OverridePack("range")
-            ?? LanguagePackStorageData.IfChain35("range.greater_than") ?? LanguagePackStorageData.IfChain35("range");
+        return OverridePack("range.greater_than")
+            ?? OverridePack("range")
+            ?? LanguagePackStorageData.IfChain35("range.greater_than")
+            ?? LanguagePackStorageData.IfChain35("range");
 
-        static string? OverridePack(string key) => key == "required" ? "Merci de renseigner {field}." : null;
+        static string? OverridePack(string key) =>
+            key == "required" ? "Merci de renseigner {field}." : null;
     }
 
     /// <summary>Per render merged: the layering resolved once, two frozen probes at most.</summary>
     [Benchmark]
     public string? Layered_MergedFrozen() =>
-        _merged.TryGetValue("range.greater_than", out var template) ? template :
-        _merged.TryGetValue("range", out template) ? template : null;
+        _merged.TryGetValue("range.greater_than", out var template) ? template
+        : _merged.TryGetValue("range", out template) ? template
+        : null;
 
     // ---- Startup: what each structure costs to exist -------------------------------------------
 
     [Benchmark]
-    public Dictionary<string, string> Startup_Dictionary_35() => ToDictionary(LanguagePackStorageData.Entries35);
+    public Dictionary<string, string> Startup_Dictionary_35() =>
+        ToDictionary(LanguagePackStorageData.Entries35);
 
     [Benchmark]
-    public Dictionary<string, string> Startup_Dictionary_150() => ToDictionary(LanguagePackStorageData.Entries150);
+    public Dictionary<string, string> Startup_Dictionary_150() =>
+        ToDictionary(LanguagePackStorageData.Entries150);
 
     [Benchmark]
-    public Dictionary<string, string> Startup_Dictionary_400() => ToDictionary(LanguagePackStorageData.Entries400);
+    public Dictionary<string, string> Startup_Dictionary_400() =>
+        ToDictionary(LanguagePackStorageData.Entries400);
 
     [Benchmark]
     public FrozenDictionary<string, string> Startup_Frozen_35() =>
@@ -166,11 +176,14 @@ public class LanguagePackStorageBenchmarks {
 
     // ---- Machinery ------------------------------------------------------------------------------
 
-    private static int Drain(Func<string, string?> lookup, string[] probes) {
+    private static int Drain(Func<string, string?> lookup, string[] probes)
+    {
         var found = 0;
 
-        foreach (var probe in probes) {
-            if (lookup(probe) is not null) {
+        foreach (var probe in probes)
+        {
+            if (lookup(probe) is not null)
+            {
                 found++;
             }
         }
@@ -178,11 +191,14 @@ public class LanguagePackStorageBenchmarks {
         return found;
     }
 
-    private static int Drain(Dictionary<string, string> table, string[] probes) {
+    private static int Drain(Dictionary<string, string> table, string[] probes)
+    {
         var found = 0;
 
-        foreach (var probe in probes) {
-            if (table.TryGetValue(probe, out _)) {
+        foreach (var probe in probes)
+        {
+            if (table.TryGetValue(probe, out _))
+            {
                 found++;
             }
         }
@@ -190,11 +206,14 @@ public class LanguagePackStorageBenchmarks {
         return found;
     }
 
-    private static int Drain(FrozenDictionary<string, string> table, string[] probes) {
+    private static int Drain(FrozenDictionary<string, string> table, string[] probes)
+    {
         var found = 0;
 
-        foreach (var probe in probes) {
-            if (table.TryGetValue(probe, out _)) {
+        foreach (var probe in probes)
+        {
+            if (table.TryGetValue(probe, out _))
+            {
                 found++;
             }
         }
@@ -202,17 +221,20 @@ public class LanguagePackStorageBenchmarks {
         return found;
     }
 
-    private static string[] ProbeSet(KeyValuePair<string, string>[] entries) {
+    private static string[] ProbeSet(KeyValuePair<string, string>[] entries)
+    {
         var n = entries.Length;
         int[] positions = [0, 2, n / 8, n / 4, n / 2, (3 * n) / 4, n - 2, n - 1];
 
         return [.. positions.Select(position => entries[position].Key), .. Misses];
     }
 
-    private static Dictionary<string, string> ToDictionary(KeyValuePair<string, string>[] entries) {
+    private static Dictionary<string, string> ToDictionary(KeyValuePair<string, string>[] entries)
+    {
         var table = new Dictionary<string, string>(entries.Length, StringComparer.Ordinal);
 
-        foreach (var pair in entries) {
+        foreach (var pair in entries)
+        {
             table[pair.Key] = pair.Value;
         }
 
@@ -220,13 +242,15 @@ public class LanguagePackStorageBenchmarks {
     }
 
     /// <summary>The serialized form: count, then length-prefixed UTF-8 key/value pairs.</summary>
-    private static byte[] Serialize(KeyValuePair<string, string>[] entries) {
+    private static byte[] Serialize(KeyValuePair<string, string>[] entries)
+    {
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, Encoding.UTF8);
 
         writer.Write(entries.Length);
 
-        foreach (var pair in entries) {
+        foreach (var pair in entries)
+        {
             writer.Write(pair.Key);
             writer.Write(pair.Value);
         }
@@ -236,13 +260,15 @@ public class LanguagePackStorageBenchmarks {
         return stream.ToArray();
     }
 
-    private static Dictionary<string, string> Parse(byte[] blob) {
+    private static Dictionary<string, string> Parse(byte[] blob)
+    {
         using var reader = new BinaryReader(new MemoryStream(blob), Encoding.UTF8);
 
         var count = reader.ReadInt32();
         var table = new Dictionary<string, string>(count, StringComparer.Ordinal);
 
-        for (var i = 0; i < count; i++) {
+        for (var i = 0; i < count; i++)
+        {
             table[reader.ReadString()] = reader.ReadString();
         }
 

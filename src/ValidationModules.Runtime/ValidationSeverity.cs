@@ -7,8 +7,8 @@ namespace ValidationModules;
 /// The names and values match FluentValidation's <c>Severity</c> exactly, which makes the adapter's
 /// mapping a cast rather than a table, and puts <see cref="Error"/> at <c>default</c>.
 /// </remarks>
-public enum ValidationSeverity {
-
+public enum ValidationSeverity
+{
     /// <summary>The value is invalid. Only this severity makes <see cref="ValidationResult.IsValid"/> false.</summary>
     Error = 0,
 

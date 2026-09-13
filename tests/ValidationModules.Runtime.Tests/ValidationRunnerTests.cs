@@ -8,11 +8,15 @@ namespace ValidationModules.Runtime.Tests;
 /// merge rather than one replacing another, and business rules are gated on structural validation
 /// passing.
 /// </summary>
-public class ValidationRunnerTests {
-
+public class ValidationRunnerTests
+{
     [Fact]
-    public void Validate_RunsEveryStructuralValidatorAndMergesResults() {
-        var runner = new ValidationRunner<Pet>([PetValidator.Instance, PetValidatorV2.Instance], []);
+    public void Validate_RunsEveryStructuralValidatorAndMergesResults()
+    {
+        var runner = new ValidationRunner<Pet>(
+            [PetValidator.Instance, PetValidatorV2.Instance],
+            []
+        );
 
         var result = runner.Validate(new Pet { Name = "Rex", Toys = [new Toy { Name = "ball" }] });
 
@@ -21,69 +25,93 @@ public class ValidationRunnerTests {
     }
 
     [Fact]
-    public async Task ValidateAsync_StructuralPasses_RunsBusinessRules() {
+    public async Task ValidateAsync_StructuralPasses_RunsBusinessRules()
+    {
         var runner = new ValidationRunner<Pet>(
             [PetValidator.Instance],
-            [new PetNameUniquenessValidator("Rex")]);
+            [new PetNameUniquenessValidator("Rex")]
+        );
 
-        var result = await runner.ValidateAsync(ValidPet(), cancellationToken: TestContext.Current.CancellationToken);
+        var result = await runner.ValidateAsync(
+            ValidPet(),
+            cancellationToken: TestContext.Current.CancellationToken
+        );
 
         Assert.Equal("duplicate", Assert.Single(result.Errors).Code);
     }
 
     [Fact]
-    public async Task ValidateAsync_StructuralFails_SkipsBusinessRules() {
+    public async Task ValidateAsync_StructuralFails_SkipsBusinessRules()
+    {
         // The point of the gate: a uniqueness check must not reach the database for a null field.
         var business = new RecordingAsyncValidator();
         var runner = new ValidationRunner<Pet>([PetValidator.Instance], [business]);
 
         var result = await runner.ValidateAsync(
             new Pet { Toys = [new Toy { Name = "ball" }] },
-            cancellationToken: TestContext.Current.CancellationToken);
+            cancellationToken: TestContext.Current.CancellationToken
+        );
 
         Assert.False(business.WasCalled);
         Assert.Equal("required", Assert.Single(result.Errors).Code);
     }
 
     [Fact]
-    public async Task ValidateAsync_BusinessRuleErrors_ShareThePathVocabulary() {
+    public async Task ValidateAsync_BusinessRuleErrors_ShareThePathVocabulary()
+    {
         var runner = new ValidationRunner<Pet>([], [new NestedAsyncValidator()]);
 
-        var result = await runner.ValidateAsync(ValidPet(), cancellationToken: TestContext.Current.CancellationToken);
+        var result = await runner.ValidateAsync(
+            ValidPet(),
+            cancellationToken: TestContext.Current.CancellationToken
+        );
 
         Assert.Equal("home.postalCode", Assert.Single(result.Errors).Field);
     }
 
     [Fact]
-    public async Task ValidateAsync_MultipleBusinessRules_RunInRegistrationOrder() {
+    public async Task ValidateAsync_MultipleBusinessRules_RunInRegistrationOrder()
+    {
         var runner = new ValidationRunner<Pet>(
             [],
-            [new TaggingAsyncValidator("first"), new TaggingAsyncValidator("second")]);
+            [new TaggingAsyncValidator("first"), new TaggingAsyncValidator("second")]
+        );
 
-        var result = await runner.ValidateAsync(ValidPet(), cancellationToken: TestContext.Current.CancellationToken);
+        var result = await runner.ValidateAsync(
+            ValidPet(),
+            cancellationToken: TestContext.Current.CancellationToken
+        );
 
         Assert.Equal(["first", "second"], result.Errors.Select(error => error.Code));
     }
 
     [Fact]
-    public void Validate_CleanValue_ReturnsTheSharedValidInstance() {
+    public void Validate_CleanValue_ReturnsTheSharedValidInstance()
+    {
         var runner = new ValidationRunner<Pet>([PetValidator.Instance], []);
 
         Assert.Same(ValidationResult.Valid, runner.Validate(ValidPet()));
     }
 
     private static Pet ValidPet() =>
-        new() {
+        new()
+        {
             Name = "Rex",
             Tag = "tag",
             Sku = "ABC",
             Toys = [new Toy { Name = "ball" }],
         };
 
-    private sealed class RecordingAsyncValidator : IAsyncValidatorFor<Pet> {
+    private sealed class RecordingAsyncValidator : IAsyncValidatorFor<Pet>
+    {
         public bool WasCalled { get; private set; }
 
-        public ValueTask ValidateAsync(ValidationContext context, Pet value, CancellationToken cancellationToken) {
+        public ValueTask ValidateAsync(
+            ValidationContext context,
+            Pet value,
+            CancellationToken cancellationToken
+        )
+        {
             WasCalled = true;
 
             return default;
@@ -91,7 +119,8 @@ public class ValidationRunnerTests {
     }
 
     [Fact]
-    public void Validate_CleanValue_DoesNotBoxAnEnumerator() {
+    public void Validate_CleanValue_DoesNotBoxAnEnumerator()
+    {
         // The runner held both dependencies as IEnumerable<T> and foreach'd them. Iterating an
         // array through the interface boxes its enumerator - 32 bytes per call, and the async path
         // paid it twice, which is what holding arrays fixes.
@@ -101,16 +130,19 @@ public class ValidationRunnerTests {
         var runner = new ValidationRunner<Pet>([new CleanValidator()], []);
         var pet = ValidPet();
 
-        for (var i = 0; i < 200; i++) {
+        for (var i = 0; i < 200; i++)
+        {
             runner.Validate(pet);
         }
 
         var best = long.MaxValue;
 
-        for (var window = 0; window < 5 && best != 0; window++) {
+        for (var window = 0; window < 5 && best != 0; window++)
+        {
             var before = GC.GetAllocatedBytesForCurrentThread();
 
-            for (var i = 0; i < 500; i++) {
+            for (var i = 0; i < 500; i++)
+            {
                 runner.Validate(pet);
             }
 
@@ -128,12 +160,20 @@ public class ValidationRunnerTests {
     }
 
     /// <summary>A validator that finds nothing, so the pass stays on its clean path.</summary>
-    private sealed class CleanValidator : IValidatorFor<Pet> {
-        public ValidationFlow Validate(ref ValidationContext context, Pet value) => ValidationFlow.Continue;
+    private sealed class CleanValidator : IValidatorFor<Pet>
+    {
+        public ValidationFlow Validate(ref ValidationContext context, Pet value) =>
+            ValidationFlow.Continue;
     }
 
-    private sealed class NestedAsyncValidator : IAsyncValidatorFor<Pet> {
-        public async ValueTask ValidateAsync(ValidationContext context, Pet value, CancellationToken cancellationToken) {
+    private sealed class NestedAsyncValidator : IAsyncValidatorFor<Pet>
+    {
+        public async ValueTask ValidateAsync(
+            ValidationContext context,
+            Pet value,
+            CancellationToken cancellationToken
+        )
+        {
             var home = context.Push("home");
 
             // The context is used after an await, which is the case the ref struct design could not
@@ -144,8 +184,14 @@ public class ValidationRunnerTests {
         }
     }
 
-    private sealed class TaggingAsyncValidator(string code) : IAsyncValidatorFor<Pet> {
-        public async ValueTask ValidateAsync(ValidationContext context, Pet value, CancellationToken cancellationToken) {
+    private sealed class TaggingAsyncValidator(string code) : IAsyncValidatorFor<Pet>
+    {
+        public async ValueTask ValidateAsync(
+            ValidationContext context,
+            Pet value,
+            CancellationToken cancellationToken
+        )
+        {
             await Task.Yield();
 
             context.Report("name", code, "x");
@@ -158,7 +204,8 @@ public class ValidationRunnerTests {
     /// the response looked clean.
     /// </summary>
     [Fact]
-    public async Task ValidateAsync_StructuralWarning_StillRunsAsyncValidators() {
+    public async Task ValidateAsync_StructuralWarning_StillRunsAsyncValidators()
+    {
         var runner = new ValidationRunner<Pet>([WarnsOnly.Instance], [RecordsThatItRan.Instance]);
 
         var result = await runner.ValidateAsync(ValidPet(), TestContext.Current.CancellationToken);
@@ -169,7 +216,8 @@ public class ValidationRunnerTests {
 
     /// <summary>A blocking error still short-circuits: that gate is the point.</summary>
     [Fact]
-    public async Task ValidateAsync_StructuralError_SkipsAsyncValidators() {
+    public async Task ValidateAsync_StructuralError_SkipsAsyncValidators()
+    {
         var runner = new ValidationRunner<Pet>([FailsOnly.Instance], [RecordsThatItRan.Instance]);
 
         var result = await runner.ValidateAsync(ValidPet(), TestContext.Current.CancellationToken);
@@ -177,24 +225,32 @@ public class ValidationRunnerTests {
         Assert.DoesNotContain(result.Errors, error => error.Code == "async_ran");
     }
 
-    private sealed class WarnsOnly : IValidatorFor<Pet> {
+    private sealed class WarnsOnly : IValidatorFor<Pet>
+    {
         public static readonly WarnsOnly Instance = new();
 
         public ValidationFlow Validate(ref ValidationContext context, Pet value) =>
             context.Report("name", "advisory", "worth a look", ValidationSeverity.Warning);
     }
 
-    private sealed class FailsOnly : IValidatorFor<Pet> {
+    private sealed class FailsOnly : IValidatorFor<Pet>
+    {
         public static readonly FailsOnly Instance = new();
 
         public ValidationFlow Validate(ref ValidationContext context, Pet value) =>
             context.Report("name", "blocked", "no", ValidationSeverity.Error);
     }
 
-    private sealed class RecordsThatItRan : IAsyncValidatorFor<Pet> {
+    private sealed class RecordsThatItRan : IAsyncValidatorFor<Pet>
+    {
         public static readonly RecordsThatItRan Instance = new();
 
-        public ValueTask ValidateAsync(ValidationContext context, Pet value, CancellationToken cancellationToken) {
+        public ValueTask ValidateAsync(
+            ValidationContext context,
+            Pet value,
+            CancellationToken cancellationToken
+        )
+        {
             context.Report("policy", "async_ran", "the business rule ran");
             return default;
         }

@@ -9,8 +9,8 @@ namespace ValidationModules;
 /// These are extensions rather than interface members so that hand-writing an
 /// <see cref="IValidatorFor{T}"/> means implementing one method rather than five.
 /// </remarks>
-public static class ValidatorForExtensions {
-
+public static class ValidatorForExtensions
+{
     /// <summary>
     /// Runs the validator and returns an immutable result.
     /// </summary>
@@ -26,26 +26,31 @@ public static class ValidatorForExtensions {
     /// <param name="value">The value to validate.</param>
     /// <param name="pathMode">How error paths render. See <see cref="ValidationPathMode"/>.</param>
     public static ValidationResult Validate<T>(
-        this IValidatorFor<T> validator, T value, ValidationPathMode pathMode) {
+        this IValidatorFor<T> validator,
+        T value,
+        ValidationPathMode pathMode
+    )
+    {
         ArgumentNullException.ThrowIfNull(validator);
 
         var collector = new ValidationErrorCollector(pathMode);
         var path = ArrayPool<PathSegment>.Shared.Rent(ValidationErrorCollector.DefaultDepthLimit);
 
-        try {
+        try
+        {
             var context = new ValidationContext(collector, path);
 
             validator.Validate(ref context, value);
 
             return collector.ToResult();
         }
-        finally {
+        finally
+        {
             // Not cleared: every slot is written before it is read and nothing at or above the
             // current depth is ever read, so stale contents cannot be observed.
             ArrayPool<PathSegment>.Shared.Return(path);
         }
     }
-
 
     /// <summary>
     /// Runs the validator in <see cref="ValidationStopMode.StopOnFirstError"/> and returns a result
@@ -67,20 +72,26 @@ public static class ValidatorForExtensions {
     /// </remarks>
     /// <param name="validator">The validator to run.</param>
     /// <param name="value">The value to validate.</param>
-    public static ValidationResult ValidateFirst<T>(this IValidatorFor<T> validator, T value) {
+    public static ValidationResult ValidateFirst<T>(this IValidatorFor<T> validator, T value)
+    {
         ArgumentNullException.ThrowIfNull(validator);
 
-        var collector = new ValidationErrorCollector { StopMode = ValidationStopMode.StopOnFirstError };
+        var collector = new ValidationErrorCollector
+        {
+            StopMode = ValidationStopMode.StopOnFirstError,
+        };
         var path = ArrayPool<PathSegment>.Shared.Rent(ValidationErrorCollector.DefaultDepthLimit);
 
-        try {
+        try
+        {
             var context = new ValidationContext(collector, path);
 
             validator.Validate(ref context, value);
 
             return collector.ToResult();
         }
-        finally {
+        finally
+        {
             ArrayPool<PathSegment>.Shared.Return(path);
         }
     }
@@ -95,7 +106,8 @@ public static class ValidatorForExtensions {
     /// validator's concrete type would otherwise not compile. Where the concrete type declares its
     /// own - every generated one does - that instance method wins and this is never reached.
     /// </remarks>
-    public static bool IsValid<T>(this IValidatorFor<T> validator, T value) {
+    public static bool IsValid<T>(this IValidatorFor<T> validator, T value)
+    {
         ArgumentNullException.ThrowIfNull(validator);
 
         return validator.IsValid(value);
@@ -105,10 +117,12 @@ public static class ValidatorForExtensions {
     /// Runs the validator and throws <see cref="ValidationException"/> if the value is invalid.
     /// </summary>
     /// <exception cref="ValidationException">The value failed validation.</exception>
-    public static void ValidateAndThrow<T>(this IValidatorFor<T> validator, T value) {
+    public static void ValidateAndThrow<T>(this IValidatorFor<T> validator, T value)
+    {
         var result = validator.Validate(value);
 
-        if (!result.IsValid) {
+        if (!result.IsValid)
+        {
             throw new ValidationException(result);
         }
     }
@@ -130,18 +144,22 @@ public static class ValidatorForExtensions {
     public static void ValidateInto<T>(
         this IValidatorFor<T> validator,
         ValidationErrorCollector collector,
-        T value) {
+        T value
+    )
+    {
         ArgumentNullException.ThrowIfNull(validator);
         ArgumentNullException.ThrowIfNull(collector);
 
         var path = ArrayPool<PathSegment>.Shared.Rent(ValidationErrorCollector.DefaultDepthLimit);
 
-        try {
+        try
+        {
             var context = new ValidationContext(collector, path);
 
             validator.Validate(ref context, value);
         }
-        finally {
+        finally
+        {
             ArrayPool<PathSegment>.Shared.Return(path);
         }
     }

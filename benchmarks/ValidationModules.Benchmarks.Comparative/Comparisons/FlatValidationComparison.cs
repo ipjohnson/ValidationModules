@@ -31,8 +31,8 @@ namespace ValidationModules.Benchmarks.Comparative.Comparisons;
 /// </remarks>
 [MemoryDiagnoser]
 [BenchmarkCategory(ComparativeCategories.Flat)]
-public class FlatValidationComparison {
-
+public class FlatValidationComparison
+{
     // Hoisted: constructing per invocation would put an allocation on the measured path.
     private static readonly CustomerValidator CustomerValidatorShared = new();
     private readonly List<DataAnnotations.ValidationResult> _annotationResults = [];
@@ -59,7 +59,8 @@ public class FlatValidationComparison {
             : throw new InvalidOperationException(_dataAnnotationsDivergence);
 
     [GlobalSetup]
-    public void Setup() {
+    public void Setup()
+    {
         // In the measured process, not just the host: under Native AOT this class runs in its
         // own AOT-compiled binary, and an engine that quietly stopped validating there would
         // otherwise be reported as fast. See EngineParity's remarks.
@@ -90,7 +91,8 @@ public class FlatValidationComparison {
         CustomerFluentValidator.Instance.Validate(_valid);
 
     [Benchmark(Description = "DataAnnotations - clean")]
-    public bool Da_Clean() => DataAnnotationsEngine.TryValidate(CheckedAnnotations(_validAnnotated), _annotationResults);
+    public bool Da_Clean() =>
+        DataAnnotationsEngine.TryValidate(CheckedAnnotations(_validAnnotated), _annotationResults);
 
     // ---- Failing payload: every rule violated, every error reported -----------------------------
 
@@ -102,7 +104,11 @@ public class FlatValidationComparison {
         CustomerFluentValidator.Instance.Validate(_invalid);
 
     [Benchmark(Description = "DataAnnotations - 5 failures")]
-    public bool Da_Failing() => DataAnnotationsEngine.TryValidate(CheckedAnnotations(_invalidAnnotated), _annotationResults);
+    public bool Da_Failing() =>
+        DataAnnotationsEngine.TryValidate(
+            CheckedAnnotations(_invalidAnnotated),
+            _annotationResults
+        );
 
     // ---- Shapes with no cross-engine equivalent, measured alone ---------------------------------
 
@@ -112,7 +118,8 @@ public class FlatValidationComparison {
     /// emits, and the gap against the rows above is most of why the library exists.
     /// </summary>
     [Benchmark(Description = "ValidationModules - clean, pooled collector (no FV/DA equivalent)")]
-    public bool Vm_Clean_Pooled() {
+    public bool Vm_Clean_Pooled()
+    {
         _pooled.Reset();
 
         CustomerValidatorShared.ValidateInto(_pooled, _valid);

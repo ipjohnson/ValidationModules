@@ -9,8 +9,8 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// method in its declaring type's container - carrying the fragment file's own usings - and called
 /// in place, one instantiation per concrete target.
 /// </summary>
-public class FragmentTests {
-
+public class FragmentTests
+{
     private const string Audited = """
         using System;
         using System.Text.Json.Serialization;
@@ -40,18 +40,22 @@ public class FragmentTests {
         """;
 
     private static GeneratorHarness.Result Run(string describeBody, string extra = "") =>
-        GeneratorHarness.Run(Audited + $$"""
+        GeneratorHarness.Run(
+            Audited
+                + $$"""
 
 
-            {{extra}}
-            public sealed class OrderRules : IValidationRulesFor<Order> {
-                public static void Describe(ValidationRules<Order> rules, Order x) {
-            {{describeBody}}
+                {{extra}}
+                public sealed class OrderRules : IValidationRulesFor<Order> {
+                    public static void Describe(ValidationRules<Order> rules, Order x) {
+                {{describeBody}}
+                    }
                 }
-            }
-            """);
+                """
+        );
 
-    private static GeneratorHarness.Result Clean(string describeBody, string extra = "") {
+    private static GeneratorHarness.Result Clean(string describeBody, string extra = "")
+    {
         var result = Run(describeBody, extra);
 
         Assert.Empty(result.CompilationErrors);
@@ -61,7 +65,8 @@ public class FragmentTests {
     }
 
     [Fact]
-    public void AGenericFragment_IsStampedPerConcreteTargetAndCalledInPlace() {
+    public void AGenericFragment_IsStampedPerConcreteTargetAndCalledInPlace()
+    {
         var result = Clean("        AuditRules.Standard(rules, x);");
 
         var container = result.Sources["Sample.AuditRules_Fragments.g.cs"];
@@ -72,7 +77,8 @@ public class FragmentTests {
     }
 
     [Fact]
-    public void AGenericFragment_ResolvesWireNamesAgainstTheConcreteImplementer() {
+    public void AGenericFragment_ResolvesWireNamesAgainstTheConcreteImplementer()
+    {
         // The member binds through the constraint interface, but [JsonPropertyName] on Order's
         // implementing property is what the wire sees - the point of stamping per concrete type.
         var result = Clean("        AuditRules.Standard(rules, x);");
@@ -81,7 +87,8 @@ public class FragmentTests {
     }
 
     [Fact]
-    public void AFragmentsOwnParameterNames_SurviveTranscription() {
+    public void AFragmentsOwnParameterNames_SurviveTranscription()
+    {
         // The fragment names its subject `audited`, not `x`; the emitted method reuses the
         // fragment's names so its body needs no identifier rewriting.
         var result = Clean("        AuditRules.Standard(rules, x);");
@@ -90,7 +97,8 @@ public class FragmentTests {
     }
 
     [Fact]
-    public void TwoCallers_ShareOneInstantiation() {
+    public void TwoCallers_ShareOneInstantiation()
+    {
         var result = Clean(
             "        AuditRules.Standard(rules, x);",
             """
@@ -100,15 +108,22 @@ public class FragmentTests {
                 }
             }
 
-            """);
+            """
+        );
 
         var container = result.Sources["Sample.AuditRules_Fragments.g.cs"];
 
-        Assert.Equal(1, container.Split("public static global::ValidationModules.ValidationFlow Standard_Order").Length - 1);
+        Assert.Equal(
+            1,
+            container
+                .Split("public static global::ValidationModules.ValidationFlow Standard_Order")
+                .Length - 1
+        );
     }
 
     [Fact]
-    public void ExtraParameters_BindAtTheCallSite() {
+    public void ExtraParameters_BindAtTheCallSite()
+    {
         var result = Clean(
             "        CustomsRules.Declare(rules, x, strict: x.Tier > 2);",
             """
@@ -120,17 +135,22 @@ public class FragmentTests {
                 }
             }
 
-            """);
+            """
+        );
 
         var region = result.Sources["Sample.OrderRules_Rules.g.cs"];
         var container = result.Sources["Sample.CustomsRules_Fragments.g.cs"];
 
-        Assert.Contains("global::Sample.CustomsRules_Fragments.Declare(ref ctx, x, x.Tier > 2)", region);
+        Assert.Contains(
+            "global::Sample.CustomsRules_Fragments.Declare(ref ctx, x, x.Tier > 2)",
+            region
+        );
         Assert.Contains("if (strict) {", container);
     }
 
     [Fact]
-    public void AFragmentMayCallAFragment() {
+    public void AFragmentMayCallAFragment()
+    {
         var result = Clean(
             "        Outer.Declare(rules, x);",
             """
@@ -141,15 +161,18 @@ public class FragmentTests {
                 }
             }
 
-            """);
+            """
+        );
 
         Assert.Contains(
             "global::Sample.AuditRules_Fragments.Standard_Order(ref ctx, order)",
-            result.Sources["Sample.Outer_Fragments.g.cs"]);
+            result.Sources["Sample.Outer_Fragments.g.cs"]
+        );
     }
 
     [Fact]
-    public void AFragmentCycle_IsVM3006() {
+    public void AFragmentCycle_IsVM3006()
+    {
         var result = Run(
             "        Left.Declare(rules, x);",
             """
@@ -163,14 +186,17 @@ public class FragmentTests {
                     Left.Declare(rules, order);
             }
 
-            """);
+            """
+        );
 
         Assert.Contains(result.Diagnostics, d => d.Id == "VM3006");
     }
 
     [Fact]
-    public void ACrossAssemblyFragment_IsVM3005WithTheSourcePackageFix() {
-        var shared = GeneratorHarness.CompileToReference("""
+    public void ACrossAssemblyFragment_IsVM3005WithTheSourcePackageFix()
+    {
+        var shared = GeneratorHarness.CompileToReference(
+            """
             using ValidationModules;
 
             namespace Shared;
@@ -184,9 +210,12 @@ public class FragmentTests {
                     rules.Require(widget.Name);
                 }
             }
-            """, "Shared");
+            """,
+            "Shared"
+        );
 
-        var result = GeneratorHarness.Run("""
+        var result = GeneratorHarness.Run(
+            """
             using Shared;
             using ValidationModules;
 
@@ -200,7 +229,8 @@ public class FragmentTests {
             """,
             "App",
             OutputKind.DynamicallyLinkedLibrary,
-            new[] { shared });
+            new[] { shared }
+        );
 
         var reported = Assert.Single(result.Diagnostics, d => d.Id == "VM3005");
 
@@ -209,8 +239,10 @@ public class FragmentTests {
     }
 
     [Fact]
-    public void AnExplicitInterfaceImplementation_IsVM3004RatherThanAnErrorInGeneratedCode() {
-        var result = GeneratorHarness.Run("""
+    public void AnExplicitInterfaceImplementation_IsVM3004RatherThanAnErrorInGeneratedCode()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules;
 
             namespace Sample;
@@ -235,25 +267,32 @@ public class FragmentTests {
                     AuditRules.Standard(rules, x);
                 }
             }
-            """);
+            """
+        );
 
-        Assert.Contains(result.Diagnostics, d => d.Id == "VM3004" && d.GetMessage().Contains("explicitly"));
+        Assert.Contains(
+            result.Diagnostics,
+            d => d.Id == "VM3004" && d.GetMessage().Contains("explicitly")
+        );
     }
 
     [Fact]
-    public void TheSubjectArgument_MustBeTheDescribeSubject() {
+    public void TheSubjectArgument_MustBeTheDescribeSubject()
+    {
         // A facet of a child is Nested's territory, where the path pushes.
         var result = Run(
             """
                     var other = new Order();
                     AuditRules.Standard(rules, other);
-            """);
+            """
+        );
 
         Assert.Contains(result.Diagnostics, d => d.Id == "VM3002");
     }
 
     [Fact]
-    public void ADescentInsideAFragment_IsRejected() {
+    public void ADescentInsideAFragment_IsRejected()
+    {
         var result = Run(
             "        Shipping.Declare(rules, x);",
             """
@@ -267,13 +306,15 @@ public class FragmentTests {
                 }
             }
 
-            """);
+            """
+        );
 
         Assert.Contains(result.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
     }
 
     [Fact]
-    public void AnEarlyReturnInAFragment_EndsTheFragmentOnly() {
+    public void AnEarlyReturnInAFragment_EndsTheFragmentOnly()
+    {
         var result = Clean(
             """
                     Gate.Declare(rules, x);
@@ -290,7 +331,8 @@ public class FragmentTests {
                 }
             }
 
-            """);
+            """
+        );
 
         var container = result.Sources["Sample.Gate_Fragments.g.cs"];
         var region = result.Sources["Sample.OrderRules_Rules.g.cs"];

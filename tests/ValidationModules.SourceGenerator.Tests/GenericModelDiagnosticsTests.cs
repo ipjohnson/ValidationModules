@@ -22,8 +22,8 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// and nothing pointing at the cause.
 /// </para>
 /// </remarks>
-public class GenericModelDiagnosticsTests {
-
+public class GenericModelDiagnosticsTests
+{
     private const string Generic = """
         using ValidationModules.Constraints;
 
@@ -36,14 +36,19 @@ public class GenericModelDiagnosticsTests {
         """;
 
     [Fact]
-    public void GenericModel_IsVM1010() {
+    public void GenericModel_IsVM1010()
+    {
         var result = GeneratorHarness.Run(Generic);
 
-        Assert.Equal(DiagnosticSeverity.Error, Assert.Single(result.Diagnostics, d => d.Id == "VM1010").Severity);
+        Assert.Equal(
+            DiagnosticSeverity.Error,
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1010").Severity
+        );
     }
 
     [Fact]
-    public void GenericModel_EmitsNoUncompilableValidator() {
+    public void GenericModel_EmitsNoUncompilableValidator()
+    {
         // The point of the diagnostic. Reporting and then emitting the broken file anyway would
         // leave the CS0246s on top of it.
         var result = GeneratorHarness.Run(Generic);
@@ -52,16 +57,21 @@ public class GenericModelDiagnosticsTests {
     }
 
     [Fact]
-    public void VM1010_NamesTheTypeAndSaysWhatToDoInstead() {
-        var message = Assert.Single(GeneratorHarness.Run(Generic).Diagnostics, d => d.Id == "VM1010").GetMessage();
+    public void VM1010_NamesTheTypeAndSaysWhatToDoInstead()
+    {
+        var message = Assert
+            .Single(GeneratorHarness.Run(Generic).Diagnostics, d => d.Id == "VM1010")
+            .GetMessage();
 
         Assert.Contains("Envelope", message);
         Assert.Contains("closed", message);
     }
 
     [Fact]
-    public void NonGenericModel_IsSilent() {
-        var result = GeneratorHarness.Run("""
+    public void NonGenericModel_IsSilent()
+    {
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -69,17 +79,20 @@ public class GenericModelDiagnosticsTests {
             public sealed record Envelope {
                 [Required] public string? TraceId { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1010");
         Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
-    public void GenericTypeCarryingNoConstraints_IsSilent() {
+    public void GenericTypeCarryingNoConstraints_IsSilent()
+    {
         // Nothing was asked of it, so there is nothing to refuse. A generic type in the compilation
         // is ordinary; only one declaring rules is a problem.
-        var result = GeneratorHarness.Run("""
+        var result = GeneratorHarness.Run(
+            """
             using ValidationModules.Constraints;
 
             namespace Sample;
@@ -91,7 +104,8 @@ public class GenericModelDiagnosticsTests {
             public sealed record Order {
                 [Required] public string? Sku { get; init; }
             }
-            """);
+            """
+        );
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1010");
         Assert.Empty(result.CompilationErrors);

@@ -15,8 +15,8 @@ namespace ValidationModules.SourceGenerator.Impl;
 /// route loads an assembly.
 /// </para>
 /// </remarks>
-public static class EmitterContract {
-
+public static class EmitterContract
+{
     /// <summary>
     /// The lowest <c>ValidationModules.RuntimeContract.Version</c> the emitted code works against.
     /// </summary>
@@ -36,7 +36,8 @@ public static class EmitterContract {
     /// two cases are indistinguishable here and produce the same failure downstream - generated
     /// code that does not compile - so they get one diagnostic that names the version needed.
     /// </remarks>
-    public static Diagnostic? Probe(Compilation compilation) {
+    public static Diagnostic? Probe(Compilation compilation)
+    {
         var found = ResolveRuntimeContract(compilation);
 
         return found >= RequiredRuntimeContract
@@ -45,20 +46,25 @@ public static class EmitterContract {
                 ValidationDiagnostics.RuntimeContractTooOld,
                 Location.None,
                 RequiredRuntimeContract,
-                found);
+                found
+            );
     }
 
     /// <summary>
     /// Reads <c>ValidationModules.RuntimeContract.Version</c> out of the compilation, or 0 when the
     /// type, the field, or its constant value is absent.
     /// </summary>
-    public static int ResolveRuntimeContract(Compilation compilation) {
-        if (compilation.GetTypeByMetadataName(RuntimeContractType) is not { } marker) {
+    public static int ResolveRuntimeContract(Compilation compilation)
+    {
+        if (compilation.GetTypeByMetadataName(RuntimeContractType) is not { } marker)
+        {
             return 0;
         }
 
-        foreach (var member in marker.GetMembers(VersionField)) {
-            if (member is IFieldSymbol { HasConstantValue: true, ConstantValue: int version }) {
+        foreach (var member in marker.GetMembers(VersionField))
+        {
+            if (member is IFieldSymbol { HasConstantValue: true, ConstantValue: int version })
+            {
                 return version;
             }
         }

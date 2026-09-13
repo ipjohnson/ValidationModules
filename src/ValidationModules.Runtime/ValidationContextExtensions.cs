@@ -54,8 +54,8 @@ namespace ValidationModules;
 /// not require overriding the other.
 /// </para>
 /// </remarks>
-public static class ValidationContextExtensions {
-
+public static class ValidationContextExtensions
+{
     /// <summary>Records that a required value was missing.</summary>
     /// <param name="context">The reporter to record against.</param>
     /// <param name="field">The field name.</param>
@@ -67,9 +67,16 @@ public static class ValidationContextExtensions {
         string field,
         ValidationSeverity severity = ValidationSeverity.Error,
         string? code = null,
-        object? value = null)
+        object? value = null
+    )
         where TReporter : IValidationContextReporter =>
-        context.Report(field, code ?? ValidationCodes.Required, value, ValidationMessageInfo.Required, severity);
+        context.Report(
+            field,
+            code ?? ValidationCodes.Required,
+            value,
+            ValidationMessageInfo.Required,
+            severity
+        );
 
     /// <summary>
     /// Records that a string fell outside its length bounds.
@@ -88,18 +95,25 @@ public static class ValidationContextExtensions {
         int max = int.MaxValue,
         ValidationSeverity severity = ValidationSeverity.Error,
         string? code = null,
-        object? value = null)
+        object? value = null
+    )
         where TReporter : IValidationContextReporter =>
         context.Report(
             field,
             code ?? ValidationCodes.StringLength,
             value,
             BoundedInfo(
-                min, max,
-                ValidationMessageTemplates.StringLengthBetween, ValidationMessageTemplates.StringLengthBetweenSingular,
-                ValidationMessageTemplates.StringLengthAtMost, ValidationMessageTemplates.StringLengthAtMostSingular,
-                ValidationMessageTemplates.StringLengthAtLeast, ValidationMessageTemplates.StringLengthAtLeastSingular),
-            severity);
+                min,
+                max,
+                ValidationMessageTemplates.StringLengthBetween,
+                ValidationMessageTemplates.StringLengthBetweenSingular,
+                ValidationMessageTemplates.StringLengthAtMost,
+                ValidationMessageTemplates.StringLengthAtMostSingular,
+                ValidationMessageTemplates.StringLengthAtLeast,
+                ValidationMessageTemplates.StringLengthAtLeastSingular
+            ),
+            severity
+        );
 
     /// <summary>
     /// Records that a collection fell outside its element-count bounds.
@@ -118,18 +132,25 @@ public static class ValidationContextExtensions {
         int max = int.MaxValue,
         ValidationSeverity severity = ValidationSeverity.Error,
         string? code = null,
-        object? value = null)
+        object? value = null
+    )
         where TReporter : IValidationContextReporter =>
         context.Report(
             field,
             code ?? ValidationCodes.ArrayBounds,
             value,
             BoundedInfo(
-                min, max,
-                ValidationMessageTemplates.ItemCountBetween, ValidationMessageTemplates.ItemCountBetweenSingular,
-                ValidationMessageTemplates.ItemCountAtMost, ValidationMessageTemplates.ItemCountAtMostSingular,
-                ValidationMessageTemplates.ItemCountAtLeast, ValidationMessageTemplates.ItemCountAtLeastSingular),
-            severity);
+                min,
+                max,
+                ValidationMessageTemplates.ItemCountBetween,
+                ValidationMessageTemplates.ItemCountBetweenSingular,
+                ValidationMessageTemplates.ItemCountAtMost,
+                ValidationMessageTemplates.ItemCountAtMostSingular,
+                ValidationMessageTemplates.ItemCountAtLeast,
+                ValidationMessageTemplates.ItemCountAtLeastSingular
+            ),
+            severity
+        );
 
     /// <summary>
     /// Records that a value was not an exact multiple of its divisor.
@@ -151,14 +172,16 @@ public static class ValidationContextExtensions {
         decimal divisor,
         ValidationSeverity severity = ValidationSeverity.Error,
         string? code = null,
-        object? value = null)
+        object? value = null
+    )
         where TReporter : IValidationContextReporter =>
         context.Report(
             field,
             code ?? ValidationCodes.MultipleOf,
             value,
             new ValidationMessageInfo(ValidationMessageTemplates.MultipleOf, divisor),
-            severity);
+            severity
+        );
 
     /// <summary>
     /// Records that a collection contained the same element twice.
@@ -178,9 +201,16 @@ public static class ValidationContextExtensions {
         string field,
         ValidationSeverity severity = ValidationSeverity.Error,
         string? code = null,
-        object? value = null)
+        object? value = null
+    )
         where TReporter : IValidationContextReporter =>
-        context.Report(field, code ?? ValidationCodes.UniqueItems, value, ValidationMessageInfo.UniqueItems, severity);
+        context.Report(
+            field,
+            code ?? ValidationCodes.UniqueItems,
+            value,
+            ValidationMessageInfo.UniqueItems,
+            severity
+        );
 
     /// <summary>
     /// Records that a value fell outside its range.
@@ -210,7 +240,8 @@ public static class ValidationContextExtensions {
         string? code = null,
         object? value = null,
         bool exclusiveMin = false,
-        bool exclusiveMax = false)
+        bool exclusiveMax = false
+    )
         where TReporter : IValidationContextReporter
         where T : IFormattable =>
         context.Report(
@@ -218,14 +249,18 @@ public static class ValidationContextExtensions {
             code ?? ValidationCodes.Range,
             value,
             new ValidationMessageInfo(
-                (exclusiveMin, exclusiveMax) switch {
+                (exclusiveMin, exclusiveMax) switch
+                {
                     (false, false) => ValidationMessageTemplates.RangeBetween,
                     (true, false) => ValidationMessageTemplates.RangeGreaterAndAtMost,
                     (false, true) => ValidationMessageTemplates.RangeAtLeastAndLess,
                     (true, true) => ValidationMessageTemplates.RangeGreaterAndLess,
                 },
-                min, max),
-            severity);
+                min,
+                max
+            ),
+            severity
+        );
 
     /// <summary>
     /// Records that a value fell below its lower bound, where no upper bound was declared.
@@ -251,7 +286,8 @@ public static class ValidationContextExtensions {
         ValidationSeverity severity = ValidationSeverity.Error,
         string? code = null,
         object? value = null,
-        bool exclusive = false)
+        bool exclusive = false
+    )
         where TReporter : IValidationContextReporter
         where T : IFormattable =>
         context.Report(
@@ -259,9 +295,13 @@ public static class ValidationContextExtensions {
             code ?? ValidationCodes.Range,
             value,
             new ValidationMessageInfo(
-                exclusive ? ValidationMessageTemplates.RangeGreaterThan : ValidationMessageTemplates.RangeAtLeast,
-                min),
-            severity);
+                exclusive
+                    ? ValidationMessageTemplates.RangeGreaterThan
+                    : ValidationMessageTemplates.RangeAtLeast,
+                min
+            ),
+            severity
+        );
 
     /// <summary>
     /// Records that a value rose above its upper bound, where no lower bound was declared.
@@ -280,7 +320,8 @@ public static class ValidationContextExtensions {
         ValidationSeverity severity = ValidationSeverity.Error,
         string? code = null,
         object? value = null,
-        bool exclusive = false)
+        bool exclusive = false
+    )
         where TReporter : IValidationContextReporter
         where T : IFormattable =>
         context.Report(
@@ -288,9 +329,13 @@ public static class ValidationContextExtensions {
             code ?? ValidationCodes.Range,
             value,
             new ValidationMessageInfo(
-                exclusive ? ValidationMessageTemplates.RangeLessThan : ValidationMessageTemplates.RangeAtMost,
-                max),
-            severity);
+                exclusive
+                    ? ValidationMessageTemplates.RangeLessThan
+                    : ValidationMessageTemplates.RangeAtMost,
+                max
+            ),
+            severity
+        );
 
     /// <summary>
     /// Records that a string did not match its pattern.
@@ -310,9 +355,16 @@ public static class ValidationContextExtensions {
         string field,
         ValidationSeverity severity = ValidationSeverity.Error,
         string? code = null,
-        object? value = null)
+        object? value = null
+    )
         where TReporter : IValidationContextReporter =>
-        context.Report(field, code ?? ValidationCodes.Pattern, value, ValidationMessageInfo.Pattern, severity);
+        context.Report(
+            field,
+            code ?? ValidationCodes.Pattern,
+            value,
+            ValidationMessageInfo.Pattern,
+            severity
+        );
 
     /// <summary>
     /// Records that a value was not one of the permitted set.
@@ -333,14 +385,16 @@ public static class ValidationContextExtensions {
         string allowedValues,
         ValidationSeverity severity = ValidationSeverity.Error,
         string? code = null,
-        object? value = null)
+        object? value = null
+    )
         where TReporter : IValidationContextReporter =>
         context.Report(
             field,
             code ?? ValidationCodes.Enum,
             value,
             new ValidationMessageInfo(ValidationMessageTemplates.AllowedValues, allowedValues),
-            severity);
+            severity
+        );
 
     /// <summary>
     /// Records that a value was one of the forbidden set.
@@ -364,14 +418,16 @@ public static class ValidationContextExtensions {
         string deniedValues,
         ValidationSeverity severity = ValidationSeverity.Error,
         string? code = null,
-        object? value = null)
+        object? value = null
+    )
         where TReporter : IValidationContextReporter =>
         context.Report(
             field,
             code ?? ValidationCodes.Enum,
             value,
             new ValidationMessageInfo(ValidationMessageTemplates.DeniedValues, deniedValues),
-            severity);
+            severity
+        );
 
     /// <summary>
     /// Records that a value was not an email address.
@@ -391,9 +447,16 @@ public static class ValidationContextExtensions {
         string field,
         ValidationSeverity severity = ValidationSeverity.Error,
         string? code = null,
-        object? value = null)
+        object? value = null
+    )
         where TReporter : IValidationContextReporter =>
-        context.Report(field, code ?? ValidationCodes.Email, value, ValidationMessageInfo.Email, severity);
+        context.Report(
+            field,
+            code ?? ValidationCodes.Email,
+            value,
+            ValidationMessageInfo.Email,
+            severity
+        );
 
     /// <summary>
     /// Records that a value was not a phone number.
@@ -408,9 +471,16 @@ public static class ValidationContextExtensions {
         string field,
         ValidationSeverity severity = ValidationSeverity.Error,
         string? code = null,
-        object? value = null)
+        object? value = null
+    )
         where TReporter : IValidationContextReporter =>
-        context.Report(field, code ?? ValidationCodes.Phone, value, ValidationMessageInfo.Phone, severity);
+        context.Report(
+            field,
+            code ?? ValidationCodes.Phone,
+            value,
+            ValidationMessageInfo.Phone,
+            severity
+        );
 
     /// <summary>
     /// Records that a value was not an http, https or ftp URL.
@@ -430,9 +500,16 @@ public static class ValidationContextExtensions {
         string field,
         ValidationSeverity severity = ValidationSeverity.Error,
         string? code = null,
-        object? value = null)
+        object? value = null
+    )
         where TReporter : IValidationContextReporter =>
-        context.Report(field, code ?? ValidationCodes.Url, value, ValidationMessageInfo.Url, severity);
+        context.Report(
+            field,
+            code ?? ValidationCodes.Url,
+            value,
+            ValidationMessageInfo.Url,
+            severity
+        );
 
     /// <summary>
     /// Records that a value failed the credit card checksum.
@@ -447,9 +524,16 @@ public static class ValidationContextExtensions {
         string field,
         ValidationSeverity severity = ValidationSeverity.Error,
         string? code = null,
-        object? value = null)
+        object? value = null
+    )
         where TReporter : IValidationContextReporter =>
-        context.Report(field, code ?? ValidationCodes.CreditCard, value, ValidationMessageInfo.CreditCard, severity);
+        context.Report(
+            field,
+            code ?? ValidationCodes.CreditCard,
+            value,
+            ValidationMessageInfo.CreditCard,
+            severity
+        );
 
     /// <summary>
     /// Records that a value was not well-formed Base64.
@@ -464,9 +548,16 @@ public static class ValidationContextExtensions {
         string field,
         ValidationSeverity severity = ValidationSeverity.Error,
         string? code = null,
-        object? value = null)
+        object? value = null
+    )
         where TReporter : IValidationContextReporter =>
-        context.Report(field, code ?? ValidationCodes.Base64, value, ValidationMessageInfo.Base64, severity);
+        context.Report(
+            field,
+            code ?? ValidationCodes.Base64,
+            value,
+            ValidationMessageInfo.Base64,
+            severity
+        );
 
     /// <summary>
     /// Records that a file name's extension was not in the permitted set.
@@ -487,14 +578,16 @@ public static class ValidationContextExtensions {
         string extensions,
         ValidationSeverity severity = ValidationSeverity.Error,
         string? code = null,
-        object? value = null)
+        object? value = null
+    )
         where TReporter : IValidationContextReporter =>
         context.Report(
             field,
             code ?? ValidationCodes.FileExtension,
             value,
             new ValidationMessageInfo(ValidationMessageTemplates.FileExtension, extensions),
-            severity);
+            severity
+        );
 
     /// <summary>
     /// Records that a custom constraint's check failed.
@@ -515,9 +608,16 @@ public static class ValidationContextExtensions {
         string field,
         ValidationSeverity severity = ValidationSeverity.Error,
         string? code = null,
-        object? value = null)
+        object? value = null
+    )
         where TReporter : IValidationContextReporter =>
-        context.Report(field, code ?? ValidationCodes.Custom, value, ValidationMessageInfo.Custom, severity);
+        context.Report(
+            field,
+            code ?? ValidationCodes.Custom,
+            value,
+            ValidationMessageInfo.Custom,
+            severity
+        );
 
     /// <summary>
     /// Picks the between / at-most / at-least template - and its singular form when the deciding
@@ -525,17 +625,25 @@ public static class ValidationContextExtensions {
     /// the rendered default is byte-identical to what used to be composed.
     /// </summary>
     private static ValidationMessageInfo BoundedInfo(
-        int min, int max,
-        string between, string betweenSingular,
-        string atMost, string atMostSingular,
-        string atLeast, string atLeastSingular) {
+        int min,
+        int max,
+        string between,
+        string betweenSingular,
+        string atMost,
+        string atMostSingular,
+        string atLeast,
+        string atLeastSingular
+    )
+    {
         var bounded = max != int.MaxValue;
 
-        if (min > 0 && bounded) {
+        if (min > 0 && bounded)
+        {
             return new ValidationMessageInfo(max == 1 ? betweenSingular : between, min, max);
         }
 
-        if (bounded) {
+        if (bounded)
+        {
             return new ValidationMessageInfo(max == 1 ? atMostSingular : atMost, max);
         }
 

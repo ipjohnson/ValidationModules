@@ -5,7 +5,8 @@ using ValidationModules.Constraints;
 namespace SutProject;
 
 /// <summary>Native constraints, nesting and collections.</summary>
-public sealed record Pet {
+public sealed record Pet
+{
     [Required]
     [StringLength(min: 1, max: 10)]
     public string? Name { get; init; }
@@ -34,32 +35,37 @@ public sealed record Pet {
     public IReadOnlyList<Toy> Toys { get; init; } = new List<Toy>();
 }
 
-public sealed record Address {
+public sealed record Address
+{
     [Required]
     [JsonPropertyName("postal_code")]
     public string? PostalCode { get; init; }
 }
 
-public sealed record Toy {
+public sealed record Toy
+{
     [Required]
     public string? Name { get; init; }
 }
 
 /// <summary>An explicit message, which must emit a literal rather than a composed one.</summary>
-public sealed record Owner {
+public sealed record Owner
+{
     [Required(Message = "an owner must be named")]
     public string? Name { get; init; }
 }
 
 /// <summary>A nullable value type, and an exclusive bound.</summary>
-public sealed record Reading {
+public sealed record Reading
+{
     [Required]
     [Range(0.0, 1.0, ExclusiveMax = true)]
     public double? Ratio { get; init; }
 }
 
 /// <summary>Consumer-declared patterns, implemented by the regex source generator.</summary>
-public static partial class PetPatterns {
+public static partial class PetPatterns
+{
     [GeneratedRegex("^[a-z0-9-]+$")]
     public static partial Regex Slug();
 }
@@ -72,7 +78,8 @@ public static partial class PetPatterns {
 /// what matters is that the comparison it compiles to is the right one. A bound parsed into the
 /// wrong month would still compile.
 /// </remarks>
-public sealed record Booking {
+public sealed record Booking
+{
     [Range("2000-01-01", "2100-12-31")]
     public DateOnly Starts { get; init; }
 
@@ -96,7 +103,8 @@ public sealed record Booking {
 /// the emitted comparison is the only way to see that, which is why these are here rather than
 /// only in the generator tests.
 /// </remarks>
-public sealed record Order {
+public sealed record Order
+{
     [MultipleOf(5)]
     public int Quantity { get; init; }
 
@@ -129,7 +137,8 @@ public sealed record Order {
 /// <c>[Range(0.5, 9.99)]</c> on a decimal emitted <c>price &lt; 0.5</c>, which is CS0019 - an error
 /// inside generated code.
 /// </remarks>
-public sealed record Allocation {
+public sealed record Allocation
+{
     [Range(Min = 1)]
     public int AtLeastOne { get; init; }
 
@@ -145,7 +154,8 @@ public sealed record Allocation {
 /// trials - the two-argument constructor had no defaults, so the property-setter form was the
 /// only one-bound spelling.
 /// </summary>
-public sealed record Passphrase {
+public sealed record Passphrase
+{
     [StringLength(min: 12)]
     public string? Value { get; init; }
 

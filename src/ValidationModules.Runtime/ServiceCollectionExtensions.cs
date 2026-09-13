@@ -17,8 +17,8 @@ namespace Microsoft.Extensions.DependencyInjection;
 /// generation time and can be forced with the <c>ValidationModules_Registration</c> MSBuild
 /// property.
 /// </remarks>
-public static class ValidationModulesServiceCollectionExtensions {
-
+public static class ValidationModulesServiceCollectionExtensions
+{
     /// <summary>
     /// Registers every validator in a table, plus the field namer.
     /// </summary>
@@ -39,17 +39,23 @@ public static class ValidationModulesServiceCollectionExtensions {
     /// <param name="registrations">The validators to register.</param>
     public static IServiceCollection AddValidationModules(
         this IServiceCollection services,
-        IReadOnlyList<ValidatorRegistration> registrations) {
+        IReadOnlyList<ValidatorRegistration> registrations
+    )
+    {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(registrations);
 
-        for (var i = 0; i < registrations.Count; i++) {
+        for (var i = 0; i < registrations.Count; i++)
+        {
             var registration = registrations[i];
 
-            services.Add(new ServiceDescriptor(
-                registration.ServiceType,
-                registration.Factory,
-                ServiceLifetime.Singleton));
+            services.Add(
+                new ServiceDescriptor(
+                    registration.ServiceType,
+                    registration.Factory,
+                    ServiceLifetime.Singleton
+                )
+            );
         }
 
         // TryAdd so that a consumer who registered their own naming policy before calling this
@@ -89,15 +95,19 @@ public static class ValidationModulesServiceCollectionExtensions {
     /// as constructor injection did.
     /// </para>
     /// </remarks>
-    public static IServiceCollection AddValidationRunner<T>(this IServiceCollection services) {
+    public static IServiceCollection AddValidationRunner<T>(this IServiceCollection services)
+    {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.TryAdd(ServiceDescriptor.Scoped(static provider => new ValidationRunner<T>(
-            provider.GetServices<IValidatorFor<T>>(),
-            provider.GetServices<IAsyncValidatorFor<T>>(),
-            // The scope's own provider, so a validation pass reaches request services rather than
-            // root ones - and so a Polymorphism.Runtime descent has something to resolve through.
-            provider)));
+        services.TryAdd(
+            ServiceDescriptor.Scoped(static provider => new ValidationRunner<T>(
+                provider.GetServices<IValidatorFor<T>>(),
+                provider.GetServices<IAsyncValidatorFor<T>>(),
+                // The scope's own provider, so a validation pass reaches request services rather than
+                // root ones - and so a Polymorphism.Runtime descent has something to resolve through.
+                provider
+            ))
+        );
 
         return services;
     }
@@ -126,25 +136,39 @@ public static class ValidationModulesServiceCollectionExtensions {
     /// same reasoning as <see cref="AddValidationRunner{T}"/>.
     /// </para>
     /// </remarks>
-    public static IServiceCollection AddCollectionValidatorsFor<TElement>(this IServiceCollection services) {
+    public static IServiceCollection AddCollectionValidatorsFor<TElement>(
+        this IServiceCollection services
+    )
+    {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.AddSingleton<IValidatorFor<List<TElement>>>(static provider =>
-            new CollectionValidatorFor<TElement>(provider.GetServices<IValidatorFor<TElement>>()));
-        services.AddSingleton<IValidatorFor<TElement[]>>(static provider =>
-            new CollectionValidatorFor<TElement>(provider.GetServices<IValidatorFor<TElement>>()));
+        services.AddSingleton<IValidatorFor<List<TElement>>>(
+            static provider => new CollectionValidatorFor<TElement>(
+                provider.GetServices<IValidatorFor<TElement>>()
+            )
+        );
+        services.AddSingleton<IValidatorFor<TElement[]>>(
+            static provider => new CollectionValidatorFor<TElement>(
+                provider.GetServices<IValidatorFor<TElement>>()
+            )
+        );
 
         // Scoped, because the element rules they wrap are - an async validator is hand-written and
         // free to take a DbContext.
-        services.AddScoped<IAsyncValidatorFor<List<TElement>>>(static provider =>
-            new CollectionAsyncValidatorFor<TElement>(provider.GetServices<IAsyncValidatorFor<TElement>>()));
-        services.AddScoped<IAsyncValidatorFor<TElement[]>>(static provider =>
-            new CollectionAsyncValidatorFor<TElement>(provider.GetServices<IAsyncValidatorFor<TElement>>()));
+        services.AddScoped<IAsyncValidatorFor<List<TElement>>>(
+            static provider => new CollectionAsyncValidatorFor<TElement>(
+                provider.GetServices<IAsyncValidatorFor<TElement>>()
+            )
+        );
+        services.AddScoped<IAsyncValidatorFor<TElement[]>>(
+            static provider => new CollectionAsyncValidatorFor<TElement>(
+                provider.GetServices<IAsyncValidatorFor<TElement>>()
+            )
+        );
 
         services.AddValidationRunner<List<TElement>>();
         services.AddValidationRunner<TElement[]>();
 
         return services;
     }
-
 }

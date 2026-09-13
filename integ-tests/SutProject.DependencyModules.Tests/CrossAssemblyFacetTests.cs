@@ -17,49 +17,58 @@ namespace SutProject.DependencyModules.Tests;
 /// <c>IValidatorFor&lt;IAudited&gt;</c> through the pass's services - no scanning, no naming
 /// protocol - and a missing registration is a loud error naming the module to compose.
 /// </remarks>
-public class CrossAssemblyFacetTests {
-
-    private static ServiceProvider BuildProvider(bool composeSutProject) {
+public class CrossAssemblyFacetTests
+{
+    private static ServiceProvider BuildProvider(bool composeSutProject)
+    {
         var services = new ServiceCollection();
 
         services.AddModule<global::SutProject.DependencyModules.ValidationModule>();
 
-        if (composeSutProject) {
+        if (composeSutProject)
+        {
             services.AddSutProjectValidators();
         }
 
         return services.BuildServiceProvider();
     }
 
-    private static ValidationResult Validate(ServiceProvider provider, Deployment deployment) {
+    private static ValidationResult Validate(ServiceProvider provider, Deployment deployment)
+    {
         using var scope = provider.CreateScope();
 
-        return scope.ServiceProvider
-            .GetRequiredService<ValidationRunner<Deployment>>()
+        return scope
+            .ServiceProvider.GetRequiredService<ValidationRunner<Deployment>>()
             .Validate(deployment);
     }
 
     [Fact]
-    public void WithTheFacetModuleComposed_FacetErrorsReportAtTheCurrentLevel() {
+    public void WithTheFacetModuleComposed_FacetErrorsReportAtTheCurrentLevel()
+    {
         using var provider = BuildProvider(composeSutProject: true);
 
         var result = Validate(provider, new Deployment { Environment = "prod", Version = 0 });
 
         Assert.Equal(
-            [
-                ("createdBy", ValidationCodes.Required),
-                ("version", ValidationCodes.Range),
-            ],
-            result.Errors.Select(error => (error.Field, error.Code)));
+            [("createdBy", ValidationCodes.Required), ("version", ValidationCodes.Range)],
+            result.Errors.Select(error => (error.Field, error.Code))
+        );
     }
 
     [Fact]
-    public void WithTheFacetModuleComposed_AValidValuePasses() {
+    public void WithTheFacetModuleComposed_AValidValuePasses()
+    {
         using var provider = BuildProvider(composeSutProject: true);
 
-        var result = Validate(provider, new Deployment {
-            CreatedBy = "ada", Version = 1, Environment = "prod",
-        });
+        var result = Validate(
+            provider,
+            new Deployment
+            {
+                CreatedBy = "ada",
+                Version = 1,
+                Environment = "prod",
+            }
+        );
 
         Assert.True(result.IsValid);
     }
@@ -69,11 +78,21 @@ public class CrossAssemblyFacetTests {
     /// validator throws naming the module to compose.
     /// </summary>
     [Fact]
-    public void WithoutTheFacetModule_TheThrowNamesIt() {
+    public void WithoutTheFacetModule_TheThrowNamesIt()
+    {
         using var provider = BuildProvider(composeSutProject: false);
 
         var thrown = Assert.Throws<InvalidOperationException>(() =>
-            Validate(provider, new Deployment { CreatedBy = "ada", Version = 1, Environment = "prod" }));
+            Validate(
+                provider,
+                new Deployment
+                {
+                    CreatedBy = "ada",
+                    Version = 1,
+                    Environment = "prod",
+                }
+            )
+        );
 
         Assert.Contains("AddSutProjectValidators()", thrown.Message);
         Assert.Contains("IValidatorFor<IAudited>", thrown.Message);
@@ -81,15 +100,22 @@ public class CrossAssemblyFacetTests {
 
     /// <summary>A collector started without services at all gets the same answer.</summary>
     [Fact]
-    public void WithoutServicesOnTheCollector_TheThrowNamesIt() {
+    public void WithoutServicesOnTheCollector_TheThrowNamesIt()
+    {
         var collector = new ValidationErrorCollector();
         var context = new ValidationContext(collector);
         var validator = new DeploymentValidator();
 
-        var deployment = new Deployment { CreatedBy = "ada", Version = 1, Environment = "prod" };
+        var deployment = new Deployment
+        {
+            CreatedBy = "ada",
+            Version = 1,
+            Environment = "prod",
+        };
 
-        var thrown = Assert.Throws<InvalidOperationException>(
-            () => validator.Validate(ref context, deployment));
+        var thrown = Assert.Throws<InvalidOperationException>(() =>
+            validator.Validate(ref context, deployment)
+        );
 
         Assert.Contains("AddSutProjectValidators()", thrown.Message);
     }

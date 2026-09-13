@@ -9,17 +9,25 @@ namespace SutProject.Tests;
 /// <c>[PerValidationInstance]</c> constructs per check, and the constraint base's knobs are
 /// honoured by the interface's default <c>Validate</c>.
 /// </summary>
-public class ConstraintInterfaceTests {
-
-    private static Bulletin Valid() => new() { Channel = "email", Sequence = 1, Batch = 2 };
+public class ConstraintInterfaceTests
+{
+    private static Bulletin Valid() =>
+        new()
+        {
+            Channel = "email",
+            Sequence = 1,
+            Batch = 2,
+        };
 
     [Fact]
-    public void Validate_CleanValue_IsValid() {
+    public void Validate_CleanValue_IsValid()
+    {
         Assert.True(new BulletinValidator().IsValid(Valid()));
     }
 
     [Fact]
-    public void Validate_FailingValue_ReportsTheAttributesOwnError() {
+    public void Validate_FailingValue_ReportsTheAttributesOwnError()
+    {
         var collector = new ValidationErrorCollector();
 
         new BulletinValidator().ValidateInto(collector, Valid() with { Channel = "fax" });
@@ -32,7 +40,8 @@ public class ConstraintInterfaceTests {
     }
 
     [Fact]
-    public void Validate_NullMember_SkipsTheCheckAndFailsOnlyRequired() {
+    public void Validate_NullMember_SkipsTheCheckAndFailsOnlyRequired()
+    {
         var collector = new ValidationErrorCollector();
 
         new BulletinValidator().ValidateInto(collector, Valid() with { Channel = null });
@@ -43,7 +52,8 @@ public class ConstraintInterfaceTests {
     }
 
     [Fact]
-    public void Validate_DefaultValidate_HonoursTheDeclarationsKnobs() {
+    public void Validate_DefaultValidate_HonoursTheDeclarationsKnobs()
+    {
         var collector = new ValidationErrorCollector();
 
         new BulletinValidator().ValidateInto(collector, Valid() with { Batch = 3 });
@@ -56,7 +66,8 @@ public class ConstraintInterfaceTests {
     }
 
     [Fact]
-    public void SharedInstance_IsConstructedOnceForAnyNumberOfPasses() {
+    public void SharedInstance_IsConstructedOnceForAnyNumberOfPasses()
+    {
         var validator = new BulletinValidator();
         var value = Valid();
 
@@ -65,7 +76,8 @@ public class ConstraintInterfaceTests {
 
         var constructed = ChannelAttribute.Constructions;
 
-        for (var i = 0; i < 25; i++) {
+        for (var i = 0; i < 25; i++)
+        {
             validator.IsValid(value);
         }
 
@@ -74,7 +86,8 @@ public class ConstraintInterfaceTests {
     }
 
     [Fact]
-    public void PerValidationInstance_ConstructsAFreshInstanceAtEveryCheck() {
+    public void PerValidationInstance_ConstructsAFreshInstanceAtEveryCheck()
+    {
         var validator = new BulletinValidator();
         var value = Valid();
         var constructed = StampedAttribute.Constructions;

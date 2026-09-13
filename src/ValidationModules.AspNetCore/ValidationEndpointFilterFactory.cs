@@ -32,8 +32,8 @@ namespace ValidationModules.AspNetCore;
 /// indirection.
 /// </para>
 /// </remarks>
-internal static class ValidationEndpointFilterFactory {
-
+internal static class ValidationEndpointFilterFactory
+{
     /// <summary>
     /// The factory delegate to hand to <c>AddEndpointFilterFactory</c>.
     /// </summary>
@@ -47,20 +47,27 @@ internal static class ValidationEndpointFilterFactory {
     /// <typeparam name="T">The argument type to validate.</typeparam>
     /// <param name="strict">Whether a handler without a <typeparamref name="T"/> is an error.</param>
     /// <param name="statusCode">The per-endpoint status override, or null for the options'.</param>
-    internal static Func<EndpointFilterFactoryContext, EndpointFilterDelegate, EndpointFilterDelegate> For<T>(
-        bool strict, int? statusCode = null) {
-
-        return (context, next) => {
+    internal static Func<
+        EndpointFilterFactoryContext,
+        EndpointFilterDelegate,
+        EndpointFilterDelegate
+    > For<T>(bool strict, int? statusCode = null)
+    {
+        return (context, next) =>
+        {
             ArgumentNullException.ThrowIfNull(context);
             ArgumentNullException.ThrowIfNull(next);
 
-            if (!CanReceive<T>(context.MethodInfo)) {
-                if (strict) {
+            if (!CanReceive<T>(context.MethodInfo))
+            {
+                if (strict)
+                {
                     throw new InvalidOperationException(
-                        $"Validate<{typeof(T)}>() is attached to a handler that takes no " +
-                        $"{typeof(T)} parameter ({Describe(context.MethodInfo)}). The filter would " +
-                        "find nothing to validate and answer every request as valid. Name the type " +
-                        "the handler actually takes, or drop the call.");
+                        $"Validate<{typeof(T)}>() is attached to a handler that takes no "
+                            + $"{typeof(T)} parameter ({Describe(context.MethodInfo)}). The filter would "
+                            + "find nothing to validate and answer every request as valid. Name the type "
+                            + "the handler actually takes, or drop the call."
+                    );
                 }
 
                 return next;
@@ -68,7 +75,9 @@ internal static class ValidationEndpointFilterFactory {
 
             EnsureValidatorRegistered<T>(context.ApplicationServices, context.MethodInfo);
 
-            var options = context.ApplicationServices.GetRequiredService<IOptions<ValidationProblemOptions>>();
+            var options = context.ApplicationServices.GetRequiredService<
+                IOptions<ValidationProblemOptions>
+            >();
             var filter = new ValidationEndpointFilter<T>(options, statusCode);
 
             return invocation => filter.InvokeAsync(invocation, next);
@@ -93,23 +102,29 @@ internal static class ValidationEndpointFilterFactory {
     /// the backstop.
     /// </para>
     /// </remarks>
-    private static void EnsureValidatorRegistered<T>(IServiceProvider services, MethodInfo handler) {
-        if (services.GetService<IServiceProviderIsService>() is not { } registered) {
+    private static void EnsureValidatorRegistered<T>(IServiceProvider services, MethodInfo handler)
+    {
+        if (services.GetService<IServiceProviderIsService>() is not { } registered)
+        {
             return;
         }
 
-        if (registered.IsService(typeof(ValidationRunner<T>)) ||
-            registered.IsService(typeof(IValidatorFor<T>))) {
+        if (
+            registered.IsService(typeof(ValidationRunner<T>))
+            || registered.IsService(typeof(IValidatorFor<T>))
+        )
+        {
             return;
         }
 
         throw new InvalidOperationException(
-            $"Validate<{typeof(T)}>() is attached to a handler ({Describe(handler)}) " +
-            $"but no validator is registered for {typeof(T)}. Call the generated " +
-            "Add<Assembly>Validators() at startup, or register an IValidatorFor<> by hand. A " +
-            "collection body validates element-wise when declared as List<T> or T[] of a " +
-            "validated type; other collection shapes need a hand-written validator. Failing here " +
-            "beats answering every request with a 500.");
+            $"Validate<{typeof(T)}>() is attached to a handler ({Describe(handler)}) "
+                + $"but no validator is registered for {typeof(T)}. Call the generated "
+                + "Add<Assembly>Validators() at startup, or register an IValidatorFor<> by hand. A "
+                + "collection body validates element-wise when declared as List<T> or T[] of a "
+                + "validated type; other collection shapes need a hand-written validator. Failing here "
+                + "beats answering every request with a 500."
+        );
     }
 
     /// <summary>
@@ -124,15 +139,19 @@ internal static class ValidationEndpointFilterFactory {
     /// sides: a handler taking <c>Coupon?</c> receives a boxed <c>Coupon</c> at run time, which
     /// <c>IsAssignableFrom</c> alone cannot see.
     /// </remarks>
-    private static bool CanReceive<T>(MethodInfo handler) {
+    private static bool CanReceive<T>(MethodInfo handler)
+    {
         var target = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
         var parameters = handler.GetParameters();
 
-        for (var i = 0; i < parameters.Length; i++) {
-            var declared = Nullable.GetUnderlyingType(parameters[i].ParameterType)
+        for (var i = 0; i < parameters.Length; i++)
+        {
+            var declared =
+                Nullable.GetUnderlyingType(parameters[i].ParameterType)
                 ?? parameters[i].ParameterType;
 
-            if (target.IsAssignableFrom(declared) || declared.IsAssignableFrom(target)) {
+            if (target.IsAssignableFrom(declared) || declared.IsAssignableFrom(target))
+            {
                 return true;
             }
         }
@@ -141,16 +160,19 @@ internal static class ValidationEndpointFilterFactory {
     }
 
     /// <summary>The handler's parameter list, for the exception message.</summary>
-    private static string Describe(MethodInfo handler) {
+    private static string Describe(MethodInfo handler)
+    {
         var parameters = handler.GetParameters();
 
-        if (parameters.Length == 0) {
+        if (parameters.Length == 0)
+        {
             return "it takes no parameters";
         }
 
         var names = new string[parameters.Length];
 
-        for (var i = 0; i < parameters.Length; i++) {
+        for (var i = 0; i < parameters.Length; i++)
+        {
             names[i] = parameters[i].ParameterType.Name;
         }
 
