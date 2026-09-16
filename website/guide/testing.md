@@ -149,10 +149,11 @@ public void GeneratedTable_RegistersAValidatorForEveryModel()
 }
 ```
 
-With DependencyModules, load the emitted module the same way the application does:
+With DependencyModules, compose your entry point the same way the application does. The generator
+registered the validators into it, so there is nothing else to load:
 
 ```csharp
-var provider = new ServiceCollection().AddModule<ValidationModule>().BuildServiceProvider();
+var provider = new ServiceCollection().AddModule<ApplicationModule>().BuildServiceProvider();
 ```
 
 ## Testing the generator itself

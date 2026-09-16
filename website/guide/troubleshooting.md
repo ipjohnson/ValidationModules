@@ -93,8 +93,12 @@ The method is named after the assembly with the dots removed, so `My.App` emits
 `<ValidationModules_Registration>None</ValidationModules_Registration>`.
 
 **The validator is in another assembly.** Each assembly emits and registers its own validators;
-there is no cross-assembly scanning, deliberately. Call that assembly's own `Add…Validators()`, or
-load its module, from your composition root.
+there is no cross-assembly scanning, deliberately. Call that assembly's own `Add…Validators()` from
+your composition root, or compose a module it declares.
+
+**The entry point is not `partial`, or is nested in another type.** Registration is emitted as a
+partial of your module entry point, and neither shape can be completed by one. DependencyModules
+reports both; fix what it names and the registration lands.
 
 **No validator was generated at all.** See the first section. This is usually that in disguise.
 

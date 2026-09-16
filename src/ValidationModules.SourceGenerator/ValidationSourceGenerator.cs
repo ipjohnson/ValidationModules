@@ -94,6 +94,19 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                 compilation.GetTypeByMetadataName(KnownTypes.DependencyModule) is not null
         );
 
+        // Which class the validators register into. A different question from the one above -
+        // "is DependencyModules referenced" does not say which type keys the registry - and a
+        // syntax provider rather than a compilation walk, so an edit to an unrelated file does not
+        // re-run it. See EntryPointLookup for why the attribute names are literals.
+        var entryPoints = context
+            .SyntaxProvider.CreateSyntaxProvider(
+                static (node, _) => EntryPointLookup.IsCandidate(node),
+                static (syntaxContext, token) => EntryPointLookup.Read(syntaxContext, token)
+            )
+            .Where(static entryPoint => entryPoint is not null)
+            .Select(static (entryPoint, _) => entryPoint!.Value)
+            .Collect();
+
         // Version lockstep. Projected to an int rather than the Compilation so the stage caches on
         // the answer, not on every edit. Plan §7.5.
         var runtimeContract = context.CompilationProvider.Select(
@@ -313,13 +326,14 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
             .Combine(hasDependencyModules)
             .Combine(options)
             .Combine(assemblyNamespace)
-            .Combine(languagePackFiles);
+            .Combine(languagePackFiles)
+            .Combine(entryPoints);
 
         context.RegisterSourceOutput(
             registrationInput,
             static (production, input) =>
             {
-                var ((((collected, hasDm), generatorOptions), ns), packFiles) = input;
+                var (((((collected, hasDm), generatorOptions), ns), packFiles), modules) = input;
 
                 // Re-read rather than re-plumbed: the read is deterministic and cheap, and carrying
                 // the models through a second provider would double-report their diagnostics.
@@ -357,6 +371,33 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                     )
                 );
 
+                // Distinct, because a partial type declared across three files reaches the syntax
+                // provider three times and each declaration answers with the same entry point.
+                // Ordered by name for the reason the models are: so the emitted file does not
+                // reshuffle between builds.
+                var registrationTargets =
+                    mode == RegistrationMode.DependencyModules
+                        ? modules
+                            .Distinct()
+                            .OrderBy(entryPoint => entryPoint.QualifiedName, StringComparer.Ordinal)
+                            .ToArray()
+                        : Array.Empty<ModuleEntryPoint>();
+
+                if (registrationTargets.Length > 1)
+                {
+                    production.ReportDiagnostic(
+                        Diagnostic.Create(
+                            ValidationDiagnostics.ValidatorsRegisteredIntoSeveralEntryPoints,
+                            Location.None,
+                            registrationTargets.Length,
+                            string.Join(
+                                ", ",
+                                registrationTargets.Select(entryPoint => entryPoint.QualifiedName)
+                            )
+                        )
+                    );
+                }
+
                 try
                 {
                     if (
@@ -367,7 +408,8 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                             generatorOptions.Naming,
                             withAdapters,
                             generatorOptions.CodeStyle,
-                            languagePacks
+                            languagePacks,
+                            registrationTargets
                         ) is
                         { } source
                     )

@@ -25,6 +25,8 @@ namespace ValidationModules.SourceGenerator.Impl;
 /// <item><description>VM4xxx - language packs, from <c>LanguagePackReader</c>.</description></item>
 /// <item><description>VM5xxx - the toolchain: the runtime contract check, the emit backstop, and
 /// the <c>.Validate&lt;T&gt;()</c> analyzer.</description></item>
+/// <item><description>VM6xxx - registration, from <c>EntryPointLookup</c> and the registration
+/// emitter: what the assembly's validators were registered into.</description></item>
 /// </list>
 /// <para>
 /// Banding follows the raiser rather than the theme because a diagnostic rarely changes which front
@@ -808,4 +810,34 @@ public static class ValidationDiagnostics
             + "assembly, ignore this and the startup check will agree",
         DiagnosticSeverity.Warning
     );
+
+    /// <summary>
+    /// The compilation declares more than one module entry point, and this assembly's validators
+    /// were registered into every one of them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Registering into all of them is the only answer that cannot silently drop validation.
+    /// Registering into one would leave the other entry point's container without a validator for
+    /// a type that declares constraints, and which one is chosen would rest on declaration order
+    /// or on a name. A validator registered into an application nobody runs costs that application
+    /// nothing.
+    /// </para>
+    /// <para>
+    /// Warning rather than Info, because a second entry point is far more often a leftover, a
+    /// copy-paste or an attribute on the wrong class than a deliberate pair. The same reading
+    /// Hardened's <c>HRDR004</c> takes, one severity lower: there it doubles a routing table, here
+    /// it doubles three registration calls.
+    /// </para>
+    /// </remarks>
+    public static readonly DiagnosticDescriptor ValidatorsRegisteredIntoSeveralEntryPoints =
+        Descriptor(
+            "VM6001",
+            "Validators are registered into more than one entry point",
+            "This assembly declares {0} module entry points - {1} - and its generated validators "
+                + "are registered into every one of them. If only one of these is the application, "
+                + "remove the attribute from the others; if they are deliberately two applications "
+                + "over the same types, set <NoWarn>$(NoWarn);VM6001</NoWarn>",
+            DiagnosticSeverity.Warning
+        );
 }

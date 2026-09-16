@@ -20,15 +20,16 @@ What registration code to emit alongside the validators.
 
 | Value | Effect |
 |---|---|
-| *(unset)* | auto: a module if `IDependencyModule` resolves, otherwise the extension |
-| `DependencyModules` | always emit an `IDependencyModule` |
+| *(unset)* | auto: DependencyModules if `IDependencyModule` resolves, otherwise the extension |
+| `DependencyModules` | always register into every module entry point in the compilation, or emit an `IDependencyModule` where there is none |
 | `ServiceCollection` | always emit the `Add…Validators()` extension |
 | `None` | emit no registration at all |
 
 Auto-detection probes the compilation for
-`DependencyModules.Runtime.Interfaces.IDependencyModule`. Set the property when DependencyModules
-arrives transitively and you do not want your validators in a module. `None` emits the validators
-and leaves the wiring to you.
+`DependencyModules.Runtime.Interfaces.IDependencyModule`. An entry point is a class carrying
+`[DependencyModule]` or `[HardenedModule]`. Set the property when DependencyModules arrives
+transitively and you do not want your validators registered. `None` emits the validators and leaves
+the wiring to you.
 
 See [Registration and DI](/guide/registration).
 

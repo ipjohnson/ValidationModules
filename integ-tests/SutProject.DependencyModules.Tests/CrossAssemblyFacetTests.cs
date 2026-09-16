@@ -23,7 +23,9 @@ public class CrossAssemblyFacetTests
     {
         var services = new ServiceCollection();
 
-        services.AddModule<global::SutProject.DependencyModules.ValidationModule>();
+        // One module, and this assembly's generated validators arrive with it: the generator
+        // emitted a partial of ApplicationModule that adds them to its registry.
+        services.AddModule<ApplicationModule>();
 
         if (composeSutProject)
         {

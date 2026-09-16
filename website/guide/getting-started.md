@@ -54,9 +54,9 @@ Requires .NET 8.0 or later, and ships both `net8.0` and `net10.0` assemblies so 
 LTS release gets one built against its own framework.
 
 `ValidationModules.Runtime` depends only on `Microsoft.Extensions.DependencyInjection.Abstractions`.
-In particular it does **not** reference `DependencyModules.Runtime`. Only the *generated module*
-needs DependencyModules types, and that module lands in your assembly, which already references
-DependencyModules if you use it.
+In particular it does **not** reference `DependencyModules.Runtime`. Only the *generated
+registration* needs DependencyModules types, and that lands in your assembly, which already
+references DependencyModules if you use it.
 
 The generator should be referenced with `PrivateAssets="all"` so it does not flow to your package's
 consumers:
@@ -223,10 +223,11 @@ it is computed at build time - so if you would rather read it than derive it, it
 :::
 
 If your project references [DependencyModules](https://github.com/ipjohnson/DependencyModules), the
-generator emits a module wrapping the same call instead, and you load it the usual way:
+generator emits a partial of your module entry point that makes the same call, so composing the
+entry point is all you do:
 
 ```csharp
-services.AddModule<ValidationModule>();
+services.AddModule<ApplicationModule>();
 ```
 
 You do not choose between these. The generator probes for `IDependencyModule` and emits whichever
