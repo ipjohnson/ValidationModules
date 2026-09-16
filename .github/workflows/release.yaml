@@ -3,9 +3,10 @@ name: release
 # Cutting a release:
 #   Actions -> release -> Run workflow, from main.
 #
-# The version is COMPUTED, not typed: 1.0.0-rc(1000 + this workflow's run number), matching the
-# 1.0.0-rc* stream the sibling packages publish. Nobody picks a number, so nobody picks a duplicate
-# or a number that sorts backwards - a version can be unlisted on nuget.org but never removed.
+# The version is COMPUTED, not typed: RC_VERSION_PREFIX-rc(1000 + this workflow's run number).
+# Nobody picks a number, so nobody picks a duplicate or a number that sorts backwards - a version
+# can be unlisted on nuget.org but never removed. A stable release is the one case that types it,
+# through the version input.
 #
 # The tag is created by this workflow *after* a successful publish, so it always names something
 # that actually shipped. That is the opposite of the previous arrangement, where the tag was the
@@ -22,7 +23,7 @@ on:
 
 env:
   # The release line. Bump alongside VersionPrefix in Directory.Build.props.
-  RC_VERSION_PREFIX: '1.0.0'
+  RC_VERSION_PREFIX: '1.1.0'
 
 permissions:
   contents: write
