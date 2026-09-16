@@ -68,3 +68,11 @@ VM4006 | ValidationModules.Usage | Info | Language pack coverage.
 VM5001 | ValidationModules.Usage | Error | The referenced ValidationModules.Runtime is older than the emitted code requires.
 VM5002 | ValidationModules.Usage | Error | An emit stage threw an unhandled exception; the build fails rather than succeeding with generated source missing.
 VM5003 | ValidationModules.Usage | Warning | Validate&lt;T&gt;() names a type this compilation declares and generates no validator for.
+
+## Release 1.1.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+VM6001 | ValidationModules.Usage | Warning | The compilation declares more than one module entry point; the generated validators are registered into every one of them.

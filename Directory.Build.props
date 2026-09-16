@@ -3,15 +3,17 @@
     <!--
         Single source of truth for the product version.
         Release builds override PackageVersion (see .github/workflows/release.yaml, which computes
-        1.0.0-rc(1000 + run number)); local and CI builds fall back to the values below.
+        an rc from the run number, or takes a stable version typed into the dispatch); local and CI
+        builds fall back to the values below.
 
-        On the 1.0.0 release-candidate line. This used to say "matching DependencyModules' own
-        1.0.0-rc* stream", which is no longer the reason - DM is at 1.0.0 stable and we are pinned
-        to it; what is left is our own decision about when to drop the suffix.
-        RuntimeContract is what versions the emitted surface, rather than this number.
+        On the 1.1.0 line. 1.0.0 shipped stable, and 1.1.0 adds VM6001 and changes where the
+        DependencyModules branch registers - additive to the API surface and to what a consumer
+        calls, which is what makes it a minor rather than a major.
+        RuntimeContract is what versions the emitted surface, rather than this number. It stays at
+        11: the new registration calls nothing the runtime did not already offer.
     -->
     <PropertyGroup>
-        <VersionPrefix>1.0.0</VersionPrefix>
+        <VersionPrefix>1.1.0</VersionPrefix>
         <!--
             rc0 for a local build, so it sorts below every published rc(1000+n). A release supplies
             its own version, so this default never reaches nuget.org.
@@ -28,8 +30,8 @@
             suppressed.
         -->
         <VersionSuffix Condition="'$(VersionSuffix)' == ''">rc0</VersionSuffix>
-        <AssemblyVersion>1.0.0.0</AssemblyVersion>
-        <FileVersion>1.0.0.0</FileVersion>
+        <AssemblyVersion>1.1.0.0</AssemblyVersion>
+        <FileVersion>1.1.0.0</FileVersion>
     </PropertyGroup>
 
     <!--
