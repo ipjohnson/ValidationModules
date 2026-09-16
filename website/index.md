@@ -65,8 +65,8 @@ features:
   - title: Registers itself
     details: >-
       One generated call named after your assembly, so two assemblies compose without ceremony.
-      With DependencyModules referenced you get a module wrapping the same body instead. Validators
-      are singletons, and resolving one costs about 6 ns.
+      With DependencyModules referenced your entry point registers them and you call nothing.
+      Validators are singletons, and resolving one costs about 6 ns.
     link: /guide/registration
     linkText: Registration and DI
 

@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using CSharpAuthor;
 using ValidationModules.SourceGenerator.Impl.Models;
 using static CSharpAuthor.SyntaxHelpers;
@@ -47,6 +48,15 @@ public sealed class RegistrationEmitter
 {
     private const string DependencyInjection = "Microsoft.Extensions.DependencyInjection";
 
+    /// <summary>
+    /// The two members the entry-point partial contributes. Named after this package rather than
+    /// after what they do, because they land in a class DependencyModules' own generator is also
+    /// writing members into - and a collision there is CS0102 in the consumer's build.
+    /// </summary>
+    private const string RegistrationMethod = "ValidationModulesDependencies";
+
+    private const string RegistrationField = "validationModulesField";
+
     private static readonly ITypeDefinition ServiceCollection = TypeDefinition.Get(
         TypeDefinitionEnum.InterfaceDefinition,
         DependencyInjection,
@@ -91,6 +101,11 @@ public sealed class RegistrationEmitter
     /// <see cref="ValidationModules.Naming.IValidationFieldNamer"/> so that the engines which
     /// resolve one at run time agree with the literals baked into the generated code.
     /// </param>
+    /// <param name="entryPoints">
+    /// The module entry points this compilation declares, from <see cref="EntryPointLookup"/>.
+    /// Each gets a partial that adds the extension to its registry. Empty means there is nothing
+    /// to register into, and the sibling module is emitted instead.
+    /// </param>
     public string? Emit(
         IReadOnlyList<ValidatedTypeModel> models,
         RegistrationMode mode,
@@ -98,10 +113,12 @@ public sealed class RegistrationEmitter
         string? fieldNamer = null,
         bool withDynamicAdapters = false,
         BraceStyle style = BraceStyle.Allman,
-        IReadOnlyList<LanguagePackModel>? languagePacks = null
+        IReadOnlyList<LanguagePackModel>? languagePacks = null,
+        IReadOnlyList<ModuleEntryPoint>? entryPoints = null
     )
     {
         var packs = languagePacks ?? Array.Empty<LanguagePackModel>();
+        var modules = entryPoints ?? Array.Empty<ModuleEntryPoint>();
 
         // A pack-only assembly - five languages, zero validated types - still earns the extension;
         // language packs are a legitimate reason for it to exist.
@@ -111,8 +128,8 @@ public sealed class RegistrationEmitter
         }
 
         // No namespace of its own: the extension belongs in the DI namespace by convention and the
-        // module belongs beside the consumer's own types, and both land in this one file as sibling
-        // namespace blocks.
+        // registrations belong beside the consumer's own types, and both land in this one file as
+        // sibling namespace blocks.
         var file = new CSharpFileDefinition();
 
         Header(file);
@@ -124,6 +141,13 @@ public sealed class RegistrationEmitter
 
         if (mode == RegistrationMode.DependencyModules)
         {
+            if (modules.Count > 0)
+            {
+                EmitEntryPointRegistrations(file, modules, assemblyNamespace);
+
+                return ApplyRecordDeclarations(Render(file, style), modules);
+            }
+
             var consumer = new NamespaceDefinition(assemblyNamespace);
 
             file.AddComponent(consumer);
@@ -369,13 +393,175 @@ public sealed class RegistrationEmitter
     }
 
     /// <summary>
-    /// The DependencyModules wrapper: one call into the body above.
+    /// A partial of every entry point in the compilation, each adding the extension above to its
+    /// own <c>DependencyRegistry&lt;TEntryPoint&gt;</c>.
     /// </summary>
     /// <remarks>
-    /// Emitted whole rather than as a partial for DM's own generator to complete, because generators
-    /// cannot see each other's output - an attribute this one wrote would never reach DM's.
-    /// <c>IDependencyModule</c> has exactly one member without a default implementation, so there is
-    /// nothing left to complete.
+    /// <para>
+    /// <b>All of them, not one.</b> Two entry points in an assembly are two applications composed
+    /// from the same source, and this assembly's validators belong to both. Registering into one
+    /// would leave the other silently unvalidated, and picking which one by name would put a
+    /// behaviour change one rename away. <c>VM6001</c> is reported alongside, because two entry
+    /// points is far more often a leftover than a decision.
+    /// </para>
+    /// <para>
+    /// Grouped by namespace so a file declares each namespace once. Two blocks for one namespace
+    /// compile, but the generated file is read by people diagnosing why a validator did not
+    /// register.
+    /// </para>
+    /// </remarks>
+    private static void EmitEntryPointRegistrations(
+        CSharpFileDefinition file,
+        IReadOnlyList<ModuleEntryPoint> entryPoints,
+        string ns
+    )
+    {
+        foreach (var group in entryPoints.GroupBy(entryPoint => entryPoint.Namespace))
+        {
+            // A module in the global namespace has no block to sit in; the class goes straight
+            // into the file.
+            IConstructContainer container;
+
+            if (group.Key.Length == 0)
+            {
+                container = file;
+            }
+            else
+            {
+                var block = new NamespaceDefinition(group.Key);
+
+                file.AddComponent(block);
+                container = block;
+            }
+
+            foreach (var entryPoint in group)
+            {
+                EmitEntryPointRegistration(container, entryPoint, ns);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The registry hook: a field initializer that runs at class construction and a method holding
+    /// the one call into the extension.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The shape DependencyModules' own writers use for the same job - its
+    /// <c>DependencyFileWriter</c>, <c>DecoratorFileWriter</c> and
+    /// <c>InterceptorRegistrationWriter</c> each build it - reproduced rather than called, because
+    /// all three keep it private and, more to the point, these sources are compiled into
+    /// <c>Hardened.Validation.SourceGenerator</c>, which references no part of DependencyModules.
+    /// The type names are literals for the reason every other DependencyModules name in this file
+    /// is one.
+    /// </para>
+    /// <para>
+    /// No accessibility on the partial: a part that states one has to agree with every other part
+    /// that does, and an <c>internal</c> module would make <c>public partial</c> a build error the
+    /// consumer cannot fix.
+    /// </para>
+    /// <para>
+    /// <c>[DynamicDependency]</c> because a field is the only thing referencing the method, and a
+    /// trimmer that removes it removes every registration with it.
+    /// </para>
+    /// </remarks>
+    private static void EmitEntryPointRegistration(
+        IConstructContainer container,
+        ModuleEntryPoint entryPoint,
+        string ns
+    )
+    {
+        var partial = container.AddClass(entryPoint.Name);
+
+        partial.Modifiers = ComponentModifier.Partial | ComponentModifier.NoAccessibility;
+
+        var register = partial.AddMethod(RegistrationMethod);
+
+        register.Modifiers = ComponentModifier.Private | ComponentModifier.Static;
+        register.Comment = "Registers every validator this assembly generated.";
+        register.AddParameter(ServiceCollection, "services");
+        register.LambdaSyntax = true;
+        register.AddIndentedStatement(
+            Invoke(
+                TypeDefinition.Get(DependencyInjection, $"{Identifier(ns)}ValidationExtensions"),
+                $"Add{Identifier(ns)}Validators",
+                "services"
+            )
+        );
+
+        var field = partial.AddField(typeof(int), RegistrationField);
+
+        field.Modifiers = ComponentModifier.Private | ComponentModifier.Static;
+        field.AddAttribute(
+            TypeDefinition.Get("System.Diagnostics.CodeAnalysis", "DynamicDependency"),
+            $"nameof({RegistrationMethod})"
+        );
+        field.InitializeValue = new StaticInvokeStatement(
+            RegistryOf(NamedType(entryPoint.Namespace, entryPoint.Name)),
+            "Add",
+            new List<IOutputComponent> { CodeOutputComponent.Get(RegistrationMethod) }
+        )
+        {
+            Indented = false,
+        };
+    }
+
+    /// <summary><c>DependencyRegistry&lt;TEntryPoint&gt;</c>.</summary>
+    private static ITypeDefinition RegistryOf(ITypeDefinition entryPoint) =>
+        new GenericTypeDefinition(
+            TypeDefinitionEnum.ClassDefinition,
+            "DependencyModules.Runtime.Helpers",
+            "DependencyRegistry",
+            new[] { entryPoint }
+        );
+
+    /// <summary>
+    /// Rewrites the declaration of a record entry point, which CSharpAuthor has no class for.
+    /// </summary>
+    /// <remarks>
+    /// Without it, a <c>[DependencyModule] public partial record Foo</c> gets a
+    /// <c>partial class Foo</c> here and the consumer's build fails with CS0261.
+    /// DependencyModules' <c>EntryModelUtil.ApplyRecordDeclaration</c> does the same thing for the
+    /// same reason.
+    /// </remarks>
+    private static string ApplyRecordDeclarations(
+        string source,
+        IReadOnlyList<ModuleEntryPoint> entryPoints
+    )
+    {
+        foreach (var entryPoint in entryPoints)
+        {
+            if (!entryPoint.IsRecord)
+            {
+                continue;
+            }
+
+            source = Regex.Replace(
+                source,
+                @"partial class " + Regex.Escape(entryPoint.Name) + @"(?!\w)",
+                $"partial record class {entryPoint.Name}"
+            );
+        }
+
+        return source;
+    }
+
+    /// <summary>
+    /// The DependencyModules wrapper, for a compilation that declares no entry point to register
+    /// into: a library of validated types, compiled on its own.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A consumer composes this one by hand - <c>services.AddModule&lt;ValidationModule&gt;()</c>
+    /// or a direct <c>PopulateServiceCollection</c> - because that is all a sibling module can be
+    /// composed with. Nothing generated can reach it: the attribute DependencyModules composes a
+    /// module with is generated by DependencyModules' generator, and generators cannot see each
+    /// other's output.
+    /// </para>
+    /// <para>
+    /// That is the reason an entry point wins where there is one. Everything else about the two is
+    /// the same: one body, two wrappers, so the branches cannot drift.
+    /// </para>
     /// </remarks>
     private static void EmitModule(NamespaceDefinition consumer, string ns)
     {

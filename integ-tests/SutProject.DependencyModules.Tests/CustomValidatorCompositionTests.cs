@@ -13,19 +13,26 @@ using Account = SutProject.Dm.Account;
 using AccountValidator = SutProject.Dm.AccountValidator;
 
 /// <summary>
-/// The DependencyModules branch: the generator saw IDependencyModule in the compilation and emitted
-/// a module rather than a static table, and hand-written validators registered through DM's own
-/// attributes compose with the generated one.
+/// The DependencyModules branch: the generator found the entry point and registered this
+/// assembly's validators into it, and hand-written validators registered through DM's own
+/// attributes compose with the generated ones.
 /// </summary>
 /// <remarks>
+/// <para>
+/// Nothing here composes a validation module. That is the point of the branch: a module emitted
+/// beside the entry point could only be loaded by a call the developer wrote, and every registered
+/// validator below arrives from <c>AddModule&lt;ApplicationModule&gt;()</c> alone.
+/// </para>
+/// <para>
 /// This is also the project that proves the two generators coexist. Ours deliberately does not host
 /// DependencyModules' attribute stages - if it derived from BaseSourceGenerator, [DependencyModule]
 /// would be processed twice here and the module would be emitted twice (plan §7.2).
+/// </para>
 /// </remarks>
 public class CustomValidatorCompositionTests
 {
     [Fact]
-    public void GeneratedModule_RegistersTheGeneratedValidator()
+    public void TheEntryPoint_RegistersTheGeneratedValidator()
     {
         using var provider = BuildProvider();
 
@@ -129,11 +136,10 @@ public class CustomValidatorCompositionTests
     {
         var services = new ServiceCollection();
 
-        // The application's own module brings the hand-written validators in through DM's
-        // attributes; the generated module brings the generated ones. Composing them is the
-        // consumer's call, per plan §7.3.
+        // One module and nothing else. The hand-written validators arrive through DM's own
+        // attributes and the generated ones through the partial this generator wrote, and both
+        // land in the same DependencyRegistry<ApplicationModule>.
         services.AddModule<ApplicationModule>();
-        services.AddModule<global::SutProject.DependencyModules.ValidationModule>();
 
         return services.BuildServiceProvider();
     }

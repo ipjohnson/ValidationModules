@@ -38,6 +38,7 @@ instead of only when it was added.
 | `VM3xxx` | rules classes | what the reader cannot follow, and rule semantics |
 | `VM4xxx` | language packs | one entry per way a pack can be wrong |
 | `VM5xxx` | toolchain | the runtime contract, the emit backstop, the `.Validate<T>()` analyzer |
+| `VM6xxx` | registration | what this assembly's validators were registered into |
 
 **A stale `.editorconfig` line is inert, never misdirected.** The old ids ran `VM0001`-`VM0108` and
 the new ones start at `VM1001`, so the two ranges do not overlap. A
@@ -176,6 +177,7 @@ here for anyone tracking a pre-release.
 | [VM5001](#vm5001) | Error | `ValidationModules.Runtime` is too old |
 | [VM5002](#vm5002) | Error | an emit stage threw; the build fails instead of succeeding with source missing |
 | [VM5003](#vm5003) | Warning | `.Validate<T>()` names a type with no validator in this compilation |
+| [VM6001](#vm6001) | Warning | the validators were registered into more than one module entry point |
 
 ---
 
@@ -1205,3 +1207,33 @@ element-wise.
 A **warning** for the cross-assembly reason [VM1501](#vm1501) set: the type may get its validator
 from a rules class in another assembly, which this compilation cannot see. The startup check
 remains the authority; this is the earlier, cheaper signal.
+
+---
+
+## Registration
+
+Where this assembly's generated validators were registered. See
+[Registration and DI](/guide/registration).
+
+### VM6001 {#vm6001}
+
+**Warning**: *`This assembly declares 2 module entry points - App.ApplicationModule, App.BackofficeModule - and its generated validators are registered into every one of them. If only one of these is the application, remove the attribute from the others; if they are deliberately two applications over the same types, set <NoWarn>$(NoWarn);VM6001</NoWarn>`*
+
+```csharp
+[DependencyModule]
+public partial class ApplicationModule;
+
+[DependencyModule]
+public partial class BackofficeModule; // VM6001
+```
+
+Every entry point gets the registration, which is the only answer that cannot silently drop
+validation: two entry points are two applications composed from the same source, and this
+assembly's validators belong to both. Registering into one of them would leave the other's
+container without a validator for a type that declares constraints, and which one was chosen would
+rest on declaration order or on a name.
+
+A **warning** because a second entry point is far more often a leftover, a copy-paste, or an
+attribute that landed on the wrong class than a deliberate pair. Hardened reports the same shape as
+`HRDR004`, one severity higher, because there it doubles a routing table; here it doubles three
+registration calls in an application nobody runs.

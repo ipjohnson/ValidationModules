@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+        <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+        <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)generated</CompilerGeneratedFilesOutputPath>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\src\ValidationModules.Runtime\ValidationModules.Runtime.csproj"/>
+        <ProjectReference Include="..\..\src\ValidationModules.SourceGenerator\ValidationModules.SourceGenerator.csproj"
+                          OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
+    </ItemGroup>
+
+    <!--
+        DependencyModules.Runtime and nothing else. DependencyModules.SourceGenerator is
+        deliberately absent: this project's entry point carries [HardenedModule] rather than
+        [DependencyModule], so DM's generator would find no module here at all. What completes the
+        module is written by hand in Application.cs, which is the half a Hardened application gets
+        from HardenedSourceGenerator.
+    -->
+    <ItemGroup>
+        <PackageReference Include="DependencyModules.Runtime" Version="1.2.0"/>
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0"/>
+    </ItemGroup>
+
+</Project>
