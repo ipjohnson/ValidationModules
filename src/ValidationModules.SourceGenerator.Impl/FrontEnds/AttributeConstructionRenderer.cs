@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 
 namespace ValidationModules.SourceGenerator.Impl.FrontEnds;
 
@@ -23,7 +24,13 @@ namespace ValidationModules.SourceGenerator.Impl.FrontEnds;
 /// </remarks>
 internal static class AttributeConstructionRenderer
 {
-    public static string? Render(AttributeData attribute)
+    /// <param name="attribute">The attribute as it was applied.</param>
+    /// <param name="code">
+    /// The value to write for a named <c>Code</c> argument in place of the declared one, or null to
+    /// write it as declared. The instance reads its own <c>Code</c> at run time, so a code namespace
+    /// has to be applied here, in the construction, to reach it.
+    /// </param>
+    public static string? Render(AttributeData attribute, string? code = null)
     {
         if (attribute.AttributeClass is not { } attributeClass)
         {
@@ -54,7 +61,12 @@ internal static class AttributeConstructionRenderer
 
         foreach (var pair in attribute.NamedArguments)
         {
-            if (Argument(pair.Value) is not { } rendered)
+            var rendered =
+                code is not null && pair.Key == "Code"
+                    ? SymbolDisplay.FormatLiteral(code, quote: true)
+                    : Argument(pair.Value);
+
+            if (rendered is null)
             {
                 return null;
             }

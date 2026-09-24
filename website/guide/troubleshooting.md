@@ -39,16 +39,21 @@ context. Add `using ValidationModules;`.
 - The attribute is on a positional record parameter without the `property:` target. The generator
   reports `VM1008`.
 - A derived class hides the property with `new`, which replaces the base property's constraints.
-- The nested object has no `[ValidateNested]`, or the nested type has no rules (`VM1501`).
+- The nested object has no `[ValidateNested]`, or the nested type has no rules (`VM1501`), or it is
+  declared in another assembly and this project can reach no validator for it (`VM1505`).
 - A `When` or `Unless` condition excluded it.
 - The generator reported an error or warning for the constraint and dropped it. Check the build
   output for `VM` diagnostics.
 
-## [StringLength(50)] rejects short values
+## Error CS1729 or CS1739 on [StringLength]
 
-The first argument of `[StringLength]` is the minimum, so `[StringLength(50)]` requires at least 50
-characters. Write `[StringLength(max: 50)]`. The DataAnnotations attribute of the same name treats
-its first argument as the maximum.
+`[StringLength(3, 40)]` fails with error `CS1729`, and `[StringLength(min: 3)]` with error `CS1739`.
+`[StringLength]` reads its arguments as the DataAnnotations attribute of the same name does: the one
+positional argument is the maximum, and the minimum is the named `Min`. Write
+`[StringLength(40, Min = 3)]` or `[StringLength(Min = 3)]`.
+
+Earlier versions took the minimum first. A one-argument `[StringLength(50)]` written against them
+meant at least 50 characters, and it now means at most 50, so search for that form when upgrading.
 
 ## [Pattern] accepts values it should not
 

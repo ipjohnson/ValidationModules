@@ -14,7 +14,7 @@ public abstract record Payment
 
 public record Card : Payment
 {
-    [StringLength(16, 16)]
+    [StringLength(16, Min = 16)]
     public string? Pan { get; init; }
 }
 

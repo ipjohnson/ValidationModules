@@ -10,7 +10,7 @@ namespace ApiDemo;
 /// </summary>
 public sealed record CreateOrder
 {
-    [Required, StringLength(min: 3, max: 40)]
+    [Required, StringLength(40, Min = 3)]
     public string? Reference { get; init; }
 
     [Range(1, 500)]

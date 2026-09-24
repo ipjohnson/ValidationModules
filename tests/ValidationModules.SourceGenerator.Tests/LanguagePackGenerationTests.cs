@@ -18,7 +18,7 @@ public class LanguagePackGenerationTests
 
         public sealed record Pet {
             [Required]
-            [StringLength(min: 1, max: 100)]
+            [StringLength(100, Min = 1)]
             public string? Name { get; init; }
         }
         """;

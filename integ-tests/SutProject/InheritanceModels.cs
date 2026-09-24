@@ -71,6 +71,6 @@ public interface IStamped
 
 public record Envelope : IStamped
 {
-    [StringLength(4, 8)]
+    [StringLength(8, Min = 4)]
     public string? Stamp { get; init; }
 }

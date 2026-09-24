@@ -9,7 +9,7 @@ using ValidationModules.Constraints;
 
 public sealed class Product
 {
-    [Required, StringLength(3, 40)]
+    [Required, StringLength(40, Min = 3)]
     public string? Name { get; init; }
 
     [Range(0.01, 10_000)]
@@ -87,19 +87,28 @@ its value with `[Range]`.
 
 ## Bounds
 
-`[StringLength]` and `[ItemCount]` take the minimum first and the maximum second:
+`[StringLength]` reads its arguments as the DataAnnotations attribute of the same name does. The
+one positional argument is the maximum, and the minimum is the named `Min`:
 
 ```csharp
-[StringLength(3, 40)]       // 3 to 40 characters
-[StringLength(max: 40)]     // at most 40 characters
-[StringLength(min: 3)]      // at least 3 characters
-[ItemCount(1, 10)]          // 1 to 10 items
+[StringLength(40)]              // at most 40 characters
+[StringLength(40, Min = 3)]     // 3 to 40 characters
+[StringLength(Min = 3)]         // at least 3 characters
 ```
 
-::: warning The first argument is the minimum
-`[StringLength(50)]` means at least 50 characters. The DataAnnotations attribute of the same name
-reads `StringLength(50)` as a maximum. Name the argument, as in `[StringLength(max: 50)]`, to make
-the intent clear.
+`[ItemCount]` takes the minimum first and the maximum second, as the DataAnnotations `[Length]`
+does:
+
+```csharp
+[ItemCount(1, 10)]      // 1 to 10 items
+[ItemCount(max: 10)]    // at most 10 items
+[ItemCount(min: 1)]     // at least 1 item
+```
+
+::: tip Moving from DataAnnotations
+`[StringLength(50)]` means at most 50 characters under either namespace. DataAnnotations names the
+minimum `MinimumLength`, so `[StringLength(50, MinimumLength = 2)]` becomes
+`[StringLength(50, Min = 2)]`.
 :::
 
 `[Range]` takes both bounds, inclusive by default. `ExclusiveMin` and `ExclusiveMax` make either

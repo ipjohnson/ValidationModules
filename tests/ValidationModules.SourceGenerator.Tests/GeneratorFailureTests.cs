@@ -19,30 +19,22 @@ public class GeneratorFailureTests
     [Fact]
     public void AnEmitStageThatThrows_IsAVM5002Error()
     {
-        // A rules-class descent into a nested generic keeps its machinery - the region's
-        // transcribed text owns the walk - so the constructed generic name still reaches the
-        // emitter, whose TypeRef refuses it. That throw is the one remaining reachable trigger,
-        // which makes it the honest way to drive the backstop.
+        // Two types whose names differ only in case get validator files whose hint names differ
+        // only in case, and Roslyn compares hint names without regard to case, so the second
+        // AddSource throws. That throw is a reachable trigger that no front end refuses, which
+        // makes it the honest way to drive the backstop.
         var result = GeneratorHarness.Run(
             """
-            using System.Collections.Generic;
-            using ValidationModules;
             using ValidationModules.Constraints;
 
             namespace Sample;
 
-            public record Section {
+            public record Batch {
                 [Required] public string? Name { get; init; }
             }
 
-            public record Batch {
-                public List<List<Section>> Rows { get; init; } = new();
-            }
-
-            public sealed class BatchRules : IValidationRulesFor<Batch> {
-                public static void Describe(ValidationRules<Batch> rules, Batch x) {
-                    rules.Each(x.Rows);
-                }
+            public record batch {
+                [Required] public string? Name { get; init; }
             }
             """
         );
@@ -50,7 +42,7 @@ public class GeneratorFailureTests
         var failure = result.Diagnostics.First(d => d.Id == "VM5002");
 
         Assert.Equal(DiagnosticSeverity.Error, failure.Severity);
-        Assert.Contains("Batch", failure.GetMessage());
+        Assert.Contains("batch", failure.GetMessage(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

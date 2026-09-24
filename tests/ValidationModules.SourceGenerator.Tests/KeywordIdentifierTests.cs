@@ -33,7 +33,7 @@ public class KeywordIdentifierTests
             namespace Api;
 
             public record Payload {
-                [Required, StringLength(min: 1, max: 10)]
+                [Required, StringLength(10, Min = 1)]
                 public string? @object { get; init; }
             }
             """
