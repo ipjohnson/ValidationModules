@@ -4,8 +4,9 @@ using Xunit;
 namespace SutProject.Tests;
 
 /// <summary>
-/// One bound through the constructor: <c>[StringLength(min: 12)]</c> and
-/// <c>[ItemCount(max: 2)]</c> compile and emit exactly the one comparison they name.
+/// One bound at a time: <c>[StringLength(20)]</c> through the constructor,
+/// <c>[StringLength(Min = 12)]</c> by name, and <c>[ItemCount(max: 2)]</c>. Each emits exactly the
+/// one comparison it names.
 /// </summary>
 public class SingleBoundConstructorTests
 {
@@ -30,6 +31,29 @@ public class SingleBoundConstructorTests
         );
 
         Assert.True(result.IsValid);
+    }
+
+    [Fact]
+    public void PositionalStringLength_IsAMaximum_SoAShortValuePasses()
+    {
+        // [StringLength(20)] read as a minimum rejected this, where DataAnnotations accepts it.
+        var result = new PassphraseValidator().Validate(new Passphrase { Label = "work" });
+
+        Assert.True(result.IsValid);
+    }
+
+    [Fact]
+    public void PositionalStringLength_TooLong_FailsWithTheAtMostShape()
+    {
+        var result = new PassphraseValidator().Validate(
+            new Passphrase { Label = new string('x', 21) }
+        );
+
+        var error = Assert.Single(result.Errors);
+
+        Assert.Equal("label", error.Field);
+        Assert.Equal(ValidationCodes.StringLength, error.Code);
+        Assert.Contains("at most 20", error.Message);
     }
 
     [Fact]

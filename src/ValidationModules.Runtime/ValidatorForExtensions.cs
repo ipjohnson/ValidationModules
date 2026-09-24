@@ -16,6 +16,7 @@ public static class ValidatorForExtensions
     /// </summary>
     /// <param name="validator">The validator to run.</param>
     /// <param name="value">The value to validate.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="value"/> is null.</exception>
     public static ValidationResult Validate<T>(this IValidatorFor<T> validator, T value) =>
         Validate(validator, value, ValidationPathMode.Bounded);
 
@@ -25,6 +26,7 @@ public static class ValidatorForExtensions
     /// <param name="validator">The validator to run.</param>
     /// <param name="value">The value to validate.</param>
     /// <param name="pathMode">How error paths render. See <see cref="ValidationPathMode"/>.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="value"/> is null.</exception>
     public static ValidationResult Validate<T>(
         this IValidatorFor<T> validator,
         T value,
@@ -32,6 +34,7 @@ public static class ValidatorForExtensions
     )
     {
         ArgumentNullException.ThrowIfNull(validator);
+        ThrowIfNullValue(value);
 
         var collector = new ValidationErrorCollector(pathMode);
         var path = ArrayPool<PathSegment>.Shared.Rent(ValidationErrorCollector.DefaultDepthLimit);
@@ -72,9 +75,11 @@ public static class ValidatorForExtensions
     /// </remarks>
     /// <param name="validator">The validator to run.</param>
     /// <param name="value">The value to validate.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="value"/> is null.</exception>
     public static ValidationResult ValidateFirst<T>(this IValidatorFor<T> validator, T value)
     {
         ArgumentNullException.ThrowIfNull(validator);
+        ThrowIfNullValue(value);
 
         var collector = new ValidationErrorCollector
         {
@@ -106,9 +111,11 @@ public static class ValidatorForExtensions
     /// validator's concrete type would otherwise not compile. Where the concrete type declares its
     /// own - every generated one does - that instance method wins and this is never reached.
     /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="value"/> is null.</exception>
     public static bool IsValid<T>(this IValidatorFor<T> validator, T value)
     {
         ArgumentNullException.ThrowIfNull(validator);
+        ThrowIfNullValue(value);
 
         return validator.IsValid(value);
     }
@@ -116,6 +123,7 @@ public static class ValidatorForExtensions
     /// <summary>
     /// Runs the validator and throws <see cref="ValidationException"/> if the value is invalid.
     /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="value"/> is null.</exception>
     /// <exception cref="ValidationException">The value failed validation.</exception>
     public static void ValidateAndThrow<T>(this IValidatorFor<T> validator, T value)
     {
@@ -141,6 +149,7 @@ public static class ValidatorForExtensions
     /// <param name="validator">The validator to run.</param>
     /// <param name="collector">Receives the errors. Not reset first - reset it yourself between passes.</param>
     /// <param name="value">The value to validate.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="value"/> is null.</exception>
     public static void ValidateInto<T>(
         this IValidatorFor<T> validator,
         ValidationErrorCollector collector,
@@ -149,6 +158,7 @@ public static class ValidatorForExtensions
     {
         ArgumentNullException.ThrowIfNull(validator);
         ArgumentNullException.ThrowIfNull(collector);
+        ThrowIfNullValue(value);
 
         var path = ArrayPool<PathSegment>.Shared.Rent(ValidationErrorCollector.DefaultDepthLimit);
 
@@ -161,6 +171,23 @@ public static class ValidatorForExtensions
         finally
         {
             ArrayPool<PathSegment>.Shared.Return(path);
+        }
+    }
+
+    /// <summary>
+    /// Rejects a null value before a validator dereferences it, which is what
+    /// <c>Validator.TryValidateObject</c> does with a null instance.
+    /// </summary>
+    /// <remarks>
+    /// Generic rather than <see cref="ArgumentNullException.ThrowIfNull(object?, string?)"/>, which
+    /// would box a value-type <typeparamref name="T"/> on every call. For a value type the test is
+    /// always false and the JIT removes it.
+    /// </remarks>
+    internal static void ThrowIfNullValue<T>(T value)
+    {
+        if (value is null)
+        {
+            throw new ArgumentNullException(nameof(value));
         }
     }
 }

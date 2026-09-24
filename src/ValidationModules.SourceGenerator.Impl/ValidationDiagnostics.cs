@@ -426,7 +426,8 @@ public static class ValidationDiagnostics
     );
 
     /// <summary>
-    /// <c>[ValidateNested]</c> pointing at a type that has no rules, so the descent finds nothing.
+    /// A descent into a type that has no rules, so it finds nothing. <c>[ValidateNested]</c>,
+    /// <c>rules.Nested</c> and <c>rules.Each</c> all ask for one, and the message names which.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -441,16 +442,17 @@ public static class ValidationDiagnostics
     /// the nested type's own constraints is an ordinary order to work in.
     /// </para>
     /// <para>
-    /// Only reported for types this compilation declares. A nested type from a referenced assembly
-    /// may carry a validator generated over there, which we cannot see and must not second-guess -
-    /// a false negative, which is the safe direction.
+    /// Only reported for types this compilation declares. A type from a referenced assembly is
+    /// VM1505's, because what decides the descent there is whether a validator for it can be
+    /// reached, not what the type declares.
     /// </para>
     /// </remarks>
     public static readonly DiagnosticDescriptor NestedTypeHasNoRules = Descriptor(
         "VM1501",
-        "[ValidateNested] target has no rules",
-        "'{0}' declares no constraints and no [GenerateValidator], so [ValidateNested] on '{1}' "
-            + "validates nothing and the descent is dropped",
+        "Nested target has no rules",
+        "'{0}' declares no constraints and no [GenerateValidator], and no rules class targets it, so "
+            + "{2} on '{1}' validates nothing and the descent is dropped. Give '{0}' rules, or remove "
+            + "{2}",
         DiagnosticSeverity.Warning
     );
 
@@ -475,9 +477,9 @@ public static class ValidationDiagnostics
     /// </remarks>
     public static readonly DiagnosticDescriptor NestedTargetCannotHaveValidator = Descriptor(
         "VM1502",
-        "[ValidateNested] target can never have a validator",
-        "'{0}' is not a type a validator can be generated for, so [ValidateNested] on '{1}' is "
-            + "dropped; model the inner collection as a property of a type that declares its own rules",
+        "Nested target can never have a validator",
+        "'{0}' is not a type a validator can be generated for, so {2} on '{1}' is dropped; model "
+            + "the inner collection as a property of a type that declares its own rules",
         DiagnosticSeverity.Warning
     );
 
@@ -513,6 +515,32 @@ public static class ValidationDiagnostics
         "'{0}' is {1}, so its runtime type can never differ from its declared type and dispatching "
             + "on it costs a container lookup for the same answer. Use Polymorphism.DeclaredOnly",
         DiagnosticSeverity.Error
+    );
+
+    /// <summary>
+    /// A descent into a type declared in another assembly that offers no validator this compilation
+    /// can reach.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The generated descent constructs the target's validator by name, so it compiles only when
+    /// that validator is a type this compilation can see: generated in the target's own assembly and
+    /// accessible from here, or generated here from a rules class. A type from an assembly that never
+    /// ran this generator has neither, and neither does a framework type such as
+    /// <c>StringBuilder</c>.
+    /// </para>
+    /// <para>
+    /// Warning rather than error for VM1501's reason: the descent is dropped, so nothing runs that
+    /// should not.
+    /// </para>
+    /// </remarks>
+    public static readonly DiagnosticDescriptor NestedTargetHasNoVisibleValidator = Descriptor(
+        "VM1505",
+        "Nested target from another assembly has no validator",
+        "'{0}' is declared in '{1}' and no validator for it is visible here: there is no accessible "
+            + "'{2}', and no rules class in this compilation targets it. {3} on '{4}' is dropped. "
+            + "Declare an IValidationRulesFor<{0}> in this assembly, or remove {3}",
+        DiagnosticSeverity.Warning
     );
 
     /// <summary>
@@ -801,14 +829,31 @@ public static class ValidationDiagnostics
     /// lambda gives them none. Collections are Each's job; the reporter tier covers the exotic
     /// per-element case with a computed field string.
     /// </summary>
+    /// <remarks>
+    /// The tail says which of the two cases it is. A rule declared where the reader cannot expand
+    /// it takes <see cref="IslandScopeTail"/>. <c>rules.Context</c> is allowed in a loop, but it
+    /// becomes the region method's <c>ref</c> parameter, which a lambda, an anonymous method, a
+    /// local function or a query cannot capture, so there it takes
+    /// <see cref="ContextCaptureTail"/> rather than failing as CS1628 in generated code.
+    /// </remarks>
     public static readonly DiagnosticDescriptor IslandInUnreadableScope = Descriptor(
         "VM3003",
         "Rule declaration inside a loop, lambda, or local function",
-        "'{0}.Describe' declares a rule inside a scope the generator cannot expand it in. Use Each "
-            + "for collections - a collection of strings chains element rules, "
-            + "Each(x.Steps).Length(5, 500) - or report per element through rules.Context",
+        "'{0}.Describe' {1}",
         DiagnosticSeverity.Error
     );
+
+    /// <summary>VM3003's tail for a rule declared inside a loop or a local function.</summary>
+    public const string IslandScopeTail =
+        "declares a rule inside a scope the generator cannot expand it in. Use Each for "
+        + "collections - a collection of strings chains element rules, "
+        + "Each(x.Steps).Length(5, 500) - or report per element through rules.Context";
+
+    /// <summary>VM3003's tail for <c>rules.Context</c> inside a scope that would capture it.</summary>
+    public static string ContextCaptureTail(string scope) =>
+        $"uses rules.Context inside {scope}, which cannot capture the validation context the "
+        + "generated code passes by reference. Report from a foreach loop instead, which reaches "
+        + "rules.Context directly";
 
     /// <summary>
     /// Transcribed code must compile at the emission site: the companion file is internal to the
@@ -921,6 +966,24 @@ public static class ValidationDiagnostics
         DiagnosticSeverity.Error
     );
 
+    /// <summary>
+    /// A rules-class descent into a property that already carries <c>[ValidateNested]</c>.
+    /// </summary>
+    /// <remarks>
+    /// Attributes and a rules class merge onto one validator, so both descents would run and every
+    /// error inside the nested object would be reported twice. The rules-class descent is the one
+    /// dropped, because only the attribute can carry a <c>Polymorphism</c> mode. Warning rather
+    /// than error: the property is still validated, once.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor RulesDescentRepeatsValidateNested = Descriptor(
+        "VM3106",
+        "Rules-class descent repeats [ValidateNested]",
+        "'{0}' already carries [ValidateNested], so {1} would validate it a second time and report "
+            + "every nested error twice. The {1} descent is dropped. Remove it, or remove "
+            + "[ValidateNested] to keep the descent in the rules class",
+        DiagnosticSeverity.Warning
+    );
+
     public static readonly DiagnosticDescriptor LanguagePackUnreadable = Descriptor(
         "VM4001",
         "Language pack cannot be read",
@@ -1010,9 +1073,10 @@ public static class ValidationDiagnostics
         "VM5003",
         "Validate<T>() names a type with no validator",
         "'{0}' has no constraints, no [GenerateValidator], and no rules class or hand-written "
-            + "validator in this compilation, so .Validate<{1}>() will fail when the endpoint is "
-            + "built. Add constraints or [GenerateValidator] - or, if its rules arrive from another "
-            + "assembly, ignore this and the startup check will agree",
+            + "validator in this compilation, so .Validate<{1}>() will throw when the endpoint is "
+            + "built, which in a default application happens on its first request. Add constraints "
+            + "or [GenerateValidator] to '{0}'. If its rules come from another assembly, call that "
+            + "assembly's Add<Assembly>Validators() and ignore this warning",
         DiagnosticSeverity.Warning
     );
 

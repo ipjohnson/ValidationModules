@@ -455,7 +455,7 @@ app.Run();
 public sealed record Accepted(bool Ok);
 
 public sealed record CreateOrder {
-    [Required, StringLength(min: 3, max: 40)] public string? Reference { get; init; }
+    [Required, StringLength(40, Min = 3)] public string? Reference { get; init; }
     [Range(1, 500)] public int Quantity { get; init; }
     [ValidateNested] public Address? ShipTo { get; init; }
 }

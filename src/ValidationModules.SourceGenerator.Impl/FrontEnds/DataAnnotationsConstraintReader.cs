@@ -66,6 +66,16 @@ public static class DataAnnotationsConstraintReader
         Array.IndexOf(Constraints, attributeName) >= 0
         || Array.IndexOf(FormatValidators, attributeName) >= 0;
 
+    /// <summary>
+    /// Whether <see cref="Read"/> compiles the attribute into a check: every constraint
+    /// <see cref="IsConstraint"/> names, and <c>[CustomValidation]</c>, which compiles to a direct
+    /// call. No other attribute in the namespace produces a check. <c>[Display]</c> and
+    /// <c>[Key]</c> describe the property, and <c>[Compare]</c> and <c>[EnumDataType]</c> are
+    /// reported instead, so a type carrying only those gets no validator.
+    /// </summary>
+    public static bool Compiles(string attributeName) =>
+        IsConstraint(attributeName) || attributeName == "CustomValidationAttribute";
+
     /// <param name="attribute">The attribute to read.</param>
     /// <param name="attributeName">Its class name, which picks the reader.</param>
     /// <param name="memberType">The type of the member it is declared on.</param>

@@ -22,6 +22,9 @@ public static class KnownTypes
 
     /// <summary>The instance shape of a custom constraint. Matched by original definition.</summary>
     public const string ConstraintForInterface = "ValidationModules.IConstraintFor<T>";
+
+    /// <summary>The service a validator implements. Matched by original definition.</summary>
+    public const string ValidatorForInterface = "ValidationModules.IValidatorFor<T>";
     public const string ValidationAttribute =
         "System.ComponentModel.DataAnnotations.ValidationAttribute";
     public const string ValidatableObject =
