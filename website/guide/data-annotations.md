@@ -48,7 +48,7 @@ writes the same checks it writes for the attributes in `ValidationModules.Constr
 | `[StringLength]` | The string length, with `MinimumLength`. | `string_length` |
 | `[MinLength]`, `[MaxLength]`, `[Length]` | The length of a string, or the number of items in a collection. | `string_length` or `array_bounds` |
 | `[Range]` | The bounds, with `MinimumIsExclusive` and `MaximumIsExclusive`. String bounds are parsed as the property's type at build time. | `range` |
-| `[RegularExpression]` | The whole value matches the expression. | `pattern` |
+| `[RegularExpression]` | The whole value matches the expression. An empty string passes. | `pattern` |
 | `[AllowedValues]`, `[DeniedValues]` | The value is in, or not in, the list. | `enum` |
 | `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]`, `[FileExtensions]` | The same rules as the DataAnnotations attributes. | `email`, `phone`, `url`, `credit_card`, `base64`, `file_extension` |
 | `[CustomValidation]` on a property | Calls the named static method directly. | `custom` |
@@ -109,8 +109,6 @@ true`, with these differences:
   rules reported no error. Those rules include its rules classes and the objects it validates
   through `[ValidateNested]`, which `Validator.TryValidateObject` does not visit. A warning does not
   stop them, and neither does an error on the object that contains this one.
-- `[RegularExpression]` rejects an empty string unless the expression matches it. DataAnnotations
-  accepts an empty string for this attribute.
 - `[Range]` with its bounds in the wrong order is accepted at build time and always fails.
 - A custom `ValidationAttribute` that calls `ValidationContext.GetService` gets the pass's services
   only when the pass has a service provider, as it does through `ValidationRunner<T>`.
@@ -153,7 +151,7 @@ you do change a file's `using` from `System.ComponentModel.DataAnnotations` to
 | `[StringLength(50)]` | `[StringLength(max: 50)]`. The first argument here is the minimum. |
 | `[StringLength(50, MinimumLength = 2)]` | `[StringLength(2, 50)]` |
 | `[MinLength]`, `[MaxLength]`, `[Length]` | `[StringLength]` on a string, `[ItemCount]` on a collection |
-| `[RegularExpression("x")]` | `[Pattern(@"\A(?:x)\z")]`. `[Pattern]` matches anywhere in the value unless the expression is anchored. |
+| `[RegularExpression("x")]` | `[Pattern(@"\A(?:x)?\z")]`. `[Pattern]` matches anywhere in the value unless the expression is anchored. It also tests an empty string, which `[RegularExpression]` passes, and the `?` lets an empty string through. |
 | `ErrorMessage = "The {0} field is invalid."` | `Message = "The {field} field is invalid."` |
 | `[EnumDataType(typeof(Tier))]` | `[EnumDefined]` on a property of type `Tier` |
 | `[Compare]`, `IValidatableObject` | A rules class |
@@ -179,6 +177,6 @@ it.
 
 The built-in DataAnnotations attributes are compiled into plain checks and need no reflection.
 `[RegularExpression]` is always compiled as an inline regular expression, which adds the regular
-expression interpreter to a Native AOT binary. It is not subject to
-`ValidationModules_PatternPolicy`. In an AOT application, prefer `[Pattern]` with a
-`[GeneratedRegex]` member. See [Patterns](./patterns).
+expression interpreter to a Native AOT binary. It follows `ValidationModules_PatternPolicy` like an
+inline `[Pattern]`, so an AOT-facing project reports it as `VM1301`. The message prints the
+`[Pattern]` and `[GeneratedRegex]` that replace it. See [Patterns](./patterns).

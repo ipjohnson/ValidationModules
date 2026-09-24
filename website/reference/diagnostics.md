@@ -144,7 +144,8 @@ A `[Range]` bound does not parse as the property's type, for example a date on a
 
 **Severity:** Error
 
-The `[MultipleOf]` divisor is zero or negative. The constraint is dropped.
+The divisor of `[MultipleOf]`, or a constant divisor of `rules.MultipleOf`, is zero or negative.
+The constraint is dropped.
 
 ### VM1105
 
@@ -188,19 +189,33 @@ implement `IEquatable<T>`.
 
 **Severity:** Error or warning
 
-An inline `[Pattern("...")]` is in a project whose pattern policy rejects it. By
-default that is a project with `PublishAot` or `IsAotCompatible` set to `true`, and the diagnostic
-is an error that drops the constraint. The inline form adds the regular expression interpreter to a
-Native AOT binary. Declare the expression with `[GeneratedRegex]` and point at it with
-`[Pattern(typeof(T), nameof(T.Member))]`, or set `ValidationModules_PatternPolicy` to `Allow`. See
-[Patterns](../guide/patterns).
+An inline `[Pattern("...")]`, or a DataAnnotations `[RegularExpression]`, is in a project whose
+pattern policy rejects it. By default that is a project with `PublishAot` or `IsAotCompatible` set
+to `true`, and the diagnostic is an error that drops the constraint. Both compile to an expression
+parsed at run time, which adds the regular expression interpreter to a Native AOT binary. Declare
+the expression with `[GeneratedRegex]` and point at it with `[Pattern(typeof(T), nameof(T.Member))]`,
+or set `ValidationModules_PatternPolicy` to `Allow`. For `[RegularExpression]`, the message prints
+the expression anchored and made optional, because that attribute matches the whole value and
+passes an empty string. See [Patterns](../guide/patterns).
 
 ### VM1302
 
 **Severity:** Warning
 
-`[Pattern]` sets `Options` to include `RegexOptions.Compiled`. Remove it. For compiled
-matching, use a `[GeneratedRegex]` member.
+An inline `[Pattern]` sets `Options` to include `RegexOptions.Compiled`. The generator removes it,
+because compiling the expression would emit code at run time, and the inline pattern is
+interpreted. Remove it from `Options`. For a matcher compiled at build time, declare the expression
+with `[GeneratedRegex]` and point at it with `[Pattern(typeof(T), nameof(T.Member))]`.
+
+### VM1303
+
+**Severity:** Warning
+
+`[Pattern(typeof(T), nameof(T.Member))]` sets `Options` or `MatchTimeoutMilliseconds`. The
+referenced regex was built with its own options and timeout, so the setting has no effect. Remove
+it and declare it on the `[GeneratedRegex]` instead. The message prints that declaration, merged
+into the member's own `[GeneratedRegex]` when it has one. `RegexOptions.Compiled` is reported here
+rather than as `VM1302`, and only needs removing.
 
 ### VM1401
 

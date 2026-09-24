@@ -31,6 +31,8 @@ public static class KnownTypes
 
     public const string JsonPropertyName =
         "System.Text.Json.Serialization.JsonPropertyNameAttribute";
+    public const string GeneratedRegexAttribute =
+        "System.Text.RegularExpressions.GeneratedRegexAttribute";
     public const string DisplayAttribute = "System.ComponentModel.DataAnnotations.DisplayAttribute";
 
     /// <summary>Presence of this decides which registration branch is emitted. See plan §7.3.</summary>

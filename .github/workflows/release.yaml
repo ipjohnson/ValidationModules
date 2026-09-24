@@ -96,6 +96,7 @@ jobs:
 
       # Listed explicitly rather than packing the solution, so that adding a test or
       # integration project never publishes one by accident. Extend as the stages land.
+      # verify-packages.sh fails the build when this list and build-package.yaml's differ.
       - name: Pack
         run: |
           for project in \

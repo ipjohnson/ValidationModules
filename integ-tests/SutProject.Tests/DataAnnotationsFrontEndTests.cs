@@ -1,6 +1,7 @@
 using SutProject.DataAnnotations;
 using ValidationModules;
 using Xunit;
+using DA = System.ComponentModel.DataAnnotations;
 
 namespace SutProject.Tests;
 
@@ -62,6 +63,25 @@ public class DataAnnotationsFrontEndTests
     {
         // \z rather than $, which would otherwise admit "ABC\n".
         Assert.False(new CustomerValidator().IsValid(ValidCustomer(c => c.Code = "ABC\n")));
+    }
+
+    [Fact]
+    public void RegularExpression_PassesAnEmptyStringAsDataAnnotationsDoes()
+    {
+        // RegularExpressionAttribute leaves emptiness to [Required]. An HTML form posts an optional
+        // field left blank as "", and a model moved from DataAnnotations keeps accepting it.
+        var customer = ValidCustomer(c => c.Code = "");
+
+        Assert.True(
+            DA.Validator.TryValidateObject(
+                customer,
+                new DA.ValidationContext(customer),
+                null,
+                validateAllProperties: true
+            )
+        );
+        Assert.True(new CustomerValidator().IsValid(customer));
+        Assert.Empty(new CustomerValidator().Validate(customer).Errors);
     }
 
     [Fact]
