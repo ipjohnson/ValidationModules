@@ -7,3 +7,4 @@ Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
 VM1303 | ValidationModules.Usage | Warning | Options or MatchTimeoutMilliseconds is set on the reference form of [Pattern], which reads neither.
 VM2010 | ValidationModules.Usage | Info | A class-level ValidationAttribute runs after the property rules pass and before IValidatableObject. Reported as Warning when its arguments cannot be rendered, and with an ignoring tail when ValidationModules_DataAnnotations is Ignore.
+VM5004 | ValidationModules.Usage | Warning | A ValidationModules_* MSBuild property holds a value it does not accept. The generator uses the default.

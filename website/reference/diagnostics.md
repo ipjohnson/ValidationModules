@@ -25,8 +25,8 @@ dotnet_diagnostic.VM1201.severity = none
 ```
 
 A `[*.cs]` section applies only to diagnostics reported in C# files. The language pack diagnostics
-are reported at the JSON file, and `VM5001`, `VM5002` and `VM6001` have no location, so set their
-severity in a `.globalconfig` file, or list them in `<NoWarn>`:
+are reported at the JSON file, and `VM5001`, `VM5002`, `VM5004` and `VM6001` have no location, so
+set their severity in a `.globalconfig` file, or list them in `<NoWarn>`:
 
 ```ini
 is_global = true
@@ -544,6 +544,15 @@ class.
 it is built. Add rules or `[GenerateValidator]`. When the rules come from another assembly, the
 warning does not apply. This is the one diagnostic that an analyzer reports rather than the
 generator.
+
+### VM5004
+
+**Severity:** Warning
+
+A `ValidationModules_*` property in the project file has a value that the generator does not
+accept, so the generator uses the property's default. The message names the property, the value
+and the values it accepts. Case does not matter: `snakecase` is read as `SnakeCase`, but
+`snake_case` is not a value. See [MSBuild properties](./msbuild).
 
 ## Registration
 

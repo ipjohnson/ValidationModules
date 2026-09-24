@@ -999,6 +999,23 @@ public static class ValidationDiagnostics
     );
 
     /// <summary>
+    /// A <c>ValidationModules_*</c> MSBuild property holds a value that matches none of the values
+    /// it accepts, compared without regard to case.
+    /// </summary>
+    /// <remarks>
+    /// Warning rather than error, because the generator still has a well-defined answer: the
+    /// property's default. Reported once per compilation. It has no location, because the
+    /// generator is handed the value from the project file but not where it was set.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor UnrecognisedBuildPropertyValue = Descriptor(
+        "VM5004",
+        "Unrecognised MSBuild property value",
+        "{0} is '{1}', which is not a value it accepts, so the generator uses the default, {2}. "
+            + "Set it to {3}",
+        DiagnosticSeverity.Warning
+    );
+
+    /// <summary>
     /// The compilation declares more than one module entry point, and this assembly's validators
     /// were registered into every one of them.
     /// </summary>

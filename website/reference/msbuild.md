@@ -14,20 +14,23 @@ The `ValidationModules.SourceGenerator` package declares each property as a
 `CompilerVisibleProperty`, which is what makes it visible to the generator. A project that
 references the generator with a `ProjectReference` instead of the package must declare them itself.
 
+Each `ValidationModules_*` property except `ValidationModules_CodeNamespace` takes one of a fixed
+set of values, and the values are not case-sensitive. A value that a property does not accept means
+the property's default, and the generator reports `VM5004` with the values it accepts.
+
 ## `ValidationModules_FieldNaming`
 
 This property sets how member names become field names in errors.
 
 | Value | `PostalCode` becomes |
 | --- | --- |
-| not set | `postalCode` |
+| not set, or `CamelCase` | `postalCode` |
 | `SnakeCase` | `postal_code` |
 | `PascalCase` or `AsDeclared` | `PostalCode` |
 
-`[JsonPropertyName]` and `[Display(Name)]` on a property take precedence. The value is
-case-sensitive, and an unrecognised value means camelCase. The registration method also registers
-the matching `IValidationFieldNamer`: `CamelCaseFieldNamer`, `SnakeCaseFieldNamer` or
-`PascalCaseFieldNamer`. A namer you register first takes precedence. Custom namers derive from
+`[JsonPropertyName]` and `[Display(Name)]` on a property take precedence. The registration method
+also registers the matching `IValidationFieldNamer`: `CamelCaseFieldNamer`, `SnakeCaseFieldNamer`
+or `PascalCaseFieldNamer`. A namer you register first takes precedence. Custom namers derive from
 `FieldNamer`.
 
 ## `ValidationModules_CodeNamespace`
@@ -49,24 +52,24 @@ DataAnnotations `[RegularExpression]`, which compiles to the same thing.
 | `Warn` | `VM1301` warning, and the pattern is compiled. |
 | `Allow` | Allowed. |
 
-The value is case-sensitive. See [Patterns](../guide/patterns).
+See [Patterns](../guide/patterns).
 
 ## `ValidationModules_DataAnnotations`
 
 Set to `Ignore` to stop the generator compiling `System.ComponentModel.DataAnnotations` attributes.
-It then reports `VM2001` for each one. Any other value, or none, compiles them. The value is not
-case-sensitive. See [DataAnnotations](../guide/data-annotations).
+It then reports `VM2001` for each one. The default, `Compile`, compiles them. See
+[DataAnnotations](../guide/data-annotations).
 
 ## `ValidationModules_FailFast`
 
 Set to `false` or `Disabled` to leave out the early return after each check. The validators get
 smaller. A `StopOnFirstError` pass still records only one error but runs every check. It is on by
-default. The value is not case-sensitive.
+default, and `true` or `Enabled` turns it on explicitly.
 
 ## `ValidationModules_CaptureValues`
 
 Set to `false` or `Disabled` to stop recording the failed value in `ValidationError.Value`. It is
-on by default. The value is not case-sensitive.
+on by default, and `true` or `Enabled` turns it on explicitly.
 
 ## `ValidationModules_Registration`
 
@@ -74,12 +77,12 @@ This property selects the registration code the generator writes.
 
 | Value | Effect |
 | --- | --- |
-| not set | `DependencyModules` when the project references DependencyModules, `ServiceCollection` otherwise. |
+| not set, or `Auto` | `DependencyModules` when the project references DependencyModules, `ServiceCollection` otherwise. |
 | `ServiceCollection` | The `Add<Assembly>Validators()` extension method only. |
 | `DependencyModules` | The extension method, registration into each module entry point, and a `ValidationModule` class when there is no entry point. |
 | `None` | No registration code. |
 
-The value is case-sensitive. See [Registration](../guide/registration).
+See [Registration](../guide/registration).
 
 ## Other properties
 

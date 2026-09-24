@@ -67,7 +67,7 @@ first wins. The `ValidationModules_FieldNaming` property changes the default for
 
 | Value | `PostalCode` becomes |
 | --- | --- |
-| not set | `postalCode` |
+| not set, or `CamelCase` | `postalCode` |
 | `SnakeCase` | `postal_code` |
 | `PascalCase` or `AsDeclared` | `PostalCode` |
 
@@ -77,7 +77,8 @@ first wins. The `ValidationModules_FieldNaming` property changes the default for
 </PropertyGroup>
 ```
 
-The value is case-sensitive. An unrecognised value means camelCase.
+The value is not case-sensitive. An unrecognised value means camelCase, and the generator reports
+`VM5004`.
 
 The registration method also registers an `IValidationFieldNamer` for the same policy:
 `CamelCaseFieldNamer`, `SnakeCaseFieldNamer` or `PascalCaseFieldNamer`, each with a shared
