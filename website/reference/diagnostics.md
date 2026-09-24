@@ -408,6 +408,10 @@ A rule is declared inside a loop or a local function. A local function also give
 rule inside a lambda gives `VM3002` alone. Use `Each` for per-element rules, or report from the loop
 through `rules.Context`.
 
+`rules.Context` inside a lambda, an anonymous method, a local function or a query expression gives
+`VM3003` too. The generated code passes the context by reference, and none of those can capture it.
+Report from a `foreach` loop instead.
+
 ### VM3004
 
 **Severity:** Error

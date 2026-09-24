@@ -386,6 +386,53 @@ public class RulesClassDiagnosticsTests
         Assert.Contains(result.Diagnostics, d => d.Id == "VM3003");
     }
 
+    /// <summary>
+    /// <c>rules.Context</c> becomes the region method's <c>ref</c> parameter, which a lambda, an
+    /// anonymous method, a local function or a query clause cannot capture. That failed as CS1628
+    /// inside generated code, or, in a local function, reported a tail that suggested
+    /// <c>rules.Context</c> itself.
+    /// </summary>
+    [Theory]
+    [InlineData(
+        "x.Notes?.ToList().ForEach(n => rules.Context.Report(\"notes\", \"bad\", n));",
+        "a lambda"
+    )]
+    [InlineData(
+        "Action report = delegate { rules.Context.ReportHere(\"c\", \"m\"); }; report();",
+        "an anonymous method"
+    )]
+    [InlineData(
+        "var flows = (from n in x.Notes ?? Array.Empty<string>() select rules.Context.Report(\"notes\", \"bad\", n)).ToList();",
+        "a query expression"
+    )]
+    [InlineData(
+        "void Local() { rules.Context.ReportHere(\"c\", \"m\"); } Local();",
+        "a local function"
+    )]
+    public void ContextInsideAScopeThatCapturesIt_IsVM3003(string statement, string scope)
+    {
+        var result = GeneratorHarness.Run(Rules($"        {statement}"));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM3003");
+
+        Assert.Contains($"uses rules.Context inside {scope}", diagnostic.GetMessage());
+        Assert.Contains("foreach", diagnostic.GetMessage());
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    [Fact]
+    public void ContextInsideAForeachLoop_StillTranscribes()
+    {
+        var result = GeneratorHarness.Run(
+            Rules(
+                "        foreach (var n in x.Notes ?? Array.Empty<string>()) { rules.Context.Report(\"notes\", \"bad\", n); }"
+            )
+        );
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        Assert.Empty(result.CompilationErrors);
+    }
+
     // VM3101 - a Require that can never fail.
 
     [Fact]
