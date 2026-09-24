@@ -53,11 +53,13 @@ writes the same checks it writes for the attributes in `ValidationModules.Constr
 | `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]`, `[FileExtensions]` | The same rules as the DataAnnotations attributes. | `email`, `phone`, `url`, `credit_card`, `base64`, `file_extension` |
 | `[CustomValidation]` on a property | Calls the named static method directly. | `custom` |
 | A class derived from `ValidationAttribute` | Creates the attribute once and calls it. | `custom` |
-| `IValidatableObject` on the model | Calls `Validate` after every other rule, when nothing has been reported. | `custom` |
+| A `ValidationAttribute` on the class | Runs after the property rules, when they reported no error, with the object as the value. `[CustomValidation]` on the class calls its method directly. | `custom` |
+| `IValidatableObject` on the model | Calls `Validate` after every other rule, when those rules reported no error. | `custom` |
 
 The generator reports what it does with some of these as informational diagnostics. `VM2004` states
 the exact rule a format attribute applies, `VM2002` notes that a custom `ValidationAttribute` runs
-its own code, and `VM2006` notes when `IValidatableObject.Validate` is called.
+its own code, `VM2010` notes an attribute on the class, and `VM2006` notes when
+`IValidatableObject.Validate` is called.
 
 These attributes are not compiled, and the generator reports a warning:
 
@@ -101,10 +103,12 @@ The generated validator behaves like `Validator.TryValidateObject` with `validat
 true`, with these differences:
 
 - Every error has a code, and the default messages are this library's.
-- Attributes on fields and on the class itself are not read. Neither are `[MetadataType]` classes.
+- Attributes on fields are not read. Neither are `[MetadataType]` classes.
 - Attributes declared on an interface's properties apply to the classes that implement it.
-- `IValidatableObject.Validate` runs only when the whole validation pass has reported nothing so
-  far, warnings included, and including other objects of the same graph.
+- The attributes on the class, then `IValidatableObject.Validate`, run only when the type's own
+  rules reported no error. Those rules include its rules classes and the objects it validates
+  through `[ValidateNested]`, which `Validator.TryValidateObject` does not visit. A warning does not
+  stop them, and neither does an error on the object that contains this one.
 - `[Range]` with its bounds in the wrong order is accepted at build time and always fails.
 - A custom `ValidationAttribute` that calls `ValidationContext.GetService` gets the pass's services
   only when the pass has a service provider, as it does through `ValidationRunner<T>`.
