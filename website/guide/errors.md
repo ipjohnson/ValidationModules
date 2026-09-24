@@ -209,6 +209,13 @@ var collector = new ValidationErrorCollector(serviceProvider);
 validator.ValidateInto(collector, order);
 ```
 
+## A null value
+
+`Validate`, `ValidateFirst`, `ValidateInto`, `ValidateAndThrow` and `IsValid` throw
+`ArgumentNullException` for a null value, as `Validator.TryValidateObject` does for a null instance.
+So do `ValidationRunner<T>.Validate` and `ValidateAsync`. In ASP.NET Core, `.Validate<T>()` lets a
+null argument through to the handler instead. See [ASP.NET Core](./aspnetcore).
+
 ## Depth limit
 
 A single pass can descend at most 64 levels. Each nested object and each list element is one level.

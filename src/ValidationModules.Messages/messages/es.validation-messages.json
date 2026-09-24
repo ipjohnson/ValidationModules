@@ -34,7 +34,6 @@
         "credit_card": "{field} no es un número de tarjeta válido.",
         "base64": "{field} no es una cadena Base64 válida.",
         "file_extension": "{field} debe tener una de estas extensiones: {0}.",
-        "custom": "{field} no es válido.",
-        "date_order": "la fecha final debe ser posterior a la inicial."
+        "custom": "{field} no es válido."
     }
 }

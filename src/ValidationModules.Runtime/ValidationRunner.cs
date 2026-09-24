@@ -68,6 +68,7 @@ public sealed class ValidationRunner<T>
     /// Runs the structural validators only. Allocation-free when the value is clean.
     /// </summary>
     /// <param name="value">The value to validate.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="value"/> is null.</exception>
     public ValidationResult Validate(T value) => Validate(value, ValidationPathMode.Bounded);
 
     /// <summary>
@@ -75,8 +76,11 @@ public sealed class ValidationRunner<T>
     /// </summary>
     /// <param name="value">The value to validate.</param>
     /// <param name="pathMode">How error paths render. See <see cref="ValidationPathMode"/>.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="value"/> is null.</exception>
     public ValidationResult Validate(T value, ValidationPathMode pathMode)
     {
+        ValidatorForExtensions.ThrowIfNullValue(value);
+
         var collector = new ValidationErrorCollector(_services, pathMode);
         var path = ArrayPool<PathSegment>.Shared.Rent(ValidationErrorCollector.DefaultDepthLimit);
 
@@ -108,6 +112,7 @@ public sealed class ValidationRunner<T>
     /// </remarks>
     /// <param name="value">The value to validate.</param>
     /// <param name="cancellationToken">Cancels any I/O the business rules perform.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="value"/> is null.</exception>
     public ValueTask<ValidationResult> ValidateAsync(
         T value,
         CancellationToken cancellationToken = default
@@ -119,10 +124,24 @@ public sealed class ValidationRunner<T>
     /// <param name="value">The value to validate.</param>
     /// <param name="pathMode">How error paths render. See <see cref="ValidationPathMode"/>.</param>
     /// <param name="cancellationToken">Cancels any I/O the business rules perform.</param>
-    public async ValueTask<ValidationResult> ValidateAsync(
+    /// <exception cref="ArgumentNullException"><paramref name="value"/> is null.</exception>
+    public ValueTask<ValidationResult> ValidateAsync(
         T value,
         ValidationPathMode pathMode,
         CancellationToken cancellationToken = default
+    )
+    {
+        // Checked here rather than in the async body, so a null value throws at the call instead
+        // of surfacing only when the returned task is awaited.
+        ValidatorForExtensions.ThrowIfNullValue(value);
+
+        return RunAsync(value, pathMode, cancellationToken);
+    }
+
+    private async ValueTask<ValidationResult> RunAsync(
+        T value,
+        ValidationPathMode pathMode,
+        CancellationToken cancellationToken
     )
     {
         var collector = new ValidationErrorCollector(_services, pathMode);

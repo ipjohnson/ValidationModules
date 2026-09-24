@@ -35,8 +35,9 @@ or `PascalCaseFieldNamer`. A namer you register first takes precedence. Custom n
 
 ## `ValidationModules_CodeNamespace`
 
-This property sets a prefix for the codes you set with `Code` on a built-in attribute or a
-`CustomConstraintAttribute`, and for the codes of `Ensure`, set with `code:` or derived. With
+This property sets a prefix for the codes you set with `Code` on a built-in attribute, a
+`CustomConstraintAttribute` or an `IConstraintFor<T>` attribute, and for the codes of `Ensure`, set
+with `code:` or derived. With
 `shop`, the code `stay_order` becomes `shop.stay_order`. Codes passed to `Report` calls and helpers
 are not prefixed, and built-in codes are never prefixed. It is not set by default.
 

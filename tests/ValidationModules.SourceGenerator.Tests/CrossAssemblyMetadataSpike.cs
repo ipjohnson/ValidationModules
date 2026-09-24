@@ -31,7 +31,7 @@ public class CrossAssemblyMetadataSpike
 
         public record BaseRequest {
             [Required]
-            [StringLength(1, 64)]
+            [StringLength(64, Min = 1)]
             public string? CorrelationId { get; init; }
 
             [Required]
@@ -108,12 +108,13 @@ public class CrossAssemblyMetadataSpike
     }
 
     /// <summary>
-    /// A constructor argument has to survive the round trip too, not just the attribute's presence -
-    /// a <c>[StringLength(1, 64)]</c> that reads back with no bounds is worse than one that does not
-    /// read back at all.
+    /// The arguments have to survive the round trip too, not just the attribute's presence - a
+    /// <c>[StringLength(64, Min = 1)]</c> that reads back with no bounds is worse than one that does
+    /// not read back at all. Its maximum is a constructor argument and its minimum a named one, so
+    /// both kinds are checked.
     /// </summary>
     [Fact]
-    public void ConstructorArgumentsSurviveTheMetadataRoundTrip()
+    public void AttributeArgumentsSurviveTheMetadataRoundTrip()
     {
         var baseType = Lookup("Consumer.CreateOrder").BaseType!;
 
@@ -123,7 +124,13 @@ public class CrossAssemblyMetadataSpike
             .GetAttributes()
             .Single(attribute => attribute.AttributeClass?.Name == "StringLengthAttribute");
 
-        Assert.Equal([1, 64], stringLength.ConstructorArguments.Select(argument => argument.Value));
+        Assert.Equal([64], stringLength.ConstructorArguments.Select(argument => argument.Value));
+        Assert.Equal(
+            1,
+            Assert
+                .Single(stringLength.NamedArguments, argument => argument.Key == "Min")
+                .Value.Value
+        );
     }
 
     /// <summary>
