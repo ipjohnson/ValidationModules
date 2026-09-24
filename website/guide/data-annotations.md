@@ -105,7 +105,8 @@ The generated validator behaves like `Validator.TryValidateObject` with `validat
 true`, with these differences:
 
 - Every error has a code, and the default messages are this library's.
-- Attributes on fields are not read. Neither are `[MetadataType]` classes.
+- Attributes on fields are not read. Neither are `[MetadataType]` classes. A constraint on a field
+  is reported as `VM1011`.
 - Attributes declared on an interface's properties apply to the classes that implement it.
 - The attributes on the class, then `IValidatableObject.Validate`, run only when the type's own
   rules reported no error. Those rules include its rules classes and the objects it validates

@@ -114,9 +114,10 @@ public sealed class AttributeFrontEnd
         _validatedType = type;
         _subtypesOf = subtypesOf;
 
-        // Before anything reads a property, because the situation this reports is precisely one
+        // Before anything reads a property, because the situations these report are precisely ones
         // where no property carries anything and the type would otherwise look unconstrained.
         ReportRecordParameterConstraints(type);
+        ReportConstraintsOnFieldsAndStaticProperties(type);
 
         var properties = ImmutableArray.CreateBuilder<ValidatedPropertyModel>();
         var order = new List<int>();
@@ -166,7 +167,9 @@ public sealed class AttributeFrontEnd
             // a narrower version of it.
             sawAttribute |= constraints.Count > 0 || validateNested;
 
-            if (member.Hidden is { } displaced && (constraints.Count > 0 || validateNested))
+            // Whatever the hiding declaration carries. A bare `new` is the likelier accident,
+            // because nothing on it says its author thought about validation.
+            if (member.Hidden is { } displaced)
             {
                 // Counted quietly: this is the displaced declaration's own text, and the point here
                 // is to say how much of it was dropped, not to re-report what is wrong with it.
@@ -1060,6 +1063,95 @@ public sealed class AttributeFrontEnd
             }
         }
     }
+
+    /// <summary>
+    /// Reports a constraint written on a field or on a static property.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The attribute usage admits a field, so the compiler accepts one there, and the walk reads
+    /// instance properties only, so the constraint is dropped and the type can look unconstrained.
+    /// The usage keeps <c>Field</c>, because removing it would turn existing declarations into
+    /// compile errors, and it keeps <c>Parameter</c>, which a host reading method parameters relies
+    /// on. The gap is reported where it is instead, with the property to declare.
+    /// </para>
+    /// <para>
+    /// Only members the type declares itself, like VM1008: a base type reports its own, and one
+    /// from a package has no source to fix. A backing field the compiler declared is not a member
+    /// anyone wrote, so it is left alone.
+    /// </para>
+    /// </remarks>
+    private void ReportConstraintsOnFieldsAndStaticProperties(INamedTypeSymbol type)
+    {
+        foreach (var member in type.GetMembers())
+        {
+            string kind;
+            string declaration;
+
+            switch (member)
+            {
+                case IFieldSymbol { IsImplicitlyDeclared: false } field:
+                    kind =
+                        field.IsConst ? "a constant"
+                        : field.IsStatic ? "a static field"
+                        : "a field";
+                    declaration = InstanceProperty(
+                        field,
+                        field.Type,
+                        field.IsReadOnly || field.IsConst ? "{ get; }" : "{ get; set; }"
+                    );
+                    break;
+
+                case IPropertySymbol { IsStatic: true, IsIndexer: false } property:
+                    kind = "a static property";
+                    declaration = InstanceProperty(
+                        property,
+                        property.Type,
+                        property.SetMethod is null ? "{ get; }" : "{ get; set; }"
+                    );
+                    break;
+
+                default:
+                    continue;
+            }
+
+            foreach (var attribute in member.GetAttributes())
+            {
+                if (
+                    attribute.AttributeClass is not { } attributeClass
+                    || !IsConstraintAttribute(attributeClass)
+                    || attribute.ApplicationSyntaxReference is not { } reference
+                )
+                {
+                    continue;
+                }
+
+                // Qualified because this class has a Location(ISymbol) helper of its own, which
+                // otherwise shadows the type.
+                _diagnostics.Add(
+                    Diagnostic.Create(
+                        ValidationDiagnostics.ConstraintOnFieldOrStaticProperty,
+                        Microsoft.CodeAnalysis.Location.Create(
+                            reference.SyntaxTree,
+                            reference.Span
+                        ),
+                        Unsuffixed(attributeClass.Name),
+                        member.Name,
+                        kind,
+                        declaration
+                    )
+                );
+            }
+        }
+    }
+
+    /// <summary>
+    /// The instance property to declare in place of a field or a static property, as it would be
+    /// typed: the member's own accessibility, type and name.
+    /// </summary>
+    private static string InstanceProperty(ISymbol member, ITypeSymbol type, string accessors) =>
+        $"{Microsoft.CodeAnalysis.CSharp.SyntaxFacts.GetText(member.DeclaredAccessibility)} "
+        + $"{type.ToDisplayString()} {member.Name} {accessors}";
 
     /// <summary>
     /// Whether this constructor is the one written in the type's own header.
