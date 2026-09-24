@@ -103,9 +103,11 @@ public sealed class RulesFrontEnd
     {
         List<RulesDeclaration>? declarations = null;
 
-        // Regions merge into one companion class per rules class, so the cached-facet fields of
-        // every region must stay distinct; the seed carries the count across writers.
+        // Regions merge into one companion class per rules class, so the cached-facet fields and
+        // the hoisted message infos of every region must stay distinct; the seeds carry the counts
+        // across writers.
         var fieldSeed = 0;
+        var infoSeed = 0;
 
         foreach (var contract in rulesClass.AllInterfaces)
         {
@@ -139,7 +141,8 @@ public sealed class RulesFrontEnd
                 rulesClass,
                 describe.Parameters[0],
                 describe.Parameters[1],
-                fieldSeed: fieldSeed
+                fieldSeed: fieldSeed,
+                infoSeed: infoSeed
             );
 
             if (syntax.Body is { } block)
@@ -165,6 +168,7 @@ public sealed class RulesFrontEnd
             }
 
             fieldSeed += writer.Fields.Count;
+            infoSeed += writer.MessageInfos.Count;
 
             (declarations ??= new List<RulesDeclaration>()).Add(
                 new RulesDeclaration(
@@ -174,7 +178,8 @@ public sealed class RulesFrontEnd
                     writer.Lines,
                     writer.Dependencies,
                     writer.AppliedRules,
-                    writer.Fields
+                    writer.Fields,
+                    writer.MessageInfos
                 )
             );
         }
@@ -208,39 +213,13 @@ public sealed class RulesFrontEnd
     }
 
     /// <summary>
-    /// Resolves the wire name of one property: <c>[JsonPropertyName]</c> first, then
-    /// <c>[Display(Name)]</c>, then the naming policy - the same ladder the attribute front end
-    /// applies, so a rule written in a body and one written as an attribute name the field alike.
+    /// Resolves the wire name of one property: <c>[JsonPropertyName]</c>, otherwise the naming
+    /// policy. The attribute front end applies the same ladder, so a rule written in a body and one
+    /// written as an attribute name the field alike. <c>[Display(Name)]</c> labels messages and
+    /// never names the field.
     /// </summary>
-    internal string WireNameOf(IPropertySymbol property)
-    {
-        foreach (var attribute in property.GetAttributes())
-        {
-            var name = attribute.AttributeClass?.ToDisplayString();
-
-            if (
-                name == KnownTypes.JsonPropertyName
-                && attribute.ConstructorArguments.Length == 1
-                && attribute.ConstructorArguments[0].Value is string jsonName
-            )
-            {
-                return jsonName;
-            }
-
-            if (name == KnownTypes.DisplayAttribute)
-            {
-                foreach (var named in attribute.NamedArguments)
-                {
-                    if (named.Key == "Name" && named.Value.Value is string displayName)
-                    {
-                        return displayName;
-                    }
-                }
-            }
-        }
-
-        return _fieldNamer(property.Name);
-    }
+    internal string WireNameOf(IPropertySymbol property) =>
+        AttributeFrontEnd.JsonNameOf(property) ?? _fieldNamer(property.Name);
 
     /// <summary>
     /// Registers one fragment instantiation, transcribing its body on first use, and returns the
@@ -359,6 +338,7 @@ public sealed class RulesFrontEnd
             expanding: expanding.Concat(new[] { definition }).ToList(),
             insideFragment: true,
             fieldPrefix: $"_{name}Facet",
+            infoPrefix: $"_{name}Message",
             typeArguments: TypeArgumentsOf(definition, constructed)
         );
 
@@ -373,6 +353,7 @@ public sealed class RulesFrontEnd
 
         method.BodyLines.AddRange(writer.Lines);
         method.Fields.AddRange(writer.Fields);
+        method.MessageInfos.AddRange(writer.MessageInfos);
 
         return FailedSince(before) ? null : method;
     }
@@ -424,7 +405,11 @@ public sealed class RulesFrontEnd
             ? string.Empty
             : declaringType.ContainingNamespace.ToDisplayString();
 
-        var created = new FragmentContainer(ns, $"{declaringType.Name}_Fragments", declaringType);
+        var created = new FragmentContainer(
+            ns,
+            GeneratedNames.FragmentContainer(declaringType),
+            declaringType
+        );
 
         _containers.Add(created);
 
@@ -439,8 +424,6 @@ public sealed class RulesFrontEnd
         private const string Flow = "global::ValidationModules.ValidationFlow";
         private const string Codes = "global::ValidationModules.ValidationCodes";
         private const string SeverityEnum = "global::ValidationModules.ValidationSeverity";
-        private const string ContextExtensions =
-            "global::ValidationModules.ValidationContextExtensions";
 
         private readonly RulesFrontEnd _owner;
         private readonly Compilation _compilation;
@@ -464,6 +447,12 @@ public sealed class RulesFrontEnd
         private readonly List<CompanionField> _fields = new();
         private readonly string _fieldPrefix;
         private readonly int _fieldSeed;
+
+        /// <summary>
+        /// The message infos this region hoists onto its companion, for the rules on a property
+        /// with a <c>[Display(Name)]</c> label.
+        /// </summary>
+        private readonly ValidatorEmitter.MessageInfoPool _infos;
 
         /// <summary>One counter for every generated local, so expansions cannot collide with each
         /// other whatever the author named things.</summary>
@@ -499,11 +488,14 @@ public sealed class RulesFrontEnd
             bool insideFragment = false,
             string fieldPrefix = "_facet",
             int fieldSeed = 0,
+            string infoPrefix = "_message",
+            int infoSeed = 0,
             IReadOnlyDictionary<ITypeParameterSymbol, ITypeSymbol>? typeArguments = null
         )
         {
             _fieldPrefix = fieldPrefix;
             _fieldSeed = fieldSeed;
+            _infos = new ValidatorEmitter.MessageInfoPool(infoPrefix, infoSeed);
             _owner = owner;
             _compilation = compilation;
             _model = model;
@@ -529,6 +521,10 @@ public sealed class RulesFrontEnd
         /// <summary>The lazily-built facet validators this region caches, emitted as fields on the
         /// companion class.</summary>
         public IReadOnlyList<CompanionField> Fields => _fields;
+
+        /// <summary>The message infos this region hoists, emitted as static fields on the
+        /// companion class.</summary>
+        public IReadOnlyList<(string Field, string Initializer)> MessageInfos => _infos.Fields;
 
         private string CompanionField(string typeQualified)
         {
@@ -1250,7 +1246,7 @@ public sealed class RulesFrontEnd
 
             Line(
                 depth,
-                $"if (global::{ns}{fragment.Definition.ContainingType.Name}_Fragments.{fragment.Name}({string.Join(", ", rendered)}).ShouldStop) {{"
+                $"if (global::{ns}{GeneratedNames.FragmentContainer(fragment.Definition.ContainingType)}.{fragment.Name}({string.Join(", ", rendered)}).ShouldStop) {{"
             );
             Line(depth + 1, $"return {Flow}.Stop;");
             Line(depth, "}");
@@ -1776,6 +1772,87 @@ public sealed class RulesFrontEnd
             string.Join(".", segments.Select(WireNameOf));
 
         /// <summary>
+        /// Spells one member path an Ensure's message reads off the subject: each property of a
+        /// model type under its field name, the way the error's own field is spelled. A member of
+        /// a framework type such as <c>Length</c> or <c>Count</c>, a method, and whatever follows
+        /// either stay as written. A first member that is not a property takes the policy.
+        /// </summary>
+        private IReadOnlyList<string> SpellMemberPath(IReadOnlyList<string> path)
+        {
+            var spelled = new List<string>(path.Count);
+            INamedTypeSymbol? owner = _target;
+
+            foreach (var identifier in path)
+            {
+                var property =
+                    owner is not null && (spelled.Count == 0 || !IsFrameworkType(owner))
+                        ? PropertyNamed(owner, identifier)
+                        : null;
+
+                if (property is not null)
+                {
+                    spelled.Add(WireNameOf(property));
+                    owner = property.Type as INamedTypeSymbol;
+                    continue;
+                }
+
+                spelled.Add(spelled.Count == 0 ? _owner._fieldNamer(identifier) : identifier);
+                owner = null;
+            }
+
+            return spelled;
+        }
+
+        /// <summary>
+        /// The instance property an identifier names on <paramref name="type"/>, its bases or its
+        /// interfaces, or null.
+        /// </summary>
+        private static IPropertySymbol? PropertyNamed(INamedTypeSymbol type, string identifier)
+        {
+            var name =
+                identifier.Length > 0 && identifier[0] == '@'
+                    ? identifier.Substring(1)
+                    : identifier;
+
+            IPropertySymbol? Declared(ITypeSymbol candidate) =>
+                candidate
+                    .GetMembers(name)
+                    .OfType<IPropertySymbol>()
+                    .FirstOrDefault(property => !property.IsStatic && !property.IsIndexer);
+
+            for (INamedTypeSymbol? current = type; current is not null; current = current.BaseType)
+            {
+                if (Declared(current) is { } property)
+                {
+                    return property;
+                }
+            }
+
+            foreach (var contract in type.AllInterfaces)
+            {
+                if (Declared(contract) is { } property)
+                {
+                    return property;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>Whether a type belongs to the <c>System</c> namespace or one inside it.</summary>
+        private static bool IsFrameworkType(INamedTypeSymbol type)
+        {
+            var ns = type.ContainingNamespace;
+
+            while (ns is { ContainingNamespace.IsGlobalNamespace: false })
+            {
+                ns = ns.ContainingNamespace;
+            }
+
+            return ns is { IsGlobalNamespace: false, Name: "System" };
+        }
+
+        /// <summary>
         /// Whether every segment of an island's value path can be named on the concrete target.
         /// Inside a generic fragment a member binds through the constraint interface, and one the
         /// target implements explicitly is not reachable by name in the emitted method - reported
@@ -1815,20 +1892,26 @@ public sealed class RulesFrontEnd
         /// sees is the implementing property's - <c>[JsonPropertyName]</c> on the implementer
         /// wins, which is the point of stamping fragments out per concrete type.
         /// </summary>
-        private string WireNameOf(IPropertySymbol property)
-        {
-            if (
-                property.ContainingType is { TypeKind: TypeKind.Interface }
-                && !SymbolEqualityComparer.Default.Equals(property.ContainingType, _target)
-                && _target.FindImplementationForInterfaceMember(property)
-                    is IPropertySymbol implementer
-            )
-            {
-                return _owner.WireNameOf(implementer);
-            }
+        private string WireNameOf(IPropertySymbol property) =>
+            _owner.WireNameOf(OnTarget(property));
 
-            return _owner.WireNameOf(property);
-        }
+        /// <summary>
+        /// The <c>[Display(Name)]</c> label of one path segment, resolved against the concrete
+        /// target for the reason <see cref="WireNameOf"/> is.
+        /// </summary>
+        private string? LabelOf(IPropertySymbol property) =>
+            AttributeFrontEnd.DisplayLabelOf(OnTarget(property));
+
+        /// <summary>
+        /// The implementing property on the concrete target when <paramref name="property"/> binds
+        /// through an interface the target implements, otherwise the property itself.
+        /// </summary>
+        private IPropertySymbol OnTarget(IPropertySymbol property) =>
+            property.ContainingType is { TypeKind: TypeKind.Interface }
+            && !SymbolEqualityComparer.Default.Equals(property.ContainingType, _target)
+            && _target.FindImplementationForInterfaceMember(property) is IPropertySymbol implementer
+                ? implementer
+                : property;
 
         // ---- the island expansion --------------------------------------------------------------
 
@@ -1991,7 +2074,7 @@ public sealed class RulesFrontEnd
 
                     _access = value.ToString();
                     _field = explicitField ?? (path is null ? null : _writer.WirePathOf(path));
-                    _facts = FactsFor(value, path);
+                    _facts = FactsFor(value, path, labelled: explicitField is null);
                 }
 
                 switch (name)
@@ -2109,16 +2192,23 @@ public sealed class RulesFrontEnd
 
                     default:
                     {
+                        var reported = _writer._owner._diagnostics.Count;
                         var constraint = ConstraintFor(name, arguments, call);
 
                         if (constraint is null)
                         {
-                            _writer._owner.Report(
-                                ValidationDiagnostics.NotTranscribable,
-                                report,
-                                _writer._declaringClass.Name,
-                                $"a call to '{name}' the reader does not know"
-                            );
+                            // A reader that already said what is wrong with the call has said
+                            // enough; a VM3001 beside it would only repeat that it was refused.
+                            if (_writer._owner._diagnostics.Count == reported)
+                            {
+                                _writer._owner.Report(
+                                    ValidationDiagnostics.NotTranscribable,
+                                    report,
+                                    _writer._declaringClass.Name,
+                                    $"a call to '{name}' the reader does not know"
+                                );
+                            }
+
                             return false;
                         }
 
@@ -2200,7 +2290,7 @@ public sealed class RulesFrontEnd
                     var ns = facet.ContainingNamespace.IsGlobalNamespace
                         ? string.Empty
                         : facet.ContainingNamespace.ToDisplayString() + ".";
-                    var validator = $"global::{ns}{facet.Name}Validator";
+                    var validator = $"global::{ns}{GeneratedNames.Validator(facet)}";
                     var field = _writer.CompanionField(validator);
 
                     _writer.Line(
@@ -2232,7 +2322,14 @@ public sealed class RulesFrontEnd
                     $"var {local} = ({service}?)ctx.Services?.GetService(typeof({service})) ?? "
                         + $"throw new global::System.InvalidOperationException({message});"
                 );
-                _writer.Line(_depth, $"if ({local}.Validate(ref ctx, {subject}).ShouldStop) {{");
+
+                // An ordinary context rather than ctx: the container may hand back a hand-written
+                // validator, whose nameof(...) fields the pass's namer is there to spell.
+                _writer.Line(_depth, $"var {local}Context = ctx.WithResolvedFieldNames(false);");
+                _writer.Line(
+                    _depth,
+                    $"if ({local}.Validate(ref {local}Context, {subject}).ShouldStop) {{"
+                );
                 _writer.Line(_depth + 1, $"return {Flow}.Stop;");
                 _writer.Line(_depth, "}");
 
@@ -2348,16 +2445,16 @@ public sealed class RulesFrontEnd
                 }
 
                 if (
-                    !arguments.TryGetValue("rule", out var rule)
-                    || _writer._model.GetSymbolInfo(rule).Symbol is not IMethodSymbol method
+                    CalledMethod(
+                        arguments.TryGetValue("rule", out var rule) ? rule : call,
+                        "Apply",
+                        "Move the rule into a static method that takes (ref ValidationContext, "
+                            + $"{_writer._target.Name}) and returns ValidationFlow, and pass the "
+                            + $"method by name: {_writer._builder.Name}.Apply(Check)"
+                    )
+                    is not { } method
                 )
                 {
-                    _writer._owner.Report(
-                        ValidationDiagnostics.NotTranscribable,
-                        call,
-                        _writer._declaringClass.Name,
-                        "an Apply whose argument is not a method group"
-                    );
                     return false;
                 }
 
@@ -2397,13 +2494,21 @@ public sealed class RulesFrontEnd
 
                 var field = explicitField ?? _writer._owner.WireNameOf(anchor!);
                 var explicitMessage = Literal(arguments, "message");
+
+                // The message names members the way the error names its field, [JsonPropertyName]
+                // included, so a client reads the keys it sent.
                 var message =
                     explicitMessage
-                    ?? RuleText.RenderPredicate($"{subject} => {text}", _writer._owner._fieldNamer);
+                    ?? RuleText.RenderPredicate($"{subject} => {text}", _writer.SpellMemberPath);
 
                 // Derived from the condition rather than from `message`, so an author rewording
-                // their own text does not move the wire code. The rule is the condition.
+                // their own text does not move the wire code. The rule is the condition, spelled by
+                // the policy, which is also what VM3103 quotes.
                 var owner = _writer._owner;
+                var spelledByPolicy = RuleText.RenderPredicate(
+                    $"{subject} => {text}",
+                    owner._fieldNamer
+                );
                 var derived = CodeNaming.Apply(
                     owner._codeNamespace,
                     RuleText.CodeOfPredicate($"{subject} => {text}", owner._fieldNamer)
@@ -2418,7 +2523,12 @@ public sealed class RulesFrontEnd
                 // source, so it is stated at the site that owns it.
                 if (authored is null && derived is not null)
                 {
-                    owner.Report(ValidationDiagnostics.EnsureCodeDerived, call, derived, message);
+                    owner.Report(
+                        ValidationDiagnostics.EnsureCodeDerived,
+                        call,
+                        derived,
+                        spelledByPolicy
+                    );
                 }
                 var severity = SeverityOf(arguments) is { } member
                     ? $", {SeverityEnum}.{member}"
@@ -2456,10 +2566,14 @@ public sealed class RulesFrontEnd
                         test = missing;
                     }
 
-                    _writer.Line(
-                        _depth,
-                        $"if ({test} && {ContextExtensions}.ReportRequired(ctx, {field}).ShouldStop) {{"
+                    var report = ValidatorEmitter.ReportFor(
+                        field,
+                        required,
+                        facts,
+                        infos: InfosFor(required, facts)
                     );
+
+                    _writer.Line(_depth, $"if ({test} && {report}.ShouldStop) {{");
                     _writer.Line(_depth + 1, $"return {Flow}.Stop;");
                     _writer.Line(_depth, "}");
                 }
@@ -2485,7 +2599,12 @@ public sealed class RulesFrontEnd
                     }
 
                     var reported = Quote(constraint.Field ?? _field!);
-                    var report = ValidatorEmitter.ReportFor(reported, constraint, anchorFacts);
+                    var report = ValidatorEmitter.ReportFor(
+                        reported,
+                        constraint,
+                        anchorFacts,
+                        infos: InfosFor(constraint, anchorFacts)
+                    );
 
                     // The same conjunct shape the attribute region emits: the test is bracketed
                     // once anything precedes it, so a top-level || cannot silently widen the rule.
@@ -2690,9 +2809,14 @@ public sealed class RulesFrontEnd
                 }
             }
 
+            /// <param name="labelled">
+            /// False when the chain renamed its field, which reports under a name the
+            /// <c>[Display(Name)]</c> label was not written for.
+            /// </param>
             private ValidatedPropertyModel FactsFor(
                 ExpressionSyntax value,
-                List<IPropertySymbol>? path
+                List<IPropertySymbol>? path,
+                bool labelled
             )
             {
                 var type = _writer._model.GetTypeInfo(value).Type;
@@ -2712,9 +2836,21 @@ public sealed class RulesFrontEnd
                     type is not null && TypeFacts.IsIndexable(type),
                     type is null ? "Count" : TypeFacts.CountAccessor(type),
                     false,
-                    default
+                    default,
+                    Label: labelled && path is { Count: > 0 }
+                        ? _writer.LabelOf(path[path.Count - 1])
+                        : null
                 );
             }
+
+            /// <summary>
+            /// The region's pool when the report names a labelled property under its own field, so
+            /// the label rides on a hoisted info; otherwise null, and the report takes the helpers.
+            /// </summary>
+            private ValidatorEmitter.MessageInfoPool? InfosFor(
+                ConstraintModel constraint,
+                ValidatedPropertyModel facts
+            ) => constraint.Field is null && facts.Label is not null ? _writer._infos : null;
 
             private ConstraintModel? ConstraintFor(
                 string name,
@@ -2929,15 +3065,158 @@ public sealed class RulesFrontEnd
                     return null;
                 }
 
-                // The accessor is a method group for a [GeneratedRegex] partial method, so the
-                // emitted form is that method invoked. No inline pattern can reach here at all.
-                return _writer._model.GetSymbolInfo(accessor).Symbol is IMethodSymbol regex
+                // The replacement names a method after the anchored property, and keeps the
+                // value argument where the call had one: the chained form has none.
+                var suggested = $"{_facts?.PropertyName ?? "Value"}Pattern";
+                var replacement = arguments.TryGetValue("value", out var value)
+                    ? $"{_writer._builder.Name}.Pattern({value}, {suggested})"
+                    : $".Pattern({suggested})";
+
+                // The accessor is a [GeneratedRegex] method, so the emitted form is that method
+                // invoked. No inline pattern can reach here at all.
+                return
+                    CalledMethod(
+                        accessor,
+                        "Pattern",
+                        "Declare the expression as a [GeneratedRegex] method and pass the method "
+                            + $"by name: {replacement}"
+                    )
+                        is { } regex
                     ? new ConstraintModel(
                         ConstraintKind.Pattern,
                         RegexAccessor: $"{regex.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{regex.Name}()"
                     )
                     : null;
             }
+
+            /// <summary>
+            /// The static method a <c>Pattern</c> or <c>Apply</c> argument names, or null after
+            /// reporting why generated code cannot call it.
+            /// </summary>
+            /// <remarks>
+            /// <para>
+            /// Generated code calls the method by name, so a method group is the form both take. A
+            /// lambda whose whole body is one call to a static method is read as that method:
+            /// <c>() =&gt; SkuPattern()</c>, or <c>(ref ValidationContext c, T v) =&gt; Check(ref c, v)</c>
+            /// with the lambda's own parameters passed through in order. Anything else names no
+            /// method, and is VM3008 with the method-group form in its tail.
+            /// </para>
+            /// <para>
+            /// Generated code is another class in the same assembly, so the method also has to be
+            /// reachable from there. A <c>[GeneratedRegex]</c> method is usually written
+            /// <c>private</c>. A private method is VM3004, as it is anywhere else in the body,
+            /// rather than CS0122 inside a generated file.
+            /// </para>
+            /// </remarks>
+            private IMethodSymbol? CalledMethod(
+                ExpressionSyntax argument,
+                string vocabulary,
+                string replacement
+            )
+            {
+                var method =
+                    StaticMethod(_writer._model.GetSymbolInfo(argument).Symbol)
+                    ?? LambdaTarget(argument);
+
+                if (method is null)
+                {
+                    _writer._owner.Report(
+                        ValidationDiagnostics.DelegateArgumentNamesNoMethod,
+                        argument,
+                        _writer._declaringClass.Name,
+                        vocabulary,
+                        replacement
+                    );
+                    return null;
+                }
+
+                if (
+                    !_writer._compilation.IsSymbolAccessibleWithin(
+                        method,
+                        _writer._declaringClass.ContainingAssembly
+                    )
+                )
+                {
+                    _writer._owner.Report(
+                        ValidationDiagnostics.MemberNotReachableFromRegion,
+                        argument,
+                        $"{method.ContainingType.Name}.{method.Name}",
+                        _writer._declaringClass.Name
+                    );
+                    return null;
+                }
+
+                return method;
+            }
+
+            /// <summary>
+            /// The method a lambda's whole body calls, when it is static and receives the lambda's
+            /// own parameters in order, or null.
+            /// </summary>
+            private IMethodSymbol? LambdaTarget(ExpressionSyntax argument)
+            {
+                if (
+                    argument is not AnonymousFunctionExpressionSyntax lambda
+                    || _writer._model.GetSymbolInfo(lambda).Symbol is not IMethodSymbol signature
+                )
+                {
+                    return null;
+                }
+
+                var body = lambda.ExpressionBody;
+
+                if (
+                    body is null
+                    && lambda.Block is { Statements.Count: 1 } block
+                    && block.Statements[0] is ReturnStatementSyntax { Expression: { } returned }
+                )
+                {
+                    body = returned;
+                }
+
+                if (
+                    body is not InvocationExpressionSyntax call
+                    || StaticMethod(_writer._model.GetSymbolInfo(call).Symbol) is not { } target
+                    || call.ArgumentList.Arguments.Count != signature.Parameters.Length
+                )
+                {
+                    return null;
+                }
+
+                for (var i = 0; i < signature.Parameters.Length; i++)
+                {
+                    var passed = call.ArgumentList.Arguments[i];
+
+                    if (
+                        passed.NameColon is not null
+                        || RefKindOf(passed) != signature.Parameters[i].RefKind
+                        || passed.Expression is not IdentifierNameSyntax name
+                        || !SymbolEqualityComparer.Default.Equals(
+                            _writer._model.GetSymbolInfo(name).Symbol,
+                            signature.Parameters[i]
+                        )
+                    )
+                    {
+                        return null;
+                    }
+                }
+
+                return target;
+            }
+
+            private static IMethodSymbol? StaticMethod(ISymbol? symbol) =>
+                symbol is IMethodSymbol { IsStatic: true, MethodKind: MethodKind.Ordinary } method
+                    ? method
+                    : null;
+
+            private static RefKind RefKindOf(ArgumentSyntax argument) =>
+                argument.RefKindKeyword.Kind() switch
+                {
+                    SyntaxKind.RefKeyword => RefKind.Ref,
+                    SyntaxKind.OutKeyword => RefKind.Out,
+                    SyntaxKind.InKeyword => RefKind.In,
+                    _ => RefKind.None,
+                };
 
             private ConstraintModel AllowedValuesConstraint(
                 IReadOnlyDictionary<string, ExpressionSyntax> arguments,
@@ -3147,7 +3426,7 @@ public sealed class RulesFrontEnd
                 $"{camel}Validators",
                 $"{property.Name}Validators",
                 named.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                TypeFacts.CountAccessor(property.Type)
+                TypeFacts.CountAccessor(property.Type) ?? "Count"
             );
 
             _dependencies.Add(dependency);
@@ -3303,7 +3582,8 @@ public sealed record RulesDeclaration(
     IReadOnlyList<string> BodyLines,
     IReadOnlyList<RegionDependency> Dependencies,
     IReadOnlyList<string> AppliedRules,
-    IReadOnlyList<CompanionField> Fields
+    IReadOnlyList<CompanionField> Fields,
+    IReadOnlyList<(string Field, string Initializer)> MessageInfos
 );
 
 /// <summary>A lazily-built facet validator a region caches, emitted as a nullable static field on
@@ -3353,6 +3633,8 @@ public sealed class FragmentMethod
     public List<string> BodyLines { get; } = new();
 
     public List<CompanionField> Fields { get; } = new();
+
+    public List<(string Field, string Initializer)> MessageInfos { get; } = new();
 }
 
 /// <summary>

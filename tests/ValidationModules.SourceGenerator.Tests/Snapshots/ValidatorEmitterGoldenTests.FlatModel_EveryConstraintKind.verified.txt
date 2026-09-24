@@ -63,8 +63,9 @@ public sealed partial class PetValidator : global::ValidationModules.IValidatorF
     {
     }
 
-    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Pet value)
+    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext context, global::Sample.Pet value)
     {
+        var ctx = context.WithResolvedFieldNames();
         var missingName = string.IsNullOrWhiteSpace(value.Name);
         if (missingName && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "name", value: value.Name).ShouldStop)
         {

@@ -88,8 +88,9 @@ public sealed partial class ReservationValidator : global::ValidationModules.IVa
     {
     }
 
-    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Reservation value)
+    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext context, global::Sample.Reservation value)
     {
+        var ctx = context.WithResolvedFieldNames();
         if (global::Sample.ReservationRules_Rules.Describe(ref ctx, value).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;

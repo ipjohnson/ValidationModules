@@ -3,8 +3,9 @@
 This page describes each attribute in the `ValidationModules.Constraints` namespace. For how the
 attributes fit together, see [Constraint attributes](../guide/constraints).
 
-In the messages below, `{field}` is the last segment of the error's field path. Numbers and dates in
-a message are formatted with the invariant culture.
+In the messages below, `{field}` is the last segment of the error's field path, or the property's
+`[Display(Name)]` label when it has one. Numbers and dates in a message are formatted with the
+invariant culture.
 
 ## Properties every constraint has
 
@@ -326,8 +327,9 @@ public int Max { get; init; }
 ```
 
 `[ItemCount]` passes when the number of items is between `Min` and `Max`, inclusive. The first
-argument is the minimum. Applies to arrays and to collections with a `Count` property, including
-dictionaries.
+argument is the minimum. Applies to arrays, to collections with a public `Count` or `Length`
+property, including dictionaries, and to any other `IEnumerable<T>`. A sequence with neither
+property is counted with `Enumerable.Count`, so validation enumerates a lazy sequence once.
 
 | Code | Message |
 | --- | --- |

@@ -55,8 +55,9 @@ public sealed partial class ContactValidator : global::ValidationModules.IValida
     {
     }
 
-    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Contact value)
+    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext context, global::Sample.Contact value)
     {
+        var ctx = context.WithResolvedFieldNames();
         if (value.Email is not null && !global::ValidationModules.ConstraintChecks.IsEmail(value.Email) && global::ValidationModules.ValidationContextExtensions.ReportEmail(ctx, "email", value: value.Email).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;

@@ -33,9 +33,6 @@ namespace ValidationModules.SourceGenerator.Impl.Emitters;
 /// </remarks>
 public sealed class RegionEmitter
 {
-    /// <summary>The companion class a rules class's region is emitted into.</summary>
-    public static string CompanionFor(INamedTypeSymbol rulesClass) => $"{rulesClass.Name}_Rules";
-
     /// <summary>
     /// Emits the region companion for one rules class - every region it declares, one
     /// <c>Describe</c> overload per target, in one file. One file because two would collide on the
@@ -53,7 +50,7 @@ public sealed class RegionEmitter
 
         CopyUsings(file, rulesClass);
 
-        var container = file.AddClass(CompanionFor(rulesClass));
+        var container = file.AddClass(GeneratedNames.Companion(rulesClass));
 
         container.Modifiers = ComponentModifier.Internal | ComponentModifier.Static;
         container.Comment =
@@ -64,6 +61,7 @@ public sealed class RegionEmitter
         foreach (var declaration in declarations)
         {
             Fields(container, declaration.Fields);
+            MessageInfos(container, declaration.MessageInfos);
         }
 
         foreach (var declaration in declarations)
@@ -115,6 +113,7 @@ public sealed class RegionEmitter
         foreach (var fragment in fragments.Methods)
         {
             Fields(container, fragment.Fields);
+            MessageInfos(container, fragment.MessageInfos);
 
             var method = container.AddMethod(fragment.Name);
 
@@ -154,6 +153,28 @@ public sealed class RegionEmitter
         {
             container.AddField(TypeRef(field.TypeQualified).MakeNullable(), field.Name).Modifiers =
                 ComponentModifier.Private | ComponentModifier.Static;
+        }
+    }
+
+    /// <summary>
+    /// The message infos a region hoists for the rules on a labelled property, built once at type
+    /// initialization as the validator's own are.
+    /// </summary>
+    private static void MessageInfos(
+        ClassDefinition container,
+        IReadOnlyList<(string Field, string Initializer)> infos
+    )
+    {
+        foreach (var (field, initializer) in infos)
+        {
+            var info = container.AddField(
+                TypeDefinition.Get("ValidationModules", "ValidationMessageInfo"),
+                field
+            );
+
+            info.Modifiers =
+                ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
+            info.InitializeValue = new CodeOutputComponent(initializer) { Indented = false };
         }
     }
 
