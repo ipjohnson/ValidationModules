@@ -2257,9 +2257,10 @@ public sealed class RulesFrontEnd
             /// <c>rules.As&lt;TFacet&gt;(x)</c>: validate the subject as one of its facets. One
             /// spelling, two bindings - a facet generated in this compilation binds statically
             /// through a lazily-built validator cached on the companion; a facet from a referenced
-            /// assembly resolves the closed <c>IValidatorFor&lt;TFacet&gt;</c> through the pass's
-            /// services, and a missing registration throws naming the module to compose. The path
-            /// does not push; suppression shares the collector as everywhere.
+            /// assembly resolves every registered <c>IValidatorFor&lt;TFacet&gt;</c> through the
+            /// pass's services and runs them in registration order, and none registered throws
+            /// naming the module to compose. The path does not push; suppression shares the
+            /// collector as everywhere.
             /// </summary>
             private bool ReadFacet(
                 InvocationExpressionSyntax call,
@@ -2351,7 +2352,9 @@ public sealed class RulesFrontEnd
                 // exception message can name the module because the generator knows the facet's
                 // assembly and the Add{Assembly}Validators convention.
                 var service = $"global::ValidationModules.IValidatorFor<{facetQualified}>";
-                var local = $"facet{_writer._locals++}";
+                var registered = $"global::System.Collections.Generic.IEnumerable<{service}>";
+                var n = _writer._locals++;
+                var local = $"facet{n}";
                 var assembly = facet.ContainingAssembly.Name;
                 var module = $"Add{ModuleIdentifier(assembly)}Validators";
                 var message = SymbolDisplay.FormatLiteral(
@@ -2360,20 +2363,39 @@ public sealed class RulesFrontEnd
                     quote: true
                 );
 
+                // Every registration, in registration order, as ValidationRunner<T> composes them.
+                // The array the container returns is used as it is rather than copied.
                 _writer.Line(
                     _depth,
-                    $"var {local} = ({service}?)ctx.Services?.GetService(typeof({service})) ?? "
-                        + $"throw new global::System.InvalidOperationException({message});"
+                    $"var {local}Registered = ctx.Services?.GetService(typeof({registered})) as "
+                        + $"{registered} ?? global::System.Array.Empty<{service}>();"
                 );
+                _writer.Line(
+                    _depth,
+                    $"var {local} = {local}Registered as {service}[] ?? "
+                        + $"global::System.Linq.Enumerable.ToArray({local}Registered);"
+                );
+                _writer.Line(_depth, $"if ({local}.Length == 0) {{");
+                _writer.Line(
+                    _depth + 1,
+                    $"throw new global::System.InvalidOperationException({message});"
+                );
+                _writer.Line(_depth, "}");
+                _writer.Line(_depth, $"for (var vi{n} = 0; vi{n} < {local}.Length; vi{n}++) {{");
 
                 // An ordinary context rather than ctx: the container may hand back a hand-written
-                // validator, whose nameof(...) fields the pass's namer is there to spell.
-                _writer.Line(_depth, $"var {local}Context = ctx.WithResolvedFieldNames(false);");
+                // validator, whose nameof(...) fields the pass's namer is there to spell. A fresh
+                // one per validator, as the runner gives each of its validators.
                 _writer.Line(
-                    _depth,
-                    $"if ({local}.Validate(ref {local}Context, {subject}).ShouldStop) {{"
+                    _depth + 1,
+                    $"var {local}Context = ctx.WithResolvedFieldNames(false);"
                 );
-                _writer.Line(_depth + 1, $"return {Flow}.Stop;");
+                _writer.Line(
+                    _depth + 1,
+                    $"if ({local}[vi{n}].Validate(ref {local}Context, {subject}).ShouldStop) {{"
+                );
+                _writer.Line(_depth + 2, $"return {Flow}.Stop;");
+                _writer.Line(_depth + 1, "}");
                 _writer.Line(_depth, "}");
 
                 return true;

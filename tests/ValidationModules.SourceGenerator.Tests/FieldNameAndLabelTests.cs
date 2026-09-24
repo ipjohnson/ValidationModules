@@ -276,7 +276,7 @@ public class FieldNameAndLabelTests
         var region = result.Sources["App.OrderRules_Rules.g.cs"];
 
         Assert.Contains("var facet0Context = ctx.WithResolvedFieldNames(false);", region);
-        Assert.Contains("facet0.Validate(ref facet0Context, x)", region);
+        Assert.Contains("facet0[vi0].Validate(ref facet0Context, x)", region);
     }
 
     [Fact]

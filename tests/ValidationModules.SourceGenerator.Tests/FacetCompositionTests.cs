@@ -6,8 +6,8 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// <summary>
 /// <c>rules.As&lt;TFacet&gt;(x)</c>: validate the subject as one of its facets. One spelling, two
 /// bindings - a facet generated in this compilation binds statically; a facet from a referenced
-/// assembly resolves the closed <c>IValidatorFor&lt;TFacet&gt;</c> through the pass's services,
-/// loudly.
+/// assembly resolves every registered <c>IValidatorFor&lt;TFacet&gt;</c> through the pass's
+/// services, loudly.
 /// </summary>
 public class FacetCompositionTests
 {
@@ -110,8 +110,13 @@ public class FacetCompositionTests
 
         // Statically closed: the facet type is written in source, so the service type is closed at
         // build time - no scanning, no MakeGenericType - and failure is loud, naming the module.
+        // Every registration runs, as ValidationRunner<T> runs them, so the set is resolved.
         Assert.Contains(
-            "(global::ValidationModules.IValidatorFor<global::Shared.IAudited>?)ctx.Services?.GetService(typeof(global::ValidationModules.IValidatorFor<global::Shared.IAudited>))",
+            "ctx.Services?.GetService(typeof(global::System.Collections.Generic.IEnumerable<global::ValidationModules.IValidatorFor<global::Shared.IAudited>>))",
+            region
+        );
+        Assert.DoesNotContain(
+            "GetService(typeof(global::ValidationModules.IValidatorFor<global::Shared.IAudited>))",
             region
         );
         Assert.Contains("AddSharedContractsValidators()", region);

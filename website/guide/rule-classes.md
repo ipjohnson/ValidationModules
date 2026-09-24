@@ -377,9 +377,10 @@ validator, so each is checked once, where `As` runs. Under an `if`, they are che
 condition holds. A base type passed to `As` is handled the same way. An interface with no rules at
 all is reported as `VM3105`, and the type of `x` itself as `VM3110`.
 
-When the interface is declared in another assembly, the validator resolves `IValidatorFor<IAudited>`
-from the container at run time. Validate such a type through `ValidationRunner<T>` resolved from a
-scope, and call the other assembly's registration method.
+When the interface is declared in another assembly, the validator resolves every
+`IValidatorFor<IAudited>` registered in the container at run time, and runs them in registration
+order as `ValidationRunner<T>` does. Validate such a type through `ValidationRunner<T>` resolved from
+a scope, and call the other assembly's registration method.
 [Registration](./registration#validators-from-other-assemblies) covers this.
 
 ## Nested objects and collections

@@ -299,10 +299,10 @@ public sealed class ValidationRules<T>
     /// </para>
     /// <para>
     /// One spelling, two bindings. A facet whose validator is generated in this compilation binds
-    /// statically; a facet from a referenced assembly resolves
-    /// <c>IValidatorFor&lt;TFacet&gt;</c> through the pass's services - closed at build time, no
-    /// scanning - and a missing registration throws naming the module to compose. Never a silent
-    /// skip.
+    /// statically. A facet from a referenced assembly resolves every registered
+    /// <c>IValidatorFor&lt;TFacet&gt;</c> through the pass's services, closed at build time with no
+    /// scanning, and runs them in registration order as <see cref="ValidationRunner{T}"/> does.
+    /// When none is registered it throws naming the module to compose. Never a silent skip.
     /// </para>
     /// <para>
     /// The facet's constraint attributes run here, with the rest of its rules. They would otherwise
