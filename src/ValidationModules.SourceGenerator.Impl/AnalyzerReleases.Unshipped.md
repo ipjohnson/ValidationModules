@@ -5,3 +5,6 @@
 
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
+VM1203 | ValidationModules.Usage | Warning | [AllowedValues] sets Comparison on a member that is not a string, where it has no effect.
+VM3108 | ValidationModules.Usage | Error | A value given to AllowedValues in a rules class is not a compile-time constant.
+VM3109 | ValidationModules.Usage | Warning | An allowed-values set lists no values, so it validates nothing.

@@ -188,20 +188,24 @@ public static class DataAnnotationsConstraintReader
             case "AllowedValuesAttribute":
             case "DeniedValuesAttribute":
             {
-                var values =
+                var declared =
                     attribute.ConstructorArguments.Length == 1
                     && attribute.ConstructorArguments[0].Kind == TypedConstantKind.Array
-                        ? attribute
-                            .ConstructorArguments[0]
-                            .Values.Select(NativeConstraintReader.Literal)
-                            .ToImmutableArray()
-                        : ImmutableArray<string>.Empty;
+                        ? attribute.ConstructorArguments[0].Values
+                        : ImmutableArray<TypedConstant>.Empty;
 
+                // Displays beside the literals, as the native reader fills them: an enum value
+                // compares as global::My.Tier.Pro and reads as Pro in the message.
                 return new Outcome(
                     new ConstraintModel(
                         ConstraintKind.AllowedValues,
                         Message: NativeConstraintReader.Named(attribute, "ErrorMessage") as string,
-                        Values: new EquatableArray<string>(values),
+                        Values: new EquatableArray<string>(
+                            declared.Select(NativeConstraintReader.Literal).ToImmutableArray()
+                        ),
+                        ValueDisplays: new EquatableArray<string>(
+                            declared.Select(NativeConstraintReader.Display).ToImmutableArray()
+                        ),
                         Negated: attributeName == "DeniedValuesAttribute"
                     ),
                     null

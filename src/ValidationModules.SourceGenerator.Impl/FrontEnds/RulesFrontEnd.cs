@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 using ValidationModules.Rules;
 using ValidationModules.SourceGenerator.Impl.Emitters;
 using ValidationModules.SourceGenerator.Impl.Models;
@@ -1869,6 +1870,9 @@ public sealed class RulesFrontEnd
 
                         return ReadDescent(call, arguments, elements: true);
 
+                    case "AllowedValues":
+                        return ReadAllowedValues(call, arguments);
+
                     default:
                     {
                         var constraint = ConstraintFor(name, arguments, call);
@@ -2480,7 +2484,6 @@ public sealed class RulesFrontEnd
                         DecimalDomain: DivisorIsFloating(arguments)
                     ),
                     "Pattern" => PatternConstraint(arguments, call),
-                    "AllowedValues" => AllowedValuesConstraint(arguments, call),
                     _ => null,
                 };
 
@@ -2512,41 +2515,102 @@ public sealed class RulesFrontEnd
                     : null;
             }
 
-            private ConstraintModel AllowedValuesConstraint(
-                IReadOnlyDictionary<string, ExpressionSyntax> arguments,
-                InvocationExpressionSyntax call
+            /// <summary>
+            /// <c>AllowedValues</c>, with every value it was given: the entry form's array or
+            /// collection expression, and the chained form's <c>params</c>, whether they arrive as
+            /// separate arguments or as one array.
+            /// </summary>
+            /// <remarks>
+            /// The values are read through the bound call rather than by argument position, because
+            /// a <c>params</c> set is spread over as many positions as it has values. Each value is
+            /// written into the check and into its message at build time, so each has to be a
+            /// compile-time constant; one that is not is VM3108 rather than a value the check
+            /// quietly lacks.
+            /// </remarks>
+            private bool ReadAllowedValues(
+                InvocationExpressionSyntax call,
+                IReadOnlyDictionary<string, ExpressionSyntax> arguments
             )
             {
-                var values = new List<string>();
-                var displays = new List<string>();
-
-                if (arguments.TryGetValue("allowed", out var allowed))
+                if (
+                    _writer._model.GetOperation(call) is not IInvocationOperation invocation
+                    || invocation.Arguments.FirstOrDefault(argument =>
+                        argument.Parameter?.Name == "allowed"
+                    )
+                        is not { } allowed
+                )
                 {
-                    var elements = allowed switch
-                    {
-                        CollectionExpressionSyntax collection => collection
-                            .Elements.OfType<ExpressionElementSyntax>()
-                            .Select(element => element.Expression),
-                        ArrayCreationExpressionSyntax { Initializer: { } initializer } =>
-                            initializer.Expressions.AsEnumerable(),
-                        ImplicitArrayCreationExpressionSyntax { Initializer: { } implicitly } =>
-                            implicitly.Expressions.AsEnumerable(),
-                        _ => Enumerable.Empty<ExpressionSyntax>(),
-                    };
-
-                    foreach (var element in elements)
-                    {
-                        if (_writer._model.GetConstantValue(element) is { HasValue: true })
-                        {
-                            values.Add(_writer.Rewrite(element));
-                            displays.Add(DisplayOf(element));
-                        }
-                    }
+                    _writer._owner.Report(
+                        ValidationDiagnostics.NotTranscribable,
+                        call,
+                        _writer._declaringClass.Name,
+                        "a call to 'AllowedValues' the reader does not know"
+                    );
+                    return false;
                 }
 
-                _ = call;
+                var elements = ElementsOf(allowed);
 
-                return new ConstraintModel(
+                if (elements is null)
+                {
+                    _writer._owner.Report(
+                        ValidationDiagnostics.AllowedValueNotConstant,
+                        allowed.Syntax,
+                        _writer._declaringClass.Name,
+                        allowed.Syntax is ArgumentSyntax whole
+                            ? whole.Expression.ToString()
+                            : allowed.Syntax.ToString(),
+                        ValidationDiagnostics.AllowedSetNotConstantTail
+                    );
+                    return false;
+                }
+
+                var values = new List<string>();
+                var displays = new List<string>();
+                var readable = true;
+
+                foreach (var element in elements)
+                {
+                    if (
+                        element is SpreadElementSyntax
+                        || _writer._model.GetConstantValue(element)
+                            is not { HasValue: true } constant
+                    )
+                    {
+                        _writer._owner.Report(
+                            ValidationDiagnostics.AllowedValueNotConstant,
+                            element,
+                            _writer._declaringClass.Name,
+                            element.ToString(),
+                            ValidationDiagnostics.AllowedValueNotConstantTail
+                        );
+                        readable = false;
+                        continue;
+                    }
+
+                    values.Add(_writer.Rewrite(element));
+                    displays.Add(DisplayOf(element, constant.Value));
+                }
+
+                if (!readable)
+                {
+                    return false;
+                }
+
+                // An empty set compiles to no check. Said where it was written, and nothing is
+                // added, which is what would have been emitted anyway.
+                if (values.Count == 0)
+                {
+                    _writer._owner.Report(
+                        ValidationDiagnostics.AllowedValuesEmpty,
+                        call,
+                        "AllowedValues",
+                        _facts?.PropertyName ?? _access ?? "the value"
+                    );
+                    return true;
+                }
+
+                var constraint = new ConstraintModel(
                     ConstraintKind.AllowedValues,
                     Values: new EquatableArray<string>(
                         System.Collections.Immutable.ImmutableArray.CreateRange(values)
@@ -2555,20 +2619,97 @@ public sealed class RulesFrontEnd
                         System.Collections.Immutable.ImmutableArray.CreateRange(displays)
                     )
                 );
-            }
 
-            private string DisplayOf(ExpressionSyntax element)
-            {
-                var text = element.ToString();
-
-                if (text.Length >= 2 && text[0] == '"')
+                // An element rule carries no field override, as in the default branch: its path is
+                // the collection's wire name, indexed per element at the emission site.
+                if (_perElement)
                 {
-                    return text.Substring(1, text.Length - 2);
+                    _elementConstraints.Add(constraint);
+                    return true;
                 }
 
-                var dot = text.LastIndexOf('.');
+                _constraints.Add(constraint with { Field = FieldLiteral(arguments) });
+                return true;
+            }
 
-                return dot >= 0 ? text.Substring(dot + 1) : text;
+            /// <summary>
+            /// The value expressions an <c>allowed</c> argument supplies, or null when it supplies
+            /// a set this reader cannot see into, such as an array held in a field.
+            /// </summary>
+            /// <remarks>
+            /// A spread element is returned as itself, so the caller reports it as a value it cannot
+            /// read rather than as a set.
+            /// </remarks>
+            private static IReadOnlyList<SyntaxNode>? ElementsOf(IArgumentOperation allowed)
+            {
+                // params written as separate arguments: the compiler builds the array, and each
+                // element's syntax is one of the arguments as written.
+                if (allowed.ArgumentKind == ArgumentKind.ParamArray)
+                {
+                    return allowed.Value is IArrayCreationOperation { Initializer: { } implicitly }
+                        ? implicitly.ElementValues.Select(ElementSyntax).ToList()
+                        : Array.Empty<SyntaxNode>();
+                }
+
+                var written = allowed.Syntax is ArgumentSyntax argument
+                    ? argument.Expression
+                    : allowed.Syntax;
+
+                return written switch
+                {
+                    CollectionExpressionSyntax collection => collection
+                        .Elements.Select(element =>
+                            element is ExpressionElementSyntax expression
+                                ? expression.Expression
+                                : (SyntaxNode)element
+                        )
+                        .ToList(),
+                    ArrayCreationExpressionSyntax { Initializer: { } initializer } => initializer
+                        .Expressions.Cast<SyntaxNode>()
+                        .ToList(),
+                    ImplicitArrayCreationExpressionSyntax { Initializer: { } implicitly } =>
+                        implicitly.Expressions.Cast<SyntaxNode>().ToList(),
+                    _ => null,
+                };
+            }
+
+            private static SyntaxNode ElementSyntax(IOperation element) =>
+                element.Syntax is ArgumentSyntax argument ? argument.Expression : element.Syntax;
+
+            /// <summary>
+            /// A value as the message shows it, read from the constant rather than from the
+            /// source: an enum value by its member's name, a string without its quotes, and a
+            /// <c>const</c> by what it holds rather than what it is called.
+            /// </summary>
+            private string DisplayOf(SyntaxNode element, object? constant)
+            {
+                if (
+                    _writer._model.GetTypeInfo(element).Type is INamedTypeSymbol
+                    {
+                        TypeKind: TypeKind.Enum
+                    } enumType
+                )
+                {
+                    foreach (var member in enumType.GetMembers().OfType<IFieldSymbol>())
+                    {
+                        if (member.HasConstantValue && Equals(member.ConstantValue, constant))
+                        {
+                            return member.Name;
+                        }
+                    }
+                }
+
+                return constant switch
+                {
+                    null => "null",
+                    string text => text,
+                    bool flag => flag ? "true" : "false",
+                    IFormattable formattable => formattable.ToString(
+                        null,
+                        System.Globalization.CultureInfo.InvariantCulture
+                    ),
+                    _ => constant.ToString() ?? string.Empty,
+                };
             }
 
             private string? Literal(

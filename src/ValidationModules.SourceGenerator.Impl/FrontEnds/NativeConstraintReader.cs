@@ -152,6 +152,7 @@ public static class NativeConstraintReader
                         declared.Select(Display).ToImmutableArray()
                     ),
                     Negated = attributeName == "DeniedValuesAttribute",
+                    Comparison = StringComparisonOf(attribute),
                 };
             }
 
@@ -196,6 +197,20 @@ public static class NativeConstraintReader
                 return null;
         }
     }
+
+    /// <summary>
+    /// <c>[AllowedValues]</c>'s <c>Comparison</c> as the emitter writes it, or null for ordinal.
+    /// </summary>
+    /// <remarks>
+    /// Ordinal is the attribute's default and what <c>==</c> on a string already does, so it maps
+    /// to null and the check keeps the operator. Whether the member is a string at all is the front
+    /// end's question, since only it knows the member's type.
+    /// </remarks>
+    internal static string? StringComparisonOf(AttributeData attribute) =>
+        NamedConstant(attribute, "Comparison") is { Value: int comparison } constant
+        && comparison != (int)StringComparison.Ordinal
+            ? Literal(constant)
+            : null;
 
     private static ConstraintModel ReadCommon(AttributeData attribute) =>
         new(

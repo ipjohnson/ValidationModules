@@ -184,6 +184,13 @@ its value with `[Range]` or `[EnumDefined]`.
 with the same contents are both accepted. Make the element type a record, override `Equals`, or
 implement `IEquatable<T>`.
 
+### VM1203
+
+**Severity:** Warning
+
+`[AllowedValues]` sets `Comparison` on a property that is not a string. `Comparison` applies only
+to strings, so the values compare as they would without it. Remove `Comparison`.
+
 ### VM1301
 
 **Severity:** Error or warning
@@ -437,6 +444,23 @@ the generator corrects the call. Remove `.Value`.
 
 `As<TFacet>` names an interface or base type that has no rules in this project. Give it
 constraint attributes or a rules class.
+
+### VM3108
+
+**Severity:** Error
+
+A value given to `AllowedValues` is not a compile-time constant, such as a `static readonly`
+field, a spread, or an array held in a field. The generator writes every value into the check and
+its message at build time. Declare the value `const`, write the values out in the call, or write
+the rule as an `Ensure`.
+
+### VM3109
+
+**Severity:** Warning
+
+An `AllowedValues` in a rules class, or an `[AllowedValues]` attribute from either vocabulary,
+lists no values. An empty set checks nothing, so the rule is dropped. List the permitted values, or
+remove the rule. An empty `[DeniedValues]` is not reported, because it denies nothing.
 
 ## Language packs
 
