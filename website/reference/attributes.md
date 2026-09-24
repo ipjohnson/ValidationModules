@@ -379,8 +379,9 @@ in `shipTo.postcode`, `lines[1].sku` or `addresses[work].postcode`. A `null` val
 | `Polymorphism.Runtime` | The validators registered in the container for the value's actual type. The pass needs a service provider. |
 
 Diagnostics: `VM1501` when the type has no rules, `VM1502` when no validator can exist for the type,
-`VM1503` when the type is not sealed and no `Polymorphism` is given, and `VM1504` for `Runtime` on a
-sealed or value type. See [Nested objects and collections](../guide/nesting).
+`VM1503` when the type is not sealed and no `Polymorphism` is given, `VM1504` for `Runtime` on a
+sealed or value type, and `VM1505` when the type is declared in another assembly and this project
+can reach no validator for it. See [Nested objects and collections](../guide/nesting).
 
 ## Types
 
