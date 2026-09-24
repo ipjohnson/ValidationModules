@@ -1375,7 +1375,7 @@ public sealed class AttributeFrontEnd
 
                 if (native is not null)
                 {
-                    constraints.Add(ResolveCondition(native, member));
+                    constraints.Add(ResolveCondition(native, member, attributeClass));
                 }
 
                 continue;
@@ -1717,7 +1717,16 @@ public sealed class AttributeFrontEnd
     /// Turns a <c>When</c>/<c>Unless</c> member name into the boolean expression the emitter tests,
     /// with the negation baked in so that the emitter cannot tell the two apart.
     /// </summary>
-    private ConstraintModel ResolveCondition(ConstraintModel constraint, ISymbol member)
+    /// <remarks>
+    /// VM1403 names <paramref name="attributeClass"/> rather than the constraint's kind, which is
+    /// not always the attribute that was written: <c>[DeniedValues]</c> reads as a negated
+    /// <c>AllowedValues</c>.
+    /// </remarks>
+    private ConstraintModel ResolveCondition(
+        ConstraintModel constraint,
+        ISymbol member,
+        INamedTypeSymbol attributeClass
+    )
     {
         var when = constraint.WhenMember;
         var unless = constraint.UnlessMember;
@@ -1732,7 +1741,7 @@ public sealed class AttributeFrontEnd
             Report(
                 ValidationDiagnostics.ConditionSetBothWays,
                 member,
-                constraint.Kind,
+                Unsuffixed(attributeClass.Name),
                 member.Name
             );
             return constraint;
@@ -1857,7 +1866,10 @@ public sealed class AttributeFrontEnd
                     UnlessMember: NamedArgument(attribute, "Unless")
                 );
 
-                if (ResolveCondition(probe, source).Condition is { } condition)
+                if (
+                    ResolveCondition(probe, source, attribute.AttributeClass).Condition is
+                    { } condition
+                )
                 {
                     return condition;
                 }
@@ -2132,7 +2144,7 @@ public sealed class AttributeFrontEnd
             Values: new EquatableArray<string>(arguments.ToImmutableArray())
         );
 
-        constraints.Add(ResolveCondition(constraint, member));
+        constraints.Add(ResolveCondition(constraint, member, attributeClass));
     }
 
     /// <summary>
@@ -2296,7 +2308,7 @@ public sealed class AttributeFrontEnd
             PerPassInstance: perPass
         );
 
-        constraints.Add(ResolveCondition(constraint, member));
+        constraints.Add(ResolveCondition(constraint, member, attributeClass));
     }
 
     /// <summary>The implemented instantiations as the diagnostic should name them.</summary>
