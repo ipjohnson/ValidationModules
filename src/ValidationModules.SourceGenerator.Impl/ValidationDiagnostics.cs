@@ -1237,6 +1237,46 @@ public static class ValidationDiagnostics
         DiagnosticSeverity.Error
     );
 
+    /// <summary>
+    /// A rules-class descent into a type that is not sealed. The region walks the validators for
+    /// the declared type, so the rules declared for a more derived type do not run.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// VM1503 asks the same question of <c>[ValidateNested]</c>, and its answer is a
+    /// <c>Polymorphism</c> argument, which <c>Nested</c> and <c>Each</c> do not take. So this one
+    /// is reported at the call instead. Its advice is what the author of a rules class can do:
+    /// seal the type, move the descent to the attribute, or keep the declared type's rules and
+    /// suppress the warning.
+    /// </para>
+    /// <para>
+    /// Warning, as VM1503 is, and keyed on the same local fact: whether the target is sealed, never
+    /// which subtypes are visible from here.
+    /// </para>
+    /// </remarks>
+    public static readonly DiagnosticDescriptor RulesDescentIntoUnsealedType = Descriptor(
+        "VM3111",
+        "Rules-class descent reaches a type that is not sealed",
+        "'{0}' is not sealed, so a value of a more derived type may reach '{1}'. {2} checks it "
+            + "against the rules for '{0}' only. {3}. To keep checking '{0}' only, suppress this "
+            + "warning at the call",
+        DiagnosticSeverity.Warning
+    );
+
+    /// <summary>
+    /// VM3111's fix. Sealing is offered only for a class that can be sealed, which an abstract
+    /// class and an interface cannot.
+    /// </summary>
+    public static string RulesDescentIntoUnsealedTypeFix(
+        bool sealable,
+        string type,
+        string member,
+        string construct
+    ) =>
+        (sealable ? $"Seal '{type}', or replace" : "Replace")
+        + $" {construct} with [ValidateNested(Polymorphism.CompileTime)] on '{member}' to run the "
+        + "rules for its actual type";
+
     public static readonly DiagnosticDescriptor LanguagePackUnreadable = Descriptor(
         "VM4001",
         "Language pack cannot be read",

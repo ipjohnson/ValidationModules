@@ -89,6 +89,8 @@ strings or of a reference type. For a list of numbers or other value types, chec
 loop and report through `Context`. `Nested` on a collection, and a second `Nested` or `Each` in the
 chain after a descent, are reported as `VM3001`. A descent into a type with no rules is dropped with
 `VM1501`, and one into a property that already has `[ValidateNested]` is dropped with `VM3106`.
+`Nested` and `Each` take no `Polymorphism` and run only the validators for the declared type. A
+descent into a type that is not sealed is reported as `VM3111`.
 
 ### Conditions
 

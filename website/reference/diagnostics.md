@@ -317,6 +317,7 @@ class. The descent is dropped. Wrap the inner collection in a type that has its 
 The type of a `[ValidateNested]` property is not sealed, so a value of a derived type may
 reach it, and no `Polymorphism` is given. Seal the type, or pass `Polymorphism.DeclaredOnly`,
 `Polymorphism.CompileTime` or `Polymorphism.Runtime`. See [Subtypes](../guide/nesting#subtypes).
+`Nested` and `Each` in a rules class report `VM3111` instead.
 
 ### VM1504
 
@@ -608,6 +609,17 @@ remove the rule. An empty `[DeniedValues]` is not reported, because it denies no
 stack overflows. The same applies to `As<T>` in a generic fragment, where `T` is the type of the
 fragment's subject. Remove the call, because the rules for the type already run, or name an
 interface or base type of `x` instead.
+
+### VM3111
+
+**Severity:** Warning
+
+`Nested` or `Each` in a rules class descends into a type that is not sealed, so a value of a more
+derived type may reach it. The descent runs only the validators for the declared type, so rules
+declared for the more derived type do not run. `Nested` and `Each` take no `Polymorphism`. To run
+the rules for the actual type, replace the descent with `[ValidateNested(Polymorphism.CompileTime)]`
+on the property. A class that nothing derives from can be sealed instead. To keep checking the
+declared type only, suppress the warning at the call. See [Subtypes](../guide/nesting#subtypes).
 
 ## Language packs
 

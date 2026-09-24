@@ -300,4 +300,96 @@ public class RulesClassDescentTests
         Assert.Empty(result.CompilationErrors);
         Assert.Equal(1, Count(AllSources(result), push));
     }
+
+    /// <summary>
+    /// A rules-class descent runs the validators for the declared type, and takes no
+    /// <c>Polymorphism</c>, so VM1503's advice does not apply to it. It is reported at the call,
+    /// with advice the author can follow.
+    /// </summary>
+    [Theory]
+    [InlineData("rules.Nested(x.ShipTo)", "rules.Nested", "ShipTo")]
+    [InlineData("rules.For(x.ShipTo).Nested()", "rules.Nested", "ShipTo")]
+    [InlineData("rules.Each(x.Stops)", "rules.Each", "Stops")]
+    [InlineData("rules.Count(x.Stops, 1, 5).Each()", "rules.Each", "Stops")]
+    public void ADescentIntoATypeThatIsNotSealed_IsVM3111AtTheCall(
+        string call,
+        string construct,
+        string property
+    )
+    {
+        var result = GeneratorHarness.Run(
+            Source(
+                $$"""
+                public class Address {
+                    [Required] public string? Street { get; init; }
+                }
+
+                public sealed record Order {
+                    public Address? ShipTo { get; init; }
+                    public IReadOnlyList<Address>? Stops { get; init; }
+                }
+
+                public sealed class OrderRules : IValidationRulesFor<Order> {
+                    public static void Describe(ValidationRules<Order> rules, Order x) {
+                        {{call}};
+                    }
+                }
+                """
+            )
+        );
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM3111");
+
+        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Equal(
+            $"'Address' is not sealed, so a value of a more derived type may reach '{property}'. "
+                + $"{construct} checks it against the rules for 'Address' only. Seal 'Address', "
+                + $"or replace {construct} with [ValidateNested(Polymorphism.CompileTime)] on "
+                + $"'{property}' to run the rules for its actual type. To keep checking 'Address' "
+                + "only, suppress this warning at the call",
+            diagnostic.GetMessage()
+        );
+        Assert.Equal(
+            call,
+            diagnostic
+                .Location.SourceTree!.GetText(TestContext.Current.CancellationToken)
+                .ToString(diagnostic.Location.SourceSpan)
+        );
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1503");
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains("AddressValidator", AllSources(result));
+    }
+
+    [Fact]
+    public void ADescentIntoAnInterface_IsVM3111WithoutTheAdviceToSealIt()
+    {
+        var result = GeneratorHarness.Run(
+            Source(
+                """
+                public interface IStop {
+                    [Required] string? Code { get; }
+                }
+
+                public sealed class Route {
+                    public IReadOnlyList<IStop>? Stops { get; init; }
+                }
+
+                public sealed class RouteRules : IValidationRulesFor<Route> {
+                    public static void Describe(ValidationRules<Route> rules, Route x) =>
+                        rules.Each(x.Stops);
+                }
+                """
+            )
+        );
+
+        // An interface cannot be sealed, so that advice is left out.
+        Assert.Equal(
+            "'IStop' is not sealed, so a value of a more derived type may reach 'Stops'. rules.Each "
+                + "checks it against the rules for 'IStop' only. Replace rules.Each with "
+                + "[ValidateNested(Polymorphism.CompileTime)] on 'Stops' to run the rules for its "
+                + "actual type. To keep checking 'IStop' only, suppress this warning at the call",
+            Assert.Single(result.Diagnostics, d => d.Id == "VM3111").GetMessage()
+        );
+        Assert.Empty(result.CompilationErrors);
+    }
 }
