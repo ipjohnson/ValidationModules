@@ -35,10 +35,12 @@ context. Add `using ValidationModules;`.
 ## A rule is not checked
 
 - The value is `null`. Every constraint except `[Required]` passes `null`.
-- The attribute is on a field or a static property. The generator reads instance properties only.
+- The attribute is on a field or a static property. The generator reads instance properties only,
+  and reports `VM1011`.
 - The attribute is on a positional record parameter without the `property:` target. The generator
   reports `VM1008`.
 - A derived class hides the property with `new`, which replaces the base property's constraints.
+  The generator reports `VM1009`.
 - The nested object has no `[ValidateNested]`, or the nested type has no rules (`VM1501`).
 - A `When` or `Unless` condition excluded it.
 - The generator reported an error or warning for the constraint and dropped it. Check the build

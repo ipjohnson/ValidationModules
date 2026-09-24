@@ -5,3 +5,4 @@
 
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
+VM1011 | ValidationModules.Usage | Warning | A constraint on a field or a static property is never evaluated.

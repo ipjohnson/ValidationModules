@@ -102,6 +102,7 @@ true`, with these differences:
 
 - Every error has a code, and the default messages are this library's.
 - Attributes on fields and on the class itself are not read. Neither are `[MetadataType]` classes.
+  A constraint on a field is reported as `VM1011`.
 - Attributes declared on an interface's properties apply to the classes that implement it.
 - `IValidatableObject.Validate` runs only when the whole validation pass has reported nothing so
   far, warnings included, and including other objects of the same graph.

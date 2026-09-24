@@ -184,8 +184,8 @@ one member are easier to write in a rules class.
 ## Where attributes go
 
 The generator reads attributes on instance properties that have a readable getter. It does not read
-fields or static properties. A constrained property without an accessible getter is reported as
-`VM1007`.
+fields or static properties, and reports a constraint on one as `VM1011`. A constrained property
+without an accessible getter is reported as `VM1007`.
 
 On a positional record, an attribute on a parameter applies to the constructor parameter, not to
 the property. Add the `property:` target:
@@ -205,8 +205,8 @@ Without `property:`, the generator reports `VM1008` and the attribute has no eff
 A type inherits the constraints on the properties of its base classes and on the interfaces it
 implements. The base class's properties are checked first. An `override` keeps the base property's
 constraints and adds its own. A property that hides a base property with `new` replaces the base
-property's constraints. The generator reports `VM1009` when the new property declares constraints
-of its own. It does not read explicit interface implementations, or base properties the validator
+property's constraints, whether or not the new property declares any, and the generator reports
+`VM1009`. It does not read explicit interface implementations, or base properties the validator
 cannot reach, such as `protected` properties or `internal` properties in another assembly.
 
 A generic type cannot carry constraints, because its validator could not be registered without

@@ -118,6 +118,13 @@ A generic type declares constraints. Its validator could not be registered witho
 `MakeGenericType`, so none is generated. Declare the constraints on a closed type, or validate the
 generic type's payload and leave the generic type without constraints.
 
+### VM1011
+
+**Severity:** Warning
+
+A constraint is on a field or a static property. The generator reads instance properties only, so
+the constraint is never evaluated. Declare the member as an instance property, as the message shows.
+
 ### VM1101
 
 **Severity:** Error

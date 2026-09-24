@@ -149,6 +149,24 @@ public static class ValidationDiagnostics
         DiagnosticSeverity.Error
     );
 
+    /// <summary>
+    /// A constraint on a field or a static property. The attribute usage admits a field, so the
+    /// compiler accepts one, and the generator reads instance properties only, so the constraint
+    /// is never evaluated.
+    /// </summary>
+    /// <remarks>
+    /// Warning rather than error, for VM1008's reason: the rule does not run, but nothing is
+    /// rejected that should have been accepted. The tail prints the instance property to declare
+    /// instead.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor ConstraintOnFieldOrStaticProperty = Descriptor(
+        "VM1011",
+        "Constraint on a field or static property has no effect",
+        "'{0}' on '{1}' is never evaluated, because '{1}' is {2}. Constraints apply to instance "
+            + "properties. Declare it as one: {3}",
+        DiagnosticSeverity.Warning
+    );
+
     public static readonly DiagnosticDescriptor MinExceedsMax = Descriptor(
         "VM1101",
         "Lower bound exceeds upper bound",

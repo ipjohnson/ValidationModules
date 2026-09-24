@@ -355,6 +355,179 @@ public class ConstraintDiagnosticsTests
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1302");
     }
 
+    // VM1011 — a constraint on a field or a static property, which the walk never reads.
+
+    [Fact]
+    public void ConstraintOnAFieldOrAStaticProperty_IsVM1011()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed class Form {
+                [Required]
+                public string? Field;
+
+                [Required]
+                public static string? Shared { get; set; }
+
+                [Required]
+                public string? Property { get; init; } = "set";
+            }
+            """
+        );
+
+        var reported = result
+            .Diagnostics.Where(d => d.Id == "VM1011")
+            .Select(d => d.GetMessage())
+            .OrderBy(message => message, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.Equal(
+            [
+                "'Required' on 'Field' is never evaluated, because 'Field' is a field. Constraints "
+                    + "apply to instance properties. Declare it as one: "
+                    + "public string? Field { get; set; }",
+                "'Required' on 'Shared' is never evaluated, because 'Shared' is a static property. "
+                    + "Constraints apply to instance properties. Declare it as one: "
+                    + "public string? Shared { get; set; }",
+            ],
+            reported
+        );
+        Assert.All(
+            result.Diagnostics.Where(d => d.Id == "VM1011"),
+            d => Assert.Equal(DiagnosticSeverity.Warning, d.Severity)
+        );
+
+        // The instance property beside them is still validated.
+        Assert.Contains(
+            "ReportRequired(ctx, \"property\", value: value.Property)",
+            result.Sources["Sample.FormValidator.g.cs"]
+        );
+    }
+
+    [Fact]
+    public void ConstraintOnAField_ReportsOncePerAttribute()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed class Form {
+                [Required, StringLength(10)]
+                public readonly string? Code;
+            }
+            """
+        );
+
+        Assert.Equal(2, result.Diagnostics.Count(d => d.Id == "VM1011"));
+        Assert.Contains(
+            "public string? Code { get; }",
+            result.Diagnostics.First(d => d.Id == "VM1011").GetMessage()
+        );
+    }
+
+    /// <summary>
+    /// A type whose only constraints sit on fields gets no validator. The warning is what tells the
+    /// author, because otherwise the type looks unconstrained and nothing is registered for it.
+    /// </summary>
+    [Fact]
+    public void ConstraintsOnlyOnFields_StillReportVM1011()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed class Form {
+                [Required]
+                public string? Field;
+            }
+            """
+        );
+
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1011");
+        Assert.DoesNotContain(result.Sources.Keys, key => key.Contains("FormValidator"));
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    /// <summary>
+    /// Every shape the generator would compile on a property counts: a DataAnnotations constraint,
+    /// while that front end is on, and a custom constraint attribute. An attribute that is not a
+    /// constraint does not.
+    /// </summary>
+    [Fact]
+    public void EveryCompiledShapeOnAField_IsVM1011_AndOtherAttributesAreNot()
+    {
+        var source = """
+            using System.Text.Json.Serialization;
+            using ValidationModules.Constraints;
+            using DA = System.ComponentModel.DataAnnotations;
+
+            namespace Sample;
+
+            public sealed class StartsWithAAttribute : CustomConstraintAttribute {
+                public static bool IsValid(string value) => value.StartsWith("A");
+            }
+
+            public sealed class Form {
+                [DA.Required]
+                public string? Annotated;
+
+                [StartsWithA]
+                public string? Custom;
+
+                [JsonPropertyName("plain"), DA.Display(Name = "Plain")]
+                public string? Plain;
+            }
+            """;
+
+        var compiled = GeneratorHarness.Run(source);
+        var ignored = GeneratorHarness.Run(source, ("ValidationModules_DataAnnotations", "Ignore"));
+
+        Assert.Equal(
+            ["'Required' on 'Annotated'", "'StartsWithA' on 'Custom'"],
+            compiled
+                .Diagnostics.Where(d => d.Id == "VM1011")
+                .Select(d => d.GetMessage().Substring(0, d.GetMessage().IndexOf(" is never")))
+                .OrderBy(prefix => prefix, StringComparer.Ordinal)
+        );
+        Assert.Single(ignored.Diagnostics, d => d.Id == "VM1011");
+    }
+
+    /// <summary>
+    /// A field declared on a base type is reported once, where it is declared, rather than once
+    /// per type that inherits it.
+    /// </summary>
+    [Fact]
+    public void ConstraintOnAnInheritedField_IsReportedOnceWhereItIsDeclared()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public class Base {
+                [Required]
+                public string? Field;
+            }
+
+            public sealed class Derived : Base {
+                [Required]
+                public string? Property { get; init; }
+            }
+            """
+        );
+
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1011");
+    }
+
     // VM1008 — a constraint on a record parameter, which binds to the parameter and is never read.
 
     [Fact]
