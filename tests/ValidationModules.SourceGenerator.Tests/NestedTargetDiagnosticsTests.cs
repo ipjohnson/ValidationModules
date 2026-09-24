@@ -48,6 +48,97 @@ public class NestedTargetDiagnosticsTests
         Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
         Assert.Contains("Address", diagnostic.GetMessage());
         Assert.Contains("Home", diagnostic.GetMessage());
+        Assert.Contains("[ValidateNested]", diagnostic.GetMessage());
+    }
+
+    [Theory]
+    [InlineData("[System.ComponentModel.DataAnnotations.Display(Name = \"Street\")]")]
+    [InlineData("[System.ComponentModel.DataAnnotations.Key]")]
+    [InlineData(
+        "[System.ComponentModel.DataAnnotations.DataType(System.ComponentModel.DataAnnotations.DataType.Text)]"
+    )]
+    [InlineData("[System.ComponentModel.DataAnnotations.Editable(false)]")]
+    [InlineData("[System.ComponentModel.DataAnnotations.ScaffoldColumn(false)]")]
+    [InlineData("[System.ComponentModel.DataAnnotations.Compare(nameof(Other))]")]
+    [InlineData("[System.ComponentModel.DataAnnotations.EnumDataType(typeof(Kind))]")]
+    public void NestedTargetWhoseOnlyDataAnnotationsAttributeCompilesToNothing_IsVM1501(
+        string attribute
+    )
+    {
+        // Each of these describes the property or is reported rather than compiled, so the type
+        // gets no validator. A descent kept for it would call an AddressValidator that is never
+        // generated, which fails with CS0400 inside generated code.
+        var result = GeneratorHarness.Run(
+            Model(
+                $$"""
+                public enum Kind { Home, Work }
+
+                public record Address {
+                    {{attribute}}
+                    public string? Street { get; init; }
+                    public string? Other { get; init; }
+                }
+
+                public record Customer {
+                    [Required] public string? Name { get; init; }
+                    [ValidateNested] public Address? Home { get; init; }
+                }
+                """
+            )
+        );
+
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1501");
+        Assert.Empty(result.CompilationErrors);
+        Assert.DoesNotContain("AddressValidator", result.Sources["Sample.CustomerValidator.g.cs"]);
+    }
+
+    [Fact]
+    public void NestedTargetWithACompiledDataAnnotationsConstraint_IsSilent()
+    {
+        var result = GeneratorHarness.Run(
+            Model(
+                """
+                public record Address {
+                    [System.ComponentModel.DataAnnotations.Required]
+                    public string? Street { get; init; }
+                }
+
+                public sealed record Customer {
+                    [ValidateNested] public Address? Home { get; init; }
+                }
+                """
+            )
+        );
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1501");
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains("AddressValidator", result.Sources["Sample.CustomerValidator.g.cs"]);
+    }
+
+    [Fact]
+    public void NestedTargetWithOnlyDataAnnotationsConstraintsUnderIgnore_IsVM1501()
+    {
+        // Under Ignore the DataAnnotations constraint produces no rule, so Address gets no
+        // validator for the descent to call.
+        var result = GeneratorHarness.Run(
+            Model(
+                """
+                public record Address {
+                    [System.ComponentModel.DataAnnotations.Required]
+                    public string? Street { get; init; }
+                }
+
+                public record Customer {
+                    [Required] public string? Name { get; init; }
+                    [ValidateNested] public Address? Home { get; init; }
+                }
+                """
+            ),
+            ("ValidationModules_DataAnnotations", "Ignore")
+        );
+
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1501");
+        Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
@@ -331,22 +422,123 @@ public class NestedTargetDiagnosticsTests
     }
 
     [Fact]
-    public void NestedTargetFromAnotherAssembly_IsSilent()
+    public void NestedTargetFromAnotherAssemblyWithNoValidator_IsVM1505AndBuildsClean()
     {
-        // string is the stand-in for any type this compilation does not declare: it may carry a
-        // validator generated in its own assembly, which is invisible from here. A false negative
-        // is the safe direction for a warning.
+        // System.Text has no StringBuilderValidator, so a kept descent would fail with CS0234
+        // inside generated code.
         var result = GeneratorHarness.Run(
             Model(
                 """
-                public record Pet {
-                    [Required] public string? Name { get; init; }
-                    [ValidateNested] public System.Text.StringBuilder? Builder { get; init; }
+                public record Document {
+                    [Required] public string? Title { get; init; }
+                    [ValidateNested(Polymorphism.DeclaredOnly)] public System.Text.StringBuilder? Body { get; init; }
                 }
                 """
             )
         );
 
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1505");
+
+        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Contains("StringBuilderValidator", diagnostic.GetMessage());
+        Assert.Contains("[ValidateNested] on 'Body'", diagnostic.GetMessage());
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1501");
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains("Title", result.Sources["Sample.DocumentValidator.g.cs"]);
+    }
+
+    private const string ReferencedAddress = """
+        namespace Shared;
+
+        public sealed record Address {
+            [ValidationModules.Constraints.Required] public string? Street { get; init; }
+        }
+        """;
+
+    private const string OrderShippingToAReferencedAddress = """
+        using ValidationModules;
+        using ValidationModules.Constraints;
+
+        namespace Sample;
+
+        public record Order {
+            [Required] public string? Reference { get; init; }
+            [ValidateNested] public Shared.Address? ShipTo { get; init; }
+        }
+        """;
+
+    [Fact]
+    public void NestedTargetFromAnotherAssemblyWithItsValidator_KeepsTheDescent()
+    {
+        // The shape the generator leaves in the other assembly: a public AddressValidator beside
+        // Address, with the parameterless constructor the standalone path calls.
+        var result = GeneratorHarness.RunWithReference(
+            ReferencedAddress
+                + """
+
+                public sealed class AddressValidator : ValidationModules.IValidatorFor<Address> {
+                    public ValidationModules.ValidationFlow Validate(
+                        ref ValidationModules.ValidationContext context, Address value) =>
+                        ValidationModules.ValidationFlow.Continue;
+                }
+                """,
+            OrderShippingToAReferencedAddress
+        );
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id is "VM1501" or "VM1505");
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains("AddressValidator", result.Sources["Sample.OrderValidator.g.cs"]);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(
+        """
+
+            internal sealed class AddressValidator : ValidationModules.IValidatorFor<Address> {
+                public ValidationModules.ValidationFlow Validate(
+                    ref ValidationModules.ValidationContext context, Address value) =>
+                    ValidationModules.ValidationFlow.Continue;
+            }
+            """
+    )]
+    public void NestedTargetFromAnotherAssemblyWithNoReachableValidator_IsVM1505(string validator)
+    {
+        // An assembly that never ran the generator has no validator at all, and an internal one
+        // cannot be constructed from here. Either way the descent would not compile.
+        var result = GeneratorHarness.RunWithReference(
+            ReferencedAddress + validator,
+            OrderShippingToAReferencedAddress
+        );
+
+        Assert.Contains(
+            "Address",
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1505").GetMessage()
+        );
+        Assert.Empty(result.CompilationErrors);
+        Assert.DoesNotContain("AddressValidator", result.Sources["Sample.OrderValidator.g.cs"]);
+    }
+
+    [Fact]
+    public void NestedTargetFromAnotherAssemblyWithARulesClassHere_KeepsTheDescent()
+    {
+        // The rules class makes Address's validator in this compilation, so there is something to
+        // call even though the other assembly has none.
+        var result = GeneratorHarness.RunWithReference(
+            ReferencedAddress,
+            OrderShippingToAReferencedAddress
+                + """
+
+                public sealed class AddressRules : IValidationRulesFor<Shared.Address> {
+                    public static void Describe(ValidationRules<Shared.Address> rules, Shared.Address x) {
+                        rules.Require(x.Street);
+                    }
+                }
+                """
+        );
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id is "VM1501" or "VM1505");
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains("AddressValidator", result.Sources["Sample.OrderValidator.g.cs"]);
     }
 }

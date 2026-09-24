@@ -55,16 +55,24 @@ public sealed class RulesFrontEnd
     public RulesFrontEnd(
         Func<string, string> fieldNamer,
         Func<INamedTypeSymbol, bool>? rulesTarget = null,
-        string? codeNamespace = null
+        string? codeNamespace = null,
+        bool compileDataAnnotations = true
     )
     {
         _fieldNamer = fieldNamer;
         _rulesTarget = rulesTarget;
         _codeNamespace = codeNamespace;
+        _compileDataAnnotations = compileDataAnnotations;
     }
 
     /// <summary>The assembly's code namespace, applied to what an Ensure authors or derives.</summary>
     private readonly string? _codeNamespace;
+
+    /// <summary>
+    /// Whether the DataAnnotations vocabulary produces rules, which decides whether a type carrying
+    /// only DataAnnotations attributes has a validator a descent can call.
+    /// </summary>
+    private readonly bool _compileDataAnnotations;
 
     public IReadOnlyList<Diagnostic> Diagnostics => _diagnostics;
 
@@ -240,6 +248,11 @@ public sealed class RulesFrontEnd
     /// call target. Two rules classes calling the same fragment for the same target share one
     /// method.
     /// </summary>
+    /// <remarks>
+    /// An instantiation is keyed by every type argument, not only the target. A fragment with a
+    /// second type parameter can be closed over one target twice, with a different argument for
+    /// the second each time, and its extra parameters then have different types.
+    /// </remarks>
     private FragmentMethod? FragmentFor(
         IMethodSymbol constructed,
         INamedTypeSymbol target,
@@ -250,7 +263,7 @@ public sealed class RulesFrontEnd
     {
         var definition = constructed.OriginalDefinition;
         var key =
-            $"{definition.ToDisplayString()}|{(constructed.IsGenericMethod ? target.ToDisplayString() : string.Empty)}";
+            $"{definition.ToDisplayString()}|{string.Join(",", constructed.TypeArguments.Select(static argument => argument.ToDisplayString()))}";
 
         // The stack check comes before the registry: a fragment registers itself before its body
         // is read so two callers share one method, and a cycle would otherwise hit that early
@@ -346,7 +359,8 @@ public sealed class RulesFrontEnd
             subject: subject is null ? null : definition.Parameters[IndexOf(definition, subject)],
             expanding: expanding.Concat(new[] { definition }).ToList(),
             insideFragment: true,
-            fieldPrefix: $"_{name}Facet"
+            fieldPrefix: $"_{name}Facet",
+            typeArguments: TypeArgumentsOf(definition, constructed)
         );
 
         if (syntax.Body is { } block)
@@ -363,6 +377,26 @@ public sealed class RulesFrontEnd
         method.Facets.AddRange(writer.Facets);
 
         return FailedSince(before) ? null : method;
+    }
+
+    /// <summary>
+    /// The concrete type each of a fragment's type parameters stands for in one instantiation.
+    /// </summary>
+    private static Dictionary<ITypeParameterSymbol, ITypeSymbol> TypeArgumentsOf(
+        IMethodSymbol definition,
+        IMethodSymbol constructed
+    )
+    {
+        var arguments = new Dictionary<ITypeParameterSymbol, ITypeSymbol>(
+            SymbolEqualityComparer.Default
+        );
+
+        for (var i = 0; i < definition.TypeParameters.Length; i++)
+        {
+            arguments[definition.TypeParameters[i]] = constructed.TypeArguments[i];
+        }
+
+        return arguments;
     }
 
     private static int IndexOf(IMethodSymbol definition, IParameterSymbol constructedParameter)
@@ -420,6 +454,12 @@ public sealed class RulesFrontEnd
         private readonly List<IMethodSymbol> _expanding;
         private readonly bool _insideFragment;
 
+        /// <summary>
+        /// The concrete type each of the enclosing fragment's type parameters stands for in this
+        /// instantiation. Empty outside a generic fragment.
+        /// </summary>
+        private readonly IReadOnlyDictionary<ITypeParameterSymbol, ITypeSymbol> _typeArguments;
+
         private readonly List<string> _lines = new();
         private readonly List<RegionDependency> _dependencies = new();
         private readonly List<string> _applied = new();
@@ -461,7 +501,8 @@ public sealed class RulesFrontEnd
             List<IMethodSymbol>? expanding = null,
             bool insideFragment = false,
             string fieldPrefix = "_facet",
-            int fieldSeed = 0
+            int fieldSeed = 0,
+            IReadOnlyDictionary<ITypeParameterSymbol, ITypeSymbol>? typeArguments = null
         )
         {
             _fieldPrefix = fieldPrefix;
@@ -475,6 +516,11 @@ public sealed class RulesFrontEnd
             _subject = subject;
             _expanding = expanding ?? new List<IMethodSymbol>();
             _insideFragment = insideFragment;
+            _typeArguments =
+                typeArguments
+                ?? new Dictionary<ITypeParameterSymbol, ITypeSymbol>(
+                    SymbolEqualityComparer.Default
+                );
         }
 
         public IReadOnlyList<string> Lines => _lines;
@@ -551,6 +597,34 @@ public sealed class RulesFrontEnd
                     {
                         return true;
                     }
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Whether a declaration of <paramref name="property"/> that the attribute front end reads
+        /// carries <c>[ValidateNested]</c>: the target's own, or one the member walk merges in from
+        /// an interface or an overridden base. The attribute region then already descends into it.
+        /// </summary>
+        private bool CarriesValidateNested(IPropertySymbol property)
+        {
+            foreach (
+                var member in MemberWalk.PropertiesOf(
+                    _target,
+                    _compilation,
+                    declaration =>
+                        DescentTargets.CarriesConstraints(
+                            declaration,
+                            _owner._compileDataAnnotations
+                        )
+                )
+            )
+            {
+                if (member.Property.Name == property.Name)
+                {
+                    return member.Sources.Any(DescentTargets.HasValidateNested);
                 }
             }
 
@@ -720,7 +794,8 @@ public sealed class RulesFrontEnd
                     _owner.Report(
                         ValidationDiagnostics.IslandInUnreadableScope,
                         report,
-                        _declaringClass.Name
+                        _declaringClass.Name,
+                        ValidationDiagnostics.IslandScopeTail
                     );
                     return;
                 }
@@ -736,7 +811,8 @@ public sealed class RulesFrontEnd
                     _owner.Report(
                         ValidationDiagnostics.IslandInUnreadableScope,
                         report,
-                        _declaringClass.Name
+                        _declaringClass.Name,
+                        ValidationDiagnostics.IslandScopeTail
                     );
                     return;
                 }
@@ -848,6 +924,41 @@ public sealed class RulesFrontEnd
         }
 
         // ---- islands ---------------------------------------------------------------------------
+
+        /// <summary>
+        /// The target's property called <paramref name="name"/>: declared on the target, on a base
+        /// type, or on an interface the target extends.
+        /// </summary>
+        /// <remarks>
+        /// <c>GetMembers</c> answers for declared members only, and a condition may read a property
+        /// the subject inherits. The base chain comes first, so a class's own declaration wins over
+        /// an interface's.
+        /// </remarks>
+        private IPropertySymbol? PropertyNamed(string name)
+        {
+            for (INamedTypeSymbol? type = _target; type is not null; type = type.BaseType)
+            {
+                if (
+                    type.GetMembers(name).OfType<IPropertySymbol>().FirstOrDefault() is { } declared
+                )
+                {
+                    return declared;
+                }
+            }
+
+            foreach (var contract in _target.AllInterfaces)
+            {
+                if (
+                    contract.GetMembers(name).OfType<IPropertySymbol>().FirstOrDefault() is
+                    { } declared
+                )
+                {
+                    return declared;
+                }
+            }
+
+            return null;
+        }
 
         /// <summary>Whether the expression is an invocation chain hanging off the builder parameter.</summary>
         private bool RootsAtBuilder(ExpressionSyntax expression)
@@ -987,9 +1098,11 @@ public sealed class RulesFrontEnd
                 return false;
             }
 
-            var resolved = candidate.ReducedFrom is { } reduced
-                ? reduced.Construct(candidate.TypeArguments.ToArray())
-                : candidate;
+            var resolved = Instantiated(
+                candidate.ReducedFrom is { } reduced
+                    ? reduced.Construct(candidate.TypeArguments.ToArray())
+                    : candidate
+            );
 
             if (!resolved.IsStatic || !resolved.ReturnsVoid)
             {
@@ -1032,6 +1145,55 @@ public sealed class RulesFrontEnd
 
             return true;
         }
+
+        /// <summary>
+        /// A called method with this instantiation's concrete types put in for the enclosing
+        /// fragment's type parameters.
+        /// </summary>
+        /// <remarks>
+        /// Inside a generic fragment, a call to another generic fragment binds over the enclosing
+        /// fragment's own type parameters, because they are all its body can name. Expanded as it
+        /// stands, the inner fragment's subject is a type parameter rather than the target, so it
+        /// is not recognised as the subject, its rules report VM3007, and its method is emitted
+        /// with a parameter of type <c>T</c>. Closed over the concrete types the enclosing
+        /// fragment was closed over, it is expanded exactly as if the rules class had called it.
+        /// </remarks>
+        private IMethodSymbol Instantiated(IMethodSymbol method)
+        {
+            if (_typeArguments.Count == 0 || !method.IsGenericMethod)
+            {
+                return method;
+            }
+
+            var arguments = new ITypeSymbol[method.TypeArguments.Length];
+            var changed = false;
+
+            for (var i = 0; i < arguments.Length; i++)
+            {
+                arguments[i] = Substituted(method.TypeArguments[i]);
+                changed |= !SymbolEqualityComparer.Default.Equals(
+                    arguments[i],
+                    method.TypeArguments[i]
+                );
+            }
+
+            return changed ? method.OriginalDefinition.Construct(arguments) : method;
+        }
+
+        private ITypeSymbol Substituted(ITypeSymbol type) =>
+            type switch
+            {
+                ITypeParameterSymbol parameter
+                    when _typeArguments.TryGetValue(parameter, out var concrete) => concrete,
+                IArrayTypeSymbol array => _compilation.CreateArrayTypeSymbol(
+                    Substituted(array.ElementType),
+                    array.Rank
+                ),
+                INamedTypeSymbol { IsGenericType: true } named => named.ConstructedFrom.Construct(
+                    named.TypeArguments.Select(Substituted).ToArray()
+                ),
+                _ => type,
+            };
 
         private void ReadFragmentCall(
             InvocationExpressionSyntax call,
@@ -1181,13 +1343,14 @@ public sealed class RulesFrontEnd
                     _owner.Report(
                         ValidationDiagnostics.IslandInUnreadableScope,
                         identifier,
-                        _declaringClass.Name
+                        _declaringClass.Name,
+                        IsContextAccess(identifier)
+                            ? ValidationDiagnostics.ContextCaptureTail(what)
+                            : ValidationDiagnostics.IslandScopeTail
                     );
                     return;
                 }
             }
-
-            _ = what;
         }
 
         private void Transcribe(StatementSyntax statement, int depth)
@@ -1234,12 +1397,18 @@ public sealed class RulesFrontEnd
                     continue;
                 }
 
-                if (
-                    identifier.Parent
-                        is MemberAccessExpressionSyntax { Name.Identifier.Text: "Context" } access
-                    && access.Expression == identifier
-                )
+                if (IsContextAccess(identifier))
                 {
+                    if (CapturingScope(identifier, node) is { } scope)
+                    {
+                        _owner.Report(
+                            ValidationDiagnostics.IslandInUnreadableScope,
+                            identifier.Parent!,
+                            _declaringClass.Name,
+                            ValidationDiagnostics.ContextCaptureTail(scope)
+                        );
+                    }
+
                     continue;
                 }
 
@@ -1249,6 +1418,46 @@ public sealed class RulesFrontEnd
                     "store it, capture it, return it, or pass it to anything the generator cannot read"
                 );
             }
+        }
+
+        /// <summary>Whether the builder identifier is the receiver of <c>rules.Context</c>.</summary>
+        private static bool IsContextAccess(IdentifierNameSyntax identifier) =>
+            identifier.Parent
+                is MemberAccessExpressionSyntax { Name.Identifier.Text: "Context" } access
+            && access.Expression == identifier;
+
+        /// <summary>
+        /// The scope between <paramref name="node"/> and the transcribed <paramref name="root"/>
+        /// that would capture the context, as VM3003 names it, or null when there is none.
+        /// </summary>
+        /// <remarks>
+        /// <c>rules.Context</c> becomes the region method's <c>ref</c> parameter, and C# does not
+        /// let a lambda, an anonymous method, a local function or a query clause capture one. A
+        /// local function statement that is itself the root has already been refused as a whole.
+        /// </remarks>
+        private static string? CapturingScope(SyntaxNode node, SyntaxNode root)
+        {
+            foreach (var ancestor in node.Ancestors())
+            {
+                if (ancestor == root)
+                {
+                    return null;
+                }
+
+                switch (ancestor)
+                {
+                    case AnonymousMethodExpressionSyntax:
+                        return "an anonymous method";
+                    case LambdaExpressionSyntax:
+                        return "a lambda";
+                    case LocalFunctionStatementSyntax:
+                        return "a local function";
+                    case QueryBodySyntax:
+                        return "a query expression";
+                }
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -1665,7 +1874,8 @@ public sealed class RulesFrontEnd
             private readonly List<(
                 bool Elements,
                 ExpressionSyntax Value,
-                string? Field
+                string? Field,
+                SyntaxNode Site
             )> _descents = new();
 
             /// <summary>
@@ -1851,8 +2061,14 @@ public sealed class RulesFrontEnd
                     case "Ensure":
                         return ReadEnsure(call, arguments);
 
+                    case "MultipleOf":
+                        return ReadMultipleOf(call, method, arguments);
+
+                    // One descent per chain. An Each over objects leaves the collection as the
+                    // chain's anchor, so a descent chained after it would walk the elements a second
+                    // time, or walk the collection as if it were one object.
                     case "Nested":
-                        if (_perElement)
+                        if (_perElement || DescendedIntoElements)
                         {
                             _writer._owner.Report(
                                 ValidationDiagnostics.NotTranscribable,
@@ -1863,16 +2079,38 @@ public sealed class RulesFrontEnd
                             return false;
                         }
 
+                        if (_descents.Count > 0)
+                        {
+                            _writer._owner.Report(
+                                ValidationDiagnostics.NotTranscribable,
+                                call,
+                                _writer._declaringClass.Name,
+                                "a descent chained after another descent"
+                            );
+                            return false;
+                        }
+
                         return ReadDescent(call, arguments, elements: false);
 
                     case "Each":
-                        if (_perElement)
+                        if (_perElement || DescendedIntoElements)
                         {
                             _writer._owner.Report(
                                 ValidationDiagnostics.NotTranscribable,
                                 call,
                                 _writer._declaringClass.Name,
                                 "a second Each chained after element rules"
+                            );
+                            return false;
+                        }
+
+                        if (_descents.Count > 0)
+                        {
+                            _writer._owner.Report(
+                                ValidationDiagnostics.NotTranscribable,
+                                call,
+                                _writer._declaringClass.Name,
+                                "a descent chained after another descent"
                             );
                             return false;
                         }
@@ -2089,10 +2327,36 @@ public sealed class RulesFrontEnd
                     return false;
                 }
 
-                _descents.Add((elements, value, FieldLiteral(arguments)));
+                // Nested reaches one object. A collection's elements are Each's descent, and a
+                // dictionary's values are reached only by [ValidateNested], which walks them by key.
+                if (!elements && _writer._model.GetTypeInfo(value).Type is { } type)
+                {
+                    var misuse =
+                        TypeFacts.DictionaryTypesOf(type) is not null
+                            ? $"Nested over the dictionary '{value}' ([ValidateNested] on the property validates each value)"
+                        : TypeFacts.ElementTypeOf(type) is not null
+                            ? $"Nested over the collection '{value}' (rules.Each({value}) validates each element)"
+                        : null;
+
+                    if (misuse is not null)
+                    {
+                        _writer._owner.Report(
+                            ValidationDiagnostics.NotTranscribable,
+                            call,
+                            _writer._declaringClass.Name,
+                            misuse
+                        );
+                        return false;
+                    }
+                }
+
+                _descents.Add((elements, value, FieldLiteral(arguments), call));
 
                 return true;
             }
+
+            /// <summary>Whether an Each over objects already descended in this chain.</summary>
+            private bool DescendedIntoElements => _descents.Any(descent => descent.Elements);
 
             private bool ReadApply(
                 InvocationExpressionSyntax call,
@@ -2146,12 +2410,7 @@ public sealed class RulesFrontEnd
                 var anchorName = RuleText.AnchorOfPredicate($"{subject} => {text}");
                 var explicitField = FieldLiteral(arguments);
 
-                var anchor = anchorName is null
-                    ? null
-                    : _writer
-                        ._target.GetMembers(anchorName)
-                        .OfType<IPropertySymbol>()
-                        .FirstOrDefault();
+                var anchor = anchorName is null ? null : _writer.PropertyNamed(anchorName);
 
                 if (anchor is null && explicitField is null)
                 {
@@ -2277,9 +2536,9 @@ public sealed class RulesFrontEnd
                     EmitElementRules(collection, collectionFacts, missing);
                 }
 
-                foreach (var (elements, value, field) in _descents)
+                foreach (var (elements, value, field, site) in _descents)
                 {
-                    EmitDescent(elements, value, field, missing);
+                    EmitDescent(elements, value, field, missing, site);
                 }
             }
 
@@ -2364,7 +2623,8 @@ public sealed class RulesFrontEnd
                 bool elements,
                 ExpressionSyntax value,
                 string? explicitField,
-                string? missing
+                string? missing,
+                SyntaxNode site
             )
             {
                 var path = _writer.PathOf(value);
@@ -2382,8 +2642,21 @@ public sealed class RulesFrontEnd
                 }
 
                 var property = path[0];
+                var construct = elements ? "rules.Each" : "rules.Nested";
+
+                if (_writer.CarriesValidateNested(property))
+                {
+                    _writer._owner.Report(
+                        ValidationDiagnostics.RulesDescentRepeatsValidateNested,
+                        site,
+                        property.Name,
+                        construct
+                    );
+                    return;
+                }
+
                 var field = explicitField ?? _writer._owner.WireNameOf(property);
-                var dependency = _writer.DependencyFor(property, elements, value);
+                var dependency = _writer.DependencyFor(property, elements, value, site, construct);
 
                 if (dependency is null)
                 {
@@ -2501,23 +2774,106 @@ public sealed class RulesFrontEnd
                         Max: OptionalBound(arguments, "max")
                     ),
                     "Unique" => new ConstraintModel(ConstraintKind.UniqueItems),
-                    "MultipleOf" => new ConstraintModel(
-                        ConstraintKind.MultipleOf,
-                        Divisor: Bound(arguments, "divisor", "1"),
-                        DecimalDomain: DivisorIsFloating(arguments)
-                    ),
                     "Pattern" => PatternConstraint(arguments, call),
                     "AllowedValues" => AllowedValuesConstraint(arguments, call),
                     _ => null,
                 };
 
-            private bool DivisorIsFloating(
+            /// <summary>
+            /// <c>MultipleOf</c>, with its divisor in the denomination the check runs in - the one
+            /// <c>[MultipleOf]</c> produces. The overload the call bound to decides it: the long
+            /// and decimal overloads divide with <c>%</c>, and the double overload's check takes a
+            /// decimal divisor, so a constant goes through <see cref="MultipleOfReader"/> exactly as
+            /// an attribute's does, and anything else is converted where the check reads it.
+            /// </summary>
+            private bool ReadMultipleOf(
+                InvocationExpressionSyntax call,
+                IMethodSymbol method,
                 IReadOnlyDictionary<string, ExpressionSyntax> arguments
-            ) =>
-                arguments.TryGetValue("divisor", out var divisor)
-                && _writer._model.GetTypeInfo(divisor).Type?.SpecialType
-                    is SpecialType.System_Double
-                        or SpecialType.System_Single;
+            )
+            {
+                if (
+                    !arguments.TryGetValue("divisor", out var divisor)
+                    || (method.ReducedFrom ?? method).Parameters.FirstOrDefault(parameter =>
+                        parameter.Name == "divisor"
+                    )
+                        is not { } declared
+                )
+                {
+                    _writer._owner.Report(
+                        ValidationDiagnostics.NotTranscribable,
+                        call,
+                        _writer._declaringClass.Name,
+                        "a call to 'MultipleOf' the reader does not know"
+                    );
+                    return false;
+                }
+
+                var member = _facts?.PropertyName ?? _access ?? "the value";
+                var floating = declared.Type.SpecialType == SpecialType.System_Double;
+                string rendered;
+                var decimalDomain = floating;
+
+                if (
+                    _writer._model.GetConstantValue(divisor) is
+                    { HasValue: true, Value: IFormattable constant }
+                )
+                {
+                    var literal = constant.ToString(
+                        constant is double or float ? "R" : null,
+                        System.Globalization.CultureInfo.InvariantCulture
+                    );
+
+                    if (
+                        !MultipleOfReader.TryResolve(
+                            declared.Type,
+                            literal,
+                            out rendered,
+                            out var value,
+                            out decimalDomain
+                        )
+                    )
+                    {
+                        _writer._owner.Report(
+                            ValidationDiagnostics.MultipleOfDivisorNotParseable,
+                            divisor,
+                            member,
+                            declared.Type.ToDisplayString()
+                        );
+                        return false;
+                    }
+
+                    // The same check the attribute path makes. A zero reached the emitter as `% 0`,
+                    // which is CS0020 inside generated code for an integral member.
+                    if (value <= 0m)
+                    {
+                        _writer._owner.Report(
+                            ValidationDiagnostics.MultipleOfDivisorNotPositive,
+                            divisor,
+                            member,
+                            divisor.ToString()
+                        );
+                        return false;
+                    }
+                }
+                else
+                {
+                    var read = _writer.Rewrite(divisor);
+
+                    rendered = floating ? $"(decimal)({read})" : read;
+                }
+
+                _constraints.Add(
+                    new ConstraintModel(
+                        ConstraintKind.MultipleOf,
+                        Divisor: rendered,
+                        DecimalDomain: decimalDomain,
+                        Field: FieldLiteral(arguments)
+                    )
+                );
+
+                return true;
+            }
 
             private ConstraintModel? PatternConstraint(
                 IReadOnlyDictionary<string, ExpressionSyntax> arguments,
@@ -2680,10 +3036,20 @@ public sealed class RulesFrontEnd
                 SymbolDisplay.FormatLiteral(text, quote: true);
         }
 
+        /// <summary>
+        /// The validator array a descent walks, or null when the descent is dropped.
+        /// </summary>
+        /// <remarks>
+        /// The target is judged here, before the walk is written, because a dropped descent must not
+        /// reach the region's text: the walk names this array, and the array names the target's
+        /// validator.
+        /// </remarks>
         private RegionDependency? DependencyFor(
             IPropertySymbol property,
             bool elements,
-            ExpressionSyntax site
+            ExpressionSyntax value,
+            SyntaxNode call,
+            string construct
         )
         {
             foreach (var existing in _dependencies)
@@ -2697,15 +3063,34 @@ public sealed class RulesFrontEnd
                 }
             }
 
-            var elementType = elements
-                ? TypeFacts.ElementTypeOf(property.Type)
-                : Unwrap(property.Type);
+            var target = elements ? TypeFacts.ElementTypeOf(property.Type) : Unwrap(property.Type);
 
-            if (elementType is not INamedTypeSymbol named)
+            if (target is null)
             {
-                _owner.Report(ValidationDiagnostics.SelectorNotAPath, site, _declaringClass.Name);
+                _owner.Report(ValidationDiagnostics.SelectorNotAPath, value, _declaringClass.Name);
                 return null;
             }
+
+            var verdict = DescentTargets.Judge(
+                target,
+                _compilation,
+                _owner._compileDataAnnotations,
+                _owner._rulesTarget
+            );
+
+            if (verdict != DescentTargets.Verdict.Callable)
+            {
+                if (
+                    DescentTargets.Problem(verdict, target, property.Name, construct) is { } problem
+                )
+                {
+                    _owner.Report(problem.Descriptor, call, problem.Arguments);
+                }
+
+                return null;
+            }
+
+            var named = (INamedTypeSymbol)target;
 
             var camel =
                 property.Name.Length == 0 || char.IsLower(property.Name[0])

@@ -123,8 +123,8 @@ generic type's payload and leave the generic type without constraints.
 **Severity:** Error
 
 A `[StringLength]` or `[ItemCount]` minimum is greater than its maximum, so the constraint can never
-pass. The DataAnnotations `[StringLength]` and `[Length]` are checked too. The first argument of
-`[StringLength]` and `[ItemCount]` is the minimum.
+pass. The DataAnnotations `[StringLength]` and `[Length]` are checked too. The positional argument
+of `[StringLength]` is the maximum, and the first argument of `[ItemCount]` is the minimum.
 
 ### VM1102
 
@@ -144,7 +144,8 @@ A `[Range]` bound does not parse as the property's type, for example a date on a
 
 **Severity:** Error
 
-The `[MultipleOf]` divisor is zero or negative. The constraint is dropped.
+The divisor of `[MultipleOf]`, or a constant divisor of `rules.MultipleOf`, is zero or negative.
+The constraint is dropped.
 
 ### VM1105
 
@@ -188,19 +189,33 @@ implement `IEquatable<T>`.
 
 **Severity:** Error or warning
 
-An inline `[Pattern("...")]` is in a project whose pattern policy rejects it. By
-default that is a project with `PublishAot` or `IsAotCompatible` set to `true`, and the diagnostic
-is an error that drops the constraint. The inline form adds the regular expression interpreter to a
-Native AOT binary. Declare the expression with `[GeneratedRegex]` and point at it with
-`[Pattern(typeof(T), nameof(T.Member))]`, or set `ValidationModules_PatternPolicy` to `Allow`. See
-[Patterns](../guide/patterns).
+An inline `[Pattern("...")]`, or a DataAnnotations `[RegularExpression]`, is in a project whose
+pattern policy rejects it. By default that is a project with `PublishAot` or `IsAotCompatible` set
+to `true`, and the diagnostic is an error that drops the constraint. Both compile to an expression
+parsed at run time, which adds the regular expression interpreter to a Native AOT binary. Declare
+the expression with `[GeneratedRegex]` and point at it with `[Pattern(typeof(T), nameof(T.Member))]`,
+or set `ValidationModules_PatternPolicy` to `Allow`. For `[RegularExpression]`, the message prints
+the expression anchored and made optional, because that attribute matches the whole value and
+passes an empty string. See [Patterns](../guide/patterns).
 
 ### VM1302
 
 **Severity:** Warning
 
-`[Pattern]` sets `Options` to include `RegexOptions.Compiled`. Remove it. For compiled
-matching, use a `[GeneratedRegex]` member.
+An inline `[Pattern]` sets `Options` to include `RegexOptions.Compiled`. The generator removes it,
+because compiling the expression would emit code at run time, and the inline pattern is
+interpreted. Remove it from `Options`. For a matcher compiled at build time, declare the expression
+with `[GeneratedRegex]` and point at it with `[Pattern(typeof(T), nameof(T.Member))]`.
+
+### VM1303
+
+**Severity:** Warning
+
+`[Pattern(typeof(T), nameof(T.Member))]` sets `Options` or `MatchTimeoutMilliseconds`. The
+referenced regex was built with its own options and timeout, so the setting has no effect. Remove
+it and declare it on the `[GeneratedRegex]` instead. The message prints that declaration, merged
+into the member's own `[GeneratedRegex]` when it has one. `RegexOptions.Compiled` is reported here
+rather than as `VM1302`, and only needs removing.
 
 ### VM1401
 
@@ -227,17 +242,19 @@ combines both.
 
 **Severity:** Warning
 
-The type of a `[ValidateNested]` property declares no rules, so there is nothing to
-validate and the descent is dropped. Give the type constraints, a rules class or
-`[GenerateValidator]`, or remove `[ValidateNested]`.
+A descent reaches a type that declares no rules, so there is nothing to validate and the descent
+is dropped. The descent comes from `[ValidateNested]`, or from `Nested` or `Each` in a rules class,
+and the message names which. DataAnnotations attributes that produce no check, such as `[Display]`
+and `[Key]`, are not rules. Give the type constraints, a rules class or `[GenerateValidator]`, or
+remove the descent.
 
 ### VM1502
 
 **Severity:** Warning
 
-The type of a `[ValidateNested]` property is one no validator can be generated for, such as
-a list of lists or a list of nullable values. The descent is dropped. Wrap the inner collection in a
-type that has its own rules.
+A descent reaches a type that no validator can be generated for, such as a list of lists or a list
+of nullable values. The descent comes from `[ValidateNested]`, or from `Nested` or `Each` in a rules
+class. The descent is dropped. Wrap the inner collection in a type that has its own rules.
 
 ### VM1503
 
@@ -253,6 +270,16 @@ reach it, and no `Polymorphism` is given. Seal the type, or pass `Polymorphism.D
 
 `Polymorphism.Runtime` is on a sealed type or a value type, whose actual type can never differ
 from its declared type. Use `Polymorphism.DeclaredOnly`.
+
+### VM1505
+
+**Severity:** Warning
+
+A descent reaches a type declared in another assembly, and this project can reach no validator for
+it. The other assembly has no accessible `<Type>Validator`, and no rules class in this project
+targets the type. This is the case for a framework type such as `StringBuilder`, and for a type from
+an assembly that does not use this generator. The descent is dropped. Declare an
+`IValidationRulesFor<T>` for the type in this project, or remove the descent.
 
 ### VM1601
 
@@ -320,8 +347,9 @@ collection.
 
 **Severity:** Info
 
-The model implements `IValidatableObject`. Its `Validate` method runs after every other rule,
-and only when nothing has been reported in the pass so far, warnings included.
+The model implements `IValidatableObject`. Its `Validate` method runs after every other rule on
+the type, and only when those rules reported no error. Warnings do not stop it, and neither do
+errors on other objects in the same pass.
 
 ### VM2007
 
@@ -345,6 +373,22 @@ A custom `ValidationAttribute` sets `ErrorMessageResourceType`. DataAnnotations 
 resource with reflection, which trimming can break. Set `ErrorMessage`, or keep the resource type
 from being trimmed.
 
+### VM2010
+
+**Severity:** Info
+
+A `ValidationAttribute` is on the class, so it validates the whole object. It runs after the
+property rules, and only when they reported no error, and before `IValidatableObject.Validate`.
+That is the order `Validator.TryValidateObject` uses. A `[CustomValidation]` on the class calls its
+method directly with the object as the value. Any other attribute is created once and called.
+
+The attribute is reported where it is declared. One on a base class or an interface also applies
+to the classes that derive from it or implement it.
+
+It is a warning, and the attribute is not enforced, when the attribute's arguments cannot be
+written into generated code. Move the rule into `IValidatableObject.Validate`, or into an
+[`Ensure`](../guide/rule-classes#ensure) in a rules class.
+
 ## Rules classes
 
 ### VM3001
@@ -354,11 +398,13 @@ from being trimmed.
 `Describe` contains something the generator cannot copy into the validator. The message names it.
 The cases are a `try`, `lock`, `using` or `goto` statement, a `return` with a value, an assignment
 to a member of `x`, `Apply` anywhere but the top level of `Describe`, `Require` chained after
-`Each`, `Nested`, `Each` or `Apply` inside a fragment, and a rule call that does not compile.
+`Each`, `Nested`, `Each` or `Apply` inside a fragment, and a rule call that does not compile. The
+descents that are refused are `Nested` on a collection or a dictionary, and a second `Nested` or
+`Each` in the same chain as one before it. Use `Each` for a list, and `[ValidateNested]` on the
+property for a dictionary. See [the rules API reference](./rules-api#collections).
 
 Pass `Apply` a method group. A lambda passed to `Apply` produces generated code that does not
-compile in this version, and no diagnostic reports it. `Nested` or `Each` chained after `Each` is
-not supported either. See [the rules API reference](./rules-api#collections).
+compile in this version, and no diagnostic reports it.
 
 ### VM3002
 
@@ -375,6 +421,10 @@ a fragment or `As` given something other than `x`.
 A rule is declared inside a loop or a local function. A local function also gives `VM3002`, and a
 rule inside a lambda gives `VM3002` alone. Use `Each` for per-element rules, or report from the loop
 through `rules.Context`.
+
+`rules.Context` inside a lambda, an anonymous method, a local function or a query expression gives
+`VM3003` too. The generated code passes the context by reference, and none of those can capture it.
+Report from a `foreach` loop instead.
 
 ### VM3004
 
@@ -438,6 +488,15 @@ the generator corrects the call. Remove `.Value`.
 `As<TFacet>` names an interface or base type that has no rules in this project. Give it
 constraint attributes or a rules class.
 
+### VM3106
+
+**Severity:** Warning
+
+`Nested` or `Each` in a rules class descends into a property that already has `[ValidateNested]`.
+Both descents would run, and every error in the nested object would be reported twice. The
+rules-class descent is dropped. Remove it, or remove `[ValidateNested]` to keep the descent in the
+rules class.
+
 ## Language packs
 
 These diagnostics point at the JSON file.
@@ -500,18 +559,19 @@ one, so fix it first.
 The generator failed while writing code. The build fails so that a validator cannot go
 missing without notice. The message names the stage and the exception. Please
 [report it](https://github.com/ipjohnson/ValidationModules/issues). Until it is fixed, change the
-construct the message names. One known cause is `Each` over a collection of collections in a rules
-class.
+construct the message names. One known cause is two types in one namespace whose names differ only
+in case.
 
 ### VM5003
 
 **Severity:** Warning
 
 `.Validate<T>()` names a type in this project that has no constraints, no
-`[GenerateValidator]`, no rules class and no hand-written validator, so the endpoint would fail when
-it is built. Add rules or `[GenerateValidator]`. When the rules come from another assembly, the
-warning does not apply. This is the one diagnostic that an analyzer reports rather than the
-generator.
+`[GenerateValidator]`, no rules class and no hand-written validator. The endpoint throws when it is
+built, which in a default application happens on its first request. Add rules or
+`[GenerateValidator]`. When `ValidationModules_DataAnnotations` is `Ignore`, DataAnnotations
+attributes do not count as rules. When the rules come from another assembly, the warning does not
+apply. This is the one diagnostic that an analyzer reports rather than the generator.
 
 ## Registration
 

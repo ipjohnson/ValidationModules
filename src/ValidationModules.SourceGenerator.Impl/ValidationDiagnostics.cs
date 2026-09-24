@@ -230,23 +230,171 @@ public static class ValidationDiagnostics
     /// severity is overridden per site from the resolved policy, because the same situation is a
     /// build error for an AOT-facing project and unremarkable for a JIT one.
     /// </summary>
+    /// <remarks>
+    /// The fix is an argument rather than part of the format, because the two attributes that
+    /// reach this need different ones. An inline <c>[Pattern]</c> keeps its attribute and changes
+    /// its arguments. A DataAnnotations <c>[RegularExpression]</c> is replaced by <c>[Pattern]</c>,
+    /// and its expression has to change on the way, because it matched the whole value and passed
+    /// an empty one. See <see cref="InlinePatternFix"/> and <see cref="RegularExpressionFix"/>.
+    /// </remarks>
     public static readonly DiagnosticDescriptor InlinePatternUnderAot = Descriptor(
         "VM1301",
         "Inline pattern roots the regex engine",
         "The pattern on '{0}' is built from a string at run time, which roots the regex parser and "
-            + "interpreter - about 450 KB on an AOT-published binary, once, however many patterns follow. "
-            + "Declare it as a "
-            + "[GeneratedRegex] and point at it: [Pattern(typeof({1}Patterns), nameof({1}Patterns.{0}))]. "
-            + "Set ValidationModules_PatternPolicy to Allow to keep the inline form",
+            + "interpreter. That costs about 450 KB on an AOT-published binary, once, however many "
+            + "patterns follow. {1}. Set ValidationModules_PatternPolicy to Allow to keep the "
+            + "inline form",
         DiagnosticSeverity.Warning
     );
 
+    /// <summary>VM1301's fix for an inline <c>[Pattern]</c>.</summary>
+    public static string InlinePatternFix(string member, string? type) =>
+        "Declare it as a [GeneratedRegex] and point at it: "
+        + $"[Pattern(typeof({type}Patterns), nameof({type}Patterns.{member}))]";
+
+    /// <summary>
+    /// VM1301's fix for a DataAnnotations <c>[RegularExpression]</c>, with its expression written
+    /// out the way <c>[Pattern]</c> needs it to keep the same meaning.
+    /// </summary>
+    public static string RegularExpressionFix(string member, string? type, string pattern) =>
+        $"Declare it as {GeneratedRegexDeclaration(@"\A(?:" + pattern + @")?\z", 0, null, null)}, "
+        + "anchored because [RegularExpression] matches the whole value and optional because it "
+        + "passes an empty one. Then replace [RegularExpression] with "
+        + $"[Pattern(typeof({type}Patterns), nameof({type}Patterns.{member}))]";
+
+    /// <summary>
+    /// <c>RegexOptions.Compiled</c> on an inline pattern, where it would compile the expression
+    /// through <c>Reflection.Emit</c> when the validator loads.
+    /// </summary>
+    /// <remarks>
+    /// Removed rather than passed through, so the emitted constructor never carries it and the
+    /// message is true. With nothing else set, the validator then uses the single-argument
+    /// constructor. On the reference form the option is VM1303's business, like every other
+    /// setting that form ignores.
+    /// </remarks>
     public static readonly DiagnosticDescriptor CompiledRegexRequested = Descriptor(
         "VM1302",
-        "RegexOptions.Compiled is not meaningful here",
-        "Patterns compile through [GeneratedRegex]; RegexOptions.Compiled on '{0}' is ignored",
+        "RegexOptions.Compiled is removed from an inline pattern",
+        "RegexOptions.Compiled on '{0}' is removed, so the inline pattern is interpreted. "
+            + "Compiling it would emit IL through Reflection.Emit when the validator loads, which "
+            + "this library does not do. For a matcher compiled at build time, declare it as a "
+            + "[GeneratedRegex] and point at it: [Pattern(typeof({1}Patterns), "
+            + "nameof({1}Patterns.{0}))]",
         DiagnosticSeverity.Warning
     );
+
+    /// <summary>
+    /// <c>Options</c> or <c>MatchTimeoutMilliseconds</c> on the reference form, which calls a regex
+    /// that was built with its own options and timeout and reads neither.
+    /// </summary>
+    /// <remarks>
+    /// A setting that does nothing is worse than no setting: <c>Options = RegexOptions.IgnoreCase</c>
+    /// reads as case-insensitive matching, and the check stays case-sensitive. The tail prints the
+    /// declaration that would do what was asked, from the referenced method's own
+    /// <c>[GeneratedRegex]</c> when there is one to read.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor ReferencedPatternSettingIgnored = Descriptor(
+        "VM1303",
+        "Options and MatchTimeoutMilliseconds do not apply to a referenced regex",
+        "[Pattern] on '{0}' uses '{1}', which carries its own options and timeout, so '{2}' does "
+            + "nothing. {3}",
+        DiagnosticSeverity.Warning
+    );
+
+    /// <summary>VM1303's tail when the setting belongs on the regex.</summary>
+    public static string ReferencedPatternMoveTail(string declaration) =>
+        $"Declare it on the regex instead: {declaration}";
+
+    /// <summary>VM1303's tail when <c>RegexOptions.Compiled</c> is all that was set.</summary>
+    public const string ReferencedPatternCompiledTail =
+        "Remove it. [GeneratedRegex] writes the matcher as C# at build time, so it is compiled "
+        + "already";
+
+    /// <summary>VM1303's tail when the regex already declares what was set.</summary>
+    public const string ReferencedPatternRedundantTail =
+        "Remove it. The regex already declares the same";
+
+    /// <summary>
+    /// A <c>[GeneratedRegex]</c> attribute as it would be typed. A null pattern prints as
+    /// <c>"..."</c>, for a regex whose declaration cannot be read.
+    /// </summary>
+    public static string GeneratedRegexDeclaration(
+        string? pattern,
+        int options,
+        int? matchTimeoutMilliseconds,
+        string? cultureName
+    )
+    {
+        // Verbatim, because an expression is usually full of backslashes.
+        var arguments = new List<string>
+        {
+            pattern is null ? "\"...\"" : "@\"" + pattern.Replace("\"", "\"\"") + "\"",
+        };
+
+        // The constructors that take a timeout or a culture take the options before them.
+        if (options != 0 || matchTimeoutMilliseconds is not null || cultureName is not null)
+        {
+            arguments.Add(RegexOptionsText(options));
+        }
+
+        if (matchTimeoutMilliseconds is { } timeout)
+        {
+            arguments.Add($"matchTimeoutMilliseconds: {timeout}");
+        }
+
+        if (cultureName is not null)
+        {
+            arguments.Add($"cultureName: \"{cultureName}\"");
+        }
+
+        return $"[GeneratedRegex({string.Join(", ", arguments)})]";
+    }
+
+    /// <summary><c>RegexOptions</c> flags as they would be typed.</summary>
+    public static string RegexOptionsText(int options)
+    {
+        if (options == 0)
+        {
+            return "RegexOptions.None";
+        }
+
+        var parts = new List<string>();
+        var unnamed = options;
+
+        foreach (var (flag, name) in RegexOptionNames)
+        {
+            if ((options & flag) != 0)
+            {
+                parts.Add($"RegexOptions.{name}");
+                unnamed &= ~flag;
+            }
+        }
+
+        if (unnamed != 0)
+        {
+            parts.Add($"(RegexOptions){unnamed}");
+        }
+
+        return string.Join(" | ", parts);
+    }
+
+    /// <summary>
+    /// The named <c>RegexOptions</c> flags. A table rather than the enum, because netstandard2.0's
+    /// <c>RegexOptions</c> predates <c>NonBacktracking</c>.
+    /// </summary>
+    private static readonly (int Flag, string Name)[] RegexOptionNames =
+    {
+        (1, "IgnoreCase"),
+        (2, "Multiline"),
+        (4, "ExplicitCapture"),
+        (8, "Compiled"),
+        (16, "Singleline"),
+        (32, "IgnorePatternWhitespace"),
+        (64, "RightToLeft"),
+        (256, "ECMAScript"),
+        (512, "CultureInvariant"),
+        (1024, "NonBacktracking"),
+    };
 
     public static readonly DiagnosticDescriptor ConditionMemberNotFound = Descriptor(
         "VM1401",
@@ -278,7 +426,8 @@ public static class ValidationDiagnostics
     );
 
     /// <summary>
-    /// <c>[ValidateNested]</c> pointing at a type that has no rules, so the descent finds nothing.
+    /// A descent into a type that has no rules, so it finds nothing. <c>[ValidateNested]</c>,
+    /// <c>rules.Nested</c> and <c>rules.Each</c> all ask for one, and the message names which.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -293,16 +442,17 @@ public static class ValidationDiagnostics
     /// the nested type's own constraints is an ordinary order to work in.
     /// </para>
     /// <para>
-    /// Only reported for types this compilation declares. A nested type from a referenced assembly
-    /// may carry a validator generated over there, which we cannot see and must not second-guess -
-    /// a false negative, which is the safe direction.
+    /// Only reported for types this compilation declares. A type from a referenced assembly is
+    /// VM1505's, because what decides the descent there is whether a validator for it can be
+    /// reached, not what the type declares.
     /// </para>
     /// </remarks>
     public static readonly DiagnosticDescriptor NestedTypeHasNoRules = Descriptor(
         "VM1501",
-        "[ValidateNested] target has no rules",
-        "'{0}' declares no constraints and no [GenerateValidator], so [ValidateNested] on '{1}' "
-            + "validates nothing and the descent is dropped",
+        "Nested target has no rules",
+        "'{0}' declares no constraints and no [GenerateValidator], and no rules class targets it, so "
+            + "{2} on '{1}' validates nothing and the descent is dropped. Give '{0}' rules, or remove "
+            + "{2}",
         DiagnosticSeverity.Warning
     );
 
@@ -327,9 +477,9 @@ public static class ValidationDiagnostics
     /// </remarks>
     public static readonly DiagnosticDescriptor NestedTargetCannotHaveValidator = Descriptor(
         "VM1502",
-        "[ValidateNested] target can never have a validator",
-        "'{0}' is not a type a validator can be generated for, so [ValidateNested] on '{1}' is "
-            + "dropped; model the inner collection as a property of a type that declares its own rules",
+        "Nested target can never have a validator",
+        "'{0}' is not a type a validator can be generated for, so {2} on '{1}' is dropped; model "
+            + "the inner collection as a property of a type that declares its own rules",
         DiagnosticSeverity.Warning
     );
 
@@ -365,6 +515,32 @@ public static class ValidationDiagnostics
         "'{0}' is {1}, so its runtime type can never differ from its declared type and dispatching "
             + "on it costs a container lookup for the same answer. Use Polymorphism.DeclaredOnly",
         DiagnosticSeverity.Error
+    );
+
+    /// <summary>
+    /// A descent into a type declared in another assembly that offers no validator this compilation
+    /// can reach.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The generated descent constructs the target's validator by name, so it compiles only when
+    /// that validator is a type this compilation can see: generated in the target's own assembly and
+    /// accessible from here, or generated here from a rules class. A type from an assembly that never
+    /// ran this generator has neither, and neither does a framework type such as
+    /// <c>StringBuilder</c>.
+    /// </para>
+    /// <para>
+    /// Warning rather than error for VM1501's reason: the descent is dropped, so nothing runs that
+    /// should not.
+    /// </para>
+    /// </remarks>
+    public static readonly DiagnosticDescriptor NestedTargetHasNoVisibleValidator = Descriptor(
+        "VM1505",
+        "Nested target from another assembly has no validator",
+        "'{0}' is declared in '{1}' and no validator for it is visible here: there is no accessible "
+            + "'{2}', and no rules class in this compilation targets it. {3} on '{4}' is dropped. "
+            + "Declare an IValidationRulesFor<{0}> in this assembly, or remove {3}",
+        DiagnosticSeverity.Warning
     );
 
     /// <summary>
@@ -568,6 +744,43 @@ public static class ValidationDiagnostics
     );
 
     /// <summary>
+    /// A <c>ValidationAttribute</c> on the class rather than on a property: a whole-object rule,
+    /// which <c>Validator.TryValidateObject</c> runs once the property attributes pass and before
+    /// <c>IValidatableObject.Validate</c>.
+    /// </summary>
+    /// <remarks>
+    /// The VM2006 arrangement, one descriptor with the outcome in the tail. Info at the default,
+    /// because the rule is enforced in DataAnnotations' order and there is nothing to fix; Info with
+    /// the ignoring tail under <c>ValidationModules_DataAnnotations=Ignore</c>; and Warning with the
+    /// not-enforced tail for an attribute whose arguments cannot be rendered. Reported where the
+    /// attribute is declared, so an attribute a base type or an interface carries is reported
+    /// there rather than once per type that inherits it.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor ClassLevelValidationAttribute = Descriptor(
+        "VM2010",
+        "Class-level ValidationAttribute runs after the property rules pass",
+        "'{0}' on '{1}' validates the whole object. {2}",
+        DiagnosticSeverity.Info
+    );
+
+    /// <summary>VM2010's tail when the attribute is constructed and invoked.</summary>
+    public const string ClassLevelInvokeTail =
+        "The generated validator constructs it once and calls it after every property rule on the "
+        + "type has passed, and before IValidatableObject, as Validator.TryValidateObject sequences "
+        + "it; the type keeps no boolean fast path";
+
+    /// <summary>VM2010's tail for a class-level <c>[CustomValidation]</c>, which is called directly.</summary>
+    public const string ClassLevelMethodTail =
+        "The generated validator calls its method directly after every property rule on the type "
+        + "has passed, and before IValidatableObject, as Validator.TryValidateObject sequences it; "
+        + "the type keeps no boolean fast path";
+
+    /// <summary>VM2010's tail when the attribute's arguments cannot be rendered.</summary>
+    public const string ClassLevelEnforceTail =
+        "It is not enforced, because its arguments cannot be written into generated code; move the "
+        + "rule into IValidatableObject.Validate, or into an Ensure in a rules class";
+
+    /// <summary>
     /// A Describe body is transcribed, and almost everything transcribes; what remains rejected is
     /// the short blacklist - exotica, mutation of the subject, misplaced islands. Never silently
     /// dropped: a statement the reader cannot carry has to break the build, because the generated
@@ -598,14 +811,31 @@ public static class ValidationDiagnostics
     /// lambda gives them none. Collections are Each's job; the reporter tier covers the exotic
     /// per-element case with a computed field string.
     /// </summary>
+    /// <remarks>
+    /// The tail says which of the two cases it is. A rule declared where the reader cannot expand
+    /// it takes <see cref="IslandScopeTail"/>. <c>rules.Context</c> is allowed in a loop, but it
+    /// becomes the region method's <c>ref</c> parameter, which a lambda, an anonymous method, a
+    /// local function or a query cannot capture, so there it takes
+    /// <see cref="ContextCaptureTail"/> rather than failing as CS1628 in generated code.
+    /// </remarks>
     public static readonly DiagnosticDescriptor IslandInUnreadableScope = Descriptor(
         "VM3003",
         "Rule declaration inside a loop, lambda, or local function",
-        "'{0}.Describe' declares a rule inside a scope the generator cannot expand it in. Use Each "
-            + "for collections - a collection of strings chains element rules, "
-            + "Each(x.Steps).Length(5, 500) - or report per element through rules.Context",
+        "'{0}.Describe' {1}",
         DiagnosticSeverity.Error
     );
+
+    /// <summary>VM3003's tail for a rule declared inside a loop or a local function.</summary>
+    public const string IslandScopeTail =
+        "declares a rule inside a scope the generator cannot expand it in. Use Each for "
+        + "collections - a collection of strings chains element rules, "
+        + "Each(x.Steps).Length(5, 500) - or report per element through rules.Context";
+
+    /// <summary>VM3003's tail for <c>rules.Context</c> inside a scope that would capture it.</summary>
+    public static string ContextCaptureTail(string scope) =>
+        $"uses rules.Context inside {scope}, which cannot capture the validation context the "
+        + "generated code passes by reference. Report from a foreach loop instead, which reaches "
+        + "rules.Context directly";
 
     /// <summary>
     /// Transcribed code must compile at the emission site: the companion file is internal to the
@@ -718,6 +948,24 @@ public static class ValidationDiagnostics
         DiagnosticSeverity.Error
     );
 
+    /// <summary>
+    /// A rules-class descent into a property that already carries <c>[ValidateNested]</c>.
+    /// </summary>
+    /// <remarks>
+    /// Attributes and a rules class merge onto one validator, so both descents would run and every
+    /// error inside the nested object would be reported twice. The rules-class descent is the one
+    /// dropped, because only the attribute can carry a <c>Polymorphism</c> mode. Warning rather
+    /// than error: the property is still validated, once.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor RulesDescentRepeatsValidateNested = Descriptor(
+        "VM3106",
+        "Rules-class descent repeats [ValidateNested]",
+        "'{0}' already carries [ValidateNested], so {1} would validate it a second time and report "
+            + "every nested error twice. The {1} descent is dropped. Remove it, or remove "
+            + "[ValidateNested] to keep the descent in the rules class",
+        DiagnosticSeverity.Warning
+    );
+
     public static readonly DiagnosticDescriptor LanguagePackUnreadable = Descriptor(
         "VM4001",
         "Language pack cannot be read",
@@ -807,9 +1055,10 @@ public static class ValidationDiagnostics
         "VM5003",
         "Validate<T>() names a type with no validator",
         "'{0}' has no constraints, no [GenerateValidator], and no rules class or hand-written "
-            + "validator in this compilation, so .Validate<{1}>() will fail when the endpoint is "
-            + "built. Add constraints or [GenerateValidator] - or, if its rules arrive from another "
-            + "assembly, ignore this and the startup check will agree",
+            + "validator in this compilation, so .Validate<{1}>() will throw when the endpoint is "
+            + "built, which in a default application happens on its first request. Add constraints "
+            + "or [GenerateValidator] to '{0}'. If its rules come from another assembly, call that "
+            + "assembly's Add<Assembly>Validators() and ignore this warning",
         DiagnosticSeverity.Warning
     );
 

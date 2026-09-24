@@ -96,7 +96,7 @@ diagnostic with an id of the form `VM####`, in the IDE and in the build:
 | Declaration | Diagnostic |
 | --- | --- |
 | `[StringLength]` on an `int` property | `VM1001`, error |
-| `[StringLength(10, 1)]` | `VM1101`, error |
+| `[StringLength(1, Min = 10)]` | `VM1101`, error |
 | `[Pattern("(")]` | `VM1106`, error |
 | `[Required]` on an `int` property | `VM1201`, warning |
 
@@ -113,8 +113,8 @@ errors](./errors) covers these types.
 attributes, the generated `IsValid` repeats the checks and returns `false` at the first failure,
 without building paths, messages or error records. Some types run a full `Validate` pass instead and
 discard the errors: a type with a rules class, a type that implements `IValidatableObject`, a type
-with a `Polymorphism.Runtime` property, and a type that contains itself directly or through other
-types.
+with a `ValidationAttribute` on the class, a type with a `Polymorphism.Runtime` property, and a type
+that contains itself directly or through other types.
 
 ## Performance
 

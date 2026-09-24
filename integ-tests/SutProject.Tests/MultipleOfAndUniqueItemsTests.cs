@@ -1,3 +1,4 @@
+using SutProject.Declared;
 using ValidationModules;
 using Xunit;
 
@@ -82,6 +83,34 @@ public class MultipleOfAndUniqueItemsTests
     public void Double_StillRejectsWhatIsNotAMultiple(double ratio)
     {
         Assert.False(new OrderValidator().IsValid(Valid() with { Ratio = ratio }));
+    }
+
+    /// <summary>
+    /// The rules-class double overload decides the same values the attribute does, including the
+    /// ones a binary-domain check would get wrong.
+    /// </summary>
+    [Theory]
+    [InlineData(0.3, true)]
+    [InlineData(1.05, true)]
+    [InlineData(99.99, true)]
+    [InlineData(0.125, false)]
+    public void RulesClassDouble_AgreesWithTheAttribute(double ratio, bool expected)
+    {
+        IValidatorFor<Mixture> rules = new MixtureValidator();
+
+        Assert.Equal(expected, rules.IsValid(new Mixture { Ratio = ratio }));
+        Assert.Equal(expected, new OrderValidator().IsValid(Valid() with { Ratio = ratio }));
+    }
+
+    [Fact]
+    public void RulesClassDouble_NamesTheDivisorItWasGiven()
+    {
+        IValidatorFor<Mixture> rules = new MixtureValidator();
+
+        var error = Assert.Single(rules.Validate(new Mixture { Ratio = 0.125 }).Errors);
+
+        Assert.Equal(ValidationCodes.MultipleOf, error.Code);
+        Assert.Equal("ratio must be a multiple of 0.01.", error.Message);
     }
 
     [Fact]

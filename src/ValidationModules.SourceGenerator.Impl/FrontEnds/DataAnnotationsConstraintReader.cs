@@ -66,6 +66,16 @@ public static class DataAnnotationsConstraintReader
         Array.IndexOf(Constraints, attributeName) >= 0
         || Array.IndexOf(FormatValidators, attributeName) >= 0;
 
+    /// <summary>
+    /// Whether <see cref="Read"/> compiles the attribute into a check: every constraint
+    /// <see cref="IsConstraint"/> names, and <c>[CustomValidation]</c>, which compiles to a direct
+    /// call. No other attribute in the namespace produces a check. <c>[Display]</c> and
+    /// <c>[Key]</c> describe the property, and <c>[Compare]</c> and <c>[EnumDataType]</c> are
+    /// reported instead, so a type carrying only those gets no validator.
+    /// </summary>
+    public static bool Compiles(string attributeName) =>
+        IsConstraint(attributeName) || attributeName == "CustomValidationAttribute";
+
     public static Outcome Read(
         AttributeData attribute,
         string attributeName,
@@ -173,13 +183,16 @@ public static class DataAnnotationsConstraintReader
 
                 // Anchored, unlike the native [Pattern]. DataAnnotations checks that the match
                 // starts at 0 and consumes the whole value; the native attribute follows JSON
-                // Schema, which does not.
+                // Schema, which does not. And an empty string passes untested, as
+                // RegularExpressionAttribute.IsValid returns true for it: an HTML form posts an
+                // optional field left blank as "", and a migrated model must keep accepting it.
                 return new Outcome(
                     new ConstraintModel(
                         ConstraintKind.Pattern,
                         Message: NativeConstraintReader.Named(attribute, "ErrorMessage") as string,
                         Pattern: pattern,
-                        Anchored: true
+                        Anchored: true,
+                        PassesEmpty: true
                     ),
                     null
                 );

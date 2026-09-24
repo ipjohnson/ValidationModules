@@ -110,7 +110,7 @@ public class ValidatorEmitterGoldenTests
 
                 public record Pet {
                     [Required]
-                    [StringLength(1, 100)]
+                    [StringLength(100, Min = 1)]
                     public string? Name { get; init; }
 
                     [Range(0, 30)]
@@ -391,8 +391,8 @@ public class ValidatorEmitterGoldenTests
     {
         // The three DataAnnotations surfaces that carry user code: a custom attribute constructed
         // once into a static field, a [CustomValidation] method resolved to a direct static call
-        // in both arities, and IValidatableObject sequenced last behind a clean-pass gate - which
-        // also costs the type its boolean fast path.
+        // in both arities, and IValidatableObject sequenced last behind a gate on what this
+        // validator recorded since its mark - which also costs the type its boolean fast path.
         Snapshot.Match(
             Emit(
                 """

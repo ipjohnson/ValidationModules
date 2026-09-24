@@ -24,8 +24,29 @@ WORK="$(cd "$(mktemp -d)" && pwd -P)"
 KNOBS="$(cd "$(mktemp -d)" && pwd -P)"
 trap 'rm -rf "${FEED}" "${WORK}" "${KNOBS}"' EXIT
 
+PACKAGES="Runtime AspNetCore Options SourceGenerator SourceGenerator.Impl Messages"
+
+# Each workflow packs from a list of its own. A project missing from one list builds, tests and
+# publishes cleanly, on one feed only, and nothing else notices. Both lists have to name exactly
+# the packages this script verifies.
+echo "Checking the workflows pack every package"
+EXPECTED_PACKS="$(for package in ${PACKAGES}; do
+    echo "src/ValidationModules.${package}/ValidationModules.${package}.csproj"
+done | sort)"
+
+for workflow in release.yaml build-package.yaml; do
+    PACKED="$(grep -oE 'src/ValidationModules[A-Za-z.]*/ValidationModules[A-Za-z.]*\.csproj' \
+        "${REPO_ROOT}/.github/workflows/${workflow}" | sort -u)"
+
+    if [ "${PACKED}" != "${EXPECTED_PACKS}" ]; then
+        echo "FAILED: ${workflow} does not pack exactly the packages this script verifies"
+        diff <(echo "${EXPECTED_PACKS}") <(echo "${PACKED}") || true
+        exit 1
+    fi
+done
+
 echo "Packing ${VERSION}"
-for project in Runtime AspNetCore Options SourceGenerator SourceGenerator.Impl Messages; do
+for project in ${PACKAGES}; do
     dotnet pack "${REPO_ROOT}/src/ValidationModules.${project}/ValidationModules.${project}.csproj" \
         --configuration Release --output "${FEED}" --nologo \
         "/p:PackageVersion=${VERSION}" > /dev/null
@@ -262,7 +283,7 @@ namespace Sample {
     }
 
     public sealed record Pet {
-        [Required][StringLength(min: 1, max: 10)] public string? Name { get; init; }
+        [Required][StringLength(10, Min = 1)] public string? Name { get; init; }
         [Pattern(typeof(Patterns), nameof(Patterns.Sku))] public string? Sku { get; init; }
         [ItemCount(min: 1, max: 3)][ValidateNested] public IReadOnlyList<Toy> Toys { get; init; } = new List<Toy>();
     }

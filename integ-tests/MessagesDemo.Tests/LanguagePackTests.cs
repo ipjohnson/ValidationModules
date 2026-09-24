@@ -9,8 +9,9 @@ namespace MessagesDemo.Tests;
 /// <summary>
 /// The language-pack pipeline end to end: five JSON files compiled by the generator, registered
 /// by <c>AddMessagesDemoValidators()</c>, selected by ambient culture through the formatter the
-/// same registration TryAdds - and the app-local override file winning per key because it landed
-/// later in the additional-files order.
+/// same registration TryAdds - and the app-local files layered over them. The override wins its
+/// one key because it landed later in the additional-files order, and the files in <c>Codes/</c>
+/// translate <c>date_order</c>, which no shipped pack carries.
 /// </summary>
 public class LanguagePackTests
 {
@@ -65,6 +66,7 @@ public class LanguagePackTests
         Assert.Equal("partySize doit être compris entre 1 et 8.", messages["partySize"]);
         Assert.Equal("code n'a pas le format requis.", messages["code"]);
         Assert.Equal("guests doit compter entre 1 et 4 éléments.", messages["guests"]);
+        // …and the application's own code comes from its own file, Codes/codes.fr.
         Assert.Equal("la date de fin doit suivre la date de début.", messages["end"]);
     }
 
@@ -91,7 +93,6 @@ public class LanguagePackTests
     [InlineData("zh", "partySize", "partySize必须介于1和8之间。")]
     [InlineData("ja", "partySize", "partySizeは1から8の範囲で入力してください。")]
     [InlineData("zh-CN", "code", "code的格式不正确。")]
-    [InlineData("ja", "end", "終了日は開始日より後にしてください。")]
     public void EveryShippedLanguage_RendersFromItsPack(
         string culture,
         string field,
@@ -99,6 +100,50 @@ public class LanguagePackTests
     )
     {
         Assert.Equal(expected, MessagesUnder(culture)[field]);
+    }
+
+    /// <summary>
+    /// <c>date_order</c> is this application's code, so the application translates it, in files of
+    /// its own layered over the shipped packs. The shipped packs carry library keys only.
+    /// </summary>
+    [Theory]
+    [InlineData("de", "das Enddatum darf nicht vor dem Startdatum liegen.")]
+    [InlineData("es", "la fecha final debe ser posterior a la inicial.")]
+    [InlineData("fr", "la date de fin doit suivre la date de début.")]
+    [InlineData("ja", "終了日は開始日より後にしてください。")]
+    [InlineData("zh-CN", "结束日期不能早于开始日期。")]
+    public void TheApplicationsOwnCode_IsTranslatedByItsOwnFiles(string culture, string expected)
+    {
+        Assert.Equal(expected, MessagesUnder(culture)["end"]);
+    }
+
+    /// <summary>
+    /// A hand-written validator reports a built-in code with a finished message and no arguments.
+    /// The shipped templates for these three codes need an argument, so the error keeps its own
+    /// sentence rather than rendering the pack's with a literal <c>{0}</c> in it.
+    /// </summary>
+    [Theory]
+    [InlineData(ValidationCodes.Enum)]
+    [InlineData(ValidationCodes.MultipleOf)]
+    [InlineData(ValidationCodes.FileExtension)]
+    public void AFinishedMessage_IsNotReplacedByATemplateNeedingAnArgument(string code)
+    {
+        using var services = Services();
+
+        var formatter = services.GetRequiredService<ValidationMessageFormatter>();
+        var error = new ValidationError("status", code, "status must be open or closed.");
+        var previous = CultureInfo.CurrentUICulture;
+
+        try
+        {
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("fr");
+
+            Assert.Equal("status must be open or closed.", error.ToMessage(formatter));
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = previous;
+        }
     }
 
     [Fact]

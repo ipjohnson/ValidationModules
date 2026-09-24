@@ -1,0 +1,6 @@
+{
+    "culture": "es",
+    "templates": {
+        "date_order": "la fecha final debe ser posterior a la inicial."
+    }
+}

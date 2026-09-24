@@ -23,7 +23,7 @@ namespace ValidationModules.Benchmarks.Comparative.Models;
 public sealed record Customer
 {
     [Required]
-    [StringLength(min: 1, max: 100)]
+    [StringLength(100, Min = 1)]
     public string? Name { get; init; }
 
     [Required]
@@ -60,11 +60,11 @@ public sealed record Order
 public sealed record Address
 {
     [Required]
-    [StringLength(min: 1, max: 120)]
+    [StringLength(120, Min = 1)]
     public string? Line1 { get; init; }
 
     [Required]
-    [StringLength(min: 1, max: 60)]
+    [StringLength(60, Min = 1)]
     public string? City { get; init; }
 
     [Required]

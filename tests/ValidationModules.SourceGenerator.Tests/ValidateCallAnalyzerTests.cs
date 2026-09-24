@@ -28,7 +28,10 @@ public class ValidateCallAnalyzerTests
         }
         """;
 
-    private static ImmutableArray<Diagnostic> Analyze(string source)
+    private static ImmutableArray<Diagnostic> Analyze(
+        string source,
+        params (string Key, string Value)[] buildProperties
+    )
     {
         var compilation = CSharpCompilation.Create(
             "AnalyzerTests",
@@ -41,7 +44,13 @@ public class ValidateCallAnalyzerTests
         );
 
         return compilation
-            .WithAnalyzers(ImmutableArray.Create<DiagnosticAnalyzer>(new ValidateCallAnalyzer()))
+            .WithAnalyzers(
+                ImmutableArray.Create<DiagnosticAnalyzer>(new ValidateCallAnalyzer()),
+                new AnalyzerOptions(
+                    ImmutableArray<AdditionalText>.Empty,
+                    new GeneratorHarness.OptionsProvider(buildProperties)
+                )
+            )
             .GetAnalyzerDiagnosticsAsync()
             .GetAwaiter()
             .GetResult();
@@ -77,6 +86,65 @@ public class ValidateCallAnalyzerTests
 
         Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
         Assert.Contains("Coupon", diagnostic.GetMessage());
+
+        // The filter factory checks when the endpoint is built, which is not application startup:
+        // a default application builds its endpoints on the first request.
+        Assert.Contains("when the endpoint is built", diagnostic.GetMessage());
+        Assert.DoesNotContain("startup", diagnostic.GetMessage());
+    }
+
+    private const string DataAnnotationsOnlyProduct = """
+
+        public sealed record Product {
+            [System.ComponentModel.DataAnnotations.Required] public string? Name { get; init; }
+        }
+
+        public static class Wiring {
+            public static void Map(RouteHandlerBuilder builder) => builder.Validate<Product>();
+        }
+        """;
+
+    [Fact]
+    public void ADataAnnotationsOnlyType_UnderIgnore_IsVM5003()
+    {
+        // Under Ignore the generator emits no validator for Product, so the endpoint fails on its
+        // first request. The analyzer has to read the same setting to say so.
+        var diagnostics = Analyze(
+            Usings + DataAnnotationsOnlyProduct,
+            ("ValidationModules_DataAnnotations", "Ignore")
+        );
+
+        Assert.Contains("Product", Assert.Single(diagnostics, d => d.Id == "VM5003").GetMessage());
+    }
+
+    [Fact]
+    public void ADataAnnotationsOnlyType_WhenDataAnnotationsCompile_IsSilent()
+    {
+        var diagnostics = Analyze(Usings + DataAnnotationsOnlyProduct);
+
+        Assert.DoesNotContain(diagnostics, d => d.Id == "VM5003");
+    }
+
+    [Fact]
+    public void ATypeWhoseOnlyAttributeIsDisplay_IsVM5003()
+    {
+        // [Display] labels a property and produces no check, so the type gets no validator.
+        var diagnostics = Analyze(
+            Usings
+                + """
+
+                public sealed record Coupon {
+                    [System.ComponentModel.DataAnnotations.Display(Name = "Coupon code")]
+                    public string? Code { get; init; }
+                }
+
+                public static class Wiring {
+                    public static void Map(RouteHandlerBuilder builder) => builder.Validate<Coupon>();
+                }
+                """
+        );
+
+        Assert.Single(diagnostics, d => d.Id == "VM5003");
     }
 
     [Fact]
@@ -97,6 +165,36 @@ public class ValidateCallAnalyzerTests
         );
 
         Assert.Contains("Coupon", Assert.Single(diagnostics, d => d.Id == "VM5003").GetMessage());
+    }
+
+    [Fact]
+    public void ATypeWhoseOnlyRuleIsAClassLevelValidationAttribute_IsSilent()
+    {
+        // The generator gives it a validator that runs the attribute, as
+        // Validator.TryValidateObject would, so there is nothing for the endpoint to miss.
+        var diagnostics = Analyze(
+            Usings
+                + """
+
+                [System.AttributeUsage(System.AttributeTargets.Class)]
+                public sealed class NonEmptyCartAttribute : System.ComponentModel.DataAnnotations.ValidationAttribute {
+                    public override bool IsValid(object? value) => true;
+                }
+
+                [NonEmptyCart]
+                public abstract class CartBase { }
+
+                public sealed class Cart : CartBase {
+                    public string? Code { get; init; }
+                }
+
+                public static class Wiring {
+                    public static void Map(RouteHandlerBuilder builder) => builder.Validate<Cart>();
+                }
+                """
+        );
+
+        Assert.DoesNotContain(diagnostics, d => d.Id == "VM5003");
     }
 
     [Fact]

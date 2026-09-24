@@ -170,6 +170,143 @@ public class FragmentTests
         );
     }
 
+    /// <summary>
+    /// The chain the generic fragments below share. Inside <c>Standard</c>, the calls bind over its
+    /// own <c>T</c>, and expanding them for <c>Order</c> has to put <c>Order</c> in for it, as the
+    /// outer instantiation did. <c>IsSystem</c> is an ordinary static method rather than a fragment:
+    /// a generic fragment's builder is <c>ValidationRules&lt;T&gt;</c>, which no non-generic
+    /// fragment can take.
+    /// </summary>
+    private const string Chain = """
+        public static class AuditChecks {
+            public static bool IsSystem(IAudited audited) => audited.CreatedBy == "system";
+        }
+
+        public static class ChainRules {
+            public static void Standard<T>(ValidationRules<T> rules, T audited) where T : IAudited {
+                if (AuditChecks.IsSystem(audited)) {
+                    return;
+                }
+
+                rules.Require(audited.CreatedBy);
+                Extra(rules, audited);
+            }
+
+            public static void Extra<T>(ValidationRules<T> rules, T audited) where T : IAudited {
+                rules.RangeAtLeast(audited.Version, 1);
+                Last<T>(rules, audited);
+            }
+
+            public static void Last<T>(ValidationRules<T> rules, T audited) where T : IAudited {
+                rules.Ensure(audited.Version < 100);
+            }
+        }
+
+        """;
+
+    [Fact]
+    public void AGenericFragmentCallingAGenericFragment_ExpandsEachForTheConcreteTarget()
+    {
+        var result = Clean("        ChainRules.Standard(rules, x);", Chain);
+
+        var container = result.Sources["Sample.ChainRules_Fragments.g.cs"];
+
+        Assert.Contains(
+            "global::Sample.ChainRules_Fragments.Extra_Order(ref ctx, audited)",
+            container
+        );
+        Assert.Contains(
+            "global::Sample.ChainRules_Fragments.Last_Order(ref ctx, audited)",
+            container
+        );
+        Assert.DoesNotContain(" T audited", container);
+    }
+
+    [Fact]
+    public void AGenericFragmentCallingAGenericFragment_PathsTheInnerRulesAgainstTheSubject()
+    {
+        var result = Clean("        ChainRules.Standard(rules, x);", Chain);
+
+        var container = result.Sources["Sample.ChainRules_Fragments.g.cs"];
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM3007");
+        Assert.Contains("\"version\"", container);
+    }
+
+    [Fact]
+    public void ANonGenericFragment_MayStartAGenericChain()
+    {
+        var result = Clean(
+            "        Outer.Declare(rules, x);",
+            Chain
+                + """
+                public static class Outer {
+                    public static void Declare(ValidationRules<Order> rules, Order order) {
+                        rules.Require(order.Number);
+                        ChainRules.Standard(rules, order);
+                    }
+                }
+
+                """
+        );
+
+        Assert.Contains("Extra_Order", result.Sources["Sample.ChainRules_Fragments.g.cs"]);
+    }
+
+    /// <summary>
+    /// An instantiation is its type arguments, not only its target. <c>Tagged</c> is closed over
+    /// <c>Order</c> twice, once with <c>string</c> and once with <c>int</c>, and the two need two
+    /// methods: one method keyed by the target alone was handed the other's argument.
+    /// </summary>
+    [Fact]
+    public void AFragmentWithASecondTypeParameter_IsExpandedPerInstantiation()
+    {
+        var result = Clean(
+            """
+                    TaggedRules.Tagged(rules, x, "direct");
+                    TaggedRules.Outer(rules, x);
+            """,
+            """
+            public static class TaggedRules {
+                public static void Outer<T>(ValidationRules<T> rules, T audited) where T : IAudited {
+                    Tagged(rules, audited, 2);
+                }
+
+                public static void Tagged<T, TTag>(ValidationRules<T> rules, T audited, TTag tag)
+                    where T : IAudited {
+                    rules.Require(audited.CreatedBy);
+                }
+            }
+
+            """
+        );
+
+        var container = result.Sources["Sample.TaggedRules_Fragments.g.cs"];
+
+        Assert.Contains("string tag", container);
+        Assert.Contains("int tag", container);
+    }
+
+    [Fact]
+    public void AGenericFragmentCycle_IsVM3006()
+    {
+        var result = Run(
+            "        Loop.Left(rules, x);",
+            """
+            public static class Loop {
+                public static void Left<T>(ValidationRules<T> rules, T audited) where T : IAudited =>
+                    Right(rules, audited);
+
+                public static void Right<T>(ValidationRules<T> rules, T audited) where T : IAudited =>
+                    Left(rules, audited);
+            }
+
+            """
+        );
+
+        Assert.Contains(result.Diagnostics, d => d.Id == "VM3006");
+    }
+
     [Fact]
     public void AFragmentCycle_IsVM3006()
     {

@@ -31,7 +31,7 @@ public sealed class SignUp
     [Required, EmailAddress]
     public string? Email { get; init; }
 
-    [Required, StringLength(3, 40)]
+    [Required, StringLength(40, Min = 3)]
     public string? DisplayName { get; init; }
 
     [Range(18, 120)]

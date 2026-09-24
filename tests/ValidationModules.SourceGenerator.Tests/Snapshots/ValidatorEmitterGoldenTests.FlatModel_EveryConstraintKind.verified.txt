@@ -78,7 +78,7 @@ public sealed partial class PetValidator : global::ValidationModules.IValidatorF
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (value.Sku is not null && !SkuPattern0.IsMatch(value.Sku) && global::ValidationModules.ValidationContextExtensions.ReportPattern(ctx, "sku", value: value.Sku).ShouldStop)
+        if (value.Sku is not null && !global::ValidationModules.ConstraintChecks.IsMatch(SkuPattern0, value.Sku) && global::ValidationModules.ValidationContextExtensions.ReportPattern(ctx, "sku", value: value.Sku).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
@@ -124,6 +124,7 @@ public sealed partial class PetValidator : global::ValidationModules.IValidatorF
     /// </summary>
     public bool IsValid(global::Sample.Pet value)
     {
+        global::System.ArgumentNullException.ThrowIfNull(value);
         if (string.IsNullOrWhiteSpace(value.Name))
         {
             return false;
@@ -136,7 +137,7 @@ public sealed partial class PetValidator : global::ValidationModules.IValidatorF
         {
             return false;
         }
-        if (value.Sku is not null && !SkuPattern0.IsMatch(value.Sku))
+        if (value.Sku is not null && !global::ValidationModules.ConstraintChecks.IsMatch(SkuPattern0, value.Sku))
         {
             return false;
         }
