@@ -118,12 +118,16 @@ public static class RuntimeContract
     // registers CollectionValidatorFor<T>/CollectionAsyncValidatorFor<T> for List<T> and T[].
     // None of it exists in a contract-10 runtime. Additive, as the rule below requires.
 
-    // 11 -> 12: field names and display names. Every generated Validate reports through
-    // ValidationContext.WithResolvedFieldNames(), so a name the generator resolved from
-    // [JsonPropertyName] is not run through the pass's field namer a second time. A property with
-    // [Display(Name = …)] hoists infos that set ValidationMessageInfo.DisplayName, which labels the
-    // message without becoming the field. Neither member exists in a contract-11 runtime.
-    // Additive, as the rule below requires.
+    // 11 -> 12: pattern checks, field names and display names. Every emitted pattern test calls
+    // ConstraintChecks.IsMatch, which counts a match that runs out of time as a failed match
+    // instead of letting RegexMatchTimeoutException out of Validate. A contract-11 runtime has no
+    // such method.
+    //
+    // Every generated Validate reports through ValidationContext.WithResolvedFieldNames(), so a
+    // name the generator resolved from [JsonPropertyName] is not run through the pass's field namer
+    // a second time. A property with [Display(Name = …)] hoists infos that set
+    // ValidationMessageInfo.DisplayName, which labels the message without becoming the field.
+    // Neither member exists in a contract-11 runtime either. Additive, as the rule below requires.
 
     /// <summary>
     /// The contract this runtime implements. Compared against

@@ -26,6 +26,7 @@ namespace ValidationModules
         public static bool IsBase64(string value) { }
         public static bool IsCreditCard(string value) { }
         public static bool IsEmail(string value) { }
+        public static bool IsMatch(System.Text.RegularExpressions.Regex regex, string value) { }
         public static bool IsMultipleOf(double value, decimal divisor) { }
         public static bool IsMultipleOf(float value, decimal divisor) { }
         public static bool IsPhone(string value) { }
