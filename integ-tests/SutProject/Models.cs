@@ -162,3 +162,13 @@ public sealed record Passphrase
     [ItemCount(max: 2)]
     public List<string> Hints { get; init; } = [];
 }
+
+/// <summary>
+/// A pattern that backtracks catastrophically, under a timeout the hostile input runs past. The
+/// timeout has to fail the pattern rather than throw out of Validate.
+/// </summary>
+public sealed record Comment
+{
+    [Pattern("^(a+)+$", MatchTimeoutMilliseconds = 1)]
+    public string? Text { get; init; }
+}

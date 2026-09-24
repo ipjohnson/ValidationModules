@@ -317,3 +317,19 @@ public sealed class ProcedureRules : IValidationRulesFor<Procedure>
         rules.Each(x.Tags).Length(2, 20);
     }
 }
+
+/// <summary>
+/// The double overload of <c>MultipleOf</c>, beside <c>Order.Ratio</c>'s <c>[MultipleOf(0.01)]</c>.
+/// Its check runs in the decimal domain, so the divisor has to reach it as the decimal literal the
+/// attribute produces.
+/// </summary>
+public sealed record Mixture
+{
+    public double Ratio { get; init; }
+}
+
+public sealed class MixtureRules : IValidationRulesFor<Mixture>
+{
+    public static void Describe(ValidationRules<Mixture> rules, Mixture x) =>
+        rules.MultipleOf(x.Ratio, 0.01);
+}

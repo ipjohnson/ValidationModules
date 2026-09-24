@@ -1865,6 +1865,9 @@ public sealed class RulesFrontEnd
                     case "Ensure":
                         return ReadEnsure(call, arguments);
 
+                    case "MultipleOf":
+                        return ReadMultipleOf(call, method, arguments);
+
                     // One descent per chain. An Each over objects leaves the collection as the
                     // chain's anchor, so a descent chained after it would walk the elements a second
                     // time, or walk the collection as if it were one object.
@@ -2576,23 +2579,106 @@ public sealed class RulesFrontEnd
                         Max: OptionalBound(arguments, "max")
                     ),
                     "Unique" => new ConstraintModel(ConstraintKind.UniqueItems),
-                    "MultipleOf" => new ConstraintModel(
-                        ConstraintKind.MultipleOf,
-                        Divisor: Bound(arguments, "divisor", "1"),
-                        DecimalDomain: DivisorIsFloating(arguments)
-                    ),
                     "Pattern" => PatternConstraint(arguments, call),
                     "AllowedValues" => AllowedValuesConstraint(arguments, call),
                     _ => null,
                 };
 
-            private bool DivisorIsFloating(
+            /// <summary>
+            /// <c>MultipleOf</c>, with its divisor in the denomination the check runs in - the one
+            /// <c>[MultipleOf]</c> produces. The overload the call bound to decides it: the long
+            /// and decimal overloads divide with <c>%</c>, and the double overload's check takes a
+            /// decimal divisor, so a constant goes through <see cref="MultipleOfReader"/> exactly as
+            /// an attribute's does, and anything else is converted where the check reads it.
+            /// </summary>
+            private bool ReadMultipleOf(
+                InvocationExpressionSyntax call,
+                IMethodSymbol method,
                 IReadOnlyDictionary<string, ExpressionSyntax> arguments
-            ) =>
-                arguments.TryGetValue("divisor", out var divisor)
-                && _writer._model.GetTypeInfo(divisor).Type?.SpecialType
-                    is SpecialType.System_Double
-                        or SpecialType.System_Single;
+            )
+            {
+                if (
+                    !arguments.TryGetValue("divisor", out var divisor)
+                    || (method.ReducedFrom ?? method).Parameters.FirstOrDefault(parameter =>
+                        parameter.Name == "divisor"
+                    )
+                        is not { } declared
+                )
+                {
+                    _writer._owner.Report(
+                        ValidationDiagnostics.NotTranscribable,
+                        call,
+                        _writer._declaringClass.Name,
+                        "a call to 'MultipleOf' the reader does not know"
+                    );
+                    return false;
+                }
+
+                var member = _facts?.PropertyName ?? _access ?? "the value";
+                var floating = declared.Type.SpecialType == SpecialType.System_Double;
+                string rendered;
+                var decimalDomain = floating;
+
+                if (
+                    _writer._model.GetConstantValue(divisor) is
+                    { HasValue: true, Value: IFormattable constant }
+                )
+                {
+                    var literal = constant.ToString(
+                        constant is double or float ? "R" : null,
+                        System.Globalization.CultureInfo.InvariantCulture
+                    );
+
+                    if (
+                        !MultipleOfReader.TryResolve(
+                            declared.Type,
+                            literal,
+                            out rendered,
+                            out var value,
+                            out decimalDomain
+                        )
+                    )
+                    {
+                        _writer._owner.Report(
+                            ValidationDiagnostics.MultipleOfDivisorNotParseable,
+                            divisor,
+                            member,
+                            declared.Type.ToDisplayString()
+                        );
+                        return false;
+                    }
+
+                    // The same check the attribute path makes. A zero reached the emitter as `% 0`,
+                    // which is CS0020 inside generated code for an integral member.
+                    if (value <= 0m)
+                    {
+                        _writer._owner.Report(
+                            ValidationDiagnostics.MultipleOfDivisorNotPositive,
+                            divisor,
+                            member,
+                            divisor.ToString()
+                        );
+                        return false;
+                    }
+                }
+                else
+                {
+                    var read = _writer.Rewrite(divisor);
+
+                    rendered = floating ? $"(decimal)({read})" : read;
+                }
+
+                _constraints.Add(
+                    new ConstraintModel(
+                        ConstraintKind.MultipleOf,
+                        Divisor: rendered,
+                        DecimalDomain: decimalDomain,
+                        Field: FieldLiteral(arguments)
+                    )
+                );
+
+                return true;
+            }
 
             private ConstraintModel? PatternConstraint(
                 IReadOnlyDictionary<string, ExpressionSyntax> arguments,
