@@ -247,6 +247,11 @@ public sealed class RulesFrontEnd
     /// call target. Two rules classes calling the same fragment for the same target share one
     /// method.
     /// </summary>
+    /// <remarks>
+    /// An instantiation is keyed by every type argument, not only the target. A fragment with a
+    /// second type parameter can be closed over one target twice, with a different argument for
+    /// the second each time, and its extra parameters then have different types.
+    /// </remarks>
     private FragmentMethod? FragmentFor(
         IMethodSymbol constructed,
         INamedTypeSymbol target,
@@ -257,7 +262,7 @@ public sealed class RulesFrontEnd
     {
         var definition = constructed.OriginalDefinition;
         var key =
-            $"{definition.ToDisplayString()}|{(constructed.IsGenericMethod ? target.ToDisplayString() : string.Empty)}";
+            $"{definition.ToDisplayString()}|{string.Join(",", constructed.TypeArguments.Select(static argument => argument.ToDisplayString()))}";
 
         // The stack check comes before the registry: a fragment registers itself before its body
         // is read so two callers share one method, and a cycle would otherwise hit that early
@@ -353,7 +358,8 @@ public sealed class RulesFrontEnd
             subject: subject is null ? null : definition.Parameters[IndexOf(definition, subject)],
             expanding: expanding.Concat(new[] { definition }).ToList(),
             insideFragment: true,
-            fieldPrefix: $"_{name}Facet"
+            fieldPrefix: $"_{name}Facet",
+            typeArguments: TypeArgumentsOf(definition, constructed)
         );
 
         if (syntax.Body is { } block)
@@ -369,6 +375,26 @@ public sealed class RulesFrontEnd
         method.Fields.AddRange(writer.Fields);
 
         return FailedSince(before) ? null : method;
+    }
+
+    /// <summary>
+    /// The concrete type each of a fragment's type parameters stands for in one instantiation.
+    /// </summary>
+    private static Dictionary<ITypeParameterSymbol, ITypeSymbol> TypeArgumentsOf(
+        IMethodSymbol definition,
+        IMethodSymbol constructed
+    )
+    {
+        var arguments = new Dictionary<ITypeParameterSymbol, ITypeSymbol>(
+            SymbolEqualityComparer.Default
+        );
+
+        for (var i = 0; i < definition.TypeParameters.Length; i++)
+        {
+            arguments[definition.TypeParameters[i]] = constructed.TypeArguments[i];
+        }
+
+        return arguments;
     }
 
     private static int IndexOf(IMethodSymbol definition, IParameterSymbol constructedParameter)
@@ -426,6 +452,12 @@ public sealed class RulesFrontEnd
         private readonly List<IMethodSymbol> _expanding;
         private readonly bool _insideFragment;
 
+        /// <summary>
+        /// The concrete type each of the enclosing fragment's type parameters stands for in this
+        /// instantiation. Empty outside a generic fragment.
+        /// </summary>
+        private readonly IReadOnlyDictionary<ITypeParameterSymbol, ITypeSymbol> _typeArguments;
+
         private readonly List<string> _lines = new();
         private readonly List<RegionDependency> _dependencies = new();
         private readonly List<string> _applied = new();
@@ -466,7 +498,8 @@ public sealed class RulesFrontEnd
             List<IMethodSymbol>? expanding = null,
             bool insideFragment = false,
             string fieldPrefix = "_facet",
-            int fieldSeed = 0
+            int fieldSeed = 0,
+            IReadOnlyDictionary<ITypeParameterSymbol, ITypeSymbol>? typeArguments = null
         )
         {
             _fieldPrefix = fieldPrefix;
@@ -480,6 +513,11 @@ public sealed class RulesFrontEnd
             _subject = subject;
             _expanding = expanding ?? new List<IMethodSymbol>();
             _insideFragment = insideFragment;
+            _typeArguments =
+                typeArguments
+                ?? new Dictionary<ITypeParameterSymbol, ITypeSymbol>(
+                    SymbolEqualityComparer.Default
+                );
         }
 
         public IReadOnlyList<string> Lines => _lines;
@@ -1042,9 +1080,11 @@ public sealed class RulesFrontEnd
                 return false;
             }
 
-            var resolved = candidate.ReducedFrom is { } reduced
-                ? reduced.Construct(candidate.TypeArguments.ToArray())
-                : candidate;
+            var resolved = Instantiated(
+                candidate.ReducedFrom is { } reduced
+                    ? reduced.Construct(candidate.TypeArguments.ToArray())
+                    : candidate
+            );
 
             if (!resolved.IsStatic || !resolved.ReturnsVoid)
             {
@@ -1087,6 +1127,55 @@ public sealed class RulesFrontEnd
 
             return true;
         }
+
+        /// <summary>
+        /// A called method with this instantiation's concrete types put in for the enclosing
+        /// fragment's type parameters.
+        /// </summary>
+        /// <remarks>
+        /// Inside a generic fragment, a call to another generic fragment binds over the enclosing
+        /// fragment's own type parameters, because they are all its body can name. Expanded as it
+        /// stands, the inner fragment's subject is a type parameter rather than the target, so it
+        /// is not recognised as the subject, its rules report VM3007, and its method is emitted
+        /// with a parameter of type <c>T</c>. Closed over the concrete types the enclosing
+        /// fragment was closed over, it is expanded exactly as if the rules class had called it.
+        /// </remarks>
+        private IMethodSymbol Instantiated(IMethodSymbol method)
+        {
+            if (_typeArguments.Count == 0 || !method.IsGenericMethod)
+            {
+                return method;
+            }
+
+            var arguments = new ITypeSymbol[method.TypeArguments.Length];
+            var changed = false;
+
+            for (var i = 0; i < arguments.Length; i++)
+            {
+                arguments[i] = Substituted(method.TypeArguments[i]);
+                changed |= !SymbolEqualityComparer.Default.Equals(
+                    arguments[i],
+                    method.TypeArguments[i]
+                );
+            }
+
+            return changed ? method.OriginalDefinition.Construct(arguments) : method;
+        }
+
+        private ITypeSymbol Substituted(ITypeSymbol type) =>
+            type switch
+            {
+                ITypeParameterSymbol parameter
+                    when _typeArguments.TryGetValue(parameter, out var concrete) => concrete,
+                IArrayTypeSymbol array => _compilation.CreateArrayTypeSymbol(
+                    Substituted(array.ElementType),
+                    array.Rank
+                ),
+                INamedTypeSymbol { IsGenericType: true } named => named.ConstructedFrom.Construct(
+                    named.TypeArguments.Select(Substituted).ToArray()
+                ),
+                _ => type,
+            };
 
         private void ReadFragmentCall(
             InvocationExpressionSyntax call,
