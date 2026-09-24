@@ -31,6 +31,51 @@ public class GeneratedValidatorTests
     }
 
     /// <summary>
+    /// A bare sequence is counted through <c>Enumerable.Count</c>: a list or an array by its
+    /// count, and a lazy sequence by walking it once.
+    /// </summary>
+    [Fact]
+    public void ItemCount_OnABareSequence_CountsItsItems()
+    {
+        var validator = new PostValidator();
+
+        Assert.True(validator.Validate(new Post { Tags = ["a", "b"] }).IsValid);
+        Assert.True(validator.Validate(new Post { Tags = null }).IsValid);
+        Assert.False(validator.Validate(new Post { Tags = [] }).IsValid);
+        Assert.False(validator.Validate(new Post { Tags = new[] { "a", "b", "c", "d" } }).IsValid);
+
+        var walks = 0;
+        var lazy = Enumerable
+            .Range(0, 5)
+            .Select(i =>
+            {
+                walks++;
+                return i.ToString();
+            });
+
+        var error = Assert.Single(validator.Validate(new Post { Tags = lazy }).Errors);
+
+        Assert.Equal(ValidationCodes.ArrayBounds, error.Code);
+        Assert.Equal(5, walks);
+        Assert.False(validator.IsValid(new Post { Tags = [] }));
+    }
+
+    [Fact]
+    public void ItemCount_OnAnImmutableArray_ReadsLength()
+    {
+        var validator = new PostValidator();
+
+        Assert.True(validator.Validate(new Post { Tags = ["a"], Labels = ["x", "y"] }).IsValid);
+
+        var error = Assert.Single(
+            validator.Validate(new Post { Tags = ["a"], Labels = ["w", "x", "y", "z"] }).Errors
+        );
+
+        Assert.Equal("labels", error.Field);
+        Assert.Equal(ValidationCodes.ArrayBounds, error.Code);
+    }
+
+    /// <summary>
     /// A null value is rejected where it enters. <c>IsValid</c> reached through the interface binds
     /// straight to the generated method, which is why that method carries a guard of its own.
     /// </summary>

@@ -119,6 +119,38 @@ public class RuleTextTests
     }
 
     [Theory]
+    [InlineData("x => x.Home?.PostalCode != null", "home?.PostalCode != null.")]
+    [InlineData("x => x.Home!.PostalCode.Length > 3", "home!.PostalCode.Length > 3.")]
+    [InlineData("x => x.Count!=0", "count!=0.")]
+    public void RenderPredicate_KeepsMemberAccessSeparatorsAsWritten(
+        string predicate,
+        string expected
+    )
+    {
+        Assert.Equal(expected, RuleText.RenderPredicate(predicate, Name));
+    }
+
+    [Fact]
+    public void RenderPredicate_HandsEachMemberPathToThePathNamer()
+    {
+        // The generator's form: it has the symbols to spell every segment, so it receives the
+        // whole path and the separators stay as written.
+        var paths = new List<string>();
+
+        IReadOnlyList<string> Upper(IReadOnlyList<string> path)
+        {
+            paths.Add(string.Join("/", path));
+
+            return path.Select(segment => segment.ToUpperInvariant()).ToList();
+        }
+
+        var rendered = RuleText.RenderPredicate("x => x.Home?.PostalCode != x.Name", Upper);
+
+        Assert.Equal("HOME?.POSTALCODE != NAME.", rendered);
+        Assert.Equal(["Home/PostalCode", "Name"], paths);
+    }
+
+    [Theory]
     [InlineData("x => x.Start < x.End", "start_less_than_end")]
     [InlineData("x => x.Total <= x.CreditLimit", "total_less_than_or_equal_credit_limit")]
     [InlineData("x => x.Start > x.End", "start_greater_than_end")]

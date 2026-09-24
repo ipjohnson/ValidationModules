@@ -53,8 +53,9 @@ public sealed partial class ProductValidator : global::ValidationModules.IValida
     {
     }
 
-    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Product value)
+    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext context, global::Sample.Product value)
     {
+        var ctx = context.WithResolvedFieldNames();
         var missingSku = string.IsNullOrWhiteSpace(value.Sku);
         if (missingSku && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "sku", value: value.Sku).ShouldStop)
         {

@@ -118,6 +118,15 @@ A generic type declares constraints. Its validator could not be registered witho
 `MakeGenericType`, so none is generated. Declare the constraints on a closed type, or validate the
 generic type's payload and leave the generic type without constraints.
 
+### VM1013
+
+**Severity:** Error
+
+Two types in one namespace would get validators with the same name, so neither validator is
+generated. The validator for a type declared inside another type carries the containing types'
+names, joined with underscores. A nested `Order.Item` and a top-level `Order_Item` therefore both get
+`Order_ItemValidator`. Rename one of the two types, or move it to another namespace.
+
 ### VM1101
 
 **Severity:** Error
@@ -410,9 +419,6 @@ descents that are refused are `Nested` on a collection or a dictionary, and a se
 `Each` in the same chain as one before it. Use `Each` for a list, and `[ValidateNested]` on the
 property for a dictionary. See [the rules API reference](./rules-api#collections).
 
-Pass `Apply` a method group. A lambda passed to `Apply` produces generated code that does not
-compile in this version, and no diagnostic reports it.
-
 ### VM3002
 
 **Severity:** Error
@@ -439,6 +445,8 @@ Report from a `foreach` loop instead.
 
 The body of `Describe` uses a member that the generated class cannot reach, such as a
 `private` method or field of the rules class. Make it `internal`. A `private const` is allowed.
+The method passed to `Pattern` or `Apply` counts, so a `[GeneratedRegex]` method written
+`private static partial` is reported here.
 
 ### VM3005
 
@@ -459,6 +467,16 @@ Fragments call each other in a cycle. The message shows the cycle.
 
 A rule's value is not a member path on `x`, for example `x.Name.Trim()`, so the error has no
 field. Pass a member path, or give the field with `field:`.
+
+### VM3008
+
+**Severity:** Error
+
+The argument to `Pattern` or `Apply` names no static method, so the generated code has nothing to
+call. Pass a method group, such as `rules.Pattern(x.Sku, SkuPattern)` or `rules.Apply(Check)`. A
+lambda whose whole body calls one static method, such as `() => SkuPattern()`, is read as that
+method. A lambda that does anything else, a delegate stored in a field, and an instance method are
+reported here. The message gives the method-group form to write.
 
 ### VM3101
 

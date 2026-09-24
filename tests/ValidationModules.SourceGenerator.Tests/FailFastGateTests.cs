@@ -96,7 +96,7 @@ public class FailFastGateTests
         var body = setting is null ? Emit() : Emit(("ValidationModules_FailFast", setting));
 
         Assert.Contains(
-            "public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx",
+            "public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext context",
             body
         );
         Assert.Contains("return global::ValidationModules.ValidationFlow.Continue;", body);
