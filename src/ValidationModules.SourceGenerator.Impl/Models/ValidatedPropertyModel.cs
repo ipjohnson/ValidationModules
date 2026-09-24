@@ -30,7 +30,10 @@ public enum PropertyShape
 /// <param name="IsString">Whether string-specific constraints are legal on it.</param>
 /// <param name="IsNullableValueType">Whether reading the value needs .Value.</param>
 /// <param name="IsIndexable">Collections only: whether elements are reachable by index.</param>
-/// <param name="CountAccessor">Collections only: Length for arrays, Count otherwise.</param>
+/// <param name="CountAccessor">
+/// Collections only: the Length or Count property that reads the count, or null for a type with
+/// neither, whose count the emitter takes with <c>Enumerable.Count</c>.
+/// </param>
 /// <param name="ValidateNested">Whether [ValidateNested] was declared.</param>
 /// <param name="Constraints">In evaluation order - Required first, then attribute order.</param>
 /// <param name="Condition">
@@ -56,6 +59,11 @@ public enum PropertyShape
 /// field, the constructor parameter, the accessor the region call passes - is still this
 /// property's, which is the reason the entry exists at all.
 /// </param>
+/// <param name="Label">
+/// The <c>[Display(Name = …)]</c> value, which the property's messages use in place of the field
+/// name, or null when it has none. Unlike <see cref="DisplayName"/> it never falls back to the CLR
+/// name: without a label a message names the field.
+/// </param>
 public sealed record ValidatedPropertyModel(
     string PropertyName,
     string FieldName,
@@ -67,12 +75,13 @@ public sealed record ValidatedPropertyModel(
     bool IsString,
     bool IsNullableValueType,
     bool IsIndexable,
-    string CountAccessor,
+    string? CountAccessor,
     bool ValidateNested,
     EquatableArray<ConstraintModel> Constraints,
     string? Condition = null,
     PolymorphismMode Polymorphism = PolymorphismMode.DeclaredOnly,
     EquatableArray<SubtypeModel> Subtypes = default,
     string? DisplayName = null,
-    bool NestedWalkInRegion = false
+    bool NestedWalkInRegion = false,
+    string? Label = null
 ) : IEquatable<ValidatedPropertyModel>;

@@ -99,7 +99,7 @@ Reports an error when `condition` is `false`. The expression is copied into the 
 written and is not guarded against `null`. Without `field:`, the field is the first member of `x`
 that the condition reads. Without `code:`, the code is derived from the condition, as described in
 [Validation codes](./codes#codes-from-ensure). Without `message:`, the message is the condition's
-text.
+text, with each member of `x` written as its field name.
 
 ### Other members
 
@@ -111,7 +111,8 @@ text.
 | `Context` | An `IValidationContextReporter` for reporting errors from code. See below. |
 
 `RuleAction<T>` is a delegate: `ValidationFlow RuleAction<in T>(ref ValidationContext context, T
-value)`. Pass a static method group.
+value)`. Pass a static method group, `internal` or `public`. A lambda whose whole body calls one
+such method with its own parameters is read as that method, and any other lambda is `VM3008`.
 
 ## PropertyRules&lt;T, TValue&gt;
 

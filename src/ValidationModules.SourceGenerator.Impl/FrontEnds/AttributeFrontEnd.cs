@@ -396,9 +396,18 @@ public sealed class AttributeFrontEnd
             ? string.Empty
             : type.ContainingNamespace.ToDisplayString();
 
+        var namesMembers =
+            compilesValidatableObject
+            || objectRules.Count > 0
+            || properties.Any(property =>
+                property.Constraints.Any(constraint =>
+                    constraint.Kind == ConstraintKind.CustomValidationMethod
+                )
+            );
+
         return new ValidatedTypeModel(
             ns,
-            type.Name,
+            GeneratedNames.Flattened(type),
             type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             validatorNameFor(type),
             new EquatableArray<ValidatedPropertyModel>(
@@ -413,8 +422,30 @@ public sealed class AttributeFrontEnd
                 ImmutableArray.CreateRange(regions ?? Array.Empty<RegionModel>())
             ),
             new EquatableArray<ConstraintModel>(objectRules.ToImmutableArray()),
-            type.IsValueType
+            type.IsValueType,
+            namesMembers ? new EquatableArray<MemberFieldName>(MemberFieldNamesOf(type)) : default
         );
+    }
+
+    /// <summary>
+    /// Every readable property whose field name differs from the policy's spelling of its CLR
+    /// name, with or without constraints: an <c>IValidatableObject</c> may name any member.
+    /// </summary>
+    private ImmutableArray<MemberFieldName> MemberFieldNamesOf(INamedTypeSymbol type)
+    {
+        var names = ImmutableArray.CreateBuilder<MemberFieldName>();
+
+        foreach (var member in MemberWalk.PropertiesOf(type, _compilation, CarriesConstraints))
+        {
+            var field = FieldNameFor(member.Property);
+
+            if (!string.Equals(field, _fieldNamer(member.Property.Name), StringComparison.Ordinal))
+            {
+                names.Add(new MemberFieldName(member.Property.Name, field));
+            }
+        }
+
+        return names.ToImmutable();
     }
 
     /// <summary>
@@ -940,7 +971,8 @@ public sealed class AttributeFrontEnd
             polymorphism,
             new EquatableArray<SubtypeModel>(subtypes),
             DisplayNameFor(property),
-            nestedWalkInRegion
+            nestedWalkInRegion,
+            DisplayLabelOf(property)
         );
     }
 
@@ -949,26 +981,8 @@ public sealed class AttributeFrontEnd
     /// when present, otherwise the CLR name. Resolved here, at build time, so the runtime bridge
     /// never enters the reflective resolution the DataAnnotations constructors are annotated for.
     /// </summary>
-    private static string DisplayNameFor(IPropertySymbol property)
-    {
-        foreach (var attribute in property.GetAttributes())
-        {
-            if (attribute.AttributeClass?.ToDisplayString() != KnownTypes.DisplayAttribute)
-            {
-                continue;
-            }
-
-            foreach (var named in attribute.NamedArguments)
-            {
-                if (named.Key == "Name" && named.Value.Value is string displayName)
-                {
-                    return displayName;
-                }
-            }
-        }
-
-        return property.Name;
-    }
+    private static string DisplayNameFor(IPropertySymbol property) =>
+        DisplayLabelOf(property) ?? property.Name;
 
     /// <summary>
     /// Required is evaluated first whatever order the attributes were written in, because the
@@ -2079,34 +2093,55 @@ public sealed class AttributeFrontEnd
     private static bool IsRegex(ITypeSymbol type) =>
         type.ToDisplayString() == "System.Text.RegularExpressions.Regex";
 
-    private string FieldNameFor(IPropertySymbol property)
+    /// <summary>
+    /// The wire name: <c>[JsonPropertyName]</c> when present, otherwise the naming policy.
+    /// </summary>
+    /// <remarks>
+    /// <c>[Display(Name)]</c> is not consulted. It labels the property's messages, as it does in
+    /// DataAnnotations. A field taken from it would put a form label, spaces included, on the wire
+    /// as a problem-details key, and rewording the label would move the key.
+    /// </remarks>
+    private string FieldNameFor(IPropertySymbol property) =>
+        JsonNameOf(property) ?? _fieldNamer(property.Name);
+
+    /// <summary>The name <c>[JsonPropertyName]</c> gives the property, or null.</summary>
+    internal static string? JsonNameOf(IPropertySymbol property)
     {
         foreach (var attribute in property.GetAttributes())
         {
-            var name = attribute.AttributeClass?.ToDisplayString();
-
             if (
-                name == KnownTypes.JsonPropertyName
+                attribute.AttributeClass?.ToDisplayString() == KnownTypes.JsonPropertyName
                 && attribute.ConstructorArguments.Length == 1
                 && attribute.ConstructorArguments[0].Value is string jsonName
             )
             {
                 return jsonName;
             }
+        }
 
-            if (name == KnownTypes.DisplayAttribute)
+        return null;
+    }
+
+    /// <summary>The <c>[Display(Name = …)]</c> value on the property, or null.</summary>
+    internal static string? DisplayLabelOf(IPropertySymbol property)
+    {
+        foreach (var attribute in property.GetAttributes())
+        {
+            if (attribute.AttributeClass?.ToDisplayString() != KnownTypes.DisplayAttribute)
             {
-                foreach (var named in attribute.NamedArguments)
+                continue;
+            }
+
+            foreach (var named in attribute.NamedArguments)
+            {
+                if (named.Key == "Name" && named.Value.Value is string displayName)
                 {
-                    if (named.Key == "Name" && named.Value.Value is string displayName)
-                    {
-                        return displayName;
-                    }
+                    return displayName;
                 }
             }
         }
 
-        return _fieldNamer(property.Name);
+        return null;
     }
 
     private static string QualifiedValidator(

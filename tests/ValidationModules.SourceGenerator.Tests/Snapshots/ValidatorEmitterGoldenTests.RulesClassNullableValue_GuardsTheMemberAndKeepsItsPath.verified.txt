@@ -79,8 +79,9 @@ public sealed partial class VehicleValidator : global::ValidationModules.IValida
     {
     }
 
-    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Vehicle value)
+    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext context, global::Sample.Vehicle value)
     {
+        var ctx = context.WithResolvedFieldNames();
         if (global::Sample.VehicleRules_Rules.Describe(ref ctx, value).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;

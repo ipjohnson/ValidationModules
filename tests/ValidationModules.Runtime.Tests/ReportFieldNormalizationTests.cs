@@ -95,6 +95,61 @@ public class ReportFieldNormalizationTests
     }
 
     [Fact]
+    public void AResolvedContext_ReportsTheFieldAsGiven()
+    {
+        // What generated validators report through. [JsonPropertyName("GivenName")] was resolved
+        // at build time, and a second pass through the camelCase namer made it givenName.
+        var collector = new ValidationErrorCollector(
+            new NamerProvider(CamelCaseFieldNamer.Instance)
+        );
+        var context = new ValidationContext(collector).WithResolvedFieldNames();
+
+        context.Report("GivenName", "code", "message");
+        context.ReportAuthored("FamilyName", "code", "message");
+        context.Report(
+            "Nickname",
+            "code",
+            value: null,
+            new ValidationMessageInfo("{field} is wrong.")
+        );
+
+        Assert.Equal(
+            ["GivenName", "FamilyName", "Nickname"],
+            collector.ToResult().Errors.Select(error => error.Field)
+        );
+    }
+
+    [Fact]
+    public void ADescentFromAResolvedContext_IsNormalizedAgain()
+    {
+        // A nested property may be validated by a hand-written validator, and its nameof(...) is
+        // what the namer is there for.
+        var collector = new ValidationErrorCollector(
+            new NamerProvider(CamelCaseFieldNamer.Instance)
+        );
+        var context = new ValidationContext(collector).WithResolvedFieldNames();
+
+        context.Push("order").Report("DeviceId", "code", "message");
+
+        Assert.Equal("order.deviceId", Assert.Single(collector.ToResult().Errors).Field);
+    }
+
+    [Fact]
+    public void AResolvedContextTurnedBackOff_NormalizesAgain()
+    {
+        var collector = new ValidationErrorCollector(
+            new NamerProvider(CamelCaseFieldNamer.Instance)
+        );
+        var context = new ValidationContext(collector)
+            .WithResolvedFieldNames()
+            .WithResolvedFieldNames(false);
+
+        context.Report("DeviceId", "code", "message");
+
+        Assert.Equal("deviceId", Assert.Single(collector.ToResult().Errors).Field);
+    }
+
+    [Fact]
     public void ANestedReport_NormalizesTheFieldButNotThePathAbove()
     {
         var collector = new ValidationErrorCollector(
