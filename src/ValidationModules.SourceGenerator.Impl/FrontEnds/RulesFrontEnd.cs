@@ -2068,7 +2068,9 @@ public sealed class RulesFrontEnd
                     // bind - RequireAllowingEmpty is string-only, and exotic value shapes exist -
                     // so the answer is VM3101 there too, and alone: the unresolvable call is
                     // downstream of the same mistake. Not when the argument was a .Value unwrap -
-                    // there the fix is dropping the unwrap, which VM3104 above already said.
+                    // there the fix is dropping the unwrap, which VM3104 above already said. Not
+                    // for an ImmutableArray either, which can be missing, so RequireAllowingEmpty
+                    // on one is refused as it is on a reference-typed collection.
                     if (
                         !unwrapReported
                         && call.Expression
@@ -2083,6 +2085,7 @@ public sealed class RulesFrontEnd
                             is { IsValueType: true } requiredType
                         && requiredType.OriginalDefinition.SpecialType
                             != SpecialType.System_Nullable_T
+                        && !TypeFacts.IsMissingWhenDefault(requiredType)
                         && _writer.PathOf(required) is not null
                     )
                     {
@@ -2187,7 +2190,12 @@ public sealed class RulesFrontEnd
 
                         if (
                             _facts is
-                            { IsString: false, IsReferenceType: false, IsNullableValueType: false }
+                            {
+                                IsString: false,
+                                IsReferenceType: false,
+                                IsNullableValueType: false,
+                                MissingWhenDefault: false,
+                            }
                         )
                         {
                             _writer._owner.Report(

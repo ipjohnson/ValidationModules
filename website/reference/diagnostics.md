@@ -209,7 +209,8 @@ at a static `Regex` method, property or field that is `internal` or `public`.
 
 `[Required]` is on a non-nullable value type, such as `int` or `Guid`. The property always
 has a value, so the constraint can never fail and is dropped. Make the property nullable, or check
-its value with `[Range]` or `[EnumDefined]`.
+its value with `[Range]` or `[EnumDefined]`. `ImmutableArray<T>` is not reported, because a default
+array reads as missing.
 
 ### VM1202
 
@@ -545,7 +546,8 @@ type, such as a record, or make the type `internal`.
 **Severity:** Error
 
 `Require` is applied to a non-nullable value type, which can never be missing. Use a range
-rule, or make the property nullable.
+rule, or make the property nullable. `ImmutableArray<T>` is not reported, because a default array
+reads as missing.
 
 ### VM3102
 

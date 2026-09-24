@@ -1719,9 +1719,12 @@ public sealed class AttributeFrontEnd
 
                 // Dropped as well as reported, and the two agree: the diagnostic says the check can
                 // never fail, and a check that can never fail is the same as no check. Emitting it
-                // asked whether an int was null, which does not compile.
+                // asked whether an int was null, which does not compile. A default ImmutableArray
+                // reads as missing, so [Required] on one can fail.
                 case ConstraintKind.Required
-                    when memberType.IsValueType && !TypeFacts.IsNullableValueType(memberType):
+                    when memberType.IsValueType
+                        && !TypeFacts.IsNullableValueType(memberType)
+                        && !TypeFacts.IsMissingWhenDefault(memberType):
                     Report(
                         ValidationDiagnostics.RequiredOnNonNullableValueType,
                         member,

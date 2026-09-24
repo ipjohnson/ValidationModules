@@ -169,11 +169,21 @@ public class ConstraintInterfaceTests
         Assert.Empty(result.CompilationErrors);
     }
 
-    [Fact]
-    public void InterfaceConstraint_ImmutableArrayMember_SkipsADefaultValue()
+    [Theory]
+    [InlineData("ImmutableArray<string>", "!value.Tags.IsDefault", "value.Tags")]
+    [InlineData(
+        "ImmutableArray<string>?",
+        "value.Tags is { IsDefault: false }",
+        "value.Tags.Value"
+    )]
+    public void InterfaceConstraint_ImmutableArrayMember_SkipsADefaultValue(
+        string type,
+        string present,
+        string value
+    )
     {
         var result = GeneratorHarness.Run(
-            """
+            $$"""
             using System;
             using System.Collections.Immutable;
             using ValidationModules;
@@ -189,7 +199,7 @@ public class ConstraintInterfaceTests
 
             public record Product {
                 [NonEmpty]
-                public ImmutableArray<string> Tags { get; init; }
+                public {{type}} Tags { get; init; }
             }
             """
         );
@@ -197,13 +207,14 @@ public class ConstraintInterfaceTests
         var emitted = result.Sources["Sample.ProductValidator.g.cs"];
         var fastPath = emitted.Substring(emitted.IndexOf("public bool IsValid"));
 
-        // A default ImmutableArray is missing, as null is, so it never reaches the author's check.
+        // A default ImmutableArray is missing, as null is, so it never reaches the author's check,
+        // whether or not a nullable holds it.
         Assert.Empty(result.CompilationErrors);
         Assert.Contains(
-            "!value.Tags.IsDefault && TagsConstraint0.Validate(ref ctx, value.Tags, \"tags\").ShouldStop",
+            $"{present} && TagsConstraint0.Validate(ref ctx, {value}, \"tags\").ShouldStop",
             emitted
         );
-        Assert.Contains("!value.Tags.IsDefault && !TagsConstraint0.IsValid(value.Tags)", fastPath);
+        Assert.Contains($"{present} && !TagsConstraint0.IsValid({value})", fastPath);
     }
 
     [Fact]

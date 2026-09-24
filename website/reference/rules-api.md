@@ -29,9 +29,15 @@ name derived from the value.
 | `Require(string? value)` | The string is not `null`, empty or whitespace. | `required` |
 | `RequireAllowingEmpty(string? value)` | The string is not `null`. | `required` |
 | `Require<TValue>(TValue? value)` | The reference or nullable value is not `null`. | `required` |
+| `Require<TElement>(ImmutableArray<TElement> value)` | The array is not default. An empty array passes. | `required` |
 
-`Require` on a property of a non-nullable value type can never fail, and the generator reports
-`VM3101`.
+A default `ImmutableArray<T>` has no array behind it, so `Require` reads it as missing. On an
+`ImmutableArray<T>?`, `Require` fails on `null` and on a default array. `Require` on an
+`ImmutableArray<TElement>` starts a chain on `IReadOnlyList<TElement>`, so `Count` and `Each` can
+follow it.
+
+`Require` on a property of any other non-nullable value type can never fail, and the generator
+reports `VM3101`.
 
 ### Strings
 

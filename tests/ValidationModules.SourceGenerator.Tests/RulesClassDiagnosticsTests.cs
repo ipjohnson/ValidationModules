@@ -44,6 +44,31 @@ public class RulesClassDiagnosticsTests
             }
             """;
 
+    private static string ImmutableArrayRules(string statement) =>
+        $$"""
+            using System.Collections.Immutable;
+            using ValidationModules;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed record Line {
+                [Required] public string? Sku { get; init; }
+            }
+
+            public sealed record Order {
+                public ImmutableArray<string> Skus { get; init; }
+                public ImmutableArray<string>? MaybeSkus { get; init; }
+                public ImmutableArray<Line> Lines { get; init; }
+            }
+
+            public sealed class OrderRules : IValidationRulesFor<Order> {
+                public static void Describe(ValidationRules<Order> rules, Order x) {
+                    {{statement}}
+                }
+            }
+            """;
+
     /// <summary>
     /// What a body was refused for. VM3103 is advisory - it states the code an <c>Ensure</c>
     /// derived, and the rule is emitted either way - so it is not a complaint about the body and
@@ -597,5 +622,47 @@ public class RulesClassDiagnosticsTests
             DiagnosticSeverity.Error,
             Assert.Single(result.Diagnostics, d => d.Id == "VM3101").Severity
         );
+    }
+
+    /// <summary>
+    /// A default <c>ImmutableArray&lt;T&gt;</c> reads as missing, so <c>Require</c> on one can fail
+    /// and is not VM3101. It binds an overload of its own, anchored on the list, so <c>Count</c>
+    /// and <c>Each</c> chain after it and skip a default array through the <c>missing</c> local.
+    /// </summary>
+    [Theory]
+    [InlineData("rules.Require(x.Skus);", "if (x.Skus.IsDefault && ")]
+    [InlineData("rules.Require(x.Skus).Count(1, 5);", "if (!missingSkus && (!x.Skus.IsDefault && ")]
+    [InlineData(
+        "rules.Count(x.Skus, 1, 5).Require();",
+        "if (!missingSkus && (!x.Skus.IsDefault && "
+    )]
+    [InlineData(
+        "rules.Require(x.Lines).Each();",
+        "if (!missingLines && x.Lines is { IsDefault: false } items0)"
+    )]
+    [InlineData("rules.Require(x.MaybeSkus);", "if (x.MaybeSkus is not { IsDefault: false } && ")]
+    public void RequireOnAnImmutableArray_IsNotVM3101(string statement, string expected)
+    {
+        var result = GeneratorHarness.Run(ImmutableArrayRules(statement));
+
+        Assert.Empty(result.CompilationErrors);
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id is "VM3101" or "VM3001");
+        Assert.Contains(expected, result.Sources["Sample.OrderRules_Rules.g.cs"]);
+    }
+
+    /// <summary>
+    /// <c>RequireAllowingEmpty</c> takes only a string, so on an <c>ImmutableArray&lt;T&gt;</c> it
+    /// does not bind, as on a reference-typed collection. VM3101 would say the array can never be
+    /// missing.
+    /// </summary>
+    [Fact]
+    public void RequireAllowingEmptyOnAnImmutableArray_IsNotVM3101()
+    {
+        var result = GeneratorHarness.Run(
+            ImmutableArrayRules("rules.RequireAllowingEmpty(x.Skus);")
+        );
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM3101");
+        Assert.Single(result.Diagnostics, d => d.Id == "VM3001");
     }
 }

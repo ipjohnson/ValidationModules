@@ -179,10 +179,12 @@ public static class TypeFacts
     /// <summary>
     /// Whether a default value of the type reads as missing, the way null does for a reference
     /// type. True for <c>ImmutableArray&lt;T&gt;</c>, whose default has no array behind it, so its
-    /// <c>Length</c>, its enumerator and its interface views all throw.
+    /// <c>Length</c>, its enumerator and its interface views all throw. True for
+    /// <c>ImmutableArray&lt;T&gt;?</c> as well, which can hold that default as its value.
     /// </summary>
     public static bool IsMissingWhenDefault(ITypeSymbol type) =>
-        type is INamedTypeSymbol { IsValueType: true, IsGenericType: true } named
+        (IsNullableValueType(type) ? ((INamedTypeSymbol)type).TypeArguments[0] : type)
+            is INamedTypeSymbol { IsValueType: true, IsGenericType: true } named
         && named.ConstructedFrom.ToDisplayString()
             == "System.Collections.Immutable.ImmutableArray<T>";
 
