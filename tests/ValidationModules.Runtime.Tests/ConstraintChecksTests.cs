@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace ValidationModules.Runtime.Tests;
@@ -213,6 +214,30 @@ public class ConstraintChecksTests
     [InlineData(float.MinValue)]
     public void IsMultipleOf_Float_RejectsWhatDecimalCannotHold(float value) =>
         Assert.False(ConstraintChecks.IsMultipleOf(value, 0.1m));
+
+    /// <summary>
+    /// The input that exhausts a match timeout is the hostile input the timeout exists for. It has
+    /// to fail the pattern, because an exception out of <c>Validate</c> is a 500 from an endpoint.
+    /// </summary>
+    [Fact]
+    public void IsMatch_CountsATimeoutAsNoMatch()
+    {
+        var regex = new Regex("^(a+)+$", RegexOptions.None, TimeSpan.FromMilliseconds(1));
+        var hostile = new string('a', 40) + "!";
+
+        // The premise, so a regex engine that learned not to backtrack here fails this loudly
+        // rather than letting it pass for the wrong reason.
+        Assert.Throws<RegexMatchTimeoutException>(() => regex.IsMatch(hostile));
+
+        Assert.False(ConstraintChecks.IsMatch(regex, hostile));
+    }
+
+    [Theory]
+    [InlineData("aaa", true)]
+    [InlineData("aab", false)]
+    [InlineData("", false)]
+    public void IsMatch_AnswersWhatTheRegexAnswers(string value, bool expected) =>
+        Assert.Equal(expected, ConstraintChecks.IsMatch(new Regex("^a+$"), value));
 
     // The format checks. Each parity theory runs the same input through the real attribute and
     // through the reproduction; the pinned theories state the semantics a reader should be able

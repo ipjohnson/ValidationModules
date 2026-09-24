@@ -33,8 +33,9 @@ policy.
 A class library that AOT applications consume should set `IsAotCompatible`. Its inline patterns then
 fail in the library's own build rather than in an application's publish.
 
-The DataAnnotations `[RegularExpression]` attribute always compiles to an inline pattern, whatever
-the policy. Use `[Pattern]` with `[GeneratedRegex]` in its place in an AOT application.
+The DataAnnotations `[RegularExpression]` attribute always compiles to an inline pattern, so the
+policy applies to it too. `VM1301` then prints the `[Pattern]` and `[GeneratedRegex]` to use in its
+place.
 
 ### JSON in ASP.NET Core
 

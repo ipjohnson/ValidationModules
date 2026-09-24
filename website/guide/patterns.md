@@ -55,7 +55,8 @@ as `VM1106` at build time.
 
 The inline form needs the regular expression parser and interpreter at run time, and they add to
 the size of a Native AOT binary. For that reason the generator treats the inline form according to
-`ValidationModules_PatternPolicy`:
+`ValidationModules_PatternPolicy`. The DataAnnotations `[RegularExpression]` compiles to the same
+field, so the policy applies to it as well:
 
 | Policy | Effect on an inline pattern |
 | --- | --- |
@@ -79,8 +80,8 @@ own build rather than in an application's publish.
 
 `Options` passes `RegexOptions` to the inline form, for example `RegexOptions.IgnoreCase`.
 `MatchTimeoutMilliseconds` sets a match timeout, which limits the time an expensive input can
-take. Neither has any effect on the referenced form. Set them on the `[GeneratedRegex]` attribute
-instead.
+take. Neither has any effect on the referenced form, and setting either there is reported as
+`VM1303`. Set them on the `[GeneratedRegex]` attribute instead.
 
 <!-- verify -->
 ```csharp
@@ -98,13 +99,16 @@ public sealed class Account
 }
 ```
 
-When the timeout expires, `IsMatch` throws a `RegexMatchTimeoutException`. The validator does not
-catch it, so it leaves `Validate` and `IsValid` as an exception, and an ASP.NET Core endpoint
-answers `500`. Catch it where you validate if a slow input should become a validation error.
+When the timeout expires, the value fails the pattern and reports the code `pattern`, as a value
+that does not match would. `Validate` and `IsValid` do not throw, so an ASP.NET Core endpoint
+answers with a validation response rather than `500`. The same applies to a timeout declared on a
+`[GeneratedRegex]`, or set for the whole process with the `REGEX_DEFAULT_MATCH_TIMEOUT` setting.
 
-`RegexOptions.Compiled` is reported as `VM1302`. Leave it out. In a Native AOT binary, an inline
-pattern with `Options` or a timeout also keeps code that an inline pattern without them lets the
-trimmer remove.
+`RegexOptions.Compiled` is removed from an inline pattern and reported as `VM1302`. Compiling the
+expression would emit code at run time, so the inline form is always interpreted. Use the
+referenced form for a matcher compiled at build time. In a Native AOT binary, an inline pattern
+with `Options` or a timeout also keeps code that an inline pattern without them lets the trimmer
+remove.
 
 ## In a rules class
 
@@ -141,3 +145,7 @@ class, which cannot call a `private` method.
 `[Pattern]` passes a `null` value, like every constraint except `[Required]`. An empty string is
 matched against the expression like any other string. Add `[Required]` when the value must be
 present.
+
+The DataAnnotations `[RegularExpression]` passes an empty string without matching it, as
+DataAnnotations does. An HTML form posts an optional field left blank as an empty string, so a
+model moved from DataAnnotations keeps accepting it.
