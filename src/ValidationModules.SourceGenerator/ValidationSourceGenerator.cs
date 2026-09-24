@@ -483,6 +483,11 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
         GeneratorOptions options
     )
     {
+        // A partial type declared in two parts reaches the syntax provider once per declaration.
+        candidates = candidates
+            .Distinct<INamedTypeSymbol>(SymbolEqualityComparer.Default)
+            .ToImmutableArray();
+
         var results = ImmutableArray.CreateBuilder<ModelResult>();
         var declarations = new List<RulesDeclaration>();
 
