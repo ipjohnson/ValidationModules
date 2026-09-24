@@ -176,7 +176,7 @@ public sealed class RulesFrontEnd
                     target,
                     rulesClass,
                     describe.Parameters[1].Name,
-                    writer.Lines,
+                    writer.Body,
                     writer.Dependencies,
                     writer.AppliedRules,
                     writer.Fields,
@@ -353,7 +353,7 @@ public sealed class RulesFrontEnd
             writer.ReadExpressionStatement(arrow.Expression, depth: 0, report: arrow.Expression);
         }
 
-        method.BodyLines.AddRange(writer.Lines);
+        method.Body.AddRange(writer.Body);
         method.Fields.AddRange(writer.Fields);
         method.MessageInfos.AddRange(writer.MessageInfos);
         method.Facets.AddRange(writer.Facets);
@@ -420,7 +420,7 @@ public sealed class RulesFrontEnd
     }
 
     /// <summary>
-    /// Walks one body - a Describe or a fragment - producing the region's statement lines.
+    /// Walks one body - a Describe or a fragment - producing the region's statements.
     /// </summary>
     private sealed class RegionWriter
     {
@@ -444,7 +444,11 @@ public sealed class RulesFrontEnd
         /// </summary>
         private readonly IReadOnlyDictionary<ITypeParameterSymbol, ITypeSymbol> _typeArguments;
 
-        private readonly List<string> _lines = new();
+        private readonly List<RegionStatement> _body = new();
+
+        /// <summary>The blocks opened and not yet closed, innermost on top.</summary>
+        private readonly Stack<RegionBlock> _open = new();
+
         private readonly List<RegionDependency> _dependencies = new();
         private readonly List<string> _applied = new();
         private readonly List<CompanionField> _fields = new();
@@ -516,7 +520,7 @@ public sealed class RulesFrontEnd
                 );
         }
 
-        public IReadOnlyList<string> Lines => _lines;
+        public IReadOnlyList<RegionStatement> Body => _body;
 
         public IReadOnlyList<RegionDependency> Dependencies => _dependencies;
 
@@ -666,7 +670,7 @@ public sealed class RulesFrontEnd
                         return;
                     }
 
-                    Transcribe(declaration, depth);
+                    Transcribe(declaration);
                     return;
 
                 case IfStatementSyntax conditional:
@@ -700,15 +704,15 @@ public sealed class RulesFrontEnd
                     return;
 
                 case DoStatementSyntax done:
-                    Line(depth, "do {");
+                    Open("do");
                     ReadEmbedded(done.Statement, depth + 1, inLoop: true);
-                    Line(depth, $"}} while ({Rewrite(done.Condition)});");
+                    Close(footer: $"while ({Rewrite(done.Condition)});");
                     return;
 
                 case ReturnStatementSyntax { Expression: null }:
                     // The region is a method, so an early return ends this rules class's checks and
                     // nothing else. Continue rather than Stop: the author is done, not failing.
-                    Line(depth, $"return {Flow}.Continue;");
+                    Statement($"return {Flow}.Continue;");
                     return;
 
                 case ReturnStatementSyntax:
@@ -721,23 +725,23 @@ public sealed class RulesFrontEnd
                     return;
 
                 case BlockSyntax nested:
-                    Line(depth, "{");
+                    Open(null);
                     ReadBlock(nested.Statements, depth + 1, inLoop, inSwitch);
-                    Line(depth, "}");
+                    Close();
                     return;
 
                 case LocalFunctionStatementSyntax function:
                     GuardIslandsInside(function, "a local function");
-                    Transcribe(function, depth);
+                    Transcribe(function);
                     return;
 
                 case BreakStatementSyntax when inLoop || inSwitch:
                 case ContinueStatementSyntax when inLoop:
-                    Transcribe(statement, depth);
+                    Transcribe(statement);
                     return;
 
                 case ThrowStatementSyntax:
-                    Transcribe(statement, depth);
+                    Transcribe(statement);
                     return;
 
                 case EmptyStatementSyntax:
@@ -774,13 +778,11 @@ public sealed class RulesFrontEnd
 
                     if (reported?.ToDisplayString() == "ValidationModules.ValidationFlow")
                     {
-                        Line(depth, $"if (({Rewrite(expression)}).ShouldStop) {{");
-                        Line(depth + 1, $"return {Flow}.Stop;");
-                        Line(depth, "}");
+                        StopIf($"({Rewrite(expression)}).ShouldStop");
                     }
                     else
                     {
-                        Line(depth, $"{Rewrite(expression)};");
+                        Statement($"{Rewrite(expression)};");
                     }
 
                     return;
@@ -814,7 +816,7 @@ public sealed class RulesFrontEnd
                     return;
                 }
 
-                ReadFragmentCall(fragmentCall!, method!, depth);
+                ReadFragmentCall(fragmentCall!, method!);
                 return;
             }
 
@@ -838,13 +840,11 @@ public sealed class RulesFrontEnd
 
             if (type?.ToDisplayString() == "ValidationModules.ValidationFlow")
             {
-                Line(depth, $"if (({Rewrite(expression)}).ShouldStop) {{");
-                Line(depth + 1, $"return {Flow}.Stop;");
-                Line(depth, "}");
+                StopIf($"({Rewrite(expression)}).ShouldStop");
                 return;
             }
 
-            Line(depth, $"{Rewrite(expression)};");
+            Statement($"{Rewrite(expression)};");
         }
 
         private void ReadIf(
@@ -854,8 +854,9 @@ public sealed class RulesFrontEnd
             bool inSwitch = false
         )
         {
-            Line(depth, $"if ({Rewrite(conditional.Condition)}) {{");
+            Open($"if ({Rewrite(conditional.Condition)})");
             ReadEmbedded(conditional.Statement, depth + 1, inLoop, inSwitch);
+            Close();
 
             var alternative = conditional.Else;
 
@@ -863,44 +864,44 @@ public sealed class RulesFrontEnd
             {
                 if (alternative.Statement is IfStatementSyntax chained)
                 {
-                    Line(depth, $"}} else if ({Rewrite(chained.Condition)}) {{");
+                    Open($"else if ({Rewrite(chained.Condition)})");
                     ReadEmbedded(chained.Statement, depth + 1, inLoop, inSwitch);
+                    Close();
                     alternative = chained.Else;
                 }
                 else
                 {
-                    Line(depth, "} else {");
+                    Open("else");
                     ReadEmbedded(alternative.Statement, depth + 1, inLoop, inSwitch);
+                    Close();
                     alternative = null;
                 }
             }
-
-            Line(depth, "}");
         }
 
         private void ReadSwitch(SwitchStatementSyntax dispatch, int depth, bool inLoop)
         {
-            Line(depth, $"switch ({Rewrite(dispatch.Expression)}) {{");
+            Open($"switch ({Rewrite(dispatch.Expression)})");
 
             foreach (var section in dispatch.Sections)
             {
-                foreach (var label in section.Labels)
-                {
-                    Line(depth + 1, Rewrite(label).TrimEnd());
-                }
-
+                Open(
+                    string.Join("\n", section.Labels.Select(label => Rewrite(label).TrimEnd())),
+                    braced: false
+                );
                 ReadBlock(section.Statements, depth + 2, inLoop, inSwitch: true);
+                Close();
             }
 
-            Line(depth, "}");
+            Close();
         }
 
         private void ReadLoop(StatementSyntax loop, StatementSyntax body, string header, int depth)
         {
             _ = loop;
-            Line(depth, $"{header} {{");
+            Open(header);
             ReadEmbedded(body, depth + 1, inLoop: true);
-            Line(depth, "}");
+            Close();
         }
 
         private void ReadEmbedded(
@@ -1192,11 +1193,7 @@ public sealed class RulesFrontEnd
                 _ => type,
             };
 
-        private void ReadFragmentCall(
-            InvocationExpressionSyntax call,
-            IMethodSymbol method,
-            int depth
-        )
+        private void ReadFragmentCall(InvocationExpressionSyntax call, IMethodSymbol method)
         {
             var fragment = _owner.FragmentFor(method, _target, _compilation, call, _expanding);
 
@@ -1268,12 +1265,9 @@ public sealed class RulesFrontEnd
                 ? string.Empty
                 : fragment.Definition.ContainingType.ContainingNamespace.ToDisplayString() + ".";
 
-            Line(
-                depth,
-                $"if (global::{ns}{GeneratedNames.FragmentContainer(fragment.Definition.ContainingType)}.{fragment.Name}({string.Join(", ", rendered)}).ShouldStop) {{"
+            StopIf(
+                $"global::{ns}{GeneratedNames.FragmentContainer(fragment.Definition.ContainingType)}.{fragment.Name}({string.Join(", ", rendered)}).ShouldStop"
             );
-            Line(depth + 1, $"return {Flow}.Stop;");
-            Line(depth, "}");
         }
 
         private static string FormatDefault(IParameterSymbol parameter) =>
@@ -1350,26 +1344,23 @@ public sealed class RulesFrontEnd
             }
         }
 
-        private void Transcribe(StatementSyntax statement, int depth)
-        {
-            foreach (var line in Rewrite(statement).Split('\n'))
-            {
-                Line(depth, line.TrimEnd('\r'));
-            }
-        }
+        private void Transcribe(StatementSyntax statement) =>
+            RegionSyntax.Add(Current, (StatementSyntax)Rewritten(statement));
 
         private string RewriteOptional(ExpressionSyntax? expression) =>
             expression is null ? string.Empty : Rewrite(expression);
 
-        private string Rewrite(SyntaxNode node)
+        private string Rewrite(SyntaxNode node) =>
+            Rewritten(node).NormalizeWhitespace("    ", "\n").ToFullString();
+
+        private SyntaxNode Rewritten(SyntaxNode node)
         {
             GuardBuilderInside(node);
             CheckAccessibility(node);
 
             var rewriter = new TranscriptionRewriter(this);
-            var rewritten = rewriter.Visit(node);
 
-            return rewritten.NormalizeWhitespace("    ", "\n").ToFullString();
+            return rewriter.Visit(node);
         }
 
         private string Rewrite(string text) => text;
@@ -1663,15 +1654,31 @@ public sealed class RulesFrontEnd
             return formatted + suffix;
         }
 
-        private void Line(int depth, string text)
-        {
-            if (text.Length == 0)
-            {
-                _lines.Add(string.Empty);
-                return;
-            }
+        /// <summary>Where the next statement goes: the innermost open block, or the body.</summary>
+        private List<RegionStatement> Current => _open.Count == 0 ? _body : _open.Peek().Body;
 
-            _lines.Add(new string(' ', depth * 4) + text);
+        private void Statement(string text) => Current.Add(new RegionCode(text));
+
+        /// <summary>
+        /// Adds a block under <paramref name="header"/>. The statements after it go into the block
+        /// until <see cref="Close"/>.
+        /// </summary>
+        private void Open(string? header, bool braced = true)
+        {
+            var block = new RegionBlock(header, braced);
+
+            Current.Add(block);
+            _open.Push(block);
+        }
+
+        private void Close(string? footer = null) => _open.Pop().Footer = footer;
+
+        /// <summary>The check every island and every flow-typed call ends in.</summary>
+        private void StopIf(string condition)
+        {
+            Open($"if ({condition})");
+            Statement($"return {Flow}.Stop;");
+            Close();
         }
 
         /// <summary>
@@ -2324,12 +2331,9 @@ public sealed class RulesFrontEnd
                     var validator = $"global::{ns}{GeneratedNames.Validator(facet)}";
                     var field = _writer.CompanionField(validator);
 
-                    _writer.Line(
-                        _depth,
-                        $"if (({field} ??= new {validator}()).Validate(ref ctx, {subject}).ShouldStop) {{"
+                    _writer.StopIf(
+                        $"({field} ??= new {validator}()).Validate(ref ctx, {subject}).ShouldStop"
                     );
-                    _writer.Line(_depth + 1, $"return {Flow}.Stop;");
-                    _writer.Line(_depth, "}");
 
                     return true;
                 }
@@ -2348,21 +2352,15 @@ public sealed class RulesFrontEnd
                     quote: true
                 );
 
-                _writer.Line(
-                    _depth,
+                _writer.Statement(
                     $"var {local} = ({service}?)ctx.Services?.GetService(typeof({service})) ?? "
                         + $"throw new global::System.InvalidOperationException({message});"
                 );
 
                 // An ordinary context rather than ctx: the container may hand back a hand-written
                 // validator, whose nameof(...) fields the pass's namer is there to spell.
-                _writer.Line(_depth, $"var {local}Context = ctx.WithResolvedFieldNames(false);");
-                _writer.Line(
-                    _depth,
-                    $"if ({local}.Validate(ref {local}Context, {subject}).ShouldStop) {{"
-                );
-                _writer.Line(_depth + 1, $"return {Flow}.Stop;");
-                _writer.Line(_depth, "}");
+                _writer.Statement($"var {local}Context = ctx.WithResolvedFieldNames(false);");
+                _writer.StopIf($"{local}.Validate(ref {local}Context, {subject}).ShouldStop");
 
                 return true;
             }
@@ -2571,12 +2569,9 @@ public sealed class RulesFrontEnd
                 // replaces it; the derived wording belongs to the library and stays replaceable.
                 var report = explicitMessage is null ? "Report" : "ReportAuthored";
 
-                _writer.Line(
-                    _depth,
-                    $"if (!({_writer.Rewrite(condition)}) && ctx.{report}({Quote(field)}, {code}, {Quote(message)}{severity}).ShouldStop) {{"
+                _writer.StopIf(
+                    $"!({_writer.Rewrite(condition)}) && ctx.{report}({Quote(field)}, {code}, {Quote(message)}{severity}).ShouldStop"
                 );
-                _writer.Line(_depth + 1, $"return {Flow}.Stop;");
-                _writer.Line(_depth, "}");
 
                 return true;
             }
@@ -2593,7 +2588,7 @@ public sealed class RulesFrontEnd
                     if (_constraints.Count > 0 || _descents.Count > 0)
                     {
                         missing = _writer.MissingLocal(facts.PropertyName);
-                        _writer.Line(_depth, $"var {missing} = {test};");
+                        _writer.Statement($"var {missing} = {test};");
                         test = missing;
                     }
 
@@ -2604,9 +2599,7 @@ public sealed class RulesFrontEnd
                         infos: InfosFor(required, facts)
                     );
 
-                    _writer.Line(_depth, $"if ({test} && {report}.ShouldStop) {{");
-                    _writer.Line(_depth + 1, $"return {Flow}.Stop;");
-                    _writer.Line(_depth, "}");
+                    _writer.StopIf($"{test} && {report}.ShouldStop");
                 }
 
                 foreach (var constraint in _constraints)
@@ -2644,9 +2637,7 @@ public sealed class RulesFrontEnd
                             ? test
                             : $"!{missing} && ({test})";
 
-                    _writer.Line(_depth, $"if ({ValidatorEmitter.Conjoin(condition, report)}) {{");
-                    _writer.Line(_depth + 1, $"return {Flow}.Stop;");
-                    _writer.Line(_depth, "}");
+                    _writer.StopIf(ValidatorEmitter.Conjoin(condition, report));
                 }
 
                 if (
@@ -2705,12 +2696,11 @@ public sealed class RulesFrontEnd
                     default
                 );
 
-                _writer.Line(_depth, $"if ({guard}{access} is {{ }} {items}) {{");
-                _writer.Line(
-                    _depth + 1,
-                    $"for (var {index} = 0; {index} < {items}.{collection.CountAccessor}; {index}++) {{"
+                _writer.Open($"if ({guard}{access} is {{ }} {items})");
+                _writer.Open(
+                    $"for (var {index} = 0; {index} < {items}.{collection.CountAccessor}; {index}++)"
                 );
-                _writer.Line(_depth + 2, $"var {element} = {items}[{index}];");
+                _writer.Statement($"var {element} = {items}[{index}];");
 
                 foreach (var constraint in _elementConstraints)
                 {
@@ -2733,13 +2723,11 @@ public sealed class RulesFrontEnd
                         elementFacts
                     );
 
-                    _writer.Line(_depth + 2, $"if ({ValidatorEmitter.Conjoin(test, report)}) {{");
-                    _writer.Line(_depth + 3, $"return {Flow}.Stop;");
-                    _writer.Line(_depth + 2, "}");
+                    _writer.StopIf(ValidatorEmitter.Conjoin(test, report));
                 }
 
-                _writer.Line(_depth + 1, "}");
-                _writer.Line(_depth, "}");
+                _writer.Close();
+                _writer.Close();
             }
 
             private void EmitDescent(
@@ -2795,48 +2783,38 @@ public sealed class RulesFrontEnd
                     var items = $"items{n}";
                     var index = $"i{n}";
 
-                    _writer.Line(_depth, $"if ({guard}{access} is {{ }} {items}) {{");
-                    _writer.Line(
-                        _depth + 1,
-                        $"for (var {index} = 0; {index} < {items}.{dependency.CountAccessor}; {index}++) {{"
+                    _writer.Open($"if ({guard}{access} is {{ }} {items})");
+                    _writer.Open(
+                        $"for (var {index} = 0; {index} < {items}.{dependency.CountAccessor}; {index}++)"
                     );
-                    _writer.Line(_depth + 2, $"var element{n} = {items}[{index}];");
-                    _writer.Line(_depth + 2, $"if (element{n} is not null) {{");
-                    _writer.Line(
-                        _depth + 3,
+                    _writer.Statement($"var element{n} = {items}[{index}];");
+                    _writer.Open($"if (element{n} is not null)");
+                    _writer.Statement(
                         $"var elementCtx{n} = ctx.PushIndex({Quote(field)}, {index});"
                     );
-                    _writer.Line(
-                        _depth + 3,
-                        $"for (var vi{n} = 0; vi{n} < {dependency.ParameterName}.Length; vi{n}++) {{"
+                    _writer.Open(
+                        $"for (var vi{n} = 0; vi{n} < {dependency.ParameterName}.Length; vi{n}++)"
                     );
-                    _writer.Line(
-                        _depth + 4,
-                        $"if ({dependency.ParameterName}[vi{n}].Validate(ref elementCtx{n}, element{n}).ShouldStop) {{"
+                    _writer.StopIf(
+                        $"{dependency.ParameterName}[vi{n}].Validate(ref elementCtx{n}, element{n}).ShouldStop"
                     );
-                    _writer.Line(_depth + 5, $"return {Flow}.Stop;");
-                    _writer.Line(_depth + 4, "}");
-                    _writer.Line(_depth + 3, "}");
-                    _writer.Line(_depth + 2, "}");
-                    _writer.Line(_depth + 1, "}");
-                    _writer.Line(_depth, "}");
+                    _writer.Close();
+                    _writer.Close();
+                    _writer.Close();
+                    _writer.Close();
                 }
                 else
                 {
-                    _writer.Line(_depth, $"if ({guard}{access} is {{ }} nested{n}) {{");
-                    _writer.Line(_depth + 1, $"var ctx{n} = ctx.Push({Quote(field)});");
-                    _writer.Line(
-                        _depth + 1,
-                        $"for (var vi{n} = 0; vi{n} < {dependency.ParameterName}.Length; vi{n}++) {{"
+                    _writer.Open($"if ({guard}{access} is {{ }} nested{n})");
+                    _writer.Statement($"var ctx{n} = ctx.Push({Quote(field)});");
+                    _writer.Open(
+                        $"for (var vi{n} = 0; vi{n} < {dependency.ParameterName}.Length; vi{n}++)"
                     );
-                    _writer.Line(
-                        _depth + 2,
-                        $"if ({dependency.ParameterName}[vi{n}].Validate(ref ctx{n}, nested{n}).ShouldStop) {{"
+                    _writer.StopIf(
+                        $"{dependency.ParameterName}[vi{n}].Validate(ref ctx{n}, nested{n}).ShouldStop"
                     );
-                    _writer.Line(_depth + 3, $"return {Flow}.Stop;");
-                    _writer.Line(_depth + 2, "}");
-                    _writer.Line(_depth + 1, "}");
-                    _writer.Line(_depth, "}");
+                    _writer.Close();
+                    _writer.Close();
                 }
             }
 
@@ -3747,7 +3725,7 @@ public sealed record RulesDeclaration(
     INamedTypeSymbol Target,
     INamedTypeSymbol RulesClass,
     string SubjectParameterName,
-    IReadOnlyList<string> BodyLines,
+    IReadOnlyList<RegionStatement> Body,
     IReadOnlyList<RegionDependency> Dependencies,
     IReadOnlyList<string> AppliedRules,
     IReadOnlyList<CompanionField> Fields,
@@ -3799,7 +3777,7 @@ public sealed class FragmentMethod
 
     public IReadOnlyList<IParameterSymbol> ExtraParameters { get; }
 
-    public List<string> BodyLines { get; } = new();
+    public List<RegionStatement> Body { get; } = new();
 
     public List<CompanionField> Fields { get; } = new();
 

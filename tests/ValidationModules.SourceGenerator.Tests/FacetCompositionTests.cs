@@ -246,7 +246,10 @@ public class FacetCompositionTests
         );
 
         Assert.Empty(result.CompilationErrors);
-        Assert.Contains("if (x.Version > 0) {", result.Sources["Sample.OrderRules_Rules.g.cs"]);
+        Assert.Contains(
+            "if (x.Version > 0)\n        {",
+            result.Sources["Sample.OrderRules_Rules.g.cs"]
+        );
     }
 
     /// <summary>

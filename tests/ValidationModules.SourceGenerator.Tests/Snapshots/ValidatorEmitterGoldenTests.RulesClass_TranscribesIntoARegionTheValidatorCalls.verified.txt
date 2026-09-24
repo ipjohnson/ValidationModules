@@ -59,16 +59,20 @@ internal static class ReservationRules_Rules
     public static global::ValidationModules.ValidationFlow Describe(ref global::ValidationModules.ValidationContext ctx, global::Sample.Reservation x)
     {
         var missingGuest = string.IsNullOrWhiteSpace(x.Guest);
-        if (missingGuest && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "guest").ShouldStop) {
+        if (missingGuest && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "guest").ShouldStop)
+        {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (!missingGuest && (x.Guest is not null && (x.Guest.Length < 2 || x.Guest.Length > 40)) && global::ValidationModules.ValidationContextExtensions.ReportStringLength(ctx, "guest", 2, 40).ShouldStop) {
+        if (!missingGuest && (x.Guest is not null && (x.Guest.Length < 2 || x.Guest.Length > 40)) && global::ValidationModules.ValidationContextExtensions.ReportStringLength(ctx, "guest", 2, 40).ShouldStop)
+        {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if ((x.Nights < 1 || x.Nights > 30) && global::ValidationModules.ValidationContextExtensions.ReportRange(ctx, "nights", 1, 30).ShouldStop) {
+        if ((x.Nights < 1 || x.Nights > 30) && global::ValidationModules.ValidationContextExtensions.ReportRange(ctx, "nights", 1, 30).ShouldStop)
+        {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (!(x.Start < x.End) && ctx.Report("start", "start_less_than_end", "start < end.").ShouldStop) {
+        if (!(x.Start < x.End) && ctx.Report("start", "start_less_than_end", "start < end.").ShouldStop)
+        {
             return global::ValidationModules.ValidationFlow.Stop;
         }
         return global::ValidationModules.ValidationFlow.Continue;

@@ -101,11 +101,9 @@ These are easy to violate by habit.
   text of one expression handed to CSharpAuthor, such as the condition in
   `body.If($"{call}.ShouldStop")`. Both generator projects already reference the package, and shared
   settings live in `Emitters/EmitterOutput.cs`. The four emitters are `ValidatorEmitter`,
-  `RegistrationEmitter`, `RegionEmitter` and `LanguagePackEmitter`. One gap remains:
-  `RulesFrontEnd` writes a transcribed region's statements as lines of text with their own braces
-  and indentation, and `RegionEmitter` emits those lines as they are. Do not copy that pattern.
-  Runtime string building such as `FieldNamer`, `RuleText`, and `ValidationContext` is exempt,
-  because it produces values rather than source code.
+  `RegistrationEmitter`, `RegionEmitter` and `LanguagePackEmitter`. Runtime string building such as
+  `FieldNamer`, `RuleText`, and `ValidationContext` is exempt, because it produces values rather
+  than source code.
 - Use `[GeneratedRegex]`. Never `new Regex(..., RegexOptions.Compiled)`. An inline pattern, from
   `[Pattern("...")]` or DataAnnotations `[RegularExpression]`, is the one case where generated code
   constructs a `Regex`: once, in a static field. `RegexOptions.Compiled` on an inline `[Pattern]` is

@@ -1,6 +1,7 @@
 using CSharpAuthor;
 using CSharpAuthor.Roslyn;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using ValidationModules.SourceGenerator.Impl.FrontEnds;
 using static ValidationModules.SourceGenerator.Impl.Emitters.EmitterOutput;
@@ -85,7 +86,7 @@ public sealed class RegionEmitter
                 );
             }
 
-            Body(method, declaration.BodyLines);
+            Body(method, declaration.Body);
             method.Return("global::ValidationModules.ValidationFlow.Continue");
         }
 
@@ -133,7 +134,7 @@ public sealed class RegionEmitter
                 method.AddParameter(extra.Type.GetTypeDefinition(), extra.Name);
             }
 
-            Body(method, fragment.BodyLines);
+            Body(method, fragment.Body);
             method.Return("global::ValidationModules.ValidationFlow.Continue");
         }
 
@@ -179,22 +180,140 @@ public sealed class RegionEmitter
     }
 
     /// <summary>
-    /// The transcribed statements, written as the raw lines the front end produced. Their own
-    /// relative indentation rides inside each line; the component supplies the method's.
+    /// The transcribed statements, each block's braces placed by the output context.
     /// </summary>
-    private static void Body(MethodDefinition method, IReadOnlyList<string> lines)
+    private static void Body(BaseBlockDefinition block, IReadOnlyList<RegionStatement> statements)
     {
-        foreach (var line in lines)
+        foreach (var statement in statements)
         {
-            if (line.Length == 0)
+            switch (statement)
             {
-                BlankLine(method);
+                case RegionBlock nested:
+                    Body(block.Add(new TranscribedBlock(nested)), nested.Body);
+                    break;
+
+                case RegionCode code:
+                    block.Add(new TranscribedCode(code.Text));
+                    break;
+            }
+        }
+    }
+
+    /// <summary>A transcribed statement, a line at a time at the current indent.</summary>
+    private sealed class TranscribedCode : BaseOutputComponent
+    {
+        private readonly string _text;
+
+        public TranscribedCode(string text) => _text = text;
+
+        protected override void WriteComponentOutput(IOutputContext output) =>
+            WriteLines(output, _text);
+    }
+
+    /// <summary>
+    /// A transcribed block: its header, then its statements inside braces the output context
+    /// places.
+    /// </summary>
+    /// <remarks>
+    /// A bare block has no header for a K&amp;R brace to join, so its braces are on lines of their
+    /// own in either style. A switch section has no braces, and its statements are indented under
+    /// its labels as <see cref="CaseBlockDefinition"/> indents them.
+    /// </remarks>
+    private sealed class TranscribedBlock : BaseBlockDefinition
+    {
+        private readonly RegionBlock _block;
+
+        public TranscribedBlock(RegionBlock block) => _block = block;
+
+        protected override void WriteComponentOutput(IOutputContext output)
+        {
+            if (_block.Header is not { } header)
+            {
+                output.WriteIndentedLine("{");
+                WriteIndented(output);
+                output.WriteIndentedLine("}");
+            }
+            else if (_block.Braced)
+            {
+                WriteLines(output, header);
+                WriteBlock(output);
             }
             else
             {
-                method.Add(new CodeOutputComponent(line));
+                WriteLines(output, header);
+                WriteIndented(output);
+            }
+
+            if (_block.Footer is { } footer)
+            {
+                WriteLines(output, footer);
             }
         }
+
+        private void WriteIndented(IOutputContext output)
+        {
+            output.IncrementIndent();
+
+            foreach (var statement in StatementList)
+            {
+                statement.WriteOutput(output);
+            }
+
+            output.DecrementIndent();
+        }
+    }
+
+    /// <summary>
+    /// Each line at the current indent. An empty line gets no indent, so it carries no trailing
+    /// whitespace.
+    /// </summary>
+    private static void WriteLines(IOutputContext output, string text)
+    {
+        foreach (var line in LinesOf(text))
+        {
+            if (line.Length == 0)
+            {
+                output.WriteLine();
+            }
+            else
+            {
+                output.WriteIndentedLine(line);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The lines of transcribed text, split only at line breaks between tokens.
+    /// </summary>
+    /// <remarks>
+    /// A line break inside a token, such as a verbatim string's, is part of the token's value. It
+    /// does not start a line, so no indent is written into the value.
+    /// </remarks>
+    private static IReadOnlyList<string> LinesOf(string text)
+    {
+        if (text.IndexOf('\n') < 0)
+        {
+            return new[] { text };
+        }
+
+        var lines = new List<string>();
+        var start = 0;
+
+        foreach (var token in SyntaxFactory.ParseTokens(text))
+        {
+            foreach (var trivia in token.LeadingTrivia.Concat(token.TrailingTrivia))
+            {
+                if (trivia.IsKind(SyntaxKind.EndOfLineTrivia))
+                {
+                    lines.Add(text.Substring(start, trivia.SpanStart - start));
+                    start = trivia.Span.End;
+                }
+            }
+        }
+
+        lines.Add(text.Substring(start));
+
+        return lines;
     }
 
     /// <summary>
