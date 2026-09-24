@@ -1,5 +1,6 @@
 using System.Buffers.Text;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 
 namespace ValidationModules;
 
@@ -11,9 +12,10 @@ namespace ValidationModules;
 /// Most constraints compile to a branch the emitter writes inline, because most constraints are
 /// comparisons. The ones here are not: <c>[UniqueItems]</c> has to look at elements against each
 /// other, <c>[MultipleOf]</c> on a floating-point member has to leave the binary domain before
-/// <c>%</c> means anything, and the DataAnnotations format validators each walk the value. All
-/// live here rather than being open-coded into every validator, so there is one implementation to
-/// reason about and one to test.
+/// <c>%</c> means anything, a pattern match has to survive its own timeout, and the
+/// DataAnnotations format validators each walk the value. All live here rather than being
+/// open-coded into every validator, so there is one implementation to reason about and one to
+/// test.
 /// </para>
 /// <para>
 /// The <c>Is*</c> format checks reproduce <c>System.ComponentModel.DataAnnotations</c> exactly -
@@ -150,6 +152,32 @@ public static class ConstraintChecks
         }
 
         return (decimal)value % divisor == 0m;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="value"/> matches <paramref name="regex"/>, counting a match that
+    /// runs out of time as no match.
+    /// </summary>
+    /// <remarks>
+    /// A match timeout, whether from <c>MatchTimeoutMilliseconds</c>, a <c>[GeneratedRegex]</c>
+    /// declaration or the process-wide <c>REGEX_DEFAULT_MATCH_TIMEOUT</c>, exists for input that
+    /// makes the expression backtrack. Letting the <see cref="RegexMatchTimeoutException"/> out
+    /// would turn that input into an exception from <c>Validate</c>, and into a 500 from an
+    /// endpoint. The value could not be shown to match in the time it was given, so it fails the
+    /// pattern and reports the <c>pattern</c> code like any other mismatch.
+    /// </remarks>
+    /// <param name="regex">The validator's static field, or the consumer's own regex.</param>
+    /// <param name="value">The value. Never null at the call site - the emitter guards first.</param>
+    public static bool IsMatch(Regex regex, string value)
+    {
+        try
+        {
+            return regex.IsMatch(value);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return false;
+        }
     }
 
     /// <summary>

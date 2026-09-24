@@ -111,7 +111,10 @@ public enum ConstraintKind
 /// [Pattern] does not, because JSON Schema and OpenAPI patterns are unanchored. Two states rather
 /// than two kinds.
 /// </param>
-/// <param name="RegexOptions">Pattern only: flows to the emitted Regex.</param>
+/// <param name="RegexOptions">
+/// Pattern only, inline form only: flows to the emitted Regex. RegexOptions.Compiled never reaches
+/// the emitter, because the front end strips it and reports VM1302.
+/// </param>
 /// <param name="MatchTimeoutMilliseconds">
 /// Pattern only, inline form only: the per-match timeout, flowed to the emitted Regex as its third
 /// constructor argument. Zero means none, and emits the single-argument constructor - which is
@@ -286,5 +289,12 @@ public sealed record ConstraintModel(
     /// this model's Min/Max order for every attribute ([StringLength] formats max before min).
     /// Meaningful only beside <see cref="MessageResourceAccessor"/>.
     /// </summary>
-    EquatableArray<string> MessageResourceArgs = default
+    EquatableArray<string> MessageResourceArgs = default,
+    /// <summary>
+    /// Pattern only: an empty string passes without being matched. DataAnnotations'
+    /// <c>[RegularExpression]</c> passes null and <c>""</c> and leaves emptiness to
+    /// <c>[Required]</c>, so its reader sets this. The native <c>[Pattern]</c> matches an empty
+    /// string like any other.
+    /// </summary>
+    bool PassesEmpty = false
 ) : IEquatable<ConstraintModel>;
