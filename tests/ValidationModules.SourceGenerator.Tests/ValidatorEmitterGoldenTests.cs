@@ -391,8 +391,8 @@ public class ValidatorEmitterGoldenTests
     {
         // The three DataAnnotations surfaces that carry user code: a custom attribute constructed
         // once into a static field, a [CustomValidation] method resolved to a direct static call
-        // in both arities, and IValidatableObject sequenced last behind a clean-pass gate - which
-        // also costs the type its boolean fast path.
+        // in both arities, and IValidatableObject sequenced last behind a gate on what this
+        // validator recorded since its mark - which also costs the type its boolean fast path.
         Snapshot.Match(
             Emit(
                 """

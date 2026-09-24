@@ -338,6 +338,12 @@ public sealed class AttributeFrontEnd
             _quiet = enclosingQuiet;
         }
 
+        // A class-level attribute is a rule of its own, so a type carrying nothing else still gets
+        // a validator - Validator.TryValidateObject would still run it.
+        var objectRules = ReadObjectRules(type);
+
+        sawAnything |= objectRules.Count > 0;
+
         if (!sawAnything)
         {
             return null;
@@ -405,8 +411,238 @@ public sealed class AttributeFrontEnd
             compilesValidatableObject,
             new EquatableArray<RegionModel>(
                 ImmutableArray.CreateRange(regions ?? Array.Empty<RegionModel>())
-            )
+            ),
+            new EquatableArray<ConstraintModel>(objectRules.ToImmutableArray())
         );
+    }
+
+    /// <summary>
+    /// The class-level <c>ValidationAttribute</c>s <c>Validator.TryValidateObject</c> would run on
+    /// <paramref name="type"/>, read into the rules its validator calls once the property rules
+    /// pass.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// DataAnnotations reads type-level attributes through <c>TypeDescriptor.GetAttributes</c>. That
+    /// takes them from the type, from every base type whatever the attribute's <c>Inherited</c>
+    /// says, and from the public interfaces, and keeps one per attribute type, the most-derived
+    /// declaration winning. This reads the same set in the same order. <c>[CustomValidation]</c>
+    /// is keyed by its validator type and method instead, as its own <c>TypeId</c> is, so two
+    /// methods named on one class both run.
+    /// </para>
+    /// <para>
+    /// A <c>[CustomValidation]</c> resolves to a direct static call, as it does on a property; any
+    /// other <c>ValidationAttribute</c> is constructed once and invoked. Only the declaring type
+    /// reports: an attribute a base type or an interface carries is reported where it is declared,
+    /// not once per type that inherits it.
+    /// </para>
+    /// </remarks>
+    private List<ConstraintModel> ReadObjectRules(INamedTypeSymbol type)
+    {
+        var rules = new List<ConstraintModel>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var declaring in ObjectRuleSources(type))
+        {
+            var owned = SymbolEqualityComparer.Default.Equals(declaring, type);
+
+            foreach (var attribute in declaring.GetAttributes())
+            {
+                if (
+                    attribute.AttributeClass is not { } attributeClass
+                    || !DerivesFromValidationAttribute(attributeClass)
+                )
+                {
+                    continue;
+                }
+
+                var isCustomValidation =
+                    attributeClass.ToDisplayString() == KnownTypes.CustomValidationAttribute;
+
+                if (
+                    ObjectRuleKey(attribute, attributeClass, isCustomValidation) is { } key
+                    && !seen.Add(key)
+                )
+                {
+                    continue;
+                }
+
+                var wasQuiet = _quiet;
+
+                _quiet = !owned;
+                ReadObjectRule(type, attribute, attributeClass, isCustomValidation, rules);
+                _quiet = wasQuiet;
+            }
+        }
+
+        return rules;
+    }
+
+    /// <summary>
+    /// One class-level attribute: the rule it becomes, if any, and VM2010 or VM2008 saying what
+    /// happened to it.
+    /// </summary>
+    private void ReadObjectRule(
+        INamedTypeSymbol type,
+        AttributeData attribute,
+        INamedTypeSymbol attributeClass,
+        bool isCustomValidation,
+        List<ConstraintModel> rules
+    )
+    {
+        var descriptor = ValidationDiagnostics.ClassLevelValidationAttribute;
+
+        if (!_compileDataAnnotations)
+        {
+            ReportAt(
+                attribute,
+                type,
+                descriptor,
+                DiagnosticSeverity.Info,
+                attributeClass.Name,
+                type.Name,
+                ValidationDiagnostics.CustomValidationIgnoreTail
+            );
+            return;
+        }
+
+        if (isCustomValidation)
+        {
+            // The object is the value: the method's first parameter has to accept the type, which
+            // is the check the property form makes against the property's type.
+            var outcome = DataAnnotationsConstraintReader.Read(
+                attribute,
+                attributeClass.Name,
+                type
+            );
+
+            if (outcome.Constraint is not { } method)
+            {
+                if (outcome.Diagnostic is { } unusable)
+                {
+                    ReportAt(
+                        attribute,
+                        type,
+                        unusable,
+                        unusable.DefaultSeverity,
+                        attributeClass.Name,
+                        type.Name,
+                        outcome.Detail
+                    );
+                }
+
+                return;
+            }
+
+            rules.Add(method);
+            ReportAt(
+                attribute,
+                type,
+                descriptor,
+                descriptor.DefaultSeverity,
+                attributeClass.Name,
+                type.Name,
+                ValidationDiagnostics.ClassLevelMethodTail
+            );
+            return;
+        }
+
+        if (AttributeConstructionRenderer.Render(attribute) is not { } construction)
+        {
+            ReportAt(
+                attribute,
+                type,
+                descriptor,
+                DiagnosticSeverity.Warning,
+                attributeClass.Name,
+                type.Name,
+                ValidationDiagnostics.ClassLevelEnforceTail
+            );
+            return;
+        }
+
+        rules.Add(
+            new ConstraintModel(ConstraintKind.CustomAttribute, CustomConstruction: construction)
+        );
+        ReportAt(
+            attribute,
+            type,
+            descriptor,
+            descriptor.DefaultSeverity,
+            attributeClass.Name,
+            type.Name,
+            ValidationDiagnostics.ClassLevelInvokeTail
+        );
+
+        if (NativeConstraintReader.Named(attribute, "ErrorMessageResourceType") is not null)
+        {
+            ReportAt(
+                attribute,
+                type,
+                ValidationDiagnostics.ResourceErrorMessageUnderTrimming,
+                ValidationDiagnostics.ResourceErrorMessageUnderTrimming.DefaultSeverity,
+                attributeClass.Name,
+                type.Name
+            );
+        }
+    }
+
+    /// <summary>
+    /// The declarations <c>TypeDescriptor.GetAttributes</c> merges for a type, most-derived first:
+    /// the type, its base types short of <c>object</c>, then its public interfaces. Interfaces are
+    /// ordered by name, because <c>AllInterfaces</c> order is not contractual and a rule that moved
+    /// between builds would reorder the generated code for nothing.
+    /// </summary>
+    private static IEnumerable<INamedTypeSymbol> ObjectRuleSources(INamedTypeSymbol type)
+    {
+        for (
+            INamedTypeSymbol? current = type;
+            current is not null && current.SpecialType != SpecialType.System_Object;
+            current = current.BaseType
+        )
+        {
+            yield return current;
+        }
+
+        foreach (
+            var contract in type
+                .AllInterfaces.Where(contract =>
+                    contract.DeclaredAccessibility == Accessibility.Public
+                )
+                .OrderBy(contract => contract.ToDisplayString(), StringComparer.Ordinal)
+        )
+        {
+            yield return contract;
+        }
+    }
+
+    /// <summary>
+    /// What DataAnnotations dedupes a type-level attribute by: its <c>TypeId</c>, which is the
+    /// attribute's type everywhere except <c>[CustomValidation]</c>, where it is the validator type
+    /// and method. Null for a <c>[CustomValidation]</c> whose arguments do not read, which is never
+    /// deduped, so the reader still sees it and reports why.
+    /// </summary>
+    private static string? ObjectRuleKey(
+        AttributeData attribute,
+        INamedTypeSymbol attributeClass,
+        bool isCustomValidation
+    )
+    {
+        var type = attributeClass.ToDisplayString();
+
+        if (!isCustomValidation)
+        {
+            return type;
+        }
+
+        var args = attribute.ConstructorArguments;
+
+        return
+            args.Length == 2
+            && args[0].Value is INamedTypeSymbol validator
+            && args[1].Value is string method
+            ? $"{type}|{validator.ToDisplayString()}|{method}"
+            : null;
     }
 
     /// <summary>
@@ -435,14 +671,33 @@ public sealed class AttributeFrontEnd
     /// Whether anything about <paramref name="type"/> asks for a validator to be generated.
     /// </summary>
     /// <remarks>
-    /// Deliberately the same three things <see cref="Build"/> itself treats as "saw something" -
-    /// a constraint on a member, <c>[GenerateValidator]</c>, or a rules class - plus
-    /// <c>[ValidateNested]</c>, which produces a validator that descends even with no constraints
-    /// of its own. Any narrower test would warn about a type that does get one.
+    /// Deliberately the same things <see cref="Build"/> itself treats as "saw something" - a
+    /// constraint on a member, a class-level <c>ValidationAttribute</c>, <c>[GenerateValidator]</c>,
+    /// or a rules class - plus <c>[ValidateNested]</c>, which produces a validator that descends
+    /// even with no constraints of its own. Any narrower test would warn about a type that does get
+    /// one.
     /// </remarks>
     private bool ProducesAValidator(INamedTypeSymbol type)
     {
         if (HasGenerateValidator(type) || _hasRulesClass?.Invoke(type) == true)
+        {
+            return true;
+        }
+
+        // A class-level ValidationAttribute is a rule of the type's own, found where
+        // ReadObjectRules looks for it, so Build gives the type a validator on its strength.
+        if (
+            _compileDataAnnotations
+            && ObjectRuleSources(type)
+                .Any(declaring =>
+                    declaring
+                        .GetAttributes()
+                        .Any(attribute =>
+                            attribute.AttributeClass is { } attributeClass
+                            && DerivesFromValidationAttribute(attributeClass)
+                        )
+                )
+        )
         {
             return true;
         }
@@ -1324,11 +1579,24 @@ public sealed class AttributeFrontEnd
                 unemittable = true;
             }
 
-            // RegexOptions.Compiled is 8. Meaningless against a source-generated regex, and asking
-            // for it usually means someone is carrying over a habit this library exists to remove.
-            if (constraint.Kind == ConstraintKind.Pattern && (constraint.RegexOptions & 8) != 0)
+            // RegexOptions.Compiled is 8. Removed as well as reported, because the inline form is a
+            // Regex the validator constructs, and passing the flag on would compile it through
+            // Reflection.Emit. Asking for it usually means someone is carrying over a habit this
+            // library exists to remove.
+            if (
+                constraint.Kind == ConstraintKind.Pattern
+                && constraint.RegexAccessor is null
+                && (constraint.RegexOptions & 8) != 0
+            )
             {
-                Report(ValidationDiagnostics.CompiledRegexRequested, member, member.Name);
+                Report(
+                    ValidationDiagnostics.CompiledRegexRequested,
+                    member,
+                    member.Name,
+                    member.ContainingType?.Name
+                );
+
+                constraints[i] = constraint with { RegexOptions = constraint.RegexOptions & ~8 };
             }
 
             if (unemittable)
@@ -1375,7 +1643,7 @@ public sealed class AttributeFrontEnd
 
                 if (native is not null)
                 {
-                    constraints.Add(ResolveCondition(native, member));
+                    constraints.Add(ResolveCondition(native, member, attributeClass));
                 }
 
                 continue;
@@ -1515,9 +1783,24 @@ public sealed class AttributeFrontEnd
                 attributeClass.Name,
                 memberType
             );
-            if (outcome.Constraint is not null)
+
+            // [RegularExpression] compiles to the same Regex field an inline [Pattern] does, so it
+            // answers to the same policy.
+            var read = outcome.Constraint is { Kind: ConstraintKind.Pattern, Pattern: { } pattern }
+                ? ApplyPatternPolicy(
+                    outcome.Constraint,
+                    member,
+                    ValidationDiagnostics.RegularExpressionFix(
+                        member.Name,
+                        member.ContainingType?.Name,
+                        pattern
+                    )
+                )
+                : outcome.Constraint;
+
+            if (read is not null)
             {
-                constraints.Add(outcome.Constraint);
+                constraints.Add(read);
             }
 
             // Through Report's _quiet gate like every other diagnostic: a constraint read off a
@@ -1561,7 +1844,8 @@ public sealed class AttributeFrontEnd
     }
 
     /// <summary>
-    /// Resolves the reference form's member, or applies the policy to the inline form.
+    /// Resolves the reference form's member and reports the settings it ignores, or applies the
+    /// policy to the inline form.
     /// </summary>
     private ConstraintModel? ResolvePattern(
         ConstraintModel constraint,
@@ -1620,6 +1904,13 @@ public sealed class AttributeFrontEnd
                 return null;
             }
 
+            ReportIgnoredSettings(
+                attribute,
+                owner,
+                member!,
+                $"{provider.ToDisplayString()}.{memberName}"
+            );
+
             var qualified = provider.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
             var accessor =
                 member is IMethodSymbol
@@ -1632,34 +1923,191 @@ public sealed class AttributeFrontEnd
             };
         }
 
-        // Inline form. Correct and AOT-clean, but it roots the regex parser and interpreter, which
-        // is +448 KB on a published AOT binary. The policy decides whether that is acceptable here.
-        if (_patternPolicy is PatternPolicy.Error or PatternPolicy.Warn)
+        return ApplyPatternPolicy(
+            constraint,
+            owner,
+            ValidationDiagnostics.InlinePatternFix(owner.Name, owner.ContainingType?.Name)
+        );
+    }
+
+    /// <summary>
+    /// Applies the pattern policy to an expression the validator builds from a string, returning
+    /// the constraint to keep, or null when the policy rejects it.
+    /// </summary>
+    /// <remarks>
+    /// The inline form is correct and AOT-clean, but it roots the regex parser and interpreter,
+    /// which is +448 KB on a published AOT binary. The policy decides whether that is acceptable
+    /// here. One implementation for both vocabularies: an inline <c>[Pattern]</c> and a
+    /// DataAnnotations <c>[RegularExpression]</c> compile to the same field and cost the same, so
+    /// only the fix the diagnostic prints differs between them.
+    /// </remarks>
+    private ConstraintModel? ApplyPatternPolicy(
+        ConstraintModel constraint,
+        ISymbol owner,
+        string fix
+    )
+    {
+        if (_patternPolicy is not (PatternPolicy.Error or PatternPolicy.Warn))
         {
-            var severity =
-                _patternPolicy == PatternPolicy.Error
-                    ? DiagnosticSeverity.Error
-                    : DiagnosticSeverity.Warning;
-
-            _diagnostics.Add(
-                Diagnostic.Create(
-                    ValidationDiagnostics.InlinePatternUnderAot,
-                    Location(owner),
-                    severity,
-                    additionalLocations: null,
-                    properties: null,
-                    owner.Name,
-                    owner.ContainingType?.Name
-                )
-            );
-
-            if (_patternPolicy == PatternPolicy.Error)
-            {
-                return null;
-            }
+            return constraint;
         }
 
-        return constraint;
+        var severity =
+            _patternPolicy == PatternPolicy.Error
+                ? DiagnosticSeverity.Error
+                : DiagnosticSeverity.Warning;
+
+        _diagnostics.Add(
+            Diagnostic.Create(
+                ValidationDiagnostics.InlinePatternUnderAot,
+                Location(owner),
+                severity,
+                additionalLocations: null,
+                properties: null,
+                owner.Name,
+                fix
+            )
+        );
+
+        return _patternPolicy == PatternPolicy.Error ? null : constraint;
+    }
+
+    /// <summary>
+    /// Reports <c>Options</c> or <c>MatchTimeoutMilliseconds</c> set on the reference form, which
+    /// calls a regex built with its own options and timeout and reads neither.
+    /// </summary>
+    /// <remarks>
+    /// Only a non-zero value counts, because zero is each property's default and asks for nothing.
+    /// The tail prints the declaration that would do what was asked, merged into the referenced
+    /// member's own <c>[GeneratedRegex]</c> when it has one. <c>RegexOptions.Compiled</c> never
+    /// merges: the regex source generator writes the matcher as C#, so there is nothing left to
+    /// compile.
+    /// </remarks>
+    private void ReportIgnoredSettings(
+        AttributeData attribute,
+        ISymbol owner,
+        ISymbol regexMember,
+        string regexDisplay
+    )
+    {
+        var options = NativeConstraintReader.Named(attribute, "Options") is int o ? o : 0;
+        var timeout = NativeConstraintReader.Named(attribute, "MatchTimeoutMilliseconds") is int t
+            ? t
+            : 0;
+
+        if (options == 0 && timeout == 0)
+        {
+            return;
+        }
+
+        var settings = new List<string>();
+
+        if (options != 0)
+        {
+            settings.Add($"Options = {ValidationDiagnostics.RegexOptionsText(options)}");
+        }
+
+        if (timeout != 0)
+        {
+            settings.Add($"MatchTimeoutMilliseconds = {timeout}");
+        }
+
+        var declared = DeclaredGeneratedRegex(regexMember);
+        var wanted = options & ~8;
+        var merged = (declared?.Options ?? 0) | wanted;
+        var mergedTimeout = timeout != 0 ? timeout : declared?.Timeout;
+
+        string tail;
+
+        if (wanted == 0 && timeout == 0)
+        {
+            tail = ValidationDiagnostics.ReferencedPatternCompiledTail;
+        }
+        else if (
+            declared is { } existing
+            && merged == existing.Options
+            && mergedTimeout == existing.Timeout
+        )
+        {
+            tail = ValidationDiagnostics.ReferencedPatternRedundantTail;
+        }
+        else
+        {
+            tail = ValidationDiagnostics.ReferencedPatternMoveTail(
+                ValidationDiagnostics.GeneratedRegexDeclaration(
+                    declared?.Pattern,
+                    merged,
+                    mergedTimeout,
+                    declared?.Culture
+                )
+            );
+        }
+
+        Report(
+            ValidationDiagnostics.ReferencedPatternSettingIgnored,
+            owner,
+            owner.Name,
+            regexDisplay,
+            string.Join(", ", settings),
+            tail
+        );
+    }
+
+    /// <summary>
+    /// The arguments of the <c>[GeneratedRegex]</c> on a referenced member, or null when it
+    /// carries none, as a field holding a regex built elsewhere does.
+    /// </summary>
+    private static (
+        string Pattern,
+        int Options,
+        int? Timeout,
+        string? Culture
+    )? DeclaredGeneratedRegex(ISymbol regexMember)
+    {
+        foreach (var attribute in regexMember.GetAttributes())
+        {
+            if (
+                attribute.AttributeClass?.ToDisplayString() != KnownTypes.GeneratedRegexAttribute
+                || attribute.AttributeConstructor is not { } constructor
+            )
+            {
+                continue;
+            }
+
+            string? pattern = null;
+            var options = 0;
+            int? timeout = null;
+            string? culture = null;
+
+            for (
+                var i = 0;
+                i < constructor.Parameters.Length && i < attribute.ConstructorArguments.Length;
+                i++
+            )
+            {
+                var value = attribute.ConstructorArguments[i].Value;
+
+                switch (constructor.Parameters[i].Name)
+                {
+                    case "pattern":
+                        pattern = value as string;
+                        break;
+                    case "options":
+                        options = value is int flags ? flags : 0;
+                        break;
+                    case "matchTimeoutMilliseconds":
+                        timeout = value is int milliseconds ? milliseconds : null;
+                        break;
+                    case "cultureName":
+                        culture = value as string;
+                        break;
+                }
+            }
+
+            return pattern is null ? null : (pattern, options, timeout, culture);
+        }
+
+        return null;
     }
 
     private static bool IsRegex(ITypeSymbol type) =>
@@ -1717,7 +2165,16 @@ public sealed class AttributeFrontEnd
     /// Turns a <c>When</c>/<c>Unless</c> member name into the boolean expression the emitter tests,
     /// with the negation baked in so that the emitter cannot tell the two apart.
     /// </summary>
-    private ConstraintModel ResolveCondition(ConstraintModel constraint, ISymbol member)
+    /// <remarks>
+    /// VM1403 names <paramref name="attributeClass"/> rather than the constraint's kind, which is
+    /// not always the attribute that was written: <c>[DeniedValues]</c> reads as a negated
+    /// <c>AllowedValues</c>.
+    /// </remarks>
+    private ConstraintModel ResolveCondition(
+        ConstraintModel constraint,
+        ISymbol member,
+        INamedTypeSymbol attributeClass
+    )
     {
         var when = constraint.WhenMember;
         var unless = constraint.UnlessMember;
@@ -1732,7 +2189,7 @@ public sealed class AttributeFrontEnd
             Report(
                 ValidationDiagnostics.ConditionSetBothWays,
                 member,
-                constraint.Kind,
+                Unsuffixed(attributeClass.Name),
                 member.Name
             );
             return constraint;
@@ -1857,7 +2314,10 @@ public sealed class AttributeFrontEnd
                     UnlessMember: NamedArgument(attribute, "Unless")
                 );
 
-                if (ResolveCondition(probe, source).Condition is { } condition)
+                if (
+                    ResolveCondition(probe, source, attribute.AttributeClass).Condition is
+                    { } condition
+                )
                 {
                     return condition;
                 }
@@ -2132,7 +2592,7 @@ public sealed class AttributeFrontEnd
             Values: new EquatableArray<string>(arguments.ToImmutableArray())
         );
 
-        constraints.Add(ResolveCondition(constraint, member));
+        constraints.Add(ResolveCondition(constraint, member, attributeClass));
     }
 
     /// <summary>
@@ -2296,7 +2756,7 @@ public sealed class AttributeFrontEnd
             PerPassInstance: perPass
         );
 
-        constraints.Add(ResolveCondition(constraint, member));
+        constraints.Add(ResolveCondition(constraint, member, attributeClass));
     }
 
     /// <summary>The implemented instantiations as the diagnostic should name them.</summary>
@@ -2463,6 +2923,41 @@ public sealed class AttributeFrontEnd
             Diagnostic.Create(
                 descriptor,
                 Location(symbol),
+                severity,
+                additionalLocations: null,
+                properties: null,
+                args
+            )
+        );
+    }
+
+    /// <summary>
+    /// Reports at an attribute's own application rather than at the symbol it sits on, falling
+    /// back to the symbol when the attribute has no source - one from metadata.
+    /// </summary>
+    private void ReportAt(
+        AttributeData attribute,
+        ISymbol owner,
+        DiagnosticDescriptor descriptor,
+        DiagnosticSeverity severity,
+        params object?[] args
+    )
+    {
+        if (_quiet)
+        {
+            return;
+        }
+
+        // Qualified because this class has a Location(ISymbol) helper of its own, which otherwise
+        // shadows the type.
+        var location = attribute.ApplicationSyntaxReference is { } reference
+            ? Microsoft.CodeAnalysis.Location.Create(reference.SyntaxTree, reference.Span)
+            : Location(owner);
+
+        _diagnostics.Add(
+            Diagnostic.Create(
+                descriptor,
+                location,
                 severity,
                 additionalLocations: null,
                 properties: null,

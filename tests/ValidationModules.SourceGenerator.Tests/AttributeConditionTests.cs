@@ -342,6 +342,46 @@ public class AttributeConditionTests
     }
 
     /// <summary>
+    /// VM1403 names the attribute as it was written. The constraint's kind is not that name for
+    /// every attribute: [DeniedValues] reads as a negated AllowedValues, and [ValidateNested] is not
+    /// a constraint at all.
+    /// </summary>
+    [Theory]
+    [InlineData("Required", "", "string?")]
+    [InlineData("DeniedValues", "\"none\", ", "string?")]
+    [InlineData("ValidateNested", "", "Address?")]
+    public void VM1403_NamesTheAttributeThatWasWritten(
+        string attribute,
+        string arguments,
+        string propertyType
+    )
+    {
+        var result = GeneratorHarness.Run(
+            $$"""
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed class Address {
+                [Required]
+                public string? Street { get; init; }
+            }
+
+            public record Shipment {
+                public bool Express { get; init; }
+
+                [{{attribute}}({{arguments}}When = nameof(Express), Unless = nameof(Express))]
+                public {{propertyType}} Target { get; init; }
+            }
+            """
+        );
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1403");
+
+        Assert.StartsWith($"'{attribute}' on 'Target' sets both", diagnostic.GetMessage());
+    }
+
+    /// <summary>
     /// A condition declared on a shared base is usable from every type that inherits it - the same
     /// reach the constraints themselves have, and the reason resolution runs against the type being
     /// validated rather than the one that declared the constraint.

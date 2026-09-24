@@ -39,7 +39,8 @@ are not prefixed, and built-in codes are never prefixed. It is not set by defaul
 
 ## `ValidationModules_PatternPolicy`
 
-This property sets what the generator does with an inline `[Pattern("...")]`.
+This property sets what the generator does with an inline `[Pattern("...")]` and with a
+DataAnnotations `[RegularExpression]`, which compiles to the same thing.
 
 | Value | Effect |
 | --- | --- |

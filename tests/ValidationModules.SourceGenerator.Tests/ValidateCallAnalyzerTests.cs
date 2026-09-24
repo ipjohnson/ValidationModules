@@ -100,6 +100,36 @@ public class ValidateCallAnalyzerTests
     }
 
     [Fact]
+    public void ATypeWhoseOnlyRuleIsAClassLevelValidationAttribute_IsSilent()
+    {
+        // The generator gives it a validator that runs the attribute, as
+        // Validator.TryValidateObject would, so there is nothing for the endpoint to miss.
+        var diagnostics = Analyze(
+            Usings
+                + """
+
+                [System.AttributeUsage(System.AttributeTargets.Class)]
+                public sealed class NonEmptyCartAttribute : System.ComponentModel.DataAnnotations.ValidationAttribute {
+                    public override bool IsValid(object? value) => true;
+                }
+
+                [NonEmptyCart]
+                public abstract class CartBase { }
+
+                public sealed class Cart : CartBase {
+                    public string? Code { get; init; }
+                }
+
+                public static class Wiring {
+                    public static void Map(RouteHandlerBuilder builder) => builder.Validate<Cart>();
+                }
+                """
+        );
+
+        Assert.DoesNotContain(diagnostics, d => d.Id == "VM5003");
+    }
+
+    [Fact]
     public void AConstrainedType_AndItsListAndArray_AreSilent()
     {
         var diagnostics = Analyze(

@@ -196,6 +196,7 @@ The `ValidationContext` records errors and tracks the current path:
 | `Push(segment)`, `PushIndex(segment, index)`, `PushKey(segment, key)` | Return a context one level deeper, for validating a child object. |
 | `Services` | The pass's `IServiceProvider`, when it has one. |
 | `HasErrors`, `ErrorCount`, `StopMode` | The state of the pass so far. |
+| `Mark()`, `HasBlockingErrorsSince(mark)` | `Mark()` returns a `ValidationMark` for the current point in the pass. `HasBlockingErrorsSince` then says whether an `Error` was reported after it. Warnings, and errors reported before the mark, do not count. Generated validators use this to decide whether to run `IValidatableObject.Validate`. |
 
 To validate a child object with another validator, push a context for it and pass that context by
 reference. The child's errors then carry the prefix:
@@ -221,9 +222,10 @@ it is `ValidationFlow.Stop`, as the example does, so that a pass that [stops at 
 error](./errors#stop-at-the-first-error) can end there.
 
 `ConstraintChecks` exposes the checks the generated code uses: `IsEmail`, `IsPhone`, `IsUrl`,
-`IsCreditCard`, `IsBase64`, `HasFileExtension`, `IsMultipleOf` and `AllUnique`. The `Report`
-helpers, such as `ReportRequired`, `ReportStringLength`, `ReportRange`, `ReportRangeAtMost` and
-`ReportEmail`, report the same codes and messages as the generated checks. Each helper takes an
+`IsCreditCard`, `IsBase64`, `HasFileExtension`, `IsMultipleOf`, `AllUnique`, and `IsMatch`, which
+counts a regular expression match that times out as a failure. The `Report` helpers, such as
+`ReportRequired`, `ReportStringLength`, `ReportRange`, `ReportRangeAtMost` and `ReportEmail`,
+report the same codes and messages as the generated checks. Each helper takes an
 optional `code:` that replaces the code and keeps the message. The [rules API
 reference](../reference/rules-api#report-helpers) lists them.
 

@@ -312,9 +312,10 @@ public class ConstraintDiagnosticsTests
     [Fact]
     public void CompiledRegexOption_IsVM1302()
     {
-        // Carrying this over is the exact habit §2 of the plan exists to remove: under AOT,
-        // RegexOptions.Compiled emits IL through Reflection.Emit. Patterns here go through
-        // [GeneratedRegex], so the flag is not honoured and saying so beats ignoring it.
+        // Carrying this over is the habit §2 of the plan exists to remove, because
+        // RegexOptions.Compiled emits IL through Reflection.Emit. The inline form is a Regex the
+        // validator constructs, so the flag is removed rather than passed on, and the diagnostic
+        // says so.
         var source = """
             using System.Text.RegularExpressions;
             using ValidationModules.Constraints;
@@ -329,10 +330,40 @@ public class ConstraintDiagnosticsTests
 
         var result = GeneratorHarness.Run(source);
 
-        Assert.Equal(
-            DiagnosticSeverity.Warning,
-            Assert.Single(result.Diagnostics, d => d.Id == "VM1302").Severity
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1302");
+        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Contains(
+            "point at it: [Pattern(typeof(PetPatterns), nameof(PetPatterns.Sku))]",
+            diagnostic.GetMessage()
         );
+
+        // Removed, as the message says, and with nothing else set the single-argument
+        // constructor applies.
+        Assert.Contains(
+            "new global::System.Text.RegularExpressions.Regex(\"^[A-Z]{3}$\");",
+            result.Sources["Sample.PetValidator.g.cs"]
+        );
+    }
+
+    [Fact]
+    public void CompiledRegexOption_IsRemovedAndTheOtherOptionsKept()
+    {
+        var source = """
+            using System.Text.RegularExpressions;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public record Pet {
+                [Pattern("^[a-z]{3}$", Options = RegexOptions.Compiled | RegexOptions.IgnoreCase)]
+                public string? Sku { get; init; }
+            }
+            """;
+
+        var emitted = GeneratorHarness.Run(source).Sources["Sample.PetValidator.g.cs"];
+
+        // IgnoreCase is 1; with Compiled it would have been 9.
+        Assert.Contains("(global::System.Text.RegularExpressions.RegexOptions)1)", emitted);
     }
 
     [Fact]
