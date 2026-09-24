@@ -167,6 +167,18 @@ public static class ValidationDiagnostics
         DiagnosticSeverity.Warning
     );
 
+    /// <summary>
+    /// Two types would get validators with one name in one namespace. A nested <c>Order.Item</c>
+    /// and a top-level <c>Order_Item</c> both get <c>Order_ItemValidator</c>.
+    /// </summary>
+    public static readonly DiagnosticDescriptor ValidatorNameCollision = Descriptor(
+        "VM1013",
+        "Two types would get validators with the same name",
+        "'{0}' and '{1}' would both get a validator named {2}, so neither is generated. Rename one "
+            + "of the two types, or move it to another namespace",
+        DiagnosticSeverity.Error
+    );
+
     public static readonly DiagnosticDescriptor MinExceedsMax = Descriptor(
         "VM1101",
         "Lower bound exceeds upper bound",
@@ -892,6 +904,24 @@ public static class ValidationDiagnostics
         "VM3007",
         "Value argument is not a member path",
         "A rule's value argument in '{0}' must be a member path on the subject parameter, so the error has a field to be pathed against; anything else needs field:",
+        DiagnosticSeverity.Error
+    );
+
+    /// <summary>
+    /// A <c>Pattern</c> or <c>Apply</c> argument that names no static method: a lambda that does
+    /// more than call one, a delegate held in a field, or an instance method.
+    /// </summary>
+    /// <remarks>
+    /// Generated code calls the method by name, so both take a method group, and a lambda whose
+    /// whole body is one call to a static method is read as that method. Anything else reached the
+    /// emitter as the lambda's own symbol, whose name is empty, and failed as CS1001 inside a
+    /// generated file. The tail prints the method-group form to write instead.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor DelegateArgumentNamesNoMethod = Descriptor(
+        "VM3008",
+        "Pattern or Apply argument names no static method",
+        "'{0}.Describe' passes {1} a delegate that names no static method, so the generated code "
+            + "has nothing to call. {2}",
         DiagnosticSeverity.Error
     );
 

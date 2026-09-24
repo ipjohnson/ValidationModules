@@ -57,8 +57,9 @@ public sealed partial class CustomerValidator : global::ValidationModules.IValid
     {
     }
 
-    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Customer value)
+    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext context, global::Sample.Customer value)
     {
+        var ctx = context.WithResolvedFieldNames();
         var missingName = string.IsNullOrWhiteSpace(value.Name);
         if (missingName && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "name", value: value.Name).ShouldStop)
         {

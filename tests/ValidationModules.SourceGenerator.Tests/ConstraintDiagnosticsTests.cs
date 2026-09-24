@@ -78,6 +78,57 @@ public class ConstraintDiagnosticsTests
         );
     }
 
+    /// <summary>
+    /// The emitter used to read <c>.Count</c> from every collection that is not an array. On a bare
+    /// sequence that bound to the LINQ method group and failed with CS0019 inside generated code.
+    /// <c>ImmutableArray&lt;T&gt;</c> implements <c>Count</c> only explicitly, so it failed with
+    /// CS1061. A type with neither property is counted with <c>Enumerable.Count</c>, once, in one
+    /// pattern.
+    /// </summary>
+    [Theory]
+    [InlineData(
+        "[ItemCount(1, 3)] public IEnumerable<string>? Tags { get; init; }",
+        "global::System.Linq.Enumerable.Count(value.Tags) is < 1 or > 3"
+    )]
+    [InlineData(
+        "[ItemCount(min: 1)] public IEnumerable<string>? Tags { get; init; }",
+        "global::System.Linq.Enumerable.Count(value.Tags) is < 1)"
+    )]
+    [InlineData(
+        "[System.ComponentModel.DataAnnotations.MaxLength(3)] public IEnumerable<string>? Tags { get; init; }",
+        "global::System.Linq.Enumerable.Count(value.Tags) is > 3)"
+    )]
+    [InlineData(
+        "[ItemCount(1, 3)] public System.Collections.Immutable.ImmutableArray<string> Tags { get; init; }",
+        "value.Tags.Length < 1 || value.Tags.Length > 3"
+    )]
+    public void ItemCount_WithoutAPublicCount_ReadsTheCountAnotherWay(
+        string member,
+        string expected
+    )
+    {
+        var result = GeneratorHarness.Run(Model(member));
+
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains(expected, result.Sources["Sample.PetValidator.g.cs"]);
+    }
+
+    [Fact]
+    public void ValidateNested_OnAnImmutableArray_BoundsTheLoopOnLength()
+    {
+        var result = GeneratorHarness.Run(
+            Model(
+                """
+                [Required] public string? Name { get; init; }
+                [ValidateNested] public System.Collections.Immutable.ImmutableArray<Pet> Litter { get; init; }
+                """
+            )
+        );
+
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains(".Length;", result.Sources["Sample.PetValidator.g.cs"]);
+    }
+
     [Fact]
     public void ItemCount_OnString_IsVM1002_BecauseAStringIsNotACollectionHere()
     {

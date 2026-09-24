@@ -83,6 +83,21 @@ public sealed class ValidationMessageInfo
     /// </summary>
     public bool DataAnnotationsHoles { get; init; }
 
+    /// <summary>
+    /// The name a message calls the field. <c>{field}</c> renders it in place of the last segment
+    /// of <see cref="ValidationError.Field"/>, and so does <c>{0}</c> under
+    /// <see cref="DataAnnotationsHoles"/>. Null renders that segment.
+    /// </summary>
+    /// <remarks>
+    /// The generator sets it from <c>[Display(Name = …)]</c>, which labels the messages the way
+    /// DataAnnotations uses it and never changes <see cref="ValidationError.Field"/>. The field is
+    /// the wire name a client keys by, and a label reworded for a form must not move it. An info
+    /// for a DataAnnotations resource message carries the DataAnnotations display name, which is
+    /// the <c>[Display(Name)]</c> value or else the property name, because its <c>{0}</c> was
+    /// written against that.
+    /// </remarks>
+    public string? DisplayName { get; init; }
+
     /// <summary>Shared info for <c>[Required]</c>.</summary>
     public static readonly ValidationMessageInfo Required = new(
         ValidationMessageTemplates.Required
@@ -120,7 +135,10 @@ public sealed class ValidationMessageInfo
     /// Renders the default message for <paramref name="error"/>: template holes filled, arguments
     /// formatted with the given provider, <see cref="ValidationError.Value"/> never included.
     /// </summary>
-    /// <param name="error">The error to render. Its <see cref="ValidationError.Field"/> fills <c>{field}</c>.</param>
+    /// <param name="error">
+    /// The error to render. Its <see cref="ValidationError.Field"/> fills <c>{field}</c> unless
+    /// <see cref="DisplayName"/> is set.
+    /// </param>
     /// <param name="formatProvider">
     /// Formats the arguments. Null means <see cref="CultureInfo.InvariantCulture"/>, which is what
     /// the default <see cref="ValidationError.Message"/> read passes - a default message is closer
@@ -132,7 +150,7 @@ public sealed class ValidationMessageInfo
 
         return RenderTemplate(
             template,
-            Leaf(error.Field),
+            DisplayName ?? Leaf(error.Field),
             _args,
             DataAnnotationsHoles,
             formatProvider ?? CultureInfo.InvariantCulture
@@ -145,7 +163,10 @@ public sealed class ValidationMessageInfo
     /// the baked template used: packs are authored against the key inventory, not against
     /// DataAnnotations' conventions.
     /// </summary>
-    /// <param name="error">The error being rendered. Its field fills <c>{field}</c>.</param>
+    /// <param name="error">
+    /// The error being rendered. Its field fills <c>{field}</c> unless <see cref="DisplayName"/>
+    /// is set.
+    /// </param>
     /// <param name="template">The replacement template, holes included.</param>
     /// <param name="formatProvider">Formats the arguments; null means invariant.</param>
     public string Render(
@@ -158,7 +179,7 @@ public sealed class ValidationMessageInfo
 
         return RenderTemplate(
             template,
-            Leaf(error.Field),
+            DisplayName ?? Leaf(error.Field),
             _args,
             daHoles: false,
             formatProvider ?? CultureInfo.InvariantCulture
