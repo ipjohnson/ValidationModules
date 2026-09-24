@@ -39,7 +39,8 @@ context. Add `using ValidationModules;`.
 - The attribute is on a positional record parameter without the `property:` target. The generator
   reports `VM1008`.
 - A derived class hides the property with `new`, which replaces the base property's constraints.
-- The nested object has no `[ValidateNested]`, or the nested type has no rules (`VM1501`).
+- The nested object has no `[ValidateNested]`, or the nested type has no rules (`VM1501`), or it is
+  declared in another assembly and this project can reach no validator for it (`VM1505`).
 - A `When` or `Unless` condition excluded it.
 - The generator reported an error or warning for the constraint and dropped it. Check the build
   output for `VM` diagnostics.
