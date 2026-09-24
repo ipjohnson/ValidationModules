@@ -339,9 +339,10 @@ public sealed class ValidatorEmitter
             // user data.
             //
             // What §2 was actually protecting against is intact. The instance is built once at type
-            // initialization rather than per validation call, and RegexOptions.Compiled is never
-            // passed, so nothing goes through Reflection.Emit and the result stays AOT-clean. The
-            // cost is an interpreted match rather than a source-generated one.
+            // initialization rather than per validation call. RegexOptions.Compiled never arrives
+            // here, because the front end strips it and reports VM1302, so nothing goes through
+            // Reflection.Emit and the result stays AOT-clean. The cost is an interpreted match
+            // rather than a source-generated one.
             // The options argument is omitted entirely when there is nothing to say, rather than
             // passed as RegexOptions.None. It is not cosmetic: the single-argument constructor lets
             // ILC prove RegexOptions.Compiled is never set and trim the RegexCompiler path with it,
@@ -1639,16 +1640,28 @@ public sealed class ValidatorEmitter
 
             case ConstraintKind.Pattern:
             {
-                // The reference form resolves to the consumer's own [GeneratedRegex], so nothing is
+                // Through ConstraintChecks.IsMatch rather than the regex's own IsMatch, so a match
+                // that times out fails the pattern instead of throwing out of Validate. The
+                // reference form resolves to the consumer's own [GeneratedRegex], so nothing is
                 // declared here and the regex engine is never rooted.
+                string regex;
+
                 if (constraint.RegexAccessor is { } accessor)
                 {
-                    return $"{guard}!{accessor}.IsMatch({access})";
+                    regex = accessor;
+                }
+                else
+                {
+                    regex = $"{property.PropertyName}Pattern{patterns.Count}";
+                    patterns.Add((regex, constraint));
                 }
 
-                var field = $"{property.PropertyName}Pattern{patterns.Count}";
-                patterns.Add((field, constraint));
-                return $"{guard}!{field}.IsMatch({access})";
+                if (constraint.PassesEmpty)
+                {
+                    guard = $"!string.IsNullOrEmpty({access}) && ";
+                }
+
+                return $"{guard}!global::ValidationModules.ConstraintChecks.IsMatch({regex}, {access})";
             }
 
             // The DataAnnotations format checks, each a straight call into the runtime's

@@ -181,6 +181,19 @@ public class GeneratedValidatorTests
     }
 
     [Fact]
+    public void Validate_PatternTimeout_FailsThePatternInsteadOfThrowing()
+    {
+        // The input that exhausts a match timeout is the hostile input the timeout exists for, so
+        // it has to come back as a validation failure rather than as an exception.
+        var hostile = new Comment { Text = new string('a', 40) + "!" };
+
+        var error = Assert.Single(new CommentValidator().Validate(hostile).Errors);
+        Assert.Equal("text", error.Field);
+        Assert.Equal(ValidationCodes.Pattern, error.Code);
+        Assert.False(new CommentValidator().IsValid(hostile));
+    }
+
+    [Fact]
     public void Validate_Range_ProducesTheComposedMessage()
     {
         var result = new PetValidator().Validate(ValidPet() with { Age = 99 });
