@@ -16,4 +16,5 @@ VM3008 | ValidationModules.Usage | Error | A Pattern or Apply argument names no 
 VM3106 | ValidationModules.Usage | Warning | A rules-class descent repeats [ValidateNested] on the same property; the rules-class descent is dropped.
 VM3108 | ValidationModules.Usage | Error | A value given to AllowedValues in a rules class is not a compile-time constant.
 VM3109 | ValidationModules.Usage | Warning | An allowed-values set lists no values, so it validates nothing.
+VM3111 | ValidationModules.Usage | Warning | A rules-class descent reaches a type that is not sealed, and runs only the validators for the declared type.
 VM5004 | ValidationModules.Usage | Warning | A ValidationModules_* MSBuild property holds a value it does not accept. The generator uses the default.

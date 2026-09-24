@@ -399,6 +399,10 @@ are reported as `VM3001`. For a list of numbers or other value types, check the 
 and report through `rules.Context`. [Nested objects and
 collections](./nesting) describes how paths are built.
 
+`Nested` and `Each` run only the validators for the declared type, and a descent into a type that
+is not sealed is reported as `VM3111`. [Subtypes](./nesting#subtypes) describes how to run the
+validators for a more derived type.
+
 ## Rules classes and attributes together
 
 A type can have constraint attributes and a rules class. The generator merges them into one

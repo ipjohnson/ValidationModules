@@ -2786,6 +2786,29 @@ public sealed class RulesFrontEnd
                     return;
                 }
 
+                // The walk below runs the validators for the declared type only, and a rules-class
+                // descent has no Polymorphism to ask for more.
+                if (
+                    (elements ? TypeFacts.ElementTypeOf(property.Type) : Unwrap(property.Type))
+                        is { } target
+                    && AttributeFrontEnd.CanHaveSubtypes(target)
+                )
+                {
+                    _writer._owner.Report(
+                        ValidationDiagnostics.RulesDescentIntoUnsealedType,
+                        site,
+                        target.Name,
+                        property.Name,
+                        construct,
+                        ValidationDiagnostics.RulesDescentIntoUnsealedTypeFix(
+                            target is { TypeKind: TypeKind.Class, IsAbstract: false },
+                            target.Name,
+                            property.Name,
+                            construct
+                        )
+                    );
+                }
+
                 var n = _writer._locals++;
                 var access = value.ToString();
                 var guard = missing is null ? string.Empty : $"!{missing} && ";

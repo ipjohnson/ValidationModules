@@ -295,7 +295,9 @@ public sealed class AttributeFrontEnd
                 ? NestedPolymorphism(sources)
                 : (PolymorphismMode.DeclaredOnly, false);
 
-            if (validateNested && DescentTargetOf(property) is INamedTypeSymbol surviving)
+            // Only the attribute states a mode. A rules-class descent takes none, and the rules
+            // front end reports an unsealed target at its call, as VM3111.
+            if (attributeNesting && DescentTargetOf(property) is INamedTypeSymbol surviving)
             {
                 if (!CanHaveSubtypes(surviving))
                 {
@@ -2625,9 +2627,10 @@ public sealed class AttributeFrontEnd
     /// </summary>
     /// <remarks>
     /// A sealed class, a value type and an enum can have no subtypes, so there is no decision to
-    /// make and VM1503 stays quiet. Everything else can, whether or not anything visible here does.
+    /// make and VM1503 and VM3111 stay quiet. Everything else can, whether or not anything visible
+    /// here does.
     /// </remarks>
-    private static bool CanHaveSubtypes(ITypeSymbol target) =>
+    internal static bool CanHaveSubtypes(ITypeSymbol target) =>
         target is { IsSealed: false, IsValueType: false } and not { TypeKind: TypeKind.Enum };
 
     /// <summary>
