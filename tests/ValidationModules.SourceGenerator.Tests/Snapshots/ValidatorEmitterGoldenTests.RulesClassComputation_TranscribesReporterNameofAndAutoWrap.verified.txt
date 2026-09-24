@@ -87,8 +87,9 @@ public sealed partial class OrderValidator : global::ValidationModules.IValidato
     {
     }
 
-    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Order value)
+    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext context, global::Sample.Order value)
     {
+        var ctx = context.WithResolvedFieldNames();
         if (global::Sample.OrderRules_Rules.Describe(ref ctx, value).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;

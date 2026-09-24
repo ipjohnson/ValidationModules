@@ -60,6 +60,42 @@ public class StructuredErrorTests
     }
 
     [Fact]
+    public void DisplayName_LabelsTheMessage_AndLeavesTheFieldAlone()
+    {
+        // [Display(Name)] labels prose, the way DataAnnotations uses it. The field is the key a
+        // client maps back to its input, so the label never reaches it.
+        var error = new ValidationError(
+            "shipTo.postalCode",
+            ValidationCodes.Required,
+            null,
+            new ValidationMessageInfo(ValidationMessageTemplates.Required)
+            {
+                DisplayName = "Postal code",
+            }
+        );
+
+        Assert.Equal("Postal code is required.", error.Message);
+        Assert.Equal("shipTo.postalCode", error.Field);
+    }
+
+    [Fact]
+    public void DisplayName_FillsTheDataAnnotationsZeroHole()
+    {
+        // A resource template written for Validator.TryValidateObject puts the display name at {0},
+        // which is not the wire field this error carries.
+        var info = new ValidationMessageInfo(ValidationMessageTemplates.Required)
+        {
+            Provider = new DelegateMessageProvider(() => "{0} is missing"),
+            DataAnnotationsHoles = true,
+            DisplayName = "LastName",
+        };
+
+        var error = new ValidationError("lastName", ValidationCodes.Required, null, info);
+
+        Assert.Equal("LastName is missing", error.Message);
+    }
+
+    [Fact]
     public void Deconstruct_StillAnswersTheOldPositionalShape()
     {
         var (field, code, message) = new ValidationError(

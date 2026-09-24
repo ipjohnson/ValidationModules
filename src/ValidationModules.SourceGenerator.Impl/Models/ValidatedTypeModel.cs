@@ -53,6 +53,13 @@ namespace ValidationModules.SourceGenerator.Impl.Models;
 /// only for a class, because <c>value is null</c> does not compile against a struct and
 /// <c>ArgumentNullException.ThrowIfNull</c> would box one on every call.
 /// </param>
+/// <param name="MemberFieldNames">
+/// The properties whose field name is not the naming policy's spelling of their CLR name, which
+/// means a <c>[JsonPropertyName]</c>. Filled only for a type whose validator hands member names to
+/// the DataAnnotations bridge, through <c>IValidatableObject</c>, <c>[CustomValidation]</c> or a
+/// class-level <c>ValidationAttribute</c>: a <c>ValidationResult</c> names members by CLR name,
+/// and the policy alone would spell those the way the client does not.
+/// </param>
 public sealed record ValidatedTypeModel(
     string Namespace,
     string TypeName,
@@ -64,8 +71,13 @@ public sealed record ValidatedTypeModel(
     bool ImplementsValidatableObject = false,
     EquatableArray<RegionModel> Regions = default,
     EquatableArray<ConstraintModel> ObjectRules = default,
-    bool IsValueType = false
+    bool IsValueType = false,
+    EquatableArray<MemberFieldName> MemberFieldNames = default
 ) : IEquatable<ValidatedTypeModel>;
+
+/// <summary>A property's CLR name and the field name the generator resolved for it.</summary>
+public sealed record MemberFieldName(string MemberName, string FieldName)
+    : IEquatable<MemberFieldName>;
 
 /// <summary>
 /// One transcribed rules-class region: where its method lives and which of the validator's

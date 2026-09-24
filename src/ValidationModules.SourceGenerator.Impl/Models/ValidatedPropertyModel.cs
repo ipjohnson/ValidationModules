@@ -56,6 +56,11 @@ public enum PropertyShape
 /// field, the constructor parameter, the accessor the region call passes - is still this
 /// property's, which is the reason the entry exists at all.
 /// </param>
+/// <param name="Label">
+/// The <c>[Display(Name = …)]</c> value, which the property's messages use in place of the field
+/// name, or null when it has none. Unlike <see cref="DisplayName"/> it never falls back to the CLR
+/// name: without a label a message names the field.
+/// </param>
 public sealed record ValidatedPropertyModel(
     string PropertyName,
     string FieldName,
@@ -74,5 +79,6 @@ public sealed record ValidatedPropertyModel(
     PolymorphismMode Polymorphism = PolymorphismMode.DeclaredOnly,
     EquatableArray<SubtypeModel> Subtypes = default,
     string? DisplayName = null,
-    bool NestedWalkInRegion = false
+    bool NestedWalkInRegion = false,
+    string? Label = null
 ) : IEquatable<ValidatedPropertyModel>;

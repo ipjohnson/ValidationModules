@@ -120,16 +120,22 @@ public static class RuntimeContract
     // registers CollectionValidatorFor<T>/CollectionAsyncValidatorFor<T> for List<T> and T[].
     // None of it exists in a contract-10 runtime. Additive, as the rule below requires.
 
-    // 11 -> 12: pattern checks, object-level gates and [StringLength]. Every emitted pattern test
-    // calls ConstraintChecks.IsMatch, which counts a match that runs out of time as a failed match
-    // instead of letting RegexMatchTimeoutException out of Validate. A contract-11 runtime has no
-    // such method.
+    // 11 -> 12: pattern checks, object-level gates, field names and display names, and
+    // [StringLength]. Every emitted pattern test calls ConstraintChecks.IsMatch, which counts a
+    // match that runs out of time as a failed match instead of letting RegexMatchTimeoutException
+    // out of Validate. A contract-11 runtime has no such method.
     //
     // Object-level rules are gated on what their own validator found. A generated validator for a
     // type with class-level ValidationAttributes or IValidatableObject takes ctx.Mark() before its
     // first rule and asks ctx.HasBlockingErrorsSince(mark) at the gate, where it used to ask
     // ctx.HasErrors - which counted warnings and every other object's errors too. ValidationMark
     // and both members are new, so a contract-11 runtime cannot supply them either.
+    //
+    // Every generated Validate reports through ValidationContext.WithResolvedFieldNames(), so a
+    // name the generator resolved from [JsonPropertyName] is not run through the pass's field namer
+    // a second time. A property with [Display(Name = …)] hoists infos that set
+    // ValidationMessageInfo.DisplayName, which labels the message without becoming the field.
+    // Neither member exists in a contract-11 runtime either.
     //
     // [StringLength] reads as DataAnnotations reads it. The one positional argument is the
     // maximum, the minimum is only ever named, and the two-argument constructor is gone. A
@@ -138,11 +144,11 @@ public static class RuntimeContract
     // bound only from the one-argument form. The bump makes that pairing VM5001 rather than a
     // [StringLength] that checks nothing.
     //
-    // The pattern and object-level members are additive, as the rule below requires. The
-    // [StringLength] change is not, like 4 -> 5: a constructor is removed, which the number cannot
-    // express. Nor does it cover the other direction. An Impl compiled at contract 11 reads the
-    // one-argument form as no bound at all, and a contract-12 runtime satisfies its check, so that
-    // pairing is written down here rather than caught.
+    // The pattern, object-level and field-name members are additive, as the rule below requires.
+    // The [StringLength] change is not, like 4 -> 5: a constructor is removed, which the number
+    // cannot express. Nor does it cover the other direction. An Impl compiled at contract 11 reads
+    // the one-argument form as no bound at all, and a contract-12 runtime satisfies its check, so
+    // that pairing is written down here rather than caught.
 
     /// <summary>
     /// The contract this runtime implements. Compared against
