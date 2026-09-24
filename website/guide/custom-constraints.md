@@ -221,9 +221,10 @@ it is `ValidationFlow.Stop`, as the example does, so that a pass that [stops at 
 error](./errors#stop-at-the-first-error) can end there.
 
 `ConstraintChecks` exposes the checks the generated code uses: `IsEmail`, `IsPhone`, `IsUrl`,
-`IsCreditCard`, `IsBase64`, `HasFileExtension`, `IsMultipleOf` and `AllUnique`. The `Report`
-helpers, such as `ReportRequired`, `ReportStringLength`, `ReportRange`, `ReportRangeAtMost` and
-`ReportEmail`, report the same codes and messages as the generated checks. Each helper takes an
+`IsCreditCard`, `IsBase64`, `HasFileExtension`, `IsMultipleOf`, `AllUnique`, and `IsMatch`, which
+counts a regular expression match that times out as a failure. The `Report` helpers, such as
+`ReportRequired`, `ReportStringLength`, `ReportRange`, `ReportRangeAtMost` and `ReportEmail`,
+report the same codes and messages as the generated checks. Each helper takes an
 optional `code:` that replaces the code and keeps the message. The [rules API
 reference](../reference/rules-api#report-helpers) lists them.
 
