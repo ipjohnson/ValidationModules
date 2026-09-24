@@ -1944,6 +1944,9 @@ public sealed class ValidatorEmitter
                 return $"{guard}({string.Join(" && ", constraint.Values.Select(v => $"{value} != {v}"))})";
             }
 
+            // A string compared other than ordinally goes through string.Equals with the
+            // attribute's own StringComparison. Ordinal is what == already does, so the default
+            // keeps the operator.
             case ConstraintKind.AllowedValues:
             {
                 if (constraint.Values.Count == 0)
@@ -1951,14 +1954,18 @@ public sealed class ValidatorEmitter
                     return null;
                 }
 
-                var comparisons = string.Join(
-                    " && ",
-                    constraint.Values.Select(v => $"{value} != {v}")
-                );
-                var anyMatch = string.Join(
-                    " || ",
-                    constraint.Values.Select(v => $"{value} == {v}")
-                );
+                string Equal(string literal) =>
+                    constraint.Comparison is { } comparison
+                        ? $"string.Equals({value}, {literal}, {comparison})"
+                        : $"{value} == {literal}";
+
+                string Unequal(string literal) =>
+                    constraint.Comparison is { } comparison
+                        ? $"!string.Equals({value}, {literal}, {comparison})"
+                        : $"{value} != {literal}";
+
+                var comparisons = string.Join(" && ", constraint.Values.Select(Unequal));
+                var anyMatch = string.Join(" || ", constraint.Values.Select(Equal));
                 return constraint.Negated ? $"{guard}({anyMatch})" : $"{guard}({comparisons})";
             }
 

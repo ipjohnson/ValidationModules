@@ -289,6 +289,24 @@ public static class ValidationDiagnostics
     );
 
     /// <summary>
+    /// <c>Comparison</c> set on an <c>[AllowedValues]</c> whose member is not a string, where it
+    /// has nothing to compare.
+    /// </summary>
+    /// <remarks>
+    /// A setting that does nothing is worse than no setting: <c>Comparison =
+    /// StringComparison.OrdinalIgnoreCase</c> on an enum reads as a looser match, and the values
+    /// compare exactly as they would without it. Warning rather than error, because the check that
+    /// runs is still the one the values describe.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor ComparisonOnNonString = Descriptor(
+        "VM1203",
+        "[AllowedValues] Comparison has no effect",
+        "[AllowedValues] on '{0}' sets Comparison, which applies only to strings, and the "
+            + "member's type is '{1}'. Remove Comparison",
+        DiagnosticSeverity.Warning
+    );
+
+    /// <summary>
     /// Declared with a fixed default severity so release tracking can discover it; the effective
     /// severity is overridden per site from the resolved policy, because the same situation is a
     /// build error for an AOT-facing project and unremarkable for a JIT one.
@@ -1062,6 +1080,52 @@ public static class ValidationDiagnostics
         "'{0}' already carries [ValidateNested], so {1} would validate it a second time and report "
             + "every nested error twice. The {1} descent is dropped. Remove it, or remove "
             + "[ValidateNested] to keep the descent in the rules class",
+        DiagnosticSeverity.Warning
+    );
+
+    /// <summary>
+    /// A value given to <c>AllowedValues</c> in a rules class that is not a compile-time constant,
+    /// or a set passed as something other than the values themselves.
+    /// </summary>
+    /// <remarks>
+    /// The check and its message are written at build time, so every value has to be known then.
+    /// The reader used to keep only the values it could read and drop the rest without a word, so
+    /// a <c>static readonly</c> value was missing from both the check and the message. An error
+    /// rather than a warning, because the set the check would test is not the set the author wrote.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor AllowedValueNotConstant = Descriptor(
+        "VM3108",
+        "AllowedValues value is not a compile-time constant",
+        "AllowedValues in '{0}.Describe' reads '{1}', which is not a compile-time constant, so the "
+            + "check cannot be written. {2}",
+        DiagnosticSeverity.Error
+    );
+
+    /// <summary>VM3108's tail for one value in the set.</summary>
+    public const string AllowedValueNotConstantTail =
+        "Declare it const, or write the rule as an Ensure";
+
+    /// <summary>VM3108's tail for a set passed whole, such as an array held in a field.</summary>
+    public const string AllowedSetNotConstantTail =
+        "Write the values out as constants, as in [\"open\", \"closed\"], or write the rule as "
+        + "an Ensure";
+
+    /// <summary>
+    /// An allowed-values set with no values in it, which compiles to no check at all.
+    /// </summary>
+    /// <remarks>
+    /// Reported for <c>AllowedValues</c> in a rules class and for an empty <c>[AllowedValues()]</c>
+    /// from either vocabulary. <c>[DeniedValues()]</c> is not reported: denying nothing is what an
+    /// empty list of denied values says. A warning, as VM1102 and VM1201 are for a <c>[Range]</c>
+    /// and a <c>[Required]</c> that can never fail: nothing is checked, and the rule that checks
+    /// nothing is named where it was written. DataAnnotations' own <c>[AllowedValues()]</c> rejects
+    /// every value, so on a migrated model this is also where the two engines part.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor AllowedValuesEmpty = Descriptor(
+        "VM3109",
+        "AllowedValues lists no values",
+        "{0} on '{1}' lists no values, so it validates nothing. List the permitted values, or "
+            + "remove it",
         DiagnosticSeverity.Warning
     );
 

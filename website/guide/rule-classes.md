@@ -133,9 +133,8 @@ statements about the same member are checked independently.
 
 The chained methods are `Require`, `RequireAllowingEmpty`, `Length`, `Pattern`, `Range`,
 `RangeAtLeast`, `RangeAtMost`, `MultipleOf`, `Count`, `Unique`, `Each` and `Nested`. Each one
-applies only to a value of the right type. `AllowedValues` can also be chained, but in this version
-the chained form checks nothing. Call `rules.AllowedValues(value, allowed)` instead. `For(value)`
-starts a chain without a rule of its own:
+applies only to a value of the right type. `AllowedValues` can also be chained, with the values as
+separate arguments. `For(value)` starts a chain without a rule of its own:
 
 ```csharp
 rules.For(x.Code, field: "code").Length(3, 10).Pattern(Patterns.Code);

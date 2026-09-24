@@ -147,6 +147,12 @@ public enum ConstraintKind
 /// what every front end but the native one produces.
 /// </param>
 /// <param name="Negated">AllowedValues only: set by DataAnnotations' [DeniedValues].</param>
+/// <param name="Comparison">
+/// AllowedValues only, on a string member: the <c>StringComparison</c> the values are compared
+/// with, rendered as the expression the emitter writes, such as
+/// <c>global::System.StringComparison.OrdinalIgnoreCase</c>. Null means ordinal, which <c>==</c>
+/// already is, so the default compiles to the comparison it always did.
+/// </param>
 /// <param name="PredicateAccessor">
 /// Predicate only. The fully qualified name of the static method the predicate was lifted into -
 /// "global::My.PetRules_Rules.Rule0". The predicate is not inlined at the constraint site because
@@ -172,6 +178,7 @@ public sealed record ConstraintModel(
     EquatableArray<string> Values = default,
     EquatableArray<string> ValueDisplays = default,
     bool Negated = false,
+    string? Comparison = null,
     string? PredicateAccessor = null,
     /// <summary>
     /// The field this one constraint reports under, when it differs from its property's. A rule is

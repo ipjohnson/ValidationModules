@@ -275,12 +275,16 @@ public StringComparison Comparison { get; init; }
 ```
 
 `[AllowedValues]` passes when the value equals one of `Values`. On an enum property the values can
-be enum members. Strings are compared ordinally and case-sensitively. `Comparison` is accepted but
-not applied in this version.
+be enum members. Strings are compared with `Comparison`, which is ordinal and case-sensitive by
+default, so `Comparison = StringComparison.OrdinalIgnoreCase` accepts `"ACTIVE"` for `"active"`.
+`Comparison` applies only to a string property.
 
 | Code | Message |
 | --- | --- |
 | `enum` | `{field} must be one of: {0}.` with the values, as in `active, pending` |
+
+Diagnostics: `VM1203` when `Comparison` is set on a property that is not a string, and `VM3109`
+when no values are listed.
 
 ### [DeniedValues]
 

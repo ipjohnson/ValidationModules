@@ -66,7 +66,9 @@ reported as `VM1104`.
 | `AllowedValues<TValue>(TValue value, TValue[] allowed)` | The value is one of `allowed`. | `enum` |
 
 Write `allowed` as an array or a collection expression of constants, such as
-`["active", "pending"]`.
+`["active", "pending"]`. The chained form takes the values as separate arguments,
+`.AllowedValues("active", "pending")`. A value that is not a compile-time constant is reported as
+`VM3108`, and an empty set as `VM3109`.
 
 ### Collections
 
@@ -128,6 +130,7 @@ chain:
 | `Pattern(regex)` | a string |
 | `Range(min, max)`, `RangeAtLeast(min)`, `RangeAtMost(max)` | a nullable value type |
 | `MultipleOf(divisor)` | a `long?`, `decimal?` or `double?` |
+| `AllowedValues(params allowed)` | any value |
 | `Count(min, max)` | an `IReadOnlyList<T>` |
 | `Unique()` | an `IEnumerable<T>` |
 | `Each()` | an `IReadOnlyList<T>` |
@@ -141,11 +144,6 @@ When `Require` or `RequireAllowingEmpty` fails, the rest of its chain is skipped
 
 After `Each` on a list of strings, chain `Length` or `Pattern` to check each element.
 `Require` after `Each` is reported as `VM3001`. Use `Length(1, ...)` to reject empty elements.
-
-::: warning
-The chained form `.AllowedValues("a", "b")` emits no check in this version. Use the method on
-`rules` with an array: `rules.AllowedValues(x.Status, ["a", "b"])`.
-:::
 
 ## Context
 

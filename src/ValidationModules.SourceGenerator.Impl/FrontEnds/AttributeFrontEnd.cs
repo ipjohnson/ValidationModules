@@ -1788,6 +1788,17 @@ public sealed class AttributeFrontEnd
                     native = ResolvePattern(native, attribute, member);
                 }
 
+                if (native is { Kind: ConstraintKind.AllowedValues })
+                {
+                    native = CheckAllowedValues(
+                        native,
+                        attribute,
+                        attributeClass,
+                        member,
+                        memberType
+                    );
+                }
+
                 if (native is not null)
                 {
                     constraints.Add(ResolveCondition(native, member, attributeClass));
@@ -1922,6 +1933,11 @@ public sealed class AttributeFrontEnd
                     );
                 }
 
+                continue;
+            }
+
+            if (IsEmptyAllowedValues(attribute, attributeClass, member))
+            {
                 continue;
             }
 
@@ -2258,6 +2274,79 @@ public sealed class AttributeFrontEnd
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Checks a native <c>[AllowedValues]</c> or <c>[DeniedValues]</c> against its member, returning
+    /// the constraint to keep, or null when there is nothing to check.
+    /// </summary>
+    /// <remarks>
+    /// <c>Comparison</c> compares strings, so on any other member it is reported as VM1203 and left
+    /// out. The values still compare exactly as they would have without it.
+    /// </remarks>
+    private ConstraintModel? CheckAllowedValues(
+        ConstraintModel constraint,
+        AttributeData attribute,
+        INamedTypeSymbol attributeClass,
+        ISymbol member,
+        ITypeSymbol memberType
+    )
+    {
+        if (IsEmptyAllowedValues(attribute, attributeClass, member))
+        {
+            return null;
+        }
+
+        if (
+            NativeConstraintReader.NamedConstant(attribute, "Comparison") is not null
+            && memberType.SpecialType != SpecialType.System_String
+        )
+        {
+            Report(
+                ValidationDiagnostics.ComparisonOnNonString,
+                member,
+                member.Name,
+                memberType.ToDisplayString()
+            );
+
+            return constraint with
+            {
+                Comparison = null,
+            };
+        }
+
+        return constraint;
+    }
+
+    /// <summary>
+    /// Whether an <c>[AllowedValues]</c> from either vocabulary lists no values, reporting VM3109
+    /// when it does.
+    /// </summary>
+    /// <remarks>
+    /// An empty set compiles to no check, so the attribute is dropped rather than read. An empty
+    /// <c>[DeniedValues]</c> is left alone: denying nothing is what it says.
+    /// </remarks>
+    private bool IsEmptyAllowedValues(
+        AttributeData attribute,
+        INamedTypeSymbol attributeClass,
+        ISymbol member
+    )
+    {
+        var arguments = attribute.ConstructorArguments;
+
+        if (
+            attributeClass.Name != "AllowedValuesAttribute"
+            || arguments.Length != 1
+            || arguments[0].Kind != TypedConstantKind.Array
+            || arguments[0].Values.Length != 0
+        )
+        {
+            return false;
+        }
+
+        Report(ValidationDiagnostics.AllowedValuesEmpty, member, "[AllowedValues]", member.Name);
+
+        return true;
     }
 
     private static bool IsRegex(ITypeSymbol type) =>
