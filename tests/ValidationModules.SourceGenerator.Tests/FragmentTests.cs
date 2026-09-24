@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Xunit;
 
@@ -285,6 +286,247 @@ public class FragmentTests
 
         Assert.Contains("string tag", container);
         Assert.Contains("int tag", container);
+    }
+
+    /// <summary>
+    /// An expansion is a method with no type parameters, so every mention of the fragment's
+    /// <c>T</c> is written as the type it was expanded for. <c>nameof(T)</c> is <c>"T"</c> in C#
+    /// whatever <c>T</c> stands for, and stays that. The code and message an <c>Ensure</c> derives
+    /// are the fragment's source text, <c>T</c> included, so string literals are left out of the
+    /// search for a <c>T</c> left behind.
+    /// </summary>
+    [Theory]
+    [InlineData(
+        "rules.Ensure(audited.CreatedBy != typeof(T).Name, message: \"m\");",
+        "audited.CreatedBy != typeof(global::Sample.Order).Name"
+    )]
+    [InlineData(
+        "rules.Ensure(!Equals(audited, default(T)), field: \"f\");",
+        "default(global::Sample.Order)"
+    )]
+    [InlineData(
+        "object boxed = audited; rules.Ensure(((T)boxed).Version > 0, field: \"f\");",
+        "((global::Sample.Order)boxed).Version > 0"
+    )]
+    [InlineData(
+        "object boxed = audited; rules.Ensure(boxed is T, field: \"f\");",
+        "boxed is global::Sample.Order"
+    )]
+    [InlineData(
+        "object boxed = audited; rules.Ensure(boxed is T typed && typed.Version > 0, field: \"f\");",
+        "boxed is global::Sample.Order typed && typed.Version > 0"
+    )]
+    [InlineData("rules.Ensure(audited.CreatedBy != nameof(T));", "audited.CreatedBy != \"T\"")]
+    [InlineData(
+        "rules.Ensure(Array.Empty<T>().Length == 0, field: \"f\");",
+        "Array.Empty<global::Sample.Order>().Length == 0"
+    )]
+    [InlineData(
+        "T? missing = default; rules.Ensure(missing is null, field: \"f\");",
+        "global::Sample.Order? missing = default;"
+    )]
+    [InlineData(
+        "var pair = new T[] { audited }; rules.Ensure(pair.Length == 1, field: \"f\");",
+        "var pair = new global::Sample.Order[]"
+    )]
+    [InlineData(
+        "foreach (T item in new[] { audited }) { rules.Context.Report(\"f\", \"c\", item.CreatedBy ?? \"\"); }",
+        "foreach (global::Sample.Order item in new[]"
+    )]
+    public void AGenericFragmentsTypeParameter_IsWrittenAsTheTypeItWasExpandedFor(
+        string statement,
+        string expected
+    )
+    {
+        var result = Clean(
+            "        TypedRules.Standard(rules, x);",
+            $$"""
+            public static class TypedRules {
+                public static void Standard<T>(ValidationRules<T> rules, T audited) where T : IAudited {
+                    {{statement}}
+                }
+            }
+
+            """
+        );
+
+        var container = result.Sources["Sample.TypedRules_Fragments.g.cs"];
+
+        Assert.Contains(expected, container);
+        Assert.DoesNotMatch(@"\bT\b", Regex.Replace(container, @"""(?:[^""\\]|\\.)*""", "\"\""));
+    }
+
+    /// <summary>
+    /// A type parameter that a value type stands for: <c>T?</c> over an unconstrained <c>T</c> is
+    /// <c>T</c> itself there, not <c>Nullable&lt;T&gt;</c>.
+    /// </summary>
+    [Fact]
+    public void AValueTypeArgument_KeepsTheMeaningOfTQuestionMark()
+    {
+        var result = Clean(
+            "        Tagged.Declare(rules, x, 7);",
+            """
+            public static class Tagged {
+                public static void Declare<T, TTag>(ValidationRules<T> rules, T audited, TTag tag)
+                    where T : IAudited {
+                    TTag? copy = tag;
+                    rules.Ensure(copy!.Equals(tag), field: "tag");
+                }
+            }
+
+            """
+        );
+
+        Assert.Contains("int copy = tag;", result.Sources["Sample.Tagged_Fragments.g.cs"]);
+    }
+
+    /// <summary>
+    /// A type test takes the plain form of the type a type parameter stands for: no nullable
+    /// annotation, and a tuple written as its <c>ValueTuple</c>, which after <c>is</c> would read
+    /// as a positional pattern. A declaration keeps the type as it was inferred.
+    /// </summary>
+    [Theory]
+    [InlineData("x.Number", "string? copy = tag;", "boxed is string")]
+    [InlineData(
+        "(Tier: x.Tier, Number: x.Number)",
+        "(int Tier, string? Number) copy = tag;",
+        "boxed is global::System.ValueTuple<int, string?>"
+    )]
+    public void ATypeTest_TakesThePlainFormOfTheTypeArgument(
+        string argument,
+        string declared,
+        string tested
+    )
+    {
+        var result = Clean(
+            $"        Tagged.Declare(rules, x, {argument});",
+            """
+            public static class Tagged {
+                public static void Declare<T, TTag>(ValidationRules<T> rules, T audited, TTag tag)
+                    where T : IAudited {
+                    TTag copy = tag;
+                    object? boxed = copy;
+                    rules.Ensure(boxed is TTag, field: "tag");
+                }
+            }
+
+            """
+        );
+
+        var container = result.Sources["Sample.Tagged_Fragments.g.cs"];
+
+        Assert.Contains(declared, container);
+        Assert.Contains(tested, container);
+    }
+
+    /// <summary>
+    /// One fragment expanded for two types declares one rule, so both expansions report the one
+    /// code derived from the fragment's source, <c>T</c> included. A code taken from the expanded
+    /// text would differ per type.
+    /// </summary>
+    [Fact]
+    public void AFragmentExpandedForTwoTypes_ReportsOneDerivedCode()
+    {
+        var result = Clean(
+            "        NamedRules.Standard(rules, x);",
+            """
+            public sealed record Invoice : IAudited {
+                public string? CreatedBy { get; init; }
+                public int Version { get; init; }
+            }
+
+            public sealed class InvoiceRules : IValidationRulesFor<Invoice> {
+                public static void Describe(ValidationRules<Invoice> rules, Invoice x) {
+                    NamedRules.Standard(rules, x);
+                }
+            }
+
+            public static class NamedRules {
+                public static void Standard<T>(ValidationRules<T> rules, T audited) where T : IAudited {
+                    rules.Ensure(audited.CreatedBy != typeof(T).Name, message: "The author repeats the type.");
+                }
+            }
+
+            """
+        );
+
+        var container = result.Sources["Sample.NamedRules_Fragments.g.cs"];
+
+        Assert.Contains("typeof(global::Sample.Order).Name", container);
+        Assert.Contains("typeof(global::Sample.Invoice).Name", container);
+        Assert.Equal(2, Regex.Matches(container, "\"created_by_not_equal_typeof_t_name\"").Count);
+    }
+
+    /// <summary>
+    /// A type argument the expansion cannot name is reported at the call, rather than written
+    /// into a generated file that does not compile.
+    /// </summary>
+    [Fact]
+    public void AnAnonymousTypeArgument_IsVM3009AtTheCall()
+    {
+        var result = Run(
+            "        Tagged.Declare(rules, x, new { Strict = true });",
+            """
+            public static class Tagged {
+                public static void Declare<T, TTag>(ValidationRules<T> rules, T audited, TTag tag)
+                    where T : IAudited {
+                    rules.Ensure(typeof(TTag) != typeof(T), field: "tag");
+                }
+            }
+
+            """
+        );
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM3009");
+
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        Assert.Equal(
+            "'Tagged.Declare' is called with TTag = '<anonymous type: bool Strict>', which its "
+                + "generated expansion cannot name. An anonymous type has no name. Pass a value "
+                + "of a named type, such as a record, instead",
+            diagnostic.GetMessage()
+        );
+        Assert.Equal(
+            "Tagged.Declare(rules, x, new { Strict = true })",
+            diagnostic
+                .Location.SourceTree!.GetText(TestContext.Current.CancellationToken)
+                .ToString(diagnostic.Location.SourceSpan)
+        );
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    [Fact]
+    public void APrivateTypeArgument_IsVM3009AtTheCall()
+    {
+        var result = GeneratorHarness.Run(
+            Audited
+                + """
+
+                public static class Tagged {
+                    public static void Declare<T, TTag>(ValidationRules<T> rules, T audited, TTag tag)
+                        where T : IAudited {
+                        rules.Ensure(tag is not null, field: "tag");
+                    }
+                }
+
+                public sealed class OrderRules : IValidationRulesFor<Order> {
+                    private sealed class Secret { }
+
+                    public static void Describe(ValidationRules<Order> rules, Order x) {
+                        Tagged.Declare(rules, x, new Secret());
+                    }
+                }
+                """
+        );
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM3009");
+
+        Assert.EndsWith(
+            "'Sample.OrderRules.Secret' is not accessible outside the type that declares it. "
+                + "Make it internal",
+            diagnostic.GetMessage()
+        );
+        Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]
