@@ -195,8 +195,9 @@ one member are easier to write in a rules class.
 ## Where attributes go
 
 The generator reads attributes on instance properties that have a readable getter. It does not read
-fields or static properties, and reports a constraint on one as `VM1011`. A constrained property
-without an accessible getter is reported as `VM1007`.
+fields or static properties, and reports a constraint on one as `VM1011`. It does not read indexers
+either, and reports a constraint on one as `VM1014`. A constrained property without an accessible
+getter is reported as `VM1007`.
 
 On a positional record, an attribute on a parameter applies to the constructor parameter, not to
 the property. Add the `property:` target:

@@ -37,6 +37,7 @@ context. Add `using ValidationModules;`.
 - The value is `null`. Every constraint except `[Required]` passes `null`.
 - The attribute is on a field or a static property. The generator reads instance properties only,
   and reports `VM1011`.
+- The attribute is on an indexer. The generator reports `VM1014`.
 - The attribute is on a positional record parameter without the `property:` target. The generator
   reports `VM1008`.
 - A derived class hides the property with `new`, which replaces the base property's constraints.

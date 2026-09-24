@@ -139,6 +139,15 @@ into a class named after the rules class with `_Rules` appended. A nested rules 
 `Order.ItemRules` and a top-level `Order_ItemRules` therefore both get `Order_ItemRules_Rules`, and
 neither rules class is compiled. Rename one of the two types, or move it to another namespace.
 
+### VM1014
+
+**Severity:** Warning
+
+A constraint is on an indexer. An indexer takes an argument and the validator has none to pass, so
+the constraint is never evaluated. Remove it. To check the values the indexer returns, expose the
+collection it reads from as an instance property, and check its elements with `[ValidateNested]` or
+with `Each` in a [rules class](../guide/rule-classes#nested-objects-and-collections).
+
 ### VM1101
 
 **Severity:** Error
