@@ -319,10 +319,10 @@ public sealed class InvoiceRules : IValidationRulesFor<Invoice>
 ```
 
 The generator expands the fragment for each type that calls it, so `audited.CreatedBy` reports at
-`createdBy` for an `Invoice`. A fragment can take extra parameters. A non-generic fragment can call
-other fragments, but a generic fragment that calls another generic fragment does not compile in this
-version. A fragment must be source in the same project. A fragment in a referenced assembly is
-reported as `VM3005`. `Nested`, `Each` and `Apply` belong in `Describe` itself, not in a fragment.
+`createdBy` for an `Invoice`. A fragment can take extra parameters. A fragment can call other
+fragments, and a generic fragment's call to another generic fragment is expanded for the same type.
+A fragment must be source in the same project. A fragment in a referenced assembly is reported as
+`VM3005`. `Nested`, `Each` and `Apply` belong in `Describe` itself, not in a fragment.
 
 ## Validate through an interface
 
