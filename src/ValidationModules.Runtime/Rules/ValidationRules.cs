@@ -267,10 +267,11 @@ public sealed class ValidationRules<T>
     /// The text is compile-time source, so no runtime value can reach it.
     /// </para>
     /// <para>
-    /// <b>The code does not derive from the condition.</b> It defaults to
-    /// <see cref="ValidationCodes.Predicate"/>: the message is human-facing and should track the
-    /// rule, while the code is a wire contract, and a code slugged from the expression would make
-    /// widening a bound a breaking change for every client switching on it.
+    /// <b>The code derives from the condition</b> unless <c>code:</c> is given:
+    /// <c>x.Start &lt; x.End</c> reports <c>start_less_than_end</c>, and the generator reports the
+    /// derived code as VM3103. Editing the condition changes the code, so pass <c>code:</c> when a
+    /// client depends on it. A condition the derivation cannot name reports
+    /// <see cref="ValidationCodes.Predicate"/>.
     /// </para>
     /// <para>
     /// The anchor is the first member access off the subject parameter; no anchor and no

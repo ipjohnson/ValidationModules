@@ -1,309 +1,185 @@
-# Registration and DI
+# Registration
 
-The generator emits registration alongside the validators, and which shape it emits depends on
-whether your project references [DependencyModules](https://github.com/ipjohnson/DependencyModules).
-You do not have to choose; it probes and decides.
+The generator writes one extension method per project that registers every validator the project
+declares. Call it once when the application starts.
 
-Both branches share one emitter for the body and differ only in the wrapper.
+## The registration method
 
-## Without DependencyModules
+The method is named after the assembly:
 
-An `IServiceCollection` extension named after your assembly:
+| Assembly name | Method |
+| --- | --- |
+| `Shop` | `AddShopValidators()` |
+| `Shop.Api` | `AddShopApiValidators()` |
+| `my-app` | `AddMyAppValidators()` |
+| `7Eleven` | `Add_7ElevenValidators()` |
 
-<!-- verify:models -->
+The name is split at dots, dashes and underscores, each part starts with a capital letter, and the
+separators are removed. A name that starts with a digit gets a leading underscore. The method is
+declared in a class named `ShopValidationExtensions`, in the
+`Microsoft.Extensions.DependencyInjection` namespace.
+
+For each validated type `T`, the method registers:
+
+| Service | Lifetime | Implementation |
+| --- | --- | --- |
+| `IValidatorFor<T>` | singleton | the generated validator |
+| `ValidationRunner<T>` | scoped | runs every validator registered for `T` |
+| `IValidatorFor<List<T>>` and `IValidatorFor<T[]>` | singleton | a `CollectionValidatorFor<T>`, which validates each element, with paths such as `[2].quantity` |
+| `ValidationRunner<List<T>>` and `ValidationRunner<T[]>` | scoped | the runners for those collections |
+
+It also registers the language packs the project compiles, the formatter that uses them, an
+`IValidationFieldNamer` that matches the project's field naming, and what
+[runtime polymorphism](./nesting#subtypes) needs when a property uses it.
+
+The method is not idempotent. Calling it twice registers every validator twice, and each error is
+then reported twice. A project with no validated types and no language packs gets no method.
+
+## Resolve a validator
+
+`IValidatorFor<T>` resolves to the last validator registered for `T`. While the generated validator
+is the only one, that is enough:
+
 ```csharp
+var validator = provider.GetRequiredService<IValidatorFor<SignUp>>();
+ValidationResult result = validator.Validate(signUp);
+```
+
+`ValidationRunner<T>` runs every `IValidatorFor<T>` registered for the type, in registration order,
+and merges their errors into one result. `ValidateAsync` also runs the asynchronous validators, as
+described in [Async validation](./async). The runner is scoped. Resolve it from a scope, or inject
+it into a scoped service such as an ASP.NET Core handler:
+
+```csharp
+using var scope = provider.CreateScope();
+var runner = scope.ServiceProvider.GetRequiredService<ValidationRunner<SignUp>>();
+
+ValidationResult result = runner.Validate(signUp);
+```
+
+A runner resolved this way also gives the pass the scope's `IServiceProvider`, which runtime
+polymorphism and some rules classes need.
+
+## Hand-written validators
+
+Register a hand-written `IValidatorFor<T>` after the generated ones:
+
+```csharp
+services.AddShopValidators();
+services.AddSingleton<IValidatorFor<SignUp>, ReservedNameValidator>();
+```
+
+`ValidationRunner<SignUp>` now runs the generated validator first and `ReservedNameValidator`
+second. A single `IValidatorFor<SignUp>` resolves to `ReservedNameValidator` alone, so validate
+through the runner.
+
+A hand-written validator for a nested type also runs when that type is reached through a parent,
+provided the parent's validator came from the container.
+
+For a type that has only hand-written validators, register a runner for it yourself:
+
+```csharp
+services.AddSingleton<IValidatorFor<Invoice>, InvoiceValidator>();
+services.AddValidationRunner<Invoice>();
+services.AddCollectionValidatorsFor<Invoice>();
+```
+
+`AddCollectionValidatorsFor<T>` is needed only when lists or arrays of the type are validated, for
+example as an ASP.NET Core request body. It registers the synchronous and asynchronous collection
+validators and their runners. Calling it twice registers them twice. `AddValidationRunner<T>` can be
+called more than once, because it adds nothing when a runner is already registered.
+
+## Validators from other assemblies
+
+There is no assembly scanning. Each project that declares validated types gets its own registration
+method, and the application calls each one:
+
+```csharp
+services.AddShopValidators();
+services.AddShopModelsValidators();
+```
+
+A class library that declares validated types needs both packages, because the generator runs in
+each project separately and does not flow to the projects that reference it.
+
+A nested type declared in another assembly is validated by that assembly's validators, which reach
+the parent's validator through the container. Call that assembly's registration method. When it is
+not called, a parent created by the container falls back to the generated validator for the nested
+type.
+
+A rules class can target a type declared in another assembly. The validator is then generated in
+the rules class's project, and that project's registration method registers it.
+
+## DependencyModules
+
+A project that references `DependencyModules.Runtime` gets registration through its module entry
+point. The generator adds a partial declaration to every class marked `[DependencyModule]`, and
+that partial registers the project's validators with the module:
+
+```csharp
+using DependencyModules.Runtime;
+using DependencyModules.Runtime.Attributes;
+using Microsoft.Extensions.DependencyInjection;
+
 var services = new ServiceCollection();
+services.AddModule<ApplicationModule>();
 
-services.AddSampleValidators();
-```
-
-```csharp
-// <auto-generated/>
-namespace Microsoft.Extensions.DependencyInjection
-{
-    public static class MyAppValidationExtensions
-    {
-        public static IServiceCollection AddMyAppValidators(this IServiceCollection services)
-        {
-            services.AddSingleton<
-                IValidatorFor<global::MyApp.Address>,
-                global::MyApp.AddressValidator
-            >();
-            services.AddSingleton<IValidatorFor<global::MyApp.Pet>, global::MyApp.PetValidator>();
-
-            services.AddValidationRunner<global::MyApp.Address>();
-            services.AddValidationRunner<global::MyApp.Pet>();
-
-            services.TryAddSingleton<IValidationFieldNamer>(CamelCaseFieldNamer.Instance);
-
-            return services;
-        }
-    }
-}
-```
-
-**The method name carries the assembly, and has to.** Each assembly registers its own validators,
-and there is deliberately no cross-assembly scanning. Two assemblies both emitting
-`AddValidationModules()` on `IServiceCollection` would be CS0121 at the composition root.
-`AddMyAppValidators()` and `AddMyLibValidators()` compose without ceremony.
-
-The source is the **assembly name**, not the root namespace, made into a single PascalCase
-identifier: the name splits on dots and on any character that is not a letter or digit, each
-segment's first letter goes to upper case, and the segments join with nothing between them. So
-`MyApp.Contracts` gets `AddMyAppContractsValidators()`, and a kebab-case `app2-signupapi` gets
-`AddApp2SignupapiValidators()`. A name that would start with a digit gains a leading underscore.
-The name is computed at build time and exists in no package; when in doubt, read it out of
-`obj/…/generated/…/GeneratedValidatorRegistration.g.cs`.
-
-**Not idempotent.** Calling it twice registers every validator twice, and a runner merges every
-registered validator for a type, so each error would be reported twice. `Add` rather than `TryAdd`
-is deliberate: registering a second validator for one type is how a hand-written rule composes with
-the generated one, so this cannot dedupe without breaking that.
-
-The registrations are ordered by namespace then validator name, so they do not reshuffle between
-builds and an incremental compile does not produce a spurious diff.
-
-## With DependencyModules
-
-Your entry point registers them, and you call nothing:
-
-```csharp
 [DependencyModule]
 public partial class ApplicationModule;
 ```
 
-```csharp
-// <auto-generated/>
-partial class ApplicationModule
-{
-    [DynamicDependency(nameof(ValidationModulesDependencies))]
-    private static int validationModulesField = DependencyRegistry<ApplicationModule>.Add(
-        ValidationModulesDependencies
-    );
+The entry point class must be `partial` and must not be nested in another type. Do not also call
+`AddShopValidators()`, or every validator is registered twice. Hand-written validators can be
+registered with DependencyModules' own service attributes, and they combine with the generated ones
+in the same way.
 
-    private static void ValidationModulesDependencies(IServiceCollection services) =>
-        services.AddMyAppValidators();
-}
-```
+An application built on Hardened works the same way. A class marked `[HardenedModule]` is an entry
+point, and the generator registers the project's validators into it.
 
-One body, two wrappers. The partial is a one-line call to the same extension rather than a second
-copy of the registrations, so the two branches cannot drift.
+A project with no entry point, such as a library of models, gets a generated class named
+`ValidationModule`. Its namespace is the assembly name, with any character that cannot appear in a
+namespace replaced by `_`, so an assembly named `my-models` gets `my_models.ValidationModule`. It
+implements `IDependencyModule`, so an application can add it with
+`services.AddModule<ValidationModule>()`.
 
-The entry point rather than a module beside it, because **source generators cannot see each other's
-output**. DependencyModules composes a module through an attribute that DependencyModules' own
-generator writes, so a module emitted here could never be reached by one; putting
-`[SingletonService]` on a generated validator and hoping DM picks it up would do nothing at all
-either. What both generators *can* see is the class you wrote, and
-`DependencyRegistry<TEntryPoint>` is keyed on it.
+A project that declares more than one entry point registers its validators into each of them, and
+the generator reports `VM6001`. Remove the attribute from the classes that are not applications, or
+suppress the warning when the project contains two applications on purpose.
 
-A `[HardenedModule]` entry point is found the same way. Hardened builds its modules from that
-attribute rather than from `[DependencyModule]`, and a Hardened application carries no
-`[DependencyModule]` of its own.
-
-### More than one entry point
-
-Every entry point in the compilation gets the partial, and `VM6001` says so. Two entry points are
-two applications composed from the same source, and this assembly's validators belong to both;
-registering into one would leave the other silently unvalidated. If only one of them is the
-application, remove the attribute from the others. If the pair is deliberate, silence it:
-
-```xml
-<NoWarn>$(NoWarn);VM6001</NoWarn>
-```
-
-### A library with no entry point
-
-A class library that declares no module gets a `ValidationModule` beside the validators instead,
-which you compose by hand:
-
-```csharp
-services.AddModule<ValidationModule>();
-```
-
-Nothing generated can reach it, for the reason above. Prefer `services.AddMyAppValidators()`, which
-says the same thing without the wrapper.
-
-::: warning Do not host DependencyModules' stages
-If you are writing your own generator on top of `ValidationModules.SourceGenerator.Impl`, do not
-derive from DM's `BaseSourceGenerator` and yield its `ServiceSourceGenerator`. A project referencing
-both would then have two generators processing `[DependencyModule]` and emit the module twice. Use
-DM's writers and models as a library; do not use its host.
+::: tip Upgrading from 1.0.0
+In 1.0.0 every DependencyModules project got a `ValidationModule` class. From 1.1.0 a project with
+an entry point no longer does, because the entry point registers the validators. Remove any
+`AddModule<ValidationModule>()` call from such a project.
 :::
 
-## Forcing the choice
+## Choose the registration form
 
-```xml
-<PropertyGroup>
-    <ValidationModules_Registration>ServiceCollection</ValidationModules_Registration>
-</PropertyGroup>
-```
+`ValidationModules_Registration` overrides the automatic choice:
 
 | Value | Effect |
-|---|---|
-| *(unset)* | auto: DependencyModules if `IDependencyModule` resolves, otherwise the extension |
-| `DependencyModules` | always register into the entry point, or emit the module where there is none |
-| `ServiceCollection` | always emit the extension alone |
-| `None` | emit no registration at all |
+| --- | --- |
+| `ServiceCollection` | The registration method only, even when DependencyModules is referenced. |
+| `DependencyModules` | The DependencyModules form. |
+| `None` | No registration code at all. Construct the validators yourself. |
 
-`None` is the escape hatch for DM arriving transitively into a project that does not want its
-validators registered. It emits the validators and nothing else; wire them up yourself.
+The values are case-sensitive. Any other value selects the form automatically.
 
-## Lifetimes
+## Without a container
 
-Validators are **singletons**, always.
-
-Generated validators are stateless, and building a rule graph once rather than per call is a hard
-requirement rather than a preference. This is the largest practical difference from
-FluentValidation. `AddValidatorsFromAssemblyContaining` registers validators **scoped**, so by
-default it rebuilds its rule graph on every request. That costs about 11 KB of allocation per
-resolve, against 0 B and roughly 6 ns to reach a generated singleton. Run
-`./scripts/benchmark.sh --comparative` in the repository for the measurement. The construction
-timing is quoted as an order of magnitude rather than a figure because it varies too much between
-runs to state precisely.
-
-`ValidationRunner<T>` is **scoped**, because the async validators it composes may take scoped
-dependencies.
-
-## `ValidationRunner<T>`
-
-Once a type has more than one validator, such as a generated structural one plus a hand-written
-business rule, you want them run together and their results merged:
-
-<!-- verify:models -->
-```csharp
-public class PetService
-{
-    private readonly ValidationRunner<Pet> _validation;
-
-    public PetService(ValidationRunner<Pet> validation) => _validation = validation;
-
-    public async Task<ValidationResult> CheckAsync(Pet pet, CancellationToken cancellationToken) =>
-        await _validation.ValidateAsync(pet, cancellationToken);
-}
-```
-
-The signature is `ValidateAsync(T value, CancellationToken cancellationToken = default)`, so the
-token passes positionally.
-
-`Validate(value)` is the synchronous half, and runs the structural validators only.
-
-The runner resolves every registered `IValidatorFor<T>` and `IAsyncValidatorFor<T>`, runs the
-structural ones first, and **only runs the async ones if structural validation passed**. Nothing
-hits the database to check uniqueness on a field that is null.
-
-Results merge rather than replacing by precedence. Structural constraints must not silently
-disappear because someone added a business rule, and merging removes the precedence question
-entirely. [Async and business rules](/guide/async) covers writing the async side.
-
-It is registered closed, per type, by the generator:
+Every generated validator has a public parameterless constructor:
 
 ```csharp
-services.AddValidationRunner<Pet>();
+var validator = new SignUpValidator();
 ```
 
-Closed rather than open generic, on purpose. `AddScoped(typeof(ValidationRunner<>))` would have
-MS.DI construct it reflectively, which is what a Native AOT publish cannot do.
-
-## Nested types compose too
-
-A validator registered for a **nested** type runs when that type is reached through its parent, not
-just when it is validated directly:
-
-<!-- verify:models -->
-```csharp
-var services = new ServiceCollection();
-
-services.AddSampleValidators();
-services.AddSingleton<IValidatorFor<Address>, AddressBlocklistValidator>();
-
-using var provider = services.BuildServiceProvider();
-using var scope = provider.CreateScope();
-
-var runner = scope.ServiceProvider.GetRequiredService<ValidationRunner<Pet>>();
-
-// Reports home.postalCode:blocked from the hand-written Address validator.
-var result = runner.Validate(new Pet { Home = new Address { PostalCode = "SW1" } });
-
-public sealed class AddressBlocklistValidator : IValidatorFor<Address>
-{
-    public ValidationFlow Validate(ref ValidationContext context, Address value) =>
-        value.PostalCode == "SW1"
-            ? context.Report("postalCode", "blocked", "postal code is blocked.")
-            : ValidationFlow.Continue;
-}
-```
-
-This works by **constructor injection**, not by a lookup at descent time. A generated validator for a
-type with nested properties takes one `IEnumerable<IValidatorFor<Nested>>` per nested type and
-materialises each into an array in its constructor:
+A validator created this way uses the generated validators for its nested types, and never runs a
+hand-written validator for them. A validator with nested members also has a constructor that takes
+the validators for each nested member, named after the member. An empty sequence falls back to the
+generated validator:
 
 ```csharp
-public PetValidator(
-    IEnumerable<IValidatorFor<global::MyApp.Address>> home,
-    IEnumerable<IValidatorFor<global::MyApp.Toy>> toys
-)
-{
-    _homeValidators = System.Linq.Enumerable.ToArray(home);
-    _toysValidators = System.Linq.Enumerable.ToArray(toys);
-}
+var validator = new OrderValidator(
+    shipTo: [new AddressValidator(), new UkPostcodeValidator()],
+    lines: []
+);
 ```
-
-Two consequences are worth knowing. The set is resolved **once, when the singleton is built**,
-rather than per descent, so composition costs nothing on the hot path. The closed generic is written
-by the generator, which knows the nested type at build time. The reflective spelling would be
-`MakeGenericType`, so this stays AOT-safe.
-
-::: tip What it costs when no container took part
-A validator you construct yourself with `new PetValidator()` uses the parameterless constructor and
-falls back to each nested type's own generated validator, built lazily on first descent. That is the
-pre-composition behaviour, and it is what a unit test gets.
-:::
-
-::: warning Match the field name
-The generated `AddressValidator` derives its field name from `[JsonPropertyName]` and the naming
-policy. A hand-written validator has to say the same thing. If the model carried
-`[JsonPropertyName("postal_code")]`, write:
-
-```csharp
-context.Report("postal_code", "blocked", "postal code is blocked."); // not "postalCode"
-```
-
-Otherwise one field arrives under two names depending on which rule failed. The runtime cannot
-check this for you, because reading the attribute at run time is reflection.
-:::
-
-## Registering a validator by hand
-
-Nothing stops you adding your own alongside the generated one:
-
-```csharp
-services.AddSingleton<IValidatorFor<Pet>, MyExtraPetValidator>();
-```
-
-Both run, and both sets of errors appear. Registration is `Add`, not `TryAdd`, precisely so this
-works.
-
-## Rule classes register like everything else
-
-A [rule class](/guide/rule-classes) is read by the generator and expanded into the same validator
-the attributes produce, so it needs nothing of its own here. `AddSampleValidators()` covers it.
-There is no runtime engine to register. A rules class in an assembly the generator never ran over
-declares nothing, which is why [fragments travel as source](/guide/rule-classes#fragments) and
-shared *types* ship their own generated validators for consumers to compose.
-
-## The field namer
-
-The generated registration registers `IValidationFieldNamer` with `TryAdd`, so a namer you
-registered first survives:
-
-```csharp
-services.AddSingleton<IValidationFieldNamer>(SnakeCaseFieldNamer.Instance);
-services.AddSampleValidators(); // keeps yours
-```
-
-This affects only the names computed at run time, which are the ones coming from
-`IValidatableObject` results and from DataAnnotations member names. Generated validators have their
-field names baked in as literals at build time, so changing the registered namer does **not** rename
-their errors. Use
-[`ValidationModules_FieldNaming`](/reference/msbuild#validationmodules-fieldnaming) for those, and
-set both to the same policy if you use both.

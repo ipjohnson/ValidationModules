@@ -402,7 +402,7 @@ reject "${KNOBS_SUPPRESSED}" "VM1201" \
     "dotnet_diagnostic.VM1201.severity = none did not suppress it, and the reference says it does"
 
 # The bulk form does not reach a generator-reported diagnostic. dotnet_analyzer_diagnostic.* is
-# applied by the analyzer driver, and 60 of the 61 descriptors are reported by the generator rather
+# applied by the analyzer driver, and 61 of the 62 descriptors are reported by the generator rather
 # than by an analyzer - VM5003 is the only one from ValidateCallAnalyzer. The reference used to
 # offer the category line as the way to reach the whole set, which silently reached almost none of
 # it. Pinned in the direction it actually behaves, so that a Roslyn release closing the gap shows up

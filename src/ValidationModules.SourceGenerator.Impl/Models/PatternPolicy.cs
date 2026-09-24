@@ -5,7 +5,7 @@ namespace ValidationModules.SourceGenerator.Impl.Models;
 /// </summary>
 /// <remarks>
 /// The inline form is correct and AOT-clean, but constructing a Regex from a pattern string roots
-/// the regex parser and interpreter, which costs +1.16 MB on a published AOT binary against +16 KB
+/// the regex parser and interpreter, which costs +448 KB on a published AOT binary against +16 KB
 /// for the same pattern reached through a consumer-declared [GeneratedRegex]. So this is not a
 /// correctness gate; it is a size one, and the message says so.
 /// </remarks>

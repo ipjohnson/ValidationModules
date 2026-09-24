@@ -4,8 +4,8 @@ namespace ValidationModules.Constraints;
 /// Opts a type into validator generation when it carries no constraints of its own.
 /// </summary>
 /// <remarks>
-/// Any constraint on any member already implies generation, so this is only needed when the rules
-/// live in an overlay, when the type is purely a <see cref="ValidateNestedAttribute"/> target, or
+/// Any constraint on any member, or a rules class for the type, already implies generation, so
+/// this is only needed when the type is purely a <see cref="ValidateNestedAttribute"/> target, or
 /// when <c>IValidatorFor&lt;T&gt;</c> should be injectable regardless.
 /// </remarks>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Interface)]

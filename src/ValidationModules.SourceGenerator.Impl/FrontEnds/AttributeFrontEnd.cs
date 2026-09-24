@@ -545,10 +545,8 @@ public sealed class AttributeFrontEnd
     /// </summary>
     /// <remarks>
     /// §4.2 pins errors to property order, and for an attributed type that is source order because
-    /// source order is where the rules were written. A rules class writes them somewhere else, and a
-    /// body that constrains Notes before Start must report in that order or it disagrees with
-    /// <c>DescribedValidator&lt;T&gt;</c>, which has only the body to go on and cannot see source
-    /// order without reflection.
+    /// source order is where the rules were written. A rules class writes them somewhere else, so a
+    /// body that constrains Notes before Start reports in that order.
     ///
     /// Only when the type carries no attributes of its own. Mixing the two orderings on one type
     /// would be worse than either: source order stays authoritative the moment source is involved.
@@ -1635,7 +1633,7 @@ public sealed class AttributeFrontEnd
         }
 
         // Inline form. Correct and AOT-clean, but it roots the regex parser and interpreter, which
-        // is +1.16 MB on a published AOT binary. The policy decides whether that is acceptable here.
+        // is +448 KB on a published AOT binary. The policy decides whether that is acceptable here.
         if (_patternPolicy is PatternPolicy.Error or PatternPolicy.Warn)
         {
             var severity =

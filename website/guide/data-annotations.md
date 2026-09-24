@@ -1,255 +1,180 @@
 # DataAnnotations
 
-`System.ComponentModel.DataAnnotations` attributes are read as a second vocabulary and compiled into
-the same validators. A model that already carries them needs no edits:
+The generator compiles the attributes from `System.ComponentModel.DataAnnotations` into the same
+validators it writes for its own attributes. A model that already uses DataAnnotations gets a
+generated validator without any changes.
+
+## Existing models
 
 <!-- verify:bare -->
 ```csharp
 using System.ComponentModel.DataAnnotations;
 
-public class Customer
+public sealed class Customer
 {
     [Required]
-    [StringLength(100, MinimumLength = 1)]
+    [StringLength(20, MinimumLength = 2)]
     public string? Name { get; set; }
 
-    [Range(0, 120)]
+    [RegularExpression("[A-Z]{3}")]
+    public string? Code { get; set; }
+
+    [Range(1, 120)]
     public int Age { get; set; }
 
-    [RegularExpression("^[A-Z]{3}$")]
-    public string? Sku { get; set; }
+    [MaxLength(3)]
+    public List<string> Tags { get; set; } = new();
 }
 ```
 
-That produces the same `CustomerValidator` a native-attribute model would, with the same codes,
-messages and field paths. The origin of a rule stops mattering the moment it is read.
+With both packages installed, this model gets a `CustomerValidator` like any other. A customer named
+`a`, with the code `xABCx`, age `0` and four tags, reports:
 
-The relationship is a policy, not a coincidence: **every DataAnnotations validation attribute has
-a native equivalent, under the same name where the concept is the same.** Migrating a model is
-swapping `using System.ComponentModel.DataAnnotations;` for `using ValidationModules.Constraints;`
-- the attribute lines stay as they are. The [four deliberate divergences](#where-the-names-differ)
-are documented below, each with its reason. When the BCL adds a new *validation* attribute, the
-native vocabulary matches it under its own name; DataAnnotations' display and metadata attributes
-(`[Display]`, `[DataType]`, `[DisplayFormat]`) are not validation and stay out.
+| `Field` | `Code` | `Message` |
+| --- | --- | --- |
+| `name` | `string_length` | name must be between 2 and 20 characters. |
+| `code` | `pattern` | code is not in the required format. |
+| `age` | `range` | age must be between 1 and 120. |
+| `tags` | `array_bounds` | tags must be at most 3 items. |
 
-**No `ValidationAttribute` is ever constructed and no `IsValid` is ever called.** The arguments are
-read out of metadata at build time and compiled, which is what keeps this free of the reflection
-`Validator.TryValidateObject` would otherwise do.
+The attributes are not created or called at run time. The generator reads their arguments and
+writes the same checks it writes for the attributes in `ValidationModules.Constraints`.
 
-This is on by default. Set `ValidationModules_DataAnnotations` to `Ignore` to turn it off.
+## What each attribute becomes
 
-## What is compiled
+| DataAnnotations attribute | Checks | Code |
+| --- | --- | --- |
+| `[Required]` | The value is present. A string must not be empty or whitespace unless `AllowEmptyStrings` is set. | `required` |
+| `[StringLength]` | The string length, with `MinimumLength`. | `string_length` |
+| `[MinLength]`, `[MaxLength]`, `[Length]` | The length of a string, or the number of items in a collection. | `string_length` or `array_bounds` |
+| `[Range]` | The bounds, with `MinimumIsExclusive` and `MaximumIsExclusive`. String bounds are parsed as the property's type at build time. | `range` |
+| `[RegularExpression]` | The whole value matches the expression. | `pattern` |
+| `[AllowedValues]`, `[DeniedValues]` | The value is in, or not in, the list. | `enum` |
+| `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]`, `[FileExtensions]` | The same rules as the DataAnnotations attributes. | `email`, `phone`, `url`, `credit_card`, `base64`, `file_extension` |
+| `[CustomValidation]` on a property | Calls the named static method directly. | `custom` |
+| A class derived from `ValidationAttribute` | Creates the attribute once and calls it. | `custom` |
+| `IValidatableObject` on the model | Calls `Validate` after every other rule, when nothing has been reported. | `custom` |
 
-| DataAnnotations | Becomes | Code |
-|---|---|---|
-| `[Required]` | `[Required]` | `required` |
-| `[StringLength(max, MinimumLength = min)]` | `[StringLength]` | `string_length` |
-| `[MinLength]` / `[MaxLength]` / `[Length]` | `[StringLength]` **or** `[ItemCount]` | depends |
-| `[Range(min, max)]` | `[Range]` | `range` |
-| `[RegularExpression]` | `[Pattern]`, **anchored** | `pattern` |
-| `[AllowedValues]` | `[AllowedValues]` | `enum` |
-| `[DeniedValues]` | `[AllowedValues]`, negated | `enum` |
-| `[EmailAddress]` | its compiled check, [see below](#the-format-validators) | `email` |
-| `[Phone]` | its compiled check | `phone` |
-| `[Url]` | its compiled check | `url` |
-| `[CreditCard]` | its compiled check | `credit_card` |
-| `[Base64String]` | its compiled check | `base64` |
-| `[FileExtensions]` | its compiled check | `file_extension` |
+The generator reports what it does with some of these as informational diagnostics. `VM2004` states
+the exact rule a format attribute applies, `VM2002` notes that a custom `ValidationAttribute` runs
+its own code, and `VM2006` notes when `IValidatableObject.Validate` is called.
 
-`[MinLength]`, `[MaxLength]` and `[Length]` apply to strings *and* collections in DataAnnotations, so
-the member's own type decides which constraint each becomes. A member that is neither is
-[VM2005](/reference/diagnostics#vm2005).
+These attributes are not compiled, and the generator reports a warning:
 
-`MinimumIsExclusive` and `MaximumIsExclusive` on `[Range]` are honoured, and the message says so.
-An exclusive bound reads "must be greater than" or "must be less than" rather than
-claiming "between".
+| Attribute | Diagnostic | Instead |
+| --- | --- | --- |
+| `[Compare]` | `VM2003` | `Ensure(x.Confirm == x.Password)` in a [rules class](./rule-classes#ensure) |
+| `[EnumDataType]` | `VM2007` | Type the property as the enum and use `[EnumDefined]` |
 
-## Where the names differ {#where-the-names-differ}
+`[Display(Name = ...)]` is not a check. It supplies `{0}` in an `ErrorMessage`, and it also
+replaces the error's field name, so `[Display(Name = "Postal code")]` reports the field
+`Postal code`. Through a runner, the name can be re-cased. See the warning under
+[Field names](./errors#field-names).
 
-Four DataAnnotations attributes map to a native attribute under a different name. All four stay
-different on purpose - each is a genuinely different mechanism rather than a renamed one, and two
-names for one concept would be worse than one name that needs a sentence:
+## Messages
 
-| DataAnnotations | Native | Why it differs |
-|---|---|---|
-| `[RegularExpression("…")]` | [`[Pattern]`](/reference/attributes#pattern) | the native form also takes a `[GeneratedRegex]` member reference, which is what keeps a published AOT binary free of the regex compiler - a shape the BCL attribute has nowhere to put |
-| `[MinLength]` / `[MaxLength]` / `[Length]` | [`[StringLength]`](/reference/attributes#stringlength) or [`[ItemCount]`](/reference/attributes#itemcount) | the BCL overloads one name across strings and collections and decides by member type; the native vocabulary names the two constraints for what they check |
-| `[CustomValidation(typeof(T), "M")]` | [`[CustomConstraint]`](/guide/custom-constraints) | a different mechanism: the BCL form names a method resolved by string, the native form is an attribute class whose check compiles like a built-in |
-| `[EnumDataType(typeof(E))]` | [`[EnumDefined]`](/reference/attributes#enumdefined) | the BCL form checks that a loosely-typed value *parses* as the enum, a runtime string conversion this library will not compile ([VM2007](/reference/diagnostics#vm2007)); the native form checks a properly-typed member holds a declared value |
+A built-in attribute without `ErrorMessage` reports this library's code and default message, not the
+DataAnnotations default text.
 
-Everything else - `[Required]`, `[StringLength]`, `[Range]`, `[AllowedValues]`,
-`[DeniedValues]`, `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]`,
-`[FileExtensions]` - carries the BCL's exact name in both vocabularies.
-
-### Messages {#messages}
-
-`ErrorMessage` is honoured everywhere, with DataAnnotations' own placeholder dialect resolved at
-build time: every argument but the display name is a compile-time constant, so
-`ErrorMessage = "The field {0} is over {1} chars"` on a `[StringLength(3)]` compiles to the
-finished text, `{0}` filled with the `[Display]` name the front end already resolved. Where
-`Validator.TryValidateObject` called `string.Format` per failure, the wire carries a literal.
-
-Resource-backed messages, meaning `ErrorMessageResourceType` and `ErrorMessageResourceName`,
-compile to a direct read of the resource accessor property, performed per render, so
-`CurrentUICulture` and
-the satellite fallback chain do their work and nothing resolves reflectively: the property
-reference roots the resource class for the trimmer. An explicit `ErrorMessage` beside the pair
-wins, which is DataAnnotations' own precedence.
-
-## Two behaviours reproduced on purpose
-
-**`[Required]` treats whitespace as missing.** DataAnnotations trims before testing, and the
-compiled form matches. `AllowEmptyStrings = true` opts out of both.
-
-**`[RegularExpression]` is anchored.** DataAnnotations checks that the match starts at 0 and consumes
-the whole value. The native `[Pattern]` follows JSON Schema and does *not*. Both are reproduced
-faithfully rather than unified, because quietly changing what a model means when you move it is worse
-than the inconsistency.
-
-## The format validators
-
-`[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]` and `[FileExtensions]`
-compile to the BCL's own checks, reproduced exactly. The native vocabulary carries all six under
-the same names, compiling to the identical emitted check, so a model using them migrates by
-swapping its using directive like any other. No attribute is constructed, nothing allocates
-on the pass, and the answer is the one `Validator.TryValidateObject` gives:
-
-| Attribute | The compiled check |
-|---|---|
-| `[EmailAddress]` | exactly one `@`, neither first nor last, and no line breaks, so **`a@b` passes** |
-| `[Phone]` | `+` signs stripped and a trailing extension (`ext.`, `ext`, `x` plus digits) removed; at least one digit; only digits, whitespace and `-.()` |
-| `[Url]` | starts with `http://`, `https://` or `ftp://`, case-insensitively, with nothing checked past the prefix |
-| `[CreditCard]` | digits, with spaces and dashes skipped, passing the Luhn mod-10 checksum |
-| `[Base64String]` | well-formed Base64, as `Convert.FromBase64String` reads it |
-| `[FileExtensions]` | the file name's extension is in the set, defaulting to `png,jpg,jpeg,gif`, case-insensitive |
-
-These semantics are looser than the attribute names suggest, and that is Microsoft's position, held
-deliberately: every request to tighten `[EmailAddress]` has been closed as by-design, the regex
-implementations were removed for denial-of-service reasons years ago, and RFC 5322 genuinely does
-permit `a@b`. A dotless domain is a valid address, which is why `root@localhost` delivers. A model
-migrating from `TryValidateObject`, MVC model validation, or .NET 10's `AddValidation()` keeps
-exactly the checks it had.
-
-Because the semantics are worth knowing, each use reports
-[VM2004](/reference/diagnostics#vm2004), an **Info** rather than a warning, stating the compiled
-check verbatim at the property that declared it. For something stricter, declare a
-[`[Pattern]`](/guide/patterns) whose behaviour is written in your own source; the diagnostic says
-so too.
-
-Two footnotes. `[Url]` also accepts a `System.Uri` member that is absolute with scheme http, https,
-or ftp, which is the current BCL behaviour. The net8 `UrlAttribute` predates that branch and rejects
-every `Uri`, and one semantics is emitted for both target frameworks. `[CreditCard]` passes the
-empty string exactly as the attribute does, because the checksum of nothing is zero, so `[Required]`
-remains the presence check.
-
-## Custom rules are invoked
-
-Three DataAnnotations surfaces carry *user code*: custom `ValidationAttribute` subclasses,
-`[CustomValidation]` methods, and `IValidatableObject`. All three run, with DataAnnotations' own
-semantics, because the only faithful reading of user code is to run it. Nothing reflects to
-make that happen:
-
-- **A custom attribute** is constructed once, at validator construction, from its
-  compile-time-constant arguments, so `new EvenNumberAttribute(2) { ErrorMessage = "…" }` lands in
-  the generated file as exactly that. It is invoked through `GetValidationResult`, the same call
-  `Validator.TryValidateObject` makes, minus the discovery. Each use reports
-  [VM2002](/reference/diagnostics#vm2002) as an Info carrying the cost model.
-- **`[CustomValidation(typeof(T), "Method")]`** is resolved at build time and emitted as a direct
-  static call, where DataAnnotations resolves the method by name reflectively on every validation. A
-  target that cannot be called is [VM2008](/reference/diagnostics#vm2008) at build time, not a
-  rule that silently never runs.
-- **`IValidatableObject.Validate`** runs last, and only when every other rule passed, which
-  reproduces `TryValidateObject`'s sequencing. [VM2006](/reference/diagnostics#vm2006) says so at
-  the type.
-
-Failures report under the [`custom`](/reference/codes) code, with the rule's own message. Member
-names a rule reports at run time, through `ValidationResult.MemberNames`, are converted with the
-same naming policy the compiled literals were baked with, so everything lands on consistent paths.
-
-**What it costs.** This is the one place validation pays DataAnnotations' own prices: a
-`ValidationContext` per check, passing values included, and a box for value-type members. An
-`IValidatableObject` type also loses the boolean fast path, since `IsValid` cannot know that the
-whole pass was clean. Everything else on the model keeps the zero-allocation promise. When
-the logic is yours to move, a [custom constraint attribute](/guide/custom-constraints) keeps the
-attribute ergonomics at straight-line cost, and a [rule class](/guide/rule-classes) expresses the
-same rule beside the model:
+On a built-in attribute, an `ErrorMessage` is filled in at build time. `{0}` is the display name,
+which is the
+`[Display(Name)]` value or the property name. `{1}` and `{2}` are the attribute's arguments, in the
+order DataAnnotations uses:
 
 ```csharp
-public sealed class CustomerRules : IValidationRulesFor<Customer>
-{
-    public static void Describe(ValidationRules<Customer> rules, Customer x)
-    {
-        rules.Ensure(x.Age % 2 == 0, code: "even_age");
-    }
-}
+[Display(Name = "nickname")]
+[StringLength(10, ErrorMessage = "The {0} must be at most {1} characters.")]
+public string? Nickname { get; set; }
 ```
 
-Resource-based messages on *mapped* attributes are compiled, as [Messages](#messages) above
-describes. The reflective resolution DataAnnotations performs survives only inside invoked custom
-attributes, where the attribute's own `FormatErrorMessage` runs user code this library will not
-rewrite. [VM2009](/reference/diagnostics#vm2009) warns there, and only there.
+This reports `The nickname must be at most 10 characters.` The code stays `string_length`, and the
+text is authored, so language packs leave it unchanged.
 
-## What is not compiled, and says so
+`ErrorMessageResourceType` with `ErrorMessageResourceName` on a built-in attribute reads the
+resource property each time the message is rendered, without reflection. On a custom
+`ValidationAttribute`, DataAnnotations resolves the resource with reflection, which trimming can
+break. The generator reports that case as `VM2009`.
 
-Silence would be dangerous here in a way it is not for native attributes: an attribute this
-generator skipped would still *look* enforced, because you have every reason to think
-`TryValidateObject` would have honoured it. Two attributes remain uncompiled, and each says so.
+## Differences from Validator
 
-| Attribute | Diagnostic | Why |
-|---|---|---|
-| `[Compare]` | [VM2003](/reference/diagnostics#vm2003) | compares two members |
-| `[EnumDataType]` | [VM2007](/reference/diagnostics#vm2007) | checks a runtime string conversion; type the member as the enum and use [`[EnumDefined]`](/reference/attributes#enumdefined) |
+The generated validator behaves like `Validator.TryValidateObject` with `validateAllProperties:
+true`, with these differences:
 
-`[Compare]` has no per-property form. Move it to a [rule class](/guide/rule-classes), which is the
-declaration form that *can* express a rule spanning two properties:
+- Every error has a code, and the default messages are this library's.
+- Attributes on fields and on the class itself are not read. Neither are `[MetadataType]` classes.
+- Attributes declared on an interface's properties apply to the classes that implement it.
+- `IValidatableObject.Validate` runs only when the whole validation pass has reported nothing so
+  far, warnings included, and including other objects of the same graph.
+- `[RegularExpression]` rejects an empty string unless the expression matches it. DataAnnotations
+  accepts an empty string for this attribute.
+- `[Range]` with its bounds in the wrong order is accepted at build time and always fails.
+- A custom `ValidationAttribute` that calls `ValidationContext.GetService` gets the pass's services
+  only when the pass has a service provider, as it does through `ValidationRunner<T>`.
 
+## Names shared by both namespaces
+
+`Required`, `StringLength`, `Range`, `AllowedValues`, `DeniedValues`, `EmailAddress`, `Phone`,
+`Url`, `CreditCard`, `Base64String` and `FileExtensions` exist in both
+`ValidationModules.Constraints` and `System.ComponentModel.DataAnnotations`. `ValidationContext` and
+`ValidationResult` exist in both `ValidationModules` and `System.ComponentModel.DataAnnotations`. A
+file that imports both namespaces gets error `CS0104` for any of these names.
+
+Import one namespace per model file. Where a file needs both, alias one of them:
+
+<!-- verify:bare -->
 ```csharp
-public sealed class CustomerRules : IValidationRulesFor<Customer>
+using ValidationModules.Constraints;
+using DataAnnotations = System.ComponentModel.DataAnnotations;
+
+public sealed class Account
 {
-    public static void Describe(ValidationRules<Customer> rules, Customer x)
-    {
-        rules.Ensure(x.Password == x.Confirm, code: "password_mismatch");
-    }
+    [Required, StringLength(3, 20)]
+    public string? Handle { get; init; }
+
+    [DataAnnotations.EmailAddress]
+    public string? Email { get; init; }
 }
 ```
 
-Or into an [`IAsyncValidatorFor<T>`](/guide/async) if the rule needs I/O.
+The two kinds of attribute can be mixed on one model, and on one property.
 
-## Turning it off
+## Moving a model to the ValidationModules attributes
+
+The generator compiles a DataAnnotations model as it is, so there is no need to convert one. When
+you do change a file's `using` from `System.ComponentModel.DataAnnotations` to
+`ValidationModules.Constraints`, most attributes keep their meaning. These do not:
+
+| DataAnnotations | ValidationModules |
+| --- | --- |
+| `[StringLength(50)]` | `[StringLength(max: 50)]`. The first argument here is the minimum. |
+| `[StringLength(50, MinimumLength = 2)]` | `[StringLength(2, 50)]` |
+| `[MinLength]`, `[MaxLength]`, `[Length]` | `[StringLength]` on a string, `[ItemCount]` on a collection |
+| `[RegularExpression("x")]` | `[Pattern(@"\A(?:x)\z")]`. `[Pattern]` matches anywhere in the value unless the expression is anchored. |
+| `ErrorMessage = "The {0} field is invalid."` | `Message = "The {field} field is invalid."` |
+| `[EnumDataType(typeof(Tier))]` | `[EnumDefined]` on a property of type `Tier` |
+| `[Compare]`, `IValidatableObject` | A rules class |
+| A custom `ValidationAttribute` | A `CustomConstraintAttribute` or an `IConstraintFor<T>` attribute. One class can also serve both. See [Custom constraints](./custom-constraints#a-check-with-state). |
+
+## Turn the DataAnnotations support off
+
+When another system already enforces the DataAnnotations attributes, such as MVC model validation,
+tell the generator to ignore them:
 
 ```xml
 <PropertyGroup>
-    <ValidationModules_DataAnnotations>Ignore</ValidationModules_DataAnnotations>
+  <ValidationModules_DataAnnotations>Ignore</ValidationModules_DataAnnotations>
 </PropertyGroup>
 ```
 
-Every skipped constraint is then [VM2001](/reference/diagnostics#vm2001), once per constraint, so
-turning it off does not silently unvalidate a model. A type whose only rules were DataAnnotations
-gets no validator at all.
+The generator then reports `VM2001`, an informational diagnostic, for each attribute it ignores. The
+`ValidationModules.Constraints` attributes are compiled as usual. A type whose only rules are
+DataAnnotations attributes gets no validator at all, so `IValidatorFor<T>` no longer resolves for
+it.
 
-The switch governs one vocabulary. A type carrying both keeps its native constraints.
+## Native AOT
 
-## Mixing the two vocabularies
-
-Because the native vocabulary is a superset, a model file never *needs* both namespaces - which
-matters, because importing both makes the shared names ambiguous:
-
-```csharp
-using System.ComponentModel.DataAnnotations;
-using ValidationModules.Constraints; // error CS0104: 'Required' is an ambiguous reference
-```
-
-The names match on purpose: shared names only hurt a file that imports both, and complete
-coverage is what makes that unnecessary. A file that genuinely wants both - one legacy property
-mid-migration, say - qualifies the colliding attribute:
-
-```csharp
-[System.ComponentModel.DataAnnotations.Required]
-public string? Legacy { get; set; }
-
-[ValidationModules.Constraints.Required]
-public string? Current { get; set; }
-```
-
-In practice most models want one or the other. The DataAnnotations front end exists so that moving
-to this library does not require rewriting your models first, rather than to encourage mixing.
+The built-in DataAnnotations attributes are compiled into plain checks and need no reflection.
+`[RegularExpression]` is always compiled as an inline regular expression, which adds the regular
+expression interpreter to a Native AOT binary. It is not subject to
+`ValidationModules_PatternPolicy`. In an AOT application, prefer `[Pattern]` with a
+`[GeneratedRegex]` member. See [Patterns](./patterns).

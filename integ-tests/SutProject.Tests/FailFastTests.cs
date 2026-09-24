@@ -8,8 +8,8 @@ namespace SutProject.Tests;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <see cref="ValidationModules.Runtime.Tests"/> covers the same mode over
-/// <c>DescribedValidator&lt;T&gt;</c>. This project compiles real generated code, so it is the only
+/// <see cref="ValidationModules.Runtime.Tests"/> covers the same mode over hand-written validators
+/// that mirror the emitted shape. This project compiles real generated code, so it is the only
 /// place the emitted <c>&amp;&amp; ctx.Report(...).ShouldStop</c> shape and the propagation out of a
 /// nested descent are actually executed.
 /// </para>

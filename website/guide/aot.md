@@ -1,129 +1,69 @@
-# Trimming and Native AOT
+# Native AOT
 
-Native AOT is a hard requirement here rather than a supported configuration. That distinction shows
-up in what the library *cannot* do, not in what it claims.
+Generated validators work in trimmed and Native AOT applications. They read properties directly and
+the registration uses closed generic types, so there is nothing for the trimmer to remove and
+nothing to compile at run time.
 
-## What is banned, and enforced
+## How this is checked
 
-None of these appears anywhere in the runtime or in emitted code:
+- `ValidationModules.Runtime`, `ValidationModules.AspNetCore` and `ValidationModules.Options` are
+  built with `IsAotCompatible` set. Their builds treat the main trim and AOT analysis warnings as
+  errors, so none of their code can use reflection that the trimmer cannot follow. In continuous
+  integration every warning is an error.
+- Every build of the repository publishes test applications with `PublishAot` and runs them. They
+  exercise generated validators, the registration method, runners, list validation, and an
+  ASP.NET Core application that uses the endpoint filter and the exception handler. A publish that
+  produces any trim or AOT warning fails the build.
 
-- `MakeGenericType`
-- `Activator.CreateInstance`
-- `Expression.Compile`
-- assembly scanning
-- `Type.GetMethod(…).Invoke`
-- `new Regex(pattern, RegexOptions.Compiled)`
+## What to do in your application
 
-Not by convention. `ValidationModules.Runtime` carries `IsAotCompatible` and escalates the trim and
-AOT analyzer warnings to errors:
+Most models need nothing. Four areas need attention.
 
-```xml
-<IsAotCompatible>true</IsAotCompatible>
-<WarningsAsErrors>IL2026;IL2055;IL2067;IL2072;IL2075;IL2087;IL3050</WarningsAsErrors>
-```
+### Regular expressions
 
-So the compiler enforces it on every build of this library, rather than review catching it
-sometimes.
+Declare patterns with `[GeneratedRegex]` and point `[Pattern]` at them. The inline form,
+`[Pattern("...")]`, needs the regular expression parser and interpreter at run time, which adds
+several hundred kilobytes to the binary.
 
-## Why this exists
+By default, a project that sets `PublishAot` or `IsAotCompatible` to `true` treats an inline pattern
+as an error, `VM1301`. The message shows the referenced form to use instead.
+`ValidationModules_PatternPolicy` changes this. [Patterns](./patterns) describes both forms and the
+policy.
 
-FluentValidation compiles expression trees at run time. Under Native AOT `Expression.Compile()` does
-not throw. It falls back to the LINQ interpreter, so FluentValidation *works* under AOT. That is
-the awkward part: property access is interpreted rather than compiled, and you carry `IL2026` and
-`IL3050` warnings into a published build.
+A class library that AOT applications consume should set `IsAotCompatible`. Its inline patterns then
+fail in the library's own build rather than in an application's publish.
 
-Nothing fails. It just costs more than it looks like it costs, in the configuration where you can
-least afford it, and the warnings that would tell you are the ones every project learns to suppress.
+The DataAnnotations `[RegularExpression]` attribute always compiles to an inline pattern, whatever
+the policy. Use `[Pattern]` with `[GeneratedRegex]` in its place in an AOT application.
 
-## Where reflection would otherwise creep in
+### JSON in ASP.NET Core
 
-Three places, each closed deliberately:
+A minimal API published with Native AOT needs a `JsonSerializerContext` for its request and
+response types. The problem details body that `ValidationModules.AspNetCore` writes carries its own
+metadata, so the application's context lists only the application's types. [ASP.NET
+Core](./aspnetcore#native-aot) shows the setup.
 
-**Registration.** A `(serviceType, implementationType)` pair goes through `ActivatorUtilities`, which
-finds a constructor reflectively. So the generator emits **factory delegates** instead, and generated
-validators are parameterless with a static `Instance` for the delegate to return.
+### DataAnnotations resource messages
 
-**Nested validators.** Injecting them would require the same activation. They are referenced
-from an array the constructor materialised, as
-`validatorsHome[vi].Validate(ref ctxHome, nestedHome)`.
+A custom `ValidationAttribute` that sets `ErrorMessageResourceType` formats its message through
+DataAnnotations, which looks up the resource property with reflection. The trimmer can remove that
+property. The generator reports `VM2009`. Set `ErrorMessage` instead, or keep the resource type from
+being trimmed. The built-in DataAnnotations attributes read resources without reflection.
 
-**Runtime type dispatch.** "Give me the validator for this `Type`" is `MakeGenericType` territory.
-Where that is needed the generator emits a switch over closed types instead, so every type is
-statically referenced and the trimmer can see all of them.
+### Language packs and invariant globalization
 
-## The one thing that needs your attention
+Language packs choose their text by `CultureInfo.CurrentUICulture`. An application published with
+`InvariantGlobalization` set to `true` has only the invariant culture, so it cannot switch to
+another culture and the packs are never used. Leave globalization on in an application that shows
+translated messages.
 
-Everything above is handled for you. This is not:
+## Smaller validators
 
-```csharp
-[Pattern("^[A-Z]{3}$")] // roots the regex parser and interpreter, about 450 KB
-public string? Sku { get; init; }
-```
+Two properties remove code that a size-sensitive application may not need:
 
-Building a `Regex` from a string at run time means the parser and interpreter have to be in the
-binary, because the pattern is not known until the constructor runs. That is paid once, however many
-patterns follow, and the trimmer cannot remove it.
+| Property | Removes |
+| --- | --- |
+| `ValidationModules_FailFast` set to `false` | The early return after each check. A `StopOnFirstError` pass then runs every check, though it still records one error. |
+| `ValidationModules_CaptureValues` set to `false` | The capture of the failed value into `ValidationError.Value`. |
 
-Declare the pattern with `[GeneratedRegex]` and point at it:
-
-```csharp
-public static partial class PetPatterns
-{
-    [GeneratedRegex("^[A-Z]{3}$")]
-    public static partial Regex Sku();
-}
-
-[Pattern(typeof(PetPatterns), nameof(PetPatterns.Sku))]
-public string? Sku { get; init; }
-```
-
-In an AOT-facing project the inline form is [VM1301](/reference/diagnostics#vm1301), an error by
-default, so you find out at build time. [Patterns and regex](/guide/patterns) has the full policy.
-
-## Set `IsAotCompatible` on your model library
-
-`PublishAot` is only ever true in the executable. A class library holding your models never sees it,
-so gating diagnostics on `PublishAot` alone would push the failure onto somebody else's publish.
-
-```xml
-<PropertyGroup>
-    <IsAotCompatible>true</IsAotCompatible>
-</PropertyGroup>
-```
-
-That is what a library sets when it means to be publishable, and this generator treats it as an AOT
-signal for exactly that reason. Set it on the project that holds the models, not only on the app.
-
-## Verifying
-
-The repository ships a script that publishes a sample app with `PublishAot` and checks the result:
-
-```bash
-./scripts/verify-aot.sh
-```
-
-For your own application, the check that matters is that a published build produces no `IL2026` or
-`IL3050` warnings originating in validation, and that the binary does not grow by ~450 KB when you
-add your first pattern. If it does, you have an inline `[Pattern]` somewhere and the policy was set
-to `Allow`.
-
-## Allocation
-
-A clean validation pass over a generated validator allocates nothing per `Push`, at any depth or
-element count. The path lives inside the context struct, which is copied rather than heap-allocated.
-
-Two caveats worth knowing rather than discovering:
-
-- `validator.Validate(value)` constructs a collector (48 bytes) and a result. `IsValid(value)` and
-  `ValidateInto(collector, value)` are the allocation-conscious entry points; the second lets you own
-  and reuse the collector.
-- `ValidationRunner<T>` holds its validators as `IEnumerable<T>`, so `foreach` over an
-  array-as-`IEnumerable` boxes an enumerator, costing 32 bytes per call, and the async path pays it
-  twice.
-  Call the validator directly on a hot path where a single validator is registered.
-
-## Trimming without AOT
-
-Everything above applies to `PublishTrimmed` as well. The generated code is ordinary C# referencing
-closed types, so the trimmer keeps exactly what is used and nothing depends on metadata surviving.
-The one thing that will not trim away is the regex parser, if you rooted it.
+The [MSBuild reference](../reference/msbuild) lists every property.

@@ -1,175 +1,160 @@
 # Troubleshooting
 
-## No validator was generated
+This page lists problems that come up in practice, with their causes. Build errors and warnings with
+an id of the form `VM####` are covered in the [diagnostics reference](../reference/diagnostics).
 
-**The type carries no constraint the generator recognises.** A validator is emitted for a type
-because it has at least one constraint, a `[ValidateNested]`, a rule class targeting it, or
-`[GenerateValidator]`. Check that the attribute is one of ours and that the namespace is imported:
+## The registration method does not exist
 
-```csharp
-using ValidationModules.Constraints; // not ValidationModules
-```
+`services.AddShopValidators()` does not compile:
 
-**The constraint is on a record parameter.** This is the most common cause, and it now reports
-[VM1008](/reference/diagnostics#vm1008), so check your warnings before reading further:
+- The project does not reference `ValidationModules.SourceGenerator`. The generator package does not
+  flow from a referenced project, so every project that declares validated types needs it.
+- The name is different. It comes from the assembly name, so check `AssemblyName` in the project
+  file. [Registration](./registration#the-registration-method) gives the rules.
+- The project declares no validated types, so there is nothing to register.
+- The generator is referenced as a project rather than a package. A `ProjectReference` to the
+  generator needs `OutputItemType="Analyzer"` and `ReferenceOutputAssembly="false"`.
 
-```csharp
-public sealed record Pet([Required] string Name); // VM1008
+## No service for `IValidatorFor<T>`
 
-public sealed record Pet([property: Required] string Name); // works
-```
+- The registration method for the assembly that declares `T` was not called. Each project has its
+  own method.
+- `T` has no rules, so no validator was generated. Add constraints, a rules class, or
+  `[GenerateValidator]`.
+- `ValidationModules_DataAnnotations` is set to `Ignore`, and `T` has only DataAnnotations
+  attributes, so no validator was generated for it.
 
-The attribute binds to the constructor parameter, so the property carries no metadata and the type
-looks unconstrained to the generator.
+## Error CS7036 on Validate
 
-**The generator is not running.** Check that the analyzer reference survived:
+`new SignUpValidator().Validate(signUp)` fails with error `CS7036`, which says no argument was given
+for the parameter `value` of `SignUpValidator.Validate(ref ValidationContext, SignUp)`. The file
+does not import the `ValidationModules` namespace. `Validate(value)` is an extension method in that
+namespace. Without it, the compiler finds only the validator's own `Validate` method, which takes a
+context. Add `using ValidationModules;`.
 
-```xml
-<PackageReference Include="ValidationModules.SourceGenerator" Version="…" PrivateAssets="all" />
-```
+## A rule is not checked
 
-`PrivateAssets="all"` stops it flowing to *your* consumers; it does not stop it running for you. If
-you referenced it as a plain `ProjectReference` in this repository, it needs
-`OutputItemType="Analyzer"`.
+- The value is `null`. Every constraint except `[Required]` passes `null`.
+- The attribute is on a field or a static property. The generator reads instance properties only.
+- The attribute is on a positional record parameter without the `property:` target. The generator
+  reports `VM1008`.
+- A derived class hides the property with `new`, which replaces the base property's constraints.
+- The nested object has no `[ValidateNested]`, or the nested type has no rules (`VM1501`).
+- A `When` or `Unless` condition excluded it.
+- The generator reported an error or warning for the constraint and dropped it. Check the build
+  output for `VM` diagnostics.
 
-Then look at what was actually produced:
+## [StringLength(50)] rejects short values
 
-```xml
-<EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
-```
+The first argument of `[StringLength]` is the minimum, so `[StringLength(50)]` requires at least 50
+characters. Write `[StringLength(max: 50)]`. The DataAnnotations attribute of the same name treats
+its first argument as the maximum.
 
-Files appear under `obj/<Configuration>/<tfm>/generated/`. If the directory is empty, the generator
-did not run at all; if the files are there, the problem is downstream.
+## [Pattern] accepts values it should not
 
-**DataAnnotations are switched off.** If your model's only rules are
-`System.ComponentModel.DataAnnotations` attributes and
-`ValidationModules_DataAnnotations` is `Ignore`, no validator is emitted. Every skipped constraint
-reports [VM2001](/reference/diagnostics#vm2001), so check your warnings.
-
-## The validator exists but a rule never fires
-
-**`[Required]` on a non-nullable value type.** `int Age` is always present, so `[Required]` can never
-fail. That is [VM1201](/reference/diagnostics#vm1201), a warning. You probably wanted `[Range]`, or
-`int?`.
-
-**A pattern that is not anchored.** `[Pattern("abc")]` matches `"xabcx"`, because patterns follow
-JSON Schema and are unanchored. Write `^abc$`.
-
-**A null value.** Every constraint except `[Required]` skips a null: a null string is not too long, a
-null collection has no element count. Add `[Required]` if absence should fail too.
-
-**`[ValidateNested]` on a type with no rules.** Nothing was generated for the nested type, so there
-is nothing to call. [VM1501](/reference/diagnostics#vm1501) warns about exactly this. If the rules
-come from a [rule class](/guide/rule-classes) the warning stays quiet, because the generator knows
-about it; mark the type `[GenerateValidator]` if they come from somewhere it cannot see.
-
-## Generated code does not compile
-
-**A `[Range]` bound that does not parse.** String bounds are parsed against the member's type at
-build time, and one that does not parse is [VM1103](/reference/diagnostics#vm1103) with the
-constraint dropped, so this should no longer reach generated code. If it does, that is a bug worth
-reporting.
-
-**A referenced pattern member that is not visible.** The generated validator lands in your assembly,
-so a `private` member is out of reach. [VM1107](/reference/diagnostics#vm1107) names the reason.
-
-**Two types with the same name in one assembly.** This is handled. The hint name is qualified by
-namespace, so `Api.V1.Customer` and `Api.V2.Customer` coexist. If you see a duplicate-file error, it is a bug
-worth reporting.
-
-## `IValidatorFor<T>` does not resolve
-
-**Registration was not called.** Without DependencyModules you need the one call:
-
-```csharp
-services.AddMyAppValidators();
-```
-
-The method is named after the assembly with the dots removed, so `My.App` emits
-`AddMyAppValidators()`. If you would rather read the name than derive it, it is at the bottom of
-`obj/Debug/<tfm>/generated/…/GeneratedValidatorRegistration.g.cs`.
-
-**Registration was suppressed.** Check for
-`<ValidationModules_Registration>None</ValidationModules_Registration>`.
-
-**The validator is in another assembly.** Each assembly emits and registers its own validators;
-there is no cross-assembly scanning, deliberately. Call that assembly's own `Add…Validators()` from
-your composition root, or compose a module it declares.
-
-**The entry point is not `partial`, or is nested in another type.** Registration is emitted as a
-partial of your module entry point, and neither shape can be completed by one. DependencyModules
-reports both; fix what it names and the registration lands.
-
-**No validator was generated at all.** See the first section. This is usually that in disguise.
+`[Pattern]` passes when the expression matches anywhere in the value. Anchor it with `^` and `$` to
+match the whole value.
 
 ## Every error appears twice
 
-A type has two validators registered. `ValidationRunner<T>` merges every registered
-`IValidatorFor<T>` on purpose, so a hand-written validator composes with the generated one.
-The usual cause is calling the assembly's `Add…Validators()` twice, or registering by hand a
-validator the generated registration already added.
+The validators are registered twice. Either the registration method is called twice, or a
+DependencyModules application calls it as well as adding the module that already registers the
+validators. Call it once.
 
-## Errors are in the wrong order
+## A hand-written validator does not run
 
-Ordering is: properties in source order, constraints in attribute order, nested objects at the point
-of their property, collection elements ascending. Two exceptions by design:
+- The code resolves a single `IValidatorFor<T>`, which returns only the last validator registered.
+  Resolve `ValidationRunner<T>` instead.
+- The validator was created with `new`. A validator created that way does not use the container, so
+  it never runs hand-written validators for nested types.
+- It is an `IAsyncValidatorFor<T>`, and the code calls `Validate` rather than `ValidateAsync`, or an
+  earlier error stopped the async stage. See [Async validation](./async#order).
 
-- `[Required]` is evaluated first within a property, whatever order you wrote the attributes in.
-- Rules from a [rule class](/guide/rule-classes) report after the attribute-declared checks, in
-  body order, because the body is the validator. Two rules classes for one type run in class-name
-  order.
+## Cannot resolve scoped service ValidationRunner
 
-An async validator that fans out internally produces its own errors in completion order.
+`ValidationRunner<T>` is registered as scoped. Resolve it from a scope created with
+`provider.CreateScope()`, or inject it into a scoped service or a request handler.
 
-## The field name is wrong
+## The validation pass carries no services
 
-Precedence, highest first: `[JsonPropertyName]`, `[Display(Name = …)]`, then the
-[`ValidationModules_FieldNaming`](/reference/msbuild#validationmodules-fieldnaming) property
-(camelCase by default).
+An `InvalidOperationException` that says the validation pass carries no services comes from a
+property with `[ValidateNested(Polymorphism.Runtime)]`. The validators for the value's actual type
+are looked up in the container during validation, and `validator.Validate(value)` has no container.
+Validate through `ValidationRunner<T>` resolved from a scope, or pass the provider to a
+`ValidationErrorCollector`.
 
-Field names are **baked in at build time**, so registering a different `IValidationFieldNamer`
-does not rename a generated validator's errors. It affects only names computed at run time, from
-`IValidatableObject` results and DataAnnotations member names. Set both to the same policy if you
-use both.
+## No IValidatorFor is registered, compose the validators from another assembly
 
-## The AOT binary grew by half a megabyte
+A rules class that calls `rules.As<TFacet>(x)` with an interface from another assembly throws an
+`InvalidOperationException` that names that assembly and its registration method. It has two causes.
+Either that registration method was not called, or the pass has no service provider, as with
+`validator.Validate(value)`, even though the method was called. Call the method, and validate
+through `ValidationRunner<T>` resolved from a scope.
 
-An inline `[Pattern("…")]` roots the regex parser and interpreter. Declare the pattern with
-`[GeneratedRegex]` and reference it. See [Patterns and regex](/guide/patterns).
+## Validation nested more than 64 levels deep
 
-If you did not see [VM1301](/reference/diagnostics#vm1301) warning you, the policy resolved to
-`Allow`, which happens when neither `PublishAot` nor `IsAotCompatible` is set on the project holding
-the models. Set `IsAotCompatible` there.
+The object being validated contains a cycle, such as an object that is its own child, or it is
+nested more than 64 levels deep. The limit cannot be raised.
 
-## `InvalidOperationException: Validation nested more than 64 levels deep`
+## An endpoint fails on the first request
 
-Your object graph contains a cycle, or a genuinely very deep tree. The message names the path it
-reached.
+`.Validate<T>()` checks its setup when the endpoints are built, which happens on the first request.
+It throws when the handler has no parameter of type `T`, or when no validator is registered for `T`.
+Endpoints are built together, so every endpoint fails. See [ASP.NET
+Core](./aspnetcore#what-the-filter-does).
 
-This is a guard rather than a cycle detector, because tracking visited instances would cost an
-allocation and a lookup on every descent. It throws rather than reporting an error because a cycle is a bug in
-the graph, not invalid data, and the alternative is a `StackOverflowException`, which cannot be
-caught.
+## Messages are always in English
 
-If the depth is legitimate, leave the recursive property without `[ValidateNested]` and validate the
-levels you care about explicitly. See [Cycles and depth](/guide/nesting#cycles-and-depth).
+`ValidationError.Message` always returns the default English text. Format the error with
+`error.ToMessage(formatter)`, where the formatter is the `ValidationMessageFormatter` registered for
+your language packs. Also check that `CultureInfo.CurrentUICulture` is set, and that the application
+does not use invariant globalization. See [Messages and languages](./messages).
 
-## A diagnostic is too noisy
+## Field names do not match the JSON
 
-Tune it from `.editorconfig`, by id:
+Field names are camelCase by default and ignore the application's JSON options. Put
+`[JsonPropertyName]` on the property, or set `ValidationModules_FieldNaming`. See
+[Field names](./errors#field-names).
 
-```ini
-[*.cs]
-dotnet_diagnostic.VM1201.severity = none
-```
+## A language pack has no effect
 
-`<NoWarn>$(NoWarn);VM1201</NoWarn>` and `#pragma warning disable VM1201` work as well. The
-category-wide `dotnet_analyzer_diagnostic` form does not:
-[the reference explains why](/reference/diagnostics#diagnostics). Several of them are errors because
-the alternative is generated code that does not compile.
+- The file name must end in `.validation-messages.json`.
+- `CultureInfo.CurrentUICulture` must be the pack's culture or one of its child cultures, and the
+  application must not use invariant globalization.
+- The message must come through a formatter, with `error.ToMessage(formatter)`, or through the
+  ASP.NET Core problem details response. `error.Message` stays in English.
+- Authored messages are not replaced. See [Authored messages](./messages#authored-messages).
+- The generator is referenced as a project rather than a package, so the package's build targets
+  that pick up pack files are not imported. List the files yourself:
 
-## Every diagnostic in the reference is wired up
+  ```xml
+  <ItemGroup>
+    <AdditionalFiles Include="Messages/*.validation-messages.json" />
+  </ItemGroup>
+  ```
 
-There is no longer a "declared but never reported" list. `DiagnosticCatalogueTests` fails in both
-directions: a descriptor with no report site fails, and a report site with no test fails. A rule
-you expected to catch something either did, or is genuinely not the rule you wanted.
+## An MSBuild property has no effect
+
+- The values of `ValidationModules_FieldNaming`, `ValidationModules_PatternPolicy` and
+  `ValidationModules_Registration` are case-sensitive. An unrecognised value means the default.
+- The generator is referenced as a project rather than a package. The package's build targets
+  declare which properties the generator can read, and a `ProjectReference` does not import them.
+  Declare the property yourself:
+
+  ```xml
+  <ItemGroup>
+    <CompilerVisibleProperty Include="ValidationModules_FieldNaming" />
+  </ItemGroup>
+  ```
+
+## A breakpoint in Describe never hits
+
+The generator reads `Describe` and never calls it. Set the breakpoint in the generated code. See
+[How it works](./how-it-works#viewing-the-generated-code).
+
+## Error CS0104: ambiguous reference
+
+`Required`, `Range` and several other attribute names exist in both `ValidationModules.Constraints`
+and `System.ComponentModel.DataAnnotations`, and `ValidationResult` and `ValidationContext` exist in
+both `ValidationModules` and `System.ComponentModel.DataAnnotations`. Import one of each pair per
+file, or alias one. See [DataAnnotations](./data-annotations#names-shared-by-both-namespaces).

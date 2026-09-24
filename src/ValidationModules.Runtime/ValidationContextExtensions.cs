@@ -43,15 +43,15 @@ namespace ValidationModules;
 /// after <c>severity</c> and <c>code</c> so every existing call keeps its spelling.
 /// </para>
 /// <para>
-/// A constraint carrying an explicit <c>Message</c> bypasses all of this - the generator emits
-/// <see cref="IValidationContextReporter.Report(string,string,string,ValidationSeverity)"/> with
-/// the literal (its <c>{field}</c> substituted at generation time), because at that point the text
-/// is one the author chose rather than one this library owns.
+/// A constraint carrying an explicit <c>Message</c> bypasses all of this. The generator emits
+/// <see cref="ValidationContext.ReportAuthored(string,string,string,ValidationSeverity)"/> with
+/// the literal, its <c>{field}</c> substituted at generation time, because the text is one the
+/// author chose rather than one this library owns, and no language pack may replace it.
 /// </para>
 /// <para>
 /// <b>Why each takes a code.</b> A <c>Code</c> without a <c>Message</c> beside it is the common
-/// shape - errors.md calls the code a wire contract and the message prose - so overriding one must
-/// not require overriding the other.
+/// shape. The code is the wire contract and the message is prose, so overriding one must not
+/// require overriding the other.
 /// </para>
 /// </remarks>
 public static class ValidationContextExtensions

@@ -133,7 +133,7 @@ public static class ValidatorForExtensions
     /// </summary>
     /// <remarks>
     /// This used to be the overload a per-request pipeline should reach for, because owning the
-    /// collector let it be pooled and a fresh one cost 472 bytes. A fresh one now costs 48, and
+    /// collector let it be pooled and a fresh one cost 472 bytes. A fresh one now costs 56, and
     /// reusing one makes every failing pass allocate a node it would otherwise have recycled, so
     /// <c>Validate</c> is the better default and this is for callers who genuinely want several
     /// passes in one result.

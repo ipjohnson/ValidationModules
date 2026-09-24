@@ -6,10 +6,10 @@ namespace ValidationModules;
 /// <remarks>
 /// <para>
 /// <b>Construct one per validation.</b> It was made public so a request pipeline could pool one and
-/// skip a 472-byte allocation per request; that buffer is gone and a fresh collector is 48 bytes
-/// holding nothing, so pooling now saves 48 bytes and costs a node per error on every failing pass -
-/// measured 2026-08-13. The first consumer runs on Lambda, where holding state
-/// across invocations for a 48-byte saving is not a trade worth the complexity.
+/// skip a 472-byte allocation per request; that buffer is gone and a fresh collector is 56 bytes
+/// holding nothing, so pooling now saves 56 bytes and costs a node per error on every failing pass.
+/// <c>ValidationRunnerTests</c> pins the 56. The first consumer runs on Lambda, where holding state
+/// across invocations for a 56-byte saving is not a trade worth the complexity.
 /// </para>
 /// <para>
 /// Reuse is still supported: <see cref="Reset"/> between passes, and one collector can gather
@@ -70,7 +70,7 @@ public sealed class ValidationErrorCollector
     /// </summary>
     /// <remarks>
     /// Appending in order would want a tail pointer, and sizing the result array would want a count,
-    /// and those two fields push the object from 48 to 72 bytes - paid on every clean pass, which is
+    /// and those two fields push the object from 56 to 72 bytes - paid on every clean pass, which is
     /// most of production traffic, to speed up passes that fail. Inserting at the head and having
     /// <see cref="ToResult"/> fill its array backwards keeps declaration order without either one.
     /// </remarks>
@@ -127,21 +127,12 @@ public sealed class ValidationErrorCollector
     /// <b><see cref="Reset"/> keeps it.</b> A collector belongs to one unit of work and carries
     /// that scope's services; reuse within a scope is the point. Constructor-only with no setter is
     /// what encodes the invariant in the type - re-arming a pooled collector for a different scope
-    /// is simply not expressible, so crossing a scope means a new collector, which costs 40 bytes.
+    /// is simply not expressible, so crossing a scope means a new collector, which costs 56 bytes.
     /// This is deliberate, not an oversight to be tidied away later.
     /// </para>
     /// </remarks>
     public IServiceProvider? Services { get; }
 
-    /// <summary>
-    /// Creates a collector that tolerates concurrent adds, for async validators that genuinely fan
-    /// out - <c>Task.WhenAll</c> over collection elements, say. Descending needs no synchronization
-    /// either way; <see cref="ValidationContext"/> carries its own path and never writes here.
-    /// </summary>
-    /// <remarks>
-    /// The default collector does not synchronize because generated straight-line code never needs
-    /// it and the lock would sit on the hot path. Opt in here rather than paying for it everywhere.
-    /// </remarks>
     /// <summary>The path rendering this pass uses. Fixed at construction.</summary>
     public ValidationPathMode PathMode { get; }
 

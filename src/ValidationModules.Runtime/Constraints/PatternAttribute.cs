@@ -14,7 +14,7 @@ namespace ValidationModules.Constraints;
 /// <c>static readonly Regex</c> built once at type initialization. It never passes
 /// <c>RegexOptions.Compiled</c>, so nothing reaches <c>Reflection.Emit</c> and it publishes
 /// AOT-clean. What it costs is size: constructing a <see cref="Regex"/> from a pattern string
-/// roots the regex parser and interpreter, which measures at <b>+1.16 MB</b> on a published AOT
+/// roots the regex parser and interpreter, which measures at <b>+448 KB</b> on a published AOT
 /// binary against +16 KB for the same pattern through <c>[GeneratedRegex]</c>. A project that is
 /// AOT-facing therefore rejects this form by default - see VM1301.
 /// </para>
@@ -81,14 +81,17 @@ public sealed class PatternAttribute : ValidationConstraintAttribute
     public string? RegexMember { get; }
 
     /// <summary>
-    /// Options passed through to <c>[GeneratedRegex]</c>. <c>RegexOptions.Compiled</c> is
-    /// meaningless here and is rejected by a diagnostic.
+    /// Options for the inline form, passed to the <see cref="Regex"/> constructor. The reference
+    /// form uses the options on the consumer's <c>[GeneratedRegex]</c> and does not read this.
+    /// <c>RegexOptions.Compiled</c> is reported by VM1302.
     /// </summary>
     public RegexOptions Options { get; init; }
 
     /// <summary>
-    /// Match timeout, passed through to <c>[GeneratedRegex]</c>. Zero means no timeout. Worth
-    /// setting for patterns that can backtrack catastrophically on hostile input.
+    /// Match timeout for the inline form, passed to the <see cref="Regex"/> constructor. Zero means
+    /// no timeout. Worth setting for patterns that can backtrack catastrophically on hostile input.
+    /// The reference form uses the timeout on the consumer's <c>[GeneratedRegex]</c> and does not
+    /// read this.
     /// </summary>
     public int MatchTimeoutMilliseconds { get; init; }
 }

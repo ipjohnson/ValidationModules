@@ -1,168 +1,141 @@
-# Patterns and regex
+# Patterns
 
-`[Pattern]` has two forms, and on an AOT-published binary the choice between them is worth about
-450 KB.
+`[Pattern]` checks a string against a regular expression. It has two forms. The referenced form
+points at a `[GeneratedRegex]` method that you declare. The inline form takes the expression as a
+string. Prefer the referenced form. It works everywhere and adds almost nothing to a Native AOT
+binary.
 
-```csharp
-// Inline
-[Pattern("^[A-Z]{3}$")]
-public string? Sku { get; init; }
+## The referenced form
 
-// Referenced
-[Pattern(typeof(PetPatterns), nameof(PetPatterns.Sku))]
-public string? Sku { get; init; }
-```
-
-Both are correct, and both publish AOT-clean, because neither uses `RegexOptions.Compiled` and
-nothing goes through `Reflection.Emit`. What differs is size.
-
-## Why the inline form costs so much
-
-The inline form emits a `Regex` built from a string:
+Declare the expression with `[GeneratedRegex]`, then name the class and the method:
 
 ```csharp
-private static readonly Regex SkuPattern0 = new Regex("^[A-Z]{3}$");
-```
+using System.Text.RegularExpressions;
+using ValidationModules.Constraints;
 
-Constructing a `Regex` from a pattern string at run time means the **regex parser and interpreter
-have to be in the binary**, because the pattern is not known until the constructor runs. The trimmer
-cannot remove them. That is roughly 450 KB on a published AOT binary, paid **once** however many
-patterns follow.
-
-The referenced form points at a member you declared:
-
-```csharp
-public static partial class PetPatterns
+public sealed class Product
 {
-    [GeneratedRegex("^[A-Z]{3}$")]
-    public static partial Regex Sku();
+    [Pattern(typeof(ProductPatterns), nameof(ProductPatterns.Sku))]
+    public string? Sku { get; init; }
+}
+
+public static partial class ProductPatterns
+{
+    public static readonly Regex Sku = SkuRegex();
+
+    [GeneratedRegex("^[A-Z]{3}-[0-9]{4}$")]
+    private static partial Regex SkuRegex();
 }
 ```
 
+The member must be static, accessible from the model, and of type `Regex`. It can be a method, a
+property or a field. When it is a method, the generator calls it. The .NET regular expression
+source generator writes the matching code, so nothing parses the expression at run time.
+
+A member that is missing, not static, not accessible or not a `Regex` is reported as `VM1107`.
+
+A failed match reports the code `pattern` with the message `sku is not in the required format.`
+
+## The inline form
+
+<!-- verify -->
 ```csharp
-[Pattern(typeof(PetPatterns), nameof(PetPatterns.Sku))]
-public string? Sku { get; init; }
-```
+using ValidationModules.Constraints;
 
-```csharp
-if (value.Sku is not null && !global::MyApp.PetPatterns.Sku().IsMatch(value.Sku))
-    ctx.ReportPattern("sku");
-```
-
-`[GeneratedRegex]` is the .NET regex source generator: it emits a matcher specialised to that one
-pattern, as straight-line C#. No parser, no interpreter, and the matching itself is usually faster
-too. About 16 KB for the same pattern.
-
-::: tip Why this library cannot emit `[GeneratedRegex]` for you
-It could, except that a source generator cannot see another generator's output. The regex generator
-would never see the partial method this one emitted, and the partial would have no implementation.
-Declaring the member in your own source is what puts it where the regex generator can find it.
-:::
-
-## The policy
-
-Which form is acceptable is governed by `ValidationModules_PatternPolicy`:
-
-| Value | Inline patterns |
-|---|---|
-| `Allow` | accepted silently |
-| `Warn` | [VM1301](/reference/diagnostics#vm1301) as a warning, and still emitted |
-| `Error` | VM1301 as an error, and the constraint is dropped |
-| *(unset)* | `Error` if the project is AOT-facing, `Allow` otherwise |
-
-```xml
-<PropertyGroup>
-    <ValidationModules_PatternPolicy>Warn</ValidationModules_PatternPolicy>
-</PropertyGroup>
-```
-
-"AOT-facing" means `PublishAot` **or** `IsAotCompatible` is true. Both, rather than `PublishAot`
-alone, and the distinction matters: `PublishAot` is only ever true in the executable, so a class
-library holding your models would never see it. `IsAotCompatible` is what a library sets when it
-means to be publishable, and catching that is the difference between the diagnostic landing on the
-library's own build and landing on somebody else's publish.
-
-Set `Error` explicitly in a library that ships to AOT consumers, so the failure is yours.
-
-## When the constraint is dropped
-
-Under `Error`, the offending constraint is dropped and the rest of the type is still emitted:
-
-```csharp
-public sealed record Pet
+public sealed class Product
 {
-    [Required]
-    public string? Name { get; init; }
-
-    [Pattern("^[A-Z]{3}$")]
+    [Pattern("^[A-Z]{3}-[0-9]{4}$")]
     public string? Sku { get; init; }
 }
 ```
 
-The build fails with VM1301, and the emitted file contains the `required` check and no regex. That
-is deliberate: the build should fail with one useful diagnostic, not also with a second, less useful
-error out of a generated file.
+The generator stores a `new Regex(...)` in a static field of the validator, so the expression is
+parsed once, when the validator type is first used. An expression that does not parse is reported
+as `VM1106` at build time.
 
-## Referencing a member
+The inline form needs the regular expression parser and interpreter at run time, and they add to
+the size of a Native AOT binary. For that reason the generator treats the inline form according to
+`ValidationModules_PatternPolicy`:
 
-The member can be a method, a property or a field, and must be:
+| Policy | Effect on an inline pattern |
+| --- | --- |
+| `Auto` (default) | `VM1301` error when the project sets `PublishAot` or `IsAotCompatible` to `true`. Allowed otherwise. |
+| `Error` | `VM1301` error in every project. |
+| `Warn` | `VM1301` warning, and the pattern is compiled. |
+| `Allow` | No diagnostic. |
 
-- **static**, since there is no instance for the validator to reach,
-- **parameterless**, if it is a method,
-- of type `Regex`,
-- at least `internal`, so the generated validator in the same assembly can see it.
+Set the policy in the project file:
 
-Anything else is [VM1107](/reference/diagnostics#vm1107), which names the reason:
-
+```xml
+<PropertyGroup>
+  <ValidationModules_PatternPolicy>Allow</ValidationModules_PatternPolicy>
+</PropertyGroup>
 ```
-VM1107: 'MyApp.PetPatterns.Sku' is not static, so the pattern on 'Sku' cannot be emitted
-```
 
-A field works if you would rather not write a method:
+A class library that ships to AOT applications can set `Error` so that the failure appears in its
+own build rather than in an application's publish.
 
+## Options and timeouts
+
+`Options` passes `RegexOptions` to the inline form, for example `RegexOptions.IgnoreCase`.
+`MatchTimeoutMilliseconds` sets a match timeout, which limits the time an expensive input can
+take. Neither has any effect on the referenced form. Set them on the `[GeneratedRegex]` attribute
+instead.
+
+<!-- verify -->
 ```csharp
-public static partial class PetPatterns
-{
-    [GeneratedRegex("^[A-Z]{3}$")]
-    public static partial Regex Sku();
+using System.Text.RegularExpressions;
+using ValidationModules.Constraints;
 
-    // or, without the source generator, at the cost of the parser being rooted:
-    public static readonly Regex Legacy = new("^[a-z]+$");
+public sealed class Account
+{
+    [Pattern(
+        "^[a-z0-9_]{3,20}$",
+        Options = RegexOptions.IgnoreCase,
+        MatchTimeoutMilliseconds = 100
+    )]
+    public string? UserName { get; init; }
 }
 ```
 
-## Matching semantics
+When the timeout expires, `IsMatch` throws a `RegexMatchTimeoutException`. The validator does not
+catch it, so it leaves `Validate` and `IsValid` as an exception, and an ASP.NET Core endpoint
+answers `500`. Catch it where you validate if a slow input should become a validation error.
 
-**Patterns are unanchored**, following JSON Schema. `[Pattern("abc")]` matches `"xabcx"`. Write
-`^…$` if you mean the whole value.
+`RegexOptions.Compiled` is reported as `VM1302`. Leave it out. In a Native AOT binary, an inline
+pattern with `Options` or a timeout also keeps code that an inline pattern without them lets the
+trimmer remove.
 
-This is the one place the native attribute and the DataAnnotations front end deliberately differ:
-`[RegularExpression]` from DataAnnotations *is* anchored, checking that the match starts at 0 and
-consumes the whole value. The front end reproduces that faithfully rather than quietly changing the
-meaning of a model you moved across.
+## In a rules class
 
-A null value is not tested. Combine with `[Required]` if absence should also fail.
-
-## `RegexOptions`
+A rules class passes the regular expression as a method group, not as a lambda:
 
 ```csharp
-[Pattern("^[a-z]{3}$", Options = RegexOptions.IgnoreCase)]
+using System.Text.RegularExpressions;
+using ValidationModules;
+
+public sealed class Product
+{
+    public string? Sku { get; init; }
+}
+
+public sealed partial class ProductRules : IValidationRulesFor<Product>
+{
+    public static void Describe(ValidationRules<Product> rules, Product x)
+    {
+        rules.Pattern(x.Sku, SkuRegex);
+    }
+
+    [GeneratedRegex("^[A-Z]{3}-[0-9]{4}$")]
+    internal static partial Regex SkuRegex();
+}
 ```
 
-Honoured, with one exception: `RegexOptions.Compiled` is
-[VM1302](/reference/diagnostics#vm1302). It emits IL through `Reflection.Emit`, which is the habit
-this library exists to remove. It does nothing here anyway, because patterns go through
-`[GeneratedRegex]` or a plain constructor.
+The method must be `internal` or `public`. The generator copies the rule into a separate generated
+class, which cannot call a `private` method.
 
-For the referenced form, options belong on your `[GeneratedRegex]` declaration instead; the
-attribute's `Options` is not consulted when a member is named.
+## Null and empty values
 
-## Invalid patterns
-
-Caught at build time, with the regex engine's own message:
-
-```csharp
-[Pattern("[")] // VM1106: The pattern on 'Sku' is not a valid regular expression: …
-```
-
-Re-describing the parser's complaint would produce a worse message than the one it already gives.
+`[Pattern]` passes a `null` value, like every constraint except `[Required]`. An empty string is
+matched against the expression like any other string. Add `[Required]` when the value must be
+present.

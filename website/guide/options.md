@@ -1,22 +1,23 @@
-# Options validation
+# Options
+
+`ValidationModules.Options` validates an options class when the host starts. An application whose
+configuration breaks a rule stops at startup instead of running with bad settings.
 
 ```shell
 dotnet add package ValidationModules.Options
 ```
 
-Configuration deserves the same rules a request body gets, checked before the host serves
-anything. `AddValidatedOptions<T>()` wires the generated validators into the options pipeline:
+## Validate an options class
 
-```csharp
-builder.Services.AddMyAppValidators();
-builder.Services.AddValidatedOptions<HubOptions>().BindConfiguration("Hub");
-```
+Declare the rules on the options class, as on any model:
 
+<!-- verify -->
 ```csharp
+using ValidationModules.Constraints;
+
 public sealed class HubOptions
 {
-    [Required]
-    [StringLength(min: 3, max: 40)]
+    [Required, StringLength(3, 40)]
     public string? HubName { get; set; }
 
     [Range(1, 500)]
@@ -24,36 +25,45 @@ public sealed class HubOptions
 }
 ```
 
-With a bad `appsettings.json`, the host refuses to start:
+Register the validators, then register the options with `AddValidatedOptions`:
 
+```csharp
+builder.Services.AddShopValidators();
+builder.Services.AddValidatedOptions<HubOptions>().BindConfiguration("Hub");
 ```
-Microsoft.Extensions.Options.OptionsValidationException:
-  hubName [string_length] hubName must be between 3 and 40 characters.
-  maxBatchSize [range] maxBatchSize must be between 1 and 500.
+
+`AddValidatedOptions<T>()` adds the options, connects the registered `IValidatorFor<T>` validators
+to the options system, and calls `ValidateOnStart()`. It returns the `OptionsBuilder<T>`, so the
+configuration is bound in the same statement with `BindConfiguration`, `Bind` or `Configure`.
+`AddValidatedOptions` does not bind anything by itself.
+
+## What a failure looks like
+
+With `HubName` set to `ab` and `MaxBatchSize` set to `9000`, starting the host throws an
+`OptionsValidationException` with this message:
+
+```text
+hubName [string_length] hubName must be between 3 and 40 characters.; maxBatchSize [range] maxBatchSize must be between 1 and 500.
 ```
 
-## What it is made of
+Each error is written as field, code and message. The field is the generator's field name, such as
+`hubName`, not the configuration key `Hub:HubName`.
 
-`AddValidatedOptions<T>()` is `AddOptions<T>()` plus two things: an `IValidateOptions<T>` that
-delegates to every registered `IValidatorFor<T>` and renders failures as `field [code] message`,
-and `ValidateOnStart()`, which makes the host run the validation when it starts rather than on
-the first `IOptions<T>.Value` read. It returns the `OptionsBuilder<T>`, so binding chains as
-usual.
+## Details
 
-This is the ValidationModules counterpart to .NET 8's `[OptionsValidator]`: one set of
-constraints on the model validates the configuration section, the request body, and anything
-else that hands the type to a validator - rather than one vocabulary for options and another for
-everything else.
+- Only errors with `Error` severity fail the options. Warnings pass.
+- The options validator that `AddValidatedOptions` registers runs the `IValidatorFor<T>` validators
+  registered for the type, without a service provider. It does not run async validators. An options
+  class that uses `Polymorphism.Runtime`, or a rules class over an interface from another assembly,
+  makes startup fail with an `InvalidOperationException`, because those need a service provider.
+- When no validator is registered for the options type, validation fails with a message that
+  begins `No IValidatorFor<HubOptions> is registered.` and tells you to call the generated
+  `Add<Assembly>Validators()` method. This catches a forgotten registration call.
+- `AddValidatedOptions<T>(name)` registers and validates named options. Each call validates only the
+  name it registered. Calling it twice for the same name validates twice, and each failure is listed
+  twice.
+- The options class needs a public parameterless constructor, as the options system requires.
 
-## The edges
-
-- **Structural rules only.** An [`IAsyncValidatorFor<T>`](/guide/async) needs I/O and a scope,
-  and `IValidateOptions<T>` offers neither. Configuration validation is the structural kind.
-- **Named options validate per registration.** `AddValidatedOptions<HubOptions>("secondary")`
-  judges the `secondary` instance and leaves others alone, the same shape
-  `ValidateDataAnnotations()` has.
-- **No registered validator fails validation outright.** Asking for validated options and
-  consulting nothing would be a silent no-op, so the failure message names the generated
-  `Add<Assembly>Validators()` call that is missing.
-- **Not idempotent**, like every registration here: calling it twice for one name registers the
-  bridge twice and each error reports twice.
+The package depends on `ValidationModules.Runtime` and `Microsoft.Extensions.Options`.
+`BindConfiguration` comes from `Microsoft.Extensions.Options.ConfigurationExtensions`, which
+`Microsoft.Extensions.Hosting` brings in, so a hosted application already has it.

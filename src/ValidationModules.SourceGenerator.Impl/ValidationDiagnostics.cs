@@ -761,8 +761,9 @@ public static class ValidationDiagnostics
     );
 
     /// <summary>
-    /// Reported before any source is added, so the build fails here rather than on generated code
-    /// calling a runtime member that does not exist. Plan §7.5.
+    /// Reported alongside the generated sources, so a build against an old runtime names the
+    /// version mismatch rather than leaving only errors from generated code that calls runtime
+    /// members that do not exist.
     /// </summary>
     public static readonly DiagnosticDescriptor RuntimeContractTooOld = Descriptor(
         "VM5001",
@@ -798,8 +799,9 @@ public static class ValidationDiagnostics
     /// <remarks>
     /// The build-time version of the endpoint filter factory's startup check, reported where the
     /// call was written. Warning rather than error for VM1501's cross-assembly reason: a rules
-    /// class in another assembly may target even a local type, so the startup check stays the
-    /// authority and this is the earlier, cheaper signal.
+    /// class in another assembly may target even a local type, so the check the filter factory
+    /// makes when the endpoint is built stays the authority, and this is the earlier, cheaper
+    /// signal.
     /// </remarks>
     public static readonly DiagnosticDescriptor ValidateTargetHasNoValidator = Descriptor(
         "VM5003",

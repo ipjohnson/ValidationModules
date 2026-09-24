@@ -89,9 +89,11 @@ internal static class ValidationEndpointFilterFactory
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The same wiring mistake the filter's own throw reports, discovered at <c>app.Run()</c>
-    /// instead of on the first request: <c>.Validate&lt;T&gt;()</c> naming an unregistered type
-    /// compiled clean and then answered every request - valid bodies included - with a 500.
+    /// The same wiring mistake the filter's own throw reports, found once when the endpoint is
+    /// built rather than inside every request. In a default application the endpoint is built on
+    /// its first request, so that request fails. Before this check, <c>.Validate&lt;T&gt;()</c>
+    /// naming an unregistered type compiled clean and then answered every request, valid bodies
+    /// included, with a 500.
     /// </para>
     /// <para>
     /// A presence check rather than a resolve, because the runner is scoped and this holds the

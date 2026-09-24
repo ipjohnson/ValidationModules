@@ -61,9 +61,11 @@ public class DocumentationSnippetTests
     /// The constraints namespace, which most samples want and a few must not have.
     /// </summary>
     /// <remarks>
-    /// Kept out of <see cref="Preamble"/> and added by the marker, because five constraint names
-    /// collide with <c>System.ComponentModel.DataAnnotations</c> - <c>Required</c>,
-    /// <c>StringLength</c>, <c>Range</c>, <c>AllowedValues</c> and the length family. That collision
+    /// Kept out of <see cref="Preamble"/> and added by the marker, because eleven constraint names
+    /// collide with <c>System.ComponentModel.DataAnnotations</c>: <c>Required</c>,
+    /// <c>StringLength</c>, <c>Range</c>, <c>AllowedValues</c>, <c>DeniedValues</c>,
+    /// <c>EmailAddress</c>, <c>Phone</c>, <c>Url</c>, <c>CreditCard</c>, <c>Base64String</c> and
+    /// <c>FileExtensions</c>. That collision
     /// is the reason the constraints live in their own namespace at all, and a sample on the
     /// DataAnnotations page has to be able to import the other one alone. <c>verify:bare</c> is how
     /// it says so.

@@ -6,13 +6,14 @@ namespace ValidationModules;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Generated implementations are stateless, hold no dependencies, and are registered as
-/// singletons. A pass that finds nothing allocates nothing.
+/// Generated implementations are stateless and are registered as singletons. A validator for a
+/// type with nested validation receives the nested type's validators through its constructor. A
+/// pass that finds nothing allocates nothing.
 /// </para>
 /// <para>
 /// The name is <c>IValidatorFor&lt;T&gt;</c> rather than <c>IValidator&lt;T&gt;</c> because
-/// FluentValidation owns the latter, and any codebase using the adapter will have both namespaces
-/// imported.
+/// FluentValidation owns the latter, and a codebase that uses both libraries imports both
+/// namespaces.
 /// </para>
 /// </remarks>
 /// <typeparam name="T">The type being validated.</typeparam>

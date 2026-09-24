@@ -8,10 +8,11 @@ namespace ValidationModules.SourceGenerator.Impl.Emitters;
 /// </summary>
 /// <remarks>
 /// <para>
-/// One place rather than three, because the settings are the contract: global-qualified type
-/// references so nothing emitted can collide with a name in the consumer's compilation, K&amp;R
-/// braces and four-space indents to match §13, and <c>\n</c> line endings so the same model emits
-/// the same bytes on every machine.
+/// One place rather than one per emitter, because the settings are the contract: global-qualified
+/// type references so nothing emitted can collide with a name in the consumer's compilation, the
+/// brace style <see cref="GeneratedCodeStyle"/> selects (Allman unless the project asks for
+/// K&amp;R), four-space indents, and <c>\n</c> line endings so the same model emits the same bytes
+/// on every machine.
 /// </para>
 /// <para>
 /// The IR deliberately carries types as strings - fully qualified, rendered by the front ends with

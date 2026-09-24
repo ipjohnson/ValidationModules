@@ -1,315 +1,298 @@
-# Rule classes
+# Rules classes
 
-A third way to declare rules, alongside [constraint attributes](/guide/constraints) and
-[DataAnnotations](/guide/data-annotations): a class whose body is **read at build time and never
-run**.
+A rules class declares a type's validation rules in C# instead of in attributes. Use one when a
+rule compares two members, when a rule applies only in some states of the object, or when the
+type is in an assembly you cannot add attributes to.
 
+## Declare a rules class
+
+<!-- verify -->
 ```csharp
 using ValidationModules;
 
-public sealed class PetRules : IValidationRulesFor<Pet>
+public sealed class Booking
 {
-    public static void Describe(ValidationRules<Pet> rules, Pet x)
-    {
-        rules.Require(x.Name).Length(1, 100);
-        rules.Range(x.Age, 0, 30);
-        rules.Pattern(x.Sku, PetPatterns.Sku);
-        rules.Count(x.Toys, 1, 10).Each();
+    public string? Guest { get; init; }
+    public DateOnly Start { get; init; }
+    public DateOnly End { get; init; }
+    public int Guests { get; init; }
+    public bool IsBusiness { get; init; }
+    public string? CompanyName { get; init; }
+    public IReadOnlyList<string>? Requests { get; init; }
+    public IReadOnlyList<Room>? Rooms { get; init; }
+}
 
-        rules.Ensure(x.Age is not 13, code: "unlucky");
+public sealed class Room
+{
+    public int Beds { get; init; }
+}
+
+public sealed class RoomRules : IValidationRulesFor<Room>
+{
+    public static void Describe(ValidationRules<Room> rules, Room x)
+    {
+        rules.Range(x.Beds, 1, 4);
     }
 }
-```
 
-A version of that you can paste, against the guide's `Pet`:
-
-<!-- verify:models -->
-```csharp
-public sealed class PetRules : IValidationRulesFor<Pet>
+public sealed class BookingRules : IValidationRulesFor<Booking>
 {
-    public static void Describe(ValidationRules<Pet> rules, Pet x)
+    public static void Describe(ValidationRules<Booking> rules, Booking x)
     {
-        rules.Require(x.Name).Length(1, 100);
-        rules.Range(x.Age, 0, 30);
-        rules.Count(x.Toys, 1, 10);
-    }
-}
-```
+        rules.Require(x.Guest).Length(2, 80);
+        rules.Range(x.Guests, 1, 8);
+        rules.Ensure(x.End > x.Start, message: "The stay must end after it starts.");
 
-It exists for two cases attributes cannot reach:
-
-- **`Pet` comes from a package nobody here owns.** You cannot edit the model to add an attribute.
-- **A rule is not a per-property fact.** A cross-field comparison, a computed total, or a checksum.
-  No per-property attribute can say them.
-
-Nothing needs registering. The generator finds the class and emits its checks into the same
-validator the attributes produce.
-
-## Read, never run
-
-The source generator **transcribes** `Describe` into the generated validator. Vocabulary calls such
-as `Require`, `Length`, and `Ensure` are recognized islands, and it expands them into
-check-and-report code. Every other statement, including locals, arithmetic, and `if`/`else`, is
-carried through and runs at validation time *inside the generated validator*. There is no runtime
-engine and no interpretation.
-
-Three consequences worth knowing up front:
-
-- **Nothing instantiates a rules class.** `Describe` is `static`, so `this` does not compile, and
-  the builder it takes cannot be constructed. The method exists to be read. Under trimming and
-  Native AOT the class disappears entirely, and what ships is the generated validator.
-- **`x` is symbolic.** It never holds a value at declaration time; it exists so member access
-  typechecks, renames propagate, and go-to-definition works.
-- **A breakpoint in `Describe` never hits.** The method is read, not run. To step through your
-  rules, step through the generated validator and its `{RulesClass}_Rules` companion under
-  `obj/…/generated`. It is readable, straight-line code.
-
-## One class, several targets
-
-A rules class may implement `IValidationRulesFor<T>` once per type it describes, with one
-`Describe` overload each. Every target still gets its own validator. What the class shares is its
-members:
-
-```csharp
-public sealed class LedgerRules : IValidationRulesFor<Invoice>, IValidationRulesFor<CreditNote>
-{
-    private const int NumberLength = 10; // one declaration, both regions
-
-    public static void Describe(ValidationRules<Invoice> rules, Invoice x)
-    {
-        rules.Require(x.Number).Length(NumberLength, NumberLength);
-    }
-
-    public static void Describe(ValidationRules<CreditNote> rules, CreditNote x)
-    {
-        rules.Require(x.Number).Length(NumberLength, NumberLength);
-        rules.Ensure(x.Amount > 0m, code: "positive");
-    }
-}
-```
-
-Each `Describe` is paired with its interface through the implementation rather than by position, so
-declaration order never matters. An explicitly implemented
-`static void IValidationRulesFor<Invoice>.Describe(…)` works too.
-
-## Control flow is just C#
-
-There is no `When`/`Unless`. Conditions are `if`/`else`, evaluated where written, at validation
-time:
-
-<!-- verify:models -->
-```csharp
-public sealed class SeniorPetRules : IValidationRulesFor<Pet>
-{
-    public static void Describe(ValidationRules<Pet> rules, Pet x)
-    {
-        if (x.Age > 20)
+        if (x.IsBusiness)
         {
-            rules.Require(x.Home);
+            rules.Require(x.CompanyName);
         }
-        else
-        {
-            rules.Range(x.Age, 0, 20);
-        }
+
+        rules.Each(x.Requests).Length(1, 200);
+        rules.Count(x.Rooms, 1, 4).Each();
     }
 }
 ```
 
-Computation is the feature, not a violation. Declare locals, call helpers, and feed the results
-into rules:
+A rules class implements `IValidationRulesFor<T>` and declares a `public static void Describe`
+method. The generator reads the body of `Describe` when the project builds and writes its rules into
+`BookingValidator`, the same kind of validator it writes for attributes. Nothing calls `Describe`
+at run time, and the rules class needs no registration.
+`Describe` can also have an expression body, or implement the interface explicitly as
+`static void IValidationRulesFor<Booking>.Describe(...)`.
+
+Validating a booking with an empty guest name, 12 guests, an end date before the start date, no
+company name, an empty request and a room with no beds returns:
+
+| `Field` | `Code` | `Message` |
+| --- | --- | --- |
+| `guest` | `required` | guest is required. |
+| `guests` | `range` | guests must be between 1 and 8. |
+| `end` | `end_greater_than_start` | The stay must end after it starts. |
+| `companyName` | `required` | companyName is required. |
+| `requests[1]` | `string_length` | requests[1] must be between 1 and 200 characters. |
+| `rooms[0].beds` | `range` | beds must be between 1 and 4. |
+
+## Rules take values
+
+`rules.Require(x.Guest)` passes the value of `x.Guest`. It is not a lambda. The parameter `x` stands
+for the object being validated. The generator reads the member path `x.Guest` to name the field
+`guest`, and the generated check reads the real value when the validator runs.
+
+The value must be a member path on `x`, such as `x.Guest` or `x.Home?.PostalCode`. Any other
+expression, such as `x.Guest!.Trim()`, is reported as `VM3007`. To use one anyway, name the field
+yourself with `field:`:
 
 ```csharp
-var total = x.Lines?.Sum(l => l.Price * l.Qty) ?? 0m;
-rules.Ensure(total <= x.CreditLimit); // message: "total <= creditLimit."
+rules.Require(x.Guest?.Trim(), field: "guest");
 ```
 
-::: warning Computation runs unguarded
-Your statements execute exactly as written, on exactly the malformed inputs validation exists to
-reject. `x.Lines.Sum(…)` throws when `Lines` is null, even if a `Count` rule above it just reported
-the problem. Write `x.Lines?.Sum(…) ?? 0m`, the way you would anywhere else.
+## The rules
 
-The same goes for I/O. A database call in `Describe` compiles and runs on every validation pass. The
-line is convention rather than a build error: structural rules here, I/O in
-`IAsyncValidatorFor<T>`.
-:::
+| Method | Checks | Code |
+| --- | --- | --- |
+| `Require(value)` | The value is not `null`. A string must also not be empty or whitespace. | `required` |
+| `RequireAllowingEmpty(value)` | The string is not `null`. | `required` |
+| `Length(value, min, max)` | The string's length is within the bounds. | `string_length` |
+| `Range(value, min, max)` | The value is within the bounds, inclusive. | `range` |
+| `RangeAtLeast(value, min)` | The value is at least `min`. | `range` |
+| `RangeAtMost(value, max)` | The value is at most `max`. | `range` |
+| `MultipleOf(value, divisor)` | The value divides by `divisor`. | `multiple_of` |
+| `Pattern(value, regex)` | The string matches a regular expression. | `pattern` |
+| `AllowedValues(value, allowed)` | The value is one of `allowed`. | `enum` |
+| `Count(list, min, max)` | The number of items is within the bounds. | `array_bounds` |
+| `Unique(items)` | No item appears twice. | `unique_items` |
+| `Nested(value)` | Runs the validators for the member's type. | from those validators |
+| `Each(list)` | Runs the rules that follow for every element. | from those rules |
+| `Ensure(condition)` | Any `bool` expression. | derived, see below |
 
-## The vocabulary
+Every rule except `Require`, `RequireAllowingEmpty` and `Ensure` passes a `null` value. The
+[rules API reference](../reference/rules-api) lists each method's overloads.
 
-Arguments are values rather than selectors. Write `rules.Require(x.Name)`, not
-`rules.Required(x => x.Name)`. The first call in a chain carries the value and the rest inherit its
-anchor. A failed `Require` suppresses the checks chained after it:
+The range rules accept any value type that implements `IComparable<T>` and `IFormattable`, such as
+`int`, `decimal`, `DateOnly` or `TimeSpan`, and the nullable form of each:
 
-<!-- verify:models -->
 ```csharp
-public sealed class AnchoredRules : IValidationRulesFor<Pet>
-{
-    public static void Describe(ValidationRules<Pet> rules, Pet x)
-    {
-        rules.Require(x.Name).Length(1, 100);
-    }
-}
+rules.Range(x.Start, new DateOnly(2026, 1, 1), new DateOnly(2030, 12, 31));
 ```
 
-The vocabulary mirrors the attributes and produces the same codes and messages:
+`Pattern` takes a method group that returns a `Regex`, usually a `[GeneratedRegex]` method.
+[Patterns](./patterns#in-a-rules-class) shows the form.
 
-| Builder | Attribute | Code |
-|---|---|---|
-| `rules.Require(x.Name)` | `[Required]` | `required` |
-| `.Length(1, 100)` | `[StringLength(1, 100)]` | `string_length` |
-| `rules.Range(x.Age, 0, 30)` | `[Range(0, 30)]` | `range` |
-| `rules.Pattern(x.Sku, Patterns.Sku)` | `[Pattern(…)]` | `pattern` |
-| `rules.AllowedValues(x.Status, ["a", "b"])` | `[AllowedValues("a", "b")]` | `enum` |
-| `rules.Count(x.Toys, 1, 10)` | `[ItemCount(1, 10)]` | `array_bounds` |
-| `rules.Nested(x.Home)` | `[ValidateNested]` | — |
-| `rules.Each(x.Toys)` | `[ValidateNested]` on a collection | — |
-| `rules.Each(x.Steps).Length(5, 500)` | — | `string_length`, per element |
+## Chains
 
-Members that only make sense for particular value types are extension methods constrained on the
-chain's type argument. That is how `Length` is offered on a string anchor and not on an `int`, and
-it is why the compiler catches the mistake instead of a runtime check.
+A rule call can be followed by more rules for the same value:
 
-`Each` has two shapes, resolved by the element type. On a collection of objects it descends into
-the element type's own validator, the way `[ValidateNested]` does. On a collection of **strings**
-there is no element validator to descend into, so `Each` anchors the element itself and the rules
-chained after it expand into an indexed loop:
-
-<!-- verify -->
 ```csharp
-public sealed record Procedure
-{
-    public List<string> Steps { get; init; } = [];
-}
-
-public sealed class ProcedureRules : IValidationRulesFor<Procedure>
-{
-    public static void Describe(ValidationRules<Procedure> rules, Procedure x)
-    {
-        rules.Count(x.Steps, 1, 30).Each().Length(5, 500);
-    }
-}
+rules.Require(x.Guest).Length(2, 80);
 ```
 
-A two-character step fails at `steps[0]` with code `string_length`, exactly as `[StringLength]`
-reports - the collection rule and the element rules are one statement and one suppression unit.
-Null elements are skipped, as a nested walk skips them. Elements of other primitive types still
-go through the [reporter tier](/guide/rule-classes#reporter).
+A chain is one statement. When `Require` fails, the rest of its chain is skipped, so an empty guest
+name reports `required` and not also `string_length`. Nothing else is skipped. Two separate
+statements about the same member are checked independently.
 
-A nullable member is passed as itself, and plain literal bounds convert to the member's type:
+The chained methods are `Require`, `RequireAllowingEmpty`, `Length`, `Pattern`, `Range`,
+`RangeAtLeast`, `RangeAtMost`, `MultipleOf`, `Count`, `Unique`, `Each` and `Nested`. Each one
+applies only to a value of the right type. `AllowedValues` can also be chained, but in this version
+the chained form checks nothing. Call `rules.AllowedValues(value, allowed)` instead. `For(value)`
+starts a chain without a rule of its own:
 
-<!-- verify -->
 ```csharp
-public sealed record Vehicle
-{
-    public double Latitude { get; init; }
-    public decimal? BatteryKwh { get; init; }
-}
-
-public sealed class VehicleRules : IValidationRulesFor<Vehicle>
-{
-    public static void Describe(ValidationRules<Vehicle> rules, Vehicle x)
-    {
-        rules.Range(x.Latitude, -90, 90); // infers double from the member
-        rules.Range(x.BatteryKwh, 10, 300); // null passes; Require is the presence check
-    }
-}
+rules.For(x.Code, field: "code").Length(3, 10).Pattern(Patterns.Code);
 ```
 
-Every rule takes the nullable directly, so `x.BatteryKwh.Value` is never needed - writing it is
-[VM3104](/reference/diagnostics#vm3104), and the reader compiles the rule against the member
-itself. The one literal rule is C#'s own: fractional bounds on a `decimal` member need the `m`
-suffix (`0.5m`), because `double` does not convert implicitly to `decimal`. See
-[the rules API](/reference/rules-api#the-vocabulary) for the overload pair behind this.
+A chain cannot mix `Count` and `Unique`, because `Count` works on a list and `Unique` on any
+enumerable. Write them as two statements.
 
-::: tip `Pattern` takes a method group
-`rules.Pattern(x.Sku, PetPatterns.Sku)` takes the accessor for a `[GeneratedRegex]` partial method,
-never an inline string. There is no inline form to leak the regex engine into an AOT publish.
-:::
+## Ensure
 
-## Field names
-
-An island's value must be a member path on the subject. Nested paths and `?.` are included:
+`Ensure` takes any `bool` expression:
 
 ```csharp
-rules.Require(x.Home?.PostalCode); // field "home.postalCode"
-rules.Require(x.Name, field: "petName");
+rules.Ensure(x.End > x.Start);
 ```
 
-`[JsonPropertyName]` on the property wins, then the
-[naming policy](/reference/msbuild#validationmodules-fieldnaming). An explicit `field:` is a raw
-wire name and is not put through the namer, so it is yours to get right. Anything that is not a
-member path needs one, or it is [VM3007](/reference/diagnostics#vm3007).
+The generator copies the expression into the validator, so it runs exactly as written. It is not
+guarded against `null`. `rules.Ensure(x.Name.Length > 3)` throws when `Name` is `null`. Write
+`x.Name is null || x.Name.Length > 3` instead.
 
-Where free-form code needs a field name, `nameof` through the subject parameter rewrites to the wire
-path, including inside interpolated strings:
+When the expression is `false`, `Ensure` reports an error with these defaults:
+
+- The field is the first member of `x` that the expression reads. `x.End > x.Start` reports at
+  `end`.
+- The code is derived from the expression. `x.End > x.Start` reports
+  `end_greater_than_start`, and `x.Guests >= 1` reports `guests_greater_than_or_equal_1`.
+- The message is the expression itself, as in `end > start.`
+
+Each default can be replaced:
 
 ```csharp
-rules.Context.Report(
-    nameof(x.AccountNumber),
-    "checksum", // → "accountNumber"
-    $"{nameof(x.AccountNumber)} failed its checksum"
+rules.Ensure(
+    x.End > x.Start,
+    field: "end",
+    code: "stay_order",
+    message: "The stay must end after it starts.",
+    severity: ValidationSeverity.Warning
 );
 ```
 
-`field: nameof(x.AccountNumber)` follows the same rule: it names a member, so the error takes
-that member's wire name, and one property cannot reach a client under two casings depending on
-which spelling reported it. `nameof(Pet.Name)`, through the type rather than the subject, stays
-ordinary C# and yields the CLR name. That is the escape hatch.
+A derived code changes when the expression changes. Editing `>` to `>=` turns
+`end_greater_than_start` into `end_greater_than_or_equal_start`. The generator reports each derived
+code as `VM3103`, an informational diagnostic. Pass `code:` when clients depend on the code.
 
-## `Ensure` {#ensure}
+A `message:` given here is authored text. Language packs do not replace it. See
+[Messages and languages](./messages#authored-messages).
 
-One assertion with no vocabulary name:
+## Conditions and computed values
 
-```csharp
-rules.Ensure(x.Start < x.End);
-rules.Ensure(x.Discount <= x.Price * 0.5m, code: "discount_too_large");
-```
-
-**The message is the condition, rendered.** The subject parameter is stripped, member accesses are
-wire-named, and a period is appended, which gives `start < end.` It cannot drift from the rule,
-because it is the rule. It is also redaction-safe by construction: the text is compile-time source,
-so no runtime value can reach it. Locals appear under their own names, as in `total <= creditLimit.`,
-which makes local naming part of your user-facing text.
-
-The rule anchors to the first member access off the subject. A condition that reads none needs
-`field:`, or it is [VM3102](/reference/diagnostics#vm3102).
-
-**The code is derived from the same render**, so `x.Start < x.End` reports
-`start_less_than_end` and two `Ensure`s on one field are told apart by a client as well as by a
-reader. [VM3103](/reference/diagnostics#vm3103) states the derived code at the rule, since it is the
-one part of a rules class you cannot read off the source. Pass `code:` to pin one rule against a
-later change to its condition. [Error codes](/reference/codes#why-ensure-derives-its-code) has the
-reasoning and the operator spellings.
-
-## The reporter tier {#reporter}
-
-When free-form logic finds something, report it through `rules.Context`, a narrow view of the
-validation pass carrying exactly the members that work here:
+The body of `Describe` is ordinary C#. `if`, `else`, `switch` and local variables all work, and the
+rules inside a branch apply only when that branch runs:
 
 ```csharp
-if (!Luhn.Validates(x.AccountNumber))
+public static void Describe(ValidationRules<Booking> rules, Booking x)
 {
-    rules.Context.Report(nameof(x.AccountNumber), "checksum", "account number failed its checksum");
+    var nights = x.End.DayNumber - x.Start.DayNumber;
+
+    if (nights > 14)
+    {
+        rules.Require(x.CompanyName);
+    }
+
+    switch (x.Guests)
+    {
+        case > 4:
+            rules.Count(x.Rooms, 2, 4);
+            break;
+    }
 }
 ```
 
-- Reporter calls are transcription rather than islands, so they are legal anywhere, **loops
-  included**. Per-element reporting uses a computed field string:
-  `rules.Context.Report($"lines[{i}].sku", …)`.
-- Any expression-statement whose type is `ValidationFlow` is checked and propagated automatically.
-  That covers the built-in `Report*` helpers, future ones, and your own alike. Assign the result to
-  opt into manual control.
-- Values may reach messages here. The composed vocabulary and `Ensure` are redaction-safe by
-  construction. `Report` reopens that on purpose, at an explicit call site.
+Every statement that is not a rule is copied into the validator as written, and it runs each time
+the validator runs. Build anything expensive once, in a static field, rather than in `Describe`.
 
-## Fragments {#fragments}
+The generator cannot expand a rule inside a loop or a local function, and reports `VM3003`. A rule
+inside a lambda is reported as `VM3002`, because the lambda captures `rules`. Use `Each` for
+per-element rules, or report from a loop through `rules.Context`.
 
-Decomposition and reuse are method extraction, read by the generator: any `static`, `void`,
-same-compilation method that receives the builder is followed.
+A bare `return;` ends the rules of that class early. The attribute checks and other rules classes
+still run.
+
+## Report from code
+
+`rules.Context` reports an error whose field, code and message the body decides at run time. It
+works inside loops:
 
 ```csharp
+if (x.Requests is { } requests)
+{
+    for (var i = 0; i < requests.Count; i++)
+    {
+        if (requests[i].Length > 20)
+        {
+            rules.Context.Report(
+                $"requests[{i}]",
+                "request_too_long",
+                "A request is limited to 20 characters."
+            );
+        }
+    }
+}
+```
+
+`Report(field, code, message)` reports against a field. `ReportHere(code, message)` reports
+against the object itself, with an empty field at the top level. The helpers such as
+`ReportStringLength(field, min, max)` and `ReportRange(field, min, max)` produce the built-in
+message for a built-in code, and each takes an optional `code:` and `severity:`.
+
+`nameof(x.CompanyName)` becomes the member's field name, `companyName`, at build time, anywhere in
+`Describe`, including inside messages and interpolated strings. `nameof(Booking.CompanyName)`
+keeps the property name.
+
+The generator also checks the result of every statement that returns a `ValidationFlow`, such as a
+`rules.Context` report or a helper method that takes an `IValidationContextReporter`, and stops the
+pass when the flow says to. A flow stored in a local variable is not checked.
+
+## Apply a hand-written rule
+
+`Apply` runs a static method with the signature of `RuleAction<T>`. The method receives the full
+`ValidationContext`, so it can push path segments and read `Services`:
+
+```csharp
+public static class BookingChecks
+{
+    public static ValidationFlow RoomsHoldGuests(ref ValidationContext context, Booking value) =>
+        value.Rooms is { } rooms && rooms.Sum(room => room.Beds) < value.Guests
+            ? context.Report("rooms", "not_enough_beds", "The rooms do not have enough beds.")
+            : ValidationFlow.Continue;
+}
+```
+
+```csharp
+rules.Apply(BookingChecks.RoomsHoldGuests);
+```
+
+Pass a method group. A lambda passed to `Apply` produces generated code that does not compile in
+this version. `Apply` must be a top-level statement in `Describe`, and applied rules run after every
+other rule on the type. Return the `ValidationFlow` that `Report` returned, so that a pass that
+[stops at the first error](./errors#stop-at-the-first-error) can end there.
+
+## Share rules between types
+
+A fragment is a static `void` method that takes a `ValidationRules<T>` and adds rules to it. Call it
+from `Describe` and pass `rules` and `x`:
+
+<!-- verify -->
+```csharp
+using ValidationModules;
+
+public interface IAudited
+{
+    string? CreatedBy { get; }
+    int Version { get; }
+}
+
 public static class AuditRules
 {
-    // The mixin the attributes never had: every audited type gets these rules, said once.
     public static void Standard<T>(ValidationRules<T> rules, T audited)
         where T : IAudited
     {
@@ -318,109 +301,131 @@ public static class AuditRules
     }
 }
 
-public sealed class OrderRules : IValidationRulesFor<Order>
+public sealed class Invoice : IAudited
 {
-    public static void Describe(ValidationRules<Order> rules, Order x)
+    public string? CreatedBy { get; init; }
+    public int Version { get; init; }
+    public string? Number { get; init; }
+}
+
+public sealed class InvoiceRules : IValidationRulesFor<Invoice>
+{
+    public static void Describe(ValidationRules<Invoice> rules, Invoice x)
     {
         rules.Require(x.Number);
-        AuditRules.Standard(rules, x); // expanded here, in body order
+        AuditRules.Standard(rules, x);
     }
 }
 ```
 
-- **Generic fragments are stamped out per concrete type**, and members resolve against it, so
-  `[JsonPropertyName]` on the implementing property wins for field naming.
-- **Extra parameters bind at the call site**: `CustomsRules.Declare(rules, x, strict: x.Tier > 2)`.
-- The parameter typed as the subject must be passed the `Describe` subject. A facet of a child is
-  `Nested`'s territory. Fragments may call fragments, and a cycle is
-  [VM3006](/reference/diagnostics#vm3006) rather than a hang.
-- Each fragment expands into a companion method carrying **its own file's** using directives, so it
-  compiles exactly as written where it was written.
+The generator expands the fragment for each type that calls it, so `audited.CreatedBy` reports at
+`createdBy` for an `Invoice`. A fragment can take extra parameters. A non-generic fragment can call
+other fragments, but a generic fragment that calls another generic fragment does not compile in this
+version. A fragment must be source in the same project. A fragment in a referenced assembly is
+reported as `VM3005`. `Nested`, `Each` and `Apply` belong in `Describe` itself, not in a fragment.
 
-::: warning Fragments travel as source
-A fragment is read from syntax, and a referenced assembly ships IL. There is no body to read, so a
-plain `ProjectReference` is on the wrong side of the line
-([VM3005](/reference/diagnostics#vm3005)). Share fragments through a shared project or a source-only
-package, or ship the rules as a compiled facet, below.
-:::
+## Validate through an interface
 
-## Facets: `rules.As<TFacet>` {#facets}
+`As<TFacet>(x)` runs the rules declared for an interface or base type that `x` implements, and
+reports their errors at the current level:
 
-The route when shared rules ship as IL, and the general spelling for "validate `x` as one of its
-facets":
-
+<!-- verify -->
 ```csharp
-// The shared assembly declares the facet and its rules, and runs the generator itself:
+using ValidationModules;
+
 public interface IAudited
 {
     string? CreatedBy { get; }
+    int Version { get; }
 }
 
-public sealed class AuditRules : IValidationRulesFor<IAudited>
+public sealed class AuditedRules : IValidationRulesFor<IAudited>
 {
     public static void Describe(ValidationRules<IAudited> rules, IAudited x)
     {
         rules.Require(x.CreatedBy);
+        rules.RangeAtLeast(x.Version, 1);
     }
 }
 
-// Consumers opt in, in the body:
-rules.As<IAudited>(x);
+public sealed class Shipment : IAudited
+{
+    public string? CreatedBy { get; init; }
+    public int Version { get; init; }
+    public string? Carrier { get; init; }
+}
+
+public sealed class ShipmentRules : IValidationRulesFor<Shipment>
+{
+    public static void Describe(ValidationRules<Shipment> rules, Shipment x)
+    {
+        rules.Require(x.Carrier);
+        rules.As<IAudited>(x);
+    }
+}
 ```
 
-One spelling, two bindings. A facet whose validator is generated in **this** compilation binds
-statically, with no DI involved, and a facet with no rules here is
-[VM3105](/reference/diagnostics#vm3105) rather than a silent no-op. A facet from a **referenced**
-assembly resolves the closed `IValidatorFor<TFacet>` through the pass's services. Compose the
-facet's own `Add…Validators()` at your root. A missing registration throws and names exactly that,
-rather than silently skipping.
+An empty `Shipment` reports `carrier`, `createdBy` and `version`, with no prefix. Use `As` for an
+interface whose rules come from a rules class, as here. Constraint attributes on an interface's
+properties already apply to every type that implements it, so `As` would run those checks a second
+time and report each error twice. An interface with no rules at all is reported as `VM3105`.
 
-The argument must be the subject. A facet of a child is `Nested`'s territory, where the path pushes.
-Here it does not, so facet fields report at the current level: `createdBy`, not
-`audited.createdBy`.
+When the interface is declared in another assembly, the validator resolves `IValidatorFor<IAudited>`
+from the container at run time. Validate such a type through `ValidationRunner<T>` resolved from a
+scope, and call the other assembly's registration method.
+[Registration](./registration#validators-from-other-assemblies) covers this.
 
-::: tip Declare facet rules in a rules class, not as attributes on the interface
-An interface's *attribute* constraints already reach every implementer through
-[constraint inheritance](/guide/constraints), so an `As` on top of those reports every facet error
-twice. `As` exists for the rules inheritance cannot see, which is a rules class targeting the
-facet.
-:::
+## Nested objects and collections
 
-## `Apply`: a hand-written rule
-
-For a shared opaque check that wants the raw context:
+`Nested(x.Home)` runs the validators for the member's type and prefixes their fields, as in
+`home.postalCode`. `Each(x.Rooms)` does the same for every element of a list, as in
+`rooms[0].beds`. On a list of strings, `Each` applies the rules chained after it to every element:
 
 ```csharp
-rules.Apply(PetChecks.SkuChecksum);
+rules.Each(x.Requests).Length(1, 200);
 ```
 
-Taken as a method group and emitted as a direct call. Applied rules own no position. They run after
-everything else, unconditionally, in declaration order, which is why an `Apply` under an `if` is an
-error rather than a promise the ordering cannot keep.
+`Each` takes an `IReadOnlyList<T>` of strings or of a reference type, which `List<T>` and arrays
+convert to. A `null` list and `null` elements are skipped. Use `Each`, not `Nested`, for a
+collection. `Nested` on a collection, `Nested` after `Each`, and `Each` after `Each` do not work in
+this version. For a list of numbers or other value types, check the elements in a loop and report
+through `rules.Context`. [Nested objects and
+collections](./nesting) describes how paths are built.
 
-## Ordering
+## Rules classes and attributes together
 
-The generated validator runs its regions in a fixed order. The attribute-declared checks come first,
-in source order, then one region per rules class. Classes are ordered by name and their statements
-run in body order, because the body *is* the validator. `Apply` rules run last.
+A type can have constraint attributes and a rules class. The generator merges them into one
+validator. The attribute checks run first, then each rules class in the order of the class names,
+then the `Apply` rules. A type can also have more than one rules class, and one class can implement
+`IValidationRulesFor<T>` for several types.
 
-Rules for one field belong in one chain. Two separate statements against the same field report
-independently, and a failed `Require` suppresses the rest of *its own* chain and nothing more.
+A `[Required]` attribute does not suppress a rule in the rules class for the same member. The two
+are independent.
 
-## What is rejected
+## Codes, messages and severity
 
-Almost everything transcribes. What does not, and why:
+The rule methods other than `Ensure` report the built-in code and message, at `Error` severity.
+They take no `code:`, `message:` or `severity:` argument. To change any of these:
 
-- **The builder flowing where the reader cannot follow**
-  ([VM3002](/reference/diagnostics#vm3002)): storing `rules` or a chain in a local, capturing it in
-  a lambda, or passing it to anything that is not a fragment. A rule call the generator cannot see
-  would validate nothing, so it is an error instead.
-- **A member the companion file cannot reach**
-  ([VM3004](/reference/diagnostics#vm3004)): `private` members of the rules class. Make them
-  `internal`. A `private const` is carried across by value.
-- **Islands in loops, lambdas, or local functions**
-  ([VM3003](/reference/diagnostics#vm3003)). Collections are `Each`'s job, and the reporter tier
-  covers the unusual per-element case.
-- **Statements with no sensible transcription**
-  ([VM3001](/reference/diagnostics#vm3001)): `goto`, `try`/`catch`, `lock`, `using` statements, and
-  assignment to the subject.
+- Write the rule as an `Ensure` with `code:`, `message:` and `severity:`.
+- Report through a `rules.Context` helper, which takes `code:` and `severity:`.
+- Use a constraint attribute, which takes `Code` and `Message`.
+- Keep the code and replace the message with a [message map or language pack](./messages).
+
+## What the body can reference
+
+The generator copies the body of `Describe` into a separate generated class. That class can reach
+`internal` and `public` members, but not `private` ones. A `private const` is fine, because the
+generator copies its value. Any other `private` member of the rules class that the body uses is
+reported as `VM3004`. Make it `internal`.
+
+The body cannot store the `rules` object, pass it to a method that is not a fragment, or capture it
+in a lambda. Those uses are reported as `VM3002`. A `try`, `lock`, `using` or `goto` statement, or
+an assignment to a member of `x`, is reported as `VM3001`. The [diagnostics
+reference](../reference/diagnostics#rules-classes) lists each case with its fix.
+
+## Debugging
+
+A breakpoint in `Describe` never hits, because the method never runs. The generated file
+`BookingRules_Rules.g.cs` holds the transcribed body. Set breakpoints there.
+[How it works](./how-it-works#viewing-the-generated-code) shows how to find it.
