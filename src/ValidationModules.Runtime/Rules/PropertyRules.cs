@@ -1,3 +1,4 @@
+using System.Numerics;
 using System.Text.RegularExpressions;
 
 namespace ValidationModules;
@@ -73,6 +74,26 @@ public static class PropertyRulesExtensions
         where TValue : struct, IComparable<TValue>, IFormattable =>
         throw ValidationRules<T>.Inert();
 
+    /// <summary>
+    /// The non-nullable form, for the chain <c>For</c> starts on a non-nullable value.
+    /// </summary>
+    /// <remarks>
+    /// <c>For</c> anchors a chain on the value's own type. It cannot anchor a non-nullable value
+    /// type on its nullable form instead, as the value-type rule methods do, because a
+    /// <c>struct</c>-constrained twin of <c>For(TValue value)</c> collides with it as CS0111, and
+    /// the unconstrained <c>For</c> is the one a type parameter in a generic fragment binds. So
+    /// each value-type chain method is a pair instead. For a nullable receiver this overload infers
+    /// <c>Nullable&lt;T&gt;</c>, which the <c>struct</c> constraint rejects, so the pair never
+    /// ambiguates.
+    /// </remarks>
+    public static PropertyRules<T, TValue> Range<T, TValue>(
+        this PropertyRules<T, TValue> rules,
+        TValue min,
+        TValue max
+    )
+        where TValue : struct, IComparable<TValue>, IFormattable =>
+        throw ValidationRules<T>.Inert();
+
     /// <summary>Declares the anchored value's lower bound, with no upper one.</summary>
     public static PropertyRules<T, TValue?> RangeAtLeast<T, TValue>(
         this PropertyRules<T, TValue?> rules,
@@ -81,9 +102,29 @@ public static class PropertyRulesExtensions
         where TValue : struct, IComparable<TValue>, IFormattable =>
         throw ValidationRules<T>.Inert();
 
+    /// <summary>
+    /// The non-nullable form. See <c>Range</c> on why each value-type chain method is a pair.
+    /// </summary>
+    public static PropertyRules<T, TValue> RangeAtLeast<T, TValue>(
+        this PropertyRules<T, TValue> rules,
+        TValue min
+    )
+        where TValue : struct, IComparable<TValue>, IFormattable =>
+        throw ValidationRules<T>.Inert();
+
     /// <summary>Declares the anchored value's upper bound, with no lower one.</summary>
     public static PropertyRules<T, TValue?> RangeAtMost<T, TValue>(
         this PropertyRules<T, TValue?> rules,
+        TValue max
+    )
+        where TValue : struct, IComparable<TValue>, IFormattable =>
+        throw ValidationRules<T>.Inert();
+
+    /// <summary>
+    /// The non-nullable form. See <c>Range</c> on why each value-type chain method is a pair.
+    /// </summary>
+    public static PropertyRules<T, TValue> RangeAtMost<T, TValue>(
+        this PropertyRules<T, TValue> rules,
         TValue max
     )
         where TValue : struct, IComparable<TValue>, IFormattable =>
@@ -124,6 +165,31 @@ public static class PropertyRulesExtensions
         this PropertyRules<T, double?> rules,
         double divisor
     ) => throw ValidationRules<T>.Inert();
+
+    /// <summary>
+    /// Declares that the anchored number must be a multiple of a divisor, for the nullable numeric
+    /// types the three overloads above do not name, such as the <c>int?</c> a <c>Range</c> on an
+    /// <c>int</c> anchors.
+    /// </summary>
+    /// <remarks>
+    /// On a <c>long?</c>, <c>decimal?</c> or <c>double?</c> chain the overload that names the type
+    /// wins, because its parameter types are more specific.
+    /// </remarks>
+    public static PropertyRules<T, TValue?> MultipleOf<T, TValue>(
+        this PropertyRules<T, TValue?> rules,
+        TValue divisor
+    )
+        where TValue : struct, INumber<TValue> => throw ValidationRules<T>.Inert();
+
+    /// <summary>
+    /// The non-nullable form, for the chain <c>For</c> starts on a non-nullable number. See
+    /// <c>Range</c> on why each value-type chain method is a pair.
+    /// </summary>
+    public static PropertyRules<T, TValue> MultipleOf<T, TValue>(
+        this PropertyRules<T, TValue> rules,
+        TValue divisor
+    )
+        where TValue : struct, INumber<TValue> => throw ValidationRules<T>.Inert();
 
     /// <summary>Descends into each element of the anchored collection.</summary>
     public static PropertyRules<T, IReadOnlyList<TElement>?> Each<T, TElement>(

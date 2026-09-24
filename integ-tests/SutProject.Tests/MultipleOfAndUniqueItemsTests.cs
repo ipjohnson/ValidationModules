@@ -114,6 +114,57 @@ public class MultipleOfAndUniqueItemsTests
     }
 
     [Fact]
+    public void ChainsForStartsOnNonNullableNumbers_CheckTheRangeAndTheMultiple()
+    {
+        IValidatorFor<Freight> rules = new FreightValidator();
+
+        Assert.True(
+            rules.IsValid(
+                new Freight
+                {
+                    Weight = 2.5,
+                    Pieces = 4,
+                    Price = 9.95m,
+                }
+            )
+        );
+        Assert.Equal(
+            [
+                ("weight", ValidationCodes.MultipleOf),
+                ("pieces", ValidationCodes.MultipleOf),
+                ("price", ValidationCodes.MultipleOf),
+            ],
+            rules
+                .Validate(
+                    new Freight
+                    {
+                        Weight = 2.25,
+                        Pieces = 3,
+                        Price = 9.99m,
+                    }
+                )
+                .Errors.Select(e => (e.Field, e.Code))
+        );
+        Assert.Equal(
+            [
+                ("weight", ValidationCodes.Range),
+                ("pieces", ValidationCodes.Range),
+                ("price", ValidationCodes.Range),
+            ],
+            rules
+                .Validate(
+                    new Freight
+                    {
+                        Weight = 40,
+                        Pieces = 0,
+                        Price = 150m,
+                    }
+                )
+                .Errors.Select(e => (e.Field, e.Code))
+        );
+    }
+
+    [Fact]
     public void NullableMember_IsSkippedWhenAbsentAndCheckedWhenPresent()
     {
         Assert.True(new OrderValidator().IsValid(Valid() with { Optional = null }));

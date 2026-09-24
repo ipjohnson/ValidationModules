@@ -74,7 +74,9 @@ constraint is dropped. To check the elements of a collection of strings, use `Ea
 
 **Severity:** Error
 
-`[MultipleOf]` is on a property that is not a number.
+`[MultipleOf]` is on a property that is not a number, or a rules-class `MultipleOf` chain is on a
+number the check cannot divide, such as `nint`. The check reads integral, `decimal`, `double` and
+`float` values.
 
 ### VM1005
 

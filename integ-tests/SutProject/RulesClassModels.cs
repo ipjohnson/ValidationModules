@@ -333,3 +333,26 @@ public sealed class MixtureRules : IValidationRulesFor<Mixture>
     public static void Describe(ValidationRules<Mixture> rules, Mixture x) =>
         rules.MultipleOf(x.Ratio, 0.01);
 }
+
+/// <summary>
+/// Chains that <c>For</c> starts on non-nullable numbers. The anchor keeps the member's own type,
+/// and the range and multiple-of chain methods accept it as they accept its nullable form.
+/// </summary>
+public sealed record Freight
+{
+    public double Weight { get; init; }
+
+    public int Pieces { get; init; }
+
+    public decimal Price { get; init; }
+}
+
+public sealed class FreightRules : IValidationRulesFor<Freight>
+{
+    public static void Describe(ValidationRules<Freight> rules, Freight x)
+    {
+        rules.For(x.Weight).Range(0.5, 30).MultipleOf(0.5);
+        rules.For(x.Pieces).RangeAtLeast(1).MultipleOf(2);
+        rules.For(x.Price).RangeAtMost(100m).MultipleOf(0.05m);
+    }
+}

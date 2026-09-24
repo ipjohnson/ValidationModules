@@ -2916,10 +2916,11 @@ public sealed class RulesFrontEnd
 
             /// <summary>
             /// <c>MultipleOf</c>, with its divisor in the denomination the check runs in - the one
-            /// <c>[MultipleOf]</c> produces. The overload the call bound to decides it: the long
-            /// and decimal overloads divide with <c>%</c>, and the double overload's check takes a
-            /// decimal divisor, so a constant goes through <see cref="MultipleOfReader"/> exactly as
-            /// an attribute's does, and anything else is converted where the check reads it.
+            /// <c>[MultipleOf]</c> produces. The divisor's type in the overload the call bound to
+            /// decides it: an integral or decimal divisor divides with <c>%</c>, and a double or
+            /// float one's check takes a decimal divisor, so a constant goes through
+            /// <see cref="MultipleOfReader"/> exactly as an attribute's does, and anything else is
+            /// converted where the check reads it.
             /// </summary>
             private bool ReadMultipleOf(
                 InvocationExpressionSyntax call,
@@ -2927,11 +2928,11 @@ public sealed class RulesFrontEnd
                 IReadOnlyDictionary<string, ExpressionSyntax> arguments
             )
             {
+                // The bound method's own parameters, because they carry the generic overloads'
+                // type argument where the definition has only TValue.
                 if (
                     !arguments.TryGetValue("divisor", out var divisor)
-                    || (method.ReducedFrom ?? method).Parameters.FirstOrDefault(parameter =>
-                        parameter.Name == "divisor"
-                    )
+                    || method.Parameters.FirstOrDefault(parameter => parameter.Name == "divisor")
                         is not { } declared
                 )
                 {
@@ -2945,7 +2946,24 @@ public sealed class RulesFrontEnd
                 }
 
                 var member = _facts?.PropertyName ?? _access ?? "the value";
-                var floating = declared.Type.SpecialType == SpecialType.System_Double;
+
+                // The generic overloads take any INumber<T>, which includes types such as nint
+                // that the check has no divisor form for.
+                if (!MultipleOfReader.IsSupported(declared.Type))
+                {
+                    _writer._owner.Report(
+                        ValidationDiagnostics.MultipleOfOnUnsupportedType,
+                        call,
+                        member,
+                        declared.Type.ToDisplayString()
+                    );
+                    return false;
+                }
+
+                var floating =
+                    declared.Type.SpecialType
+                    is SpecialType.System_Double
+                        or SpecialType.System_Single;
                 string rendered;
                 var decimalDomain = floating;
 
