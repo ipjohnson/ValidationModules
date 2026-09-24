@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using ValidationModules.Constraints;
@@ -161,6 +162,19 @@ public sealed record Passphrase
 
     [ItemCount(max: 2)]
     public List<string> Hints { get; init; } = [];
+}
+
+/// <summary>
+/// [ItemCount] on types with no public Count: a bare sequence, and an ImmutableArray, which
+/// implements Count only explicitly.
+/// </summary>
+public sealed record Post
+{
+    [ItemCount(1, 3)]
+    public IEnumerable<string>? Tags { get; init; }
+
+    [ItemCount(max: 3)]
+    public ImmutableArray<string> Labels { get; init; } = [];
 }
 
 /// <summary>

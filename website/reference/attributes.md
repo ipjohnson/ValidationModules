@@ -325,8 +325,9 @@ public int Max { get; init; }
 ```
 
 `[ItemCount]` passes when the number of items is between `Min` and `Max`, inclusive. The first
-argument is the minimum. Applies to arrays and to collections with a `Count` property, including
-dictionaries.
+argument is the minimum. Applies to arrays, to collections with a public `Count` or `Length`
+property, including dictionaries, and to any other `IEnumerable<T>`. A sequence with neither
+property is counted with `Enumerable.Count`, so validation enumerates a lazy sequence once.
 
 | Code | Message |
 | --- | --- |

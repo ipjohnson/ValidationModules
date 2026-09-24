@@ -2777,7 +2777,7 @@ public sealed class RulesFrontEnd
                 $"{camel}Validators",
                 $"{property.Name}Validators",
                 named.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                TypeFacts.CountAccessor(property.Type)
+                TypeFacts.CountAccessor(property.Type) ?? "Count"
             );
 
             _dependencies.Add(dependency);

@@ -1662,18 +1662,50 @@ public sealed class ValidatorEmitter
 
             case ConstraintKind.ItemCount:
             {
+                var below = constraint.Min is { } min && min != "0" ? min : null;
+                var above =
+                    constraint.Max is { } max && max != int.MaxValue.ToString() ? max : null;
+
+                if (below is null && above is null)
+                {
+                    return null;
+                }
+
+                // A type with no Count or Length property has no count to read by name.
+                // Enumerable.Count reads ICollection<T>.Count when the value has one and enumerates
+                // only when it does not. One pattern evaluates it once, so a lazy sequence is not
+                // walked twice for its two bounds.
+                if (property.CountAccessor is null)
+                {
+                    var bounds = new List<string>();
+
+                    if (below is not null)
+                    {
+                        bounds.Add($"< {below}");
+                    }
+
+                    if (above is not null)
+                    {
+                        bounds.Add($"> {above}");
+                    }
+
+                    return $"{guard}(global::System.Linq.Enumerable.Count({access}) is "
+                        + $"{string.Join(" or ", bounds)})";
+                }
+
                 var tests = new List<string>();
-                if (constraint.Min is { } min && min != "0")
+
+                if (below is not null)
                 {
-                    tests.Add($"{access}.{property.CountAccessor} < {min}");
+                    tests.Add($"{access}.{property.CountAccessor} < {below}");
                 }
 
-                if (constraint.Max is { } max && max != int.MaxValue.ToString())
+                if (above is not null)
                 {
-                    tests.Add($"{access}.{property.CountAccessor} > {max}");
+                    tests.Add($"{access}.{property.CountAccessor} > {above}");
                 }
 
-                return tests.Count == 0 ? null : $"{guard}({string.Join(" || ", tests)})";
+                return $"{guard}({string.Join(" || ", tests)})";
             }
 
             // Each bound is optional and an absent one emits nothing, so a spec that set only
