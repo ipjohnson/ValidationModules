@@ -8,7 +8,9 @@ the same in every case.
 
 The default messages come from templates in `ValidationMessageTemplates`. `{field}` is the last
 segment of the error's field path, and `{0}` and `{1}` are the rule's arguments, formatted with the
-invariant culture.
+invariant culture. A property with `[Display(Name = "Postal code")]` is named by that label instead.
+The label travels on the error's `MessageInfo` as `DisplayName`, so a formatter and a language pack
+use it too, and the error's `Field` keeps the wire name.
 
 | Shape key | Template |
 | --- | --- |
@@ -46,7 +48,8 @@ used when the deciding bound is 1: `code must be at most 1 character.` That make
 all. `ValidationMessageTemplates.KnownKeys` lists them, and `ValidationMessageTemplates.KeyOf`
 returns the shape key of a template.
 
-An `Ensure` in a rules class has no template. Its default message is the text of its condition.
+An `Ensure` in a rules class has no template. Its default message is the text of its condition, with
+each member written as its field name.
 
 ## Set the text for one rule
 
@@ -242,5 +245,7 @@ A DataAnnotations attribute that takes its message from a resource, with `ErrorM
 is compiled to a `ValidationMessageInfo` whose `Provider` reads the resource property each time the
 message is rendered. The provider is a `DelegateMessageProvider`, which implements
 `IValidationMessageProvider`. This keeps resource messages working without reflection. You do not
-create these types yourself unless you build a `ValidationMessageInfo` by hand. A resource message
-is not authored, so a language pack entry for its shape replaces it.
+create these types yourself unless you build a `ValidationMessageInfo` by hand. `{0}` in the
+resource text is the display name, the `[Display(Name)]` value or the property name, which the info
+carries as `DisplayName`. A resource message is not authored, so a language pack entry for its shape
+replaces it.

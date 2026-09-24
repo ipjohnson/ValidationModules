@@ -131,7 +131,7 @@ namespace ValidationModules
     public delegate ValidationModules.ValidationFlow RuleAction<in T>(ref ValidationModules.ValidationContext context, T value);
     public static class RuntimeContract
     {
-        public const int Version = 11;
+        public const int Version = 12;
     }
     public static class ValidationCodes
     {
@@ -167,6 +167,7 @@ namespace ValidationModules
         public ValidationModules.ValidationFlow Report(string field, string code, object? value, ValidationModules.ValidationMessageInfo messageInfo, ValidationModules.ValidationSeverity severity = 0) { }
         public ValidationModules.ValidationFlow ReportAuthored(string field, string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
         public ValidationModules.ValidationFlow ReportHere(string code, string message, ValidationModules.ValidationSeverity severity = 0) { }
+        public ValidationModules.ValidationContext WithResolvedFieldNames(bool resolved = true) { }
     }
     public static class ValidationContextExtensions
     {
@@ -277,6 +278,7 @@ namespace ValidationModules
         public ValidationMessageInfo(string template, params object[]? args) { }
         public System.Collections.Generic.IReadOnlyList<object> Args { get; }
         public bool DataAnnotationsHoles { get; init; }
+        public string? DisplayName { get; init; }
         public ValidationModules.IValidationMessageProvider? Provider { get; init; }
         public string Template { get; }
         public string Render(in ValidationModules.ValidationError error, System.IFormatProvider? formatProvider = null) { }

@@ -162,7 +162,8 @@ When the expression is `false`, `Ensure` reports an error with these defaults:
   `end`.
 - The code is derived from the expression. `x.End > x.Start` reports
   `end_greater_than_start`, and `x.Guests >= 1` reports `guests_greater_than_or_equal_1`.
-- The message is the expression itself, as in `end > start.`
+- The message is the expression itself, as in `end > start.` Each member is written as its field
+  name, so with `[JsonPropertyName("ends_at")]` on `End` it reads `ends_at > start.`
 
 Each default can be replaced:
 
@@ -246,7 +247,7 @@ message for a built-in code, and each takes an optional `code:` and `severity:`.
 
 `nameof(x.CompanyName)` becomes the member's field name, `companyName`, at build time, anywhere in
 `Describe`, including inside messages and interpolated strings. `nameof(Booking.CompanyName)`
-keeps the property name.
+keeps the property name. A field written as a string is reported as written.
 
 The generator also checks the result of every statement that returns a `ValidationFlow`, such as a
 `rules.Context` report or a helper method that takes an `IValidationContextReporter`, and stops the

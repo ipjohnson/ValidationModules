@@ -77,6 +77,27 @@ public class LanguagePackFormatterTests
     }
 
     [Fact]
+    public void APacksTemplate_NamesTheFieldByItsDisplayName()
+    {
+        // The label is the property's name in prose whichever template renders it, so a pack's
+        // {field} reads it too, as DataAnnotations' own formatting would.
+        var formatter = new LanguagePackFormatter([
+            new Pack("fr", E("required", "{field} est obligatoire.")),
+        ]);
+        var error = new ValidationError(
+            "postalCode",
+            ValidationCodes.Required,
+            null,
+            new ValidationMessageInfo(ValidationMessageTemplates.Required)
+            {
+                DisplayName = "Postal code",
+            }
+        );
+
+        Assert.Equal("Postal code est obligatoire.", Under("fr", formatter, error));
+    }
+
+    [Fact]
     public void TheFoldedChain_PrefersTheRegionalPack_AndFallsToItsParent()
     {
         var formatter = new LanguagePackFormatter([

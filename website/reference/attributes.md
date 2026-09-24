@@ -3,8 +3,9 @@
 This page describes each attribute in the `ValidationModules.Constraints` namespace. For how the
 attributes fit together, see [Constraint attributes](../guide/constraints).
 
-In the messages below, `{field}` is the last segment of the error's field path. Numbers and dates in
-a message are formatted with the invariant culture.
+In the messages below, `{field}` is the last segment of the error's field path, or the property's
+`[Display(Name)]` label when it has one. Numbers and dates in a message are formatted with the
+invariant culture.
 
 ## Properties every constraint has
 

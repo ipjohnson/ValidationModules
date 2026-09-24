@@ -11,6 +11,13 @@ namespace ValidationModules.Runtime.Tests;
 public class ValidationContextTests
 {
     [Fact]
+    public void TheResolvedFieldNamesFlag_TakesPaddingTheStructAlreadyHad()
+    {
+        // Every descent copies the context, so a field that grew it would cost on every Push.
+        Assert.Equal(32, System.Runtime.CompilerServices.Unsafe.SizeOf<ValidationContext>());
+    }
+
+    [Fact]
     public void Add_RootField_HasNoPathPrefix()
     {
         var result = PetValidator.Instance.Validate(new Pet { Toys = [new Toy { Name = "ball" }] });

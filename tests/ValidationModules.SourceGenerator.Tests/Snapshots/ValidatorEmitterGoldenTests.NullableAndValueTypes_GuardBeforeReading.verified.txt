@@ -55,8 +55,9 @@ public sealed partial class PetValidator : global::ValidationModules.IValidatorF
     {
     }
 
-    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Pet value)
+    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext context, global::Sample.Pet value)
     {
+        var ctx = context.WithResolvedFieldNames();
         if (value.Age is null && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "age", value: value.Age).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;

@@ -66,10 +66,10 @@ These attributes are not compiled, and the generator reports a warning:
 | `[Compare]` | `VM2003` | `Ensure(x.Confirm == x.Password)` in a [rules class](./rule-classes#ensure) |
 | `[EnumDataType]` | `VM2007` | Type the property as the enum and use `[EnumDefined]` |
 
-`[Display(Name = ...)]` is not a check. It supplies `{0}` in an `ErrorMessage`, and it also
-replaces the error's field name, so `[Display(Name = "Postal code")]` reports the field
-`Postal code`. Through a runner, the name can be re-cased. See the warning under
-[Field names](./errors#field-names).
+`[Display(Name = ...)]` is not a check. It names the member in messages, as it does in
+DataAnnotations: `{0}` in an `ErrorMessage` or a resource message, and `{field}` in the default
+messages. It does not change the error's field. `[Display(Name = "Postal code")]` on `PostalCode`
+reports the field `postalCode` with the message `Postal code is required.`
 
 ## Messages
 
@@ -91,7 +91,8 @@ This reports `The nickname must be at most 10 characters.` The code stays `strin
 text is authored, so language packs leave it unchanged.
 
 `ErrorMessageResourceType` with `ErrorMessageResourceName` on a built-in attribute reads the
-resource property each time the message is rendered, without reflection. On a custom
+resource property each time the message is rendered, without reflection. `{0}` in the resource
+text is the display name, as it is in an `ErrorMessage`. On a custom
 `ValidationAttribute`, DataAnnotations resolves the resource with reflection, which trimming can
 break. The generator reports that case as `VM2009`.
 

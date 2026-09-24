@@ -53,8 +53,9 @@ public sealed partial class PetValidator : global::ValidationModules.IValidatorF
     {
     }
 
-    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Pet value)
+    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext context, global::Sample.Pet value)
     {
+        var ctx = context.WithResolvedFieldNames();
         if (string.IsNullOrWhiteSpace(value.PostalCode) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "postal_code", value: value.PostalCode).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;

@@ -74,6 +74,19 @@ public sealed class ValidatorEmitter
     {
         private readonly Dictionary<string, string> _byInitializer = new(StringComparer.Ordinal);
         private readonly List<(string Field, string Initializer)> _fields = new();
+        private readonly string _prefix;
+        private readonly int _seed;
+
+        /// <param name="prefix">Starts every field name.</param>
+        /// <param name="seed">
+        /// The first number after the prefix. A region companion holds one pool per region, and
+        /// each starts where the previous one stopped.
+        /// </param>
+        public MessageInfoPool(string prefix = "_message", int seed = 0)
+        {
+            _prefix = prefix;
+            _seed = seed;
+        }
 
         public IReadOnlyList<(string Field, string Initializer)> Fields => _fields;
 
@@ -84,7 +97,7 @@ public sealed class ValidatorEmitter
                 return existing;
             }
 
-            var name = $"_message{_fields.Count}";
+            var name = $"{_prefix}{_seed + _fields.Count}";
 
             _byInitializer[initializer] = name;
             _fields.Add((name, initializer));
@@ -243,6 +256,7 @@ public sealed class ValidatorEmitter
 
         EmitNestedDependencies(validator, model, graph);
 
+        var memberNamer = MemberNamerFor(validator, model, fieldNamer);
         var body = new StatementBuffer();
         var fast = new StatementBuffer();
         var bodyConditions = new ConditionScope();
@@ -263,7 +277,7 @@ public sealed class ValidatorEmitter
                 fastConditions,
                 dispatchers,
                 failFast,
-                fieldNamer,
+                memberNamer,
                 messageInfos,
                 captureValues
             );
@@ -294,15 +308,18 @@ public sealed class ValidatorEmitter
         // Applied rules own no property, so they run once every property has been walked. Ordering
         // them last rather than at their declaration point is §19.7: they are the only rules whose
         // position in the body says nothing about which field they concern.
+        //
+        // They get the context the validator was given rather than ctx, because an applied rule is
+        // hand-written and its nameof(...) fields are the ones the pass's namer is there to spell.
         foreach (var rule in model.AppliedRules)
         {
             if (failFast)
             {
-                body.If($"{rule}(ref ctx, value).ShouldStop").Return($"{Flow}.Stop");
+                body.If($"{rule}(ref context, value).ShouldStop").Return($"{Flow}.Stop");
             }
             else
             {
-                body.AddIndentedStatement($"{rule}(ref ctx, value)");
+                body.AddIndentedStatement($"{rule}(ref context, value)");
             }
         }
 
@@ -311,8 +328,7 @@ public sealed class ValidatorEmitter
         // wrote for "everything else is fine".
         if (model.ImplementsValidatableObject)
         {
-            var call =
-                $"{DataAnnotations}.ValidateObject(ref ctx, value, {NamerInstance(fieldNamer)})";
+            var call = $"{DataAnnotations}.ValidateObject(ref ctx, value, {memberNamer})";
 
             if (failFast)
             {
@@ -446,9 +462,14 @@ public sealed class ValidatorEmitter
 
         validate.SetReturnType(TypeDefinition.Get("ValidationModules", "ValidationFlow"));
         validate
-            .AddParameter(TypeDefinition.Get("ValidationModules", "ValidationContext"), "ctx")
+            .AddParameter(TypeDefinition.Get("ValidationModules", "ValidationContext"), "context")
             .Modifier = ParameterModifier.Ref;
         validate.AddParameter(TypeRef(model.QualifiedTypeName), "value");
+
+        // Every field name below was resolved at generation time, [JsonPropertyName] included, so
+        // the pass's field namer must not respell it. The flag goes on a copy, because the caller
+        // may hand its own context to a hand-written validator next.
+        validate.Assign("context.WithResolvedFieldNames()").ToVar("ctx");
 
         foreach (var (name, expression) in bodyConditions.Declarations)
         {
@@ -636,6 +657,67 @@ public sealed class ValidatorEmitter
         check.If("!validators[i].IsValid(typed)").Return("false");
         BlankLine(isValid);
         isValid.Return("true");
+    }
+
+    /// <summary>
+    /// What the DataAnnotations bridge spells a <c>ValidationResult</c>'s member names with: the
+    /// policy's shared namer, or a namer of this validator's own when a property's field name is
+    /// not the policy's spelling.
+    /// </summary>
+    /// <remarks>
+    /// A result names members by CLR name. The policy turns <c>GivenName</c> into
+    /// <c>givenName</c>, which is the wrong key for a property the client knows as
+    /// <c>given_name</c>, so the properties with a <c>[JsonPropertyName]</c> are looked up first.
+    /// The table is the model's, filled only for a type that reaches the bridge's member mapping.
+    /// </remarks>
+    private static string MemberNamerFor(
+        ClassDefinition validator,
+        ValidatedTypeModel model,
+        string? fieldNamer
+    )
+    {
+        var policy = NamerInstance(fieldNamer);
+
+        if (model.MemberFieldNames.Count == 0)
+        {
+            return policy;
+        }
+
+        var names = validator.AddClass("MemberFieldNames");
+
+        names.Modifiers = ComponentModifier.Private | ComponentModifier.Sealed;
+        names.Comment = "Spells the CLR member names a DataAnnotations result reports.";
+        names.AddBaseType(TypeDefinition.Get("ValidationModules.Naming", "FieldNamer"));
+
+        var toFieldName = names.AddMethod("ToFieldName");
+
+        toFieldName.Modifiers = ComponentModifier.Public | ComponentModifier.Override;
+        toFieldName.SetReturnType(typeof(string));
+        toFieldName.AddParameter(typeof(string), "clrPropertyName");
+
+        var byName = toFieldName.Switch("clrPropertyName");
+
+        foreach (var entry in model.MemberFieldNames)
+        {
+            byName.AddCase(QuoteString(entry.MemberName)).Return(QuoteString(entry.FieldName));
+        }
+
+        BlankLine(toFieldName);
+        toFieldName.Return($"{policy}.ToFieldName(clrPropertyName)");
+
+        var instance = validator.AddField(
+            TypeDefinition.Get("ValidationModules.Naming", "IValidationFieldNamer"),
+            "_memberFieldNames"
+        );
+
+        instance.Modifiers =
+            ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
+        instance.InitializeValue = new CodeOutputComponent("new MemberFieldNames()")
+        {
+            Indented = false,
+        };
+
+        return "_memberFieldNames";
     }
 
     /// <summary>
@@ -859,7 +941,7 @@ public sealed class ValidatorEmitter
         ConditionScope fastConditions,
         List<string> dispatchers,
         bool failFast,
-        string? fieldNamer,
+        string memberNamer,
         MessageInfoPool messageInfos,
         bool captureValues
     )
@@ -902,7 +984,7 @@ public sealed class ValidatorEmitter
                     constraint,
                     customAttributes,
                     instanceConstraints,
-                    fieldNamer
+                    memberNamer
                 );
 
                 others.Add((constraint, flow, boolean));
@@ -1450,7 +1532,7 @@ public sealed class ValidatorEmitter
         ConstraintModel constraint,
         List<(string, ConstraintModel)> customAttributes,
         List<(string, ConstraintModel)> instanceConstraints,
-        string? fieldNamer
+        string memberNamer
     )
     {
         var fieldLiteral = QuoteString(property.FieldName);
@@ -1522,14 +1604,14 @@ public sealed class ValidatorEmitter
             return (
                 $"{DataAnnotations}.Apply(ref ctx, {accessor}({access}, "
                     + $"{DataAnnotations}.CreateContext(ctx.Services, value, {memberLiteral}, {displayLiteral})), "
-                    + $"{fieldLiteral}, {NamerInstance(fieldNamer)})",
+                    + $"{fieldLiteral}, {memberNamer})",
                 $"{accessor}({access}, {DataAnnotations}.CreateContext(null, value, "
                     + $"{memberLiteral}, {displayLiteral})) is not null"
             );
         }
 
         return (
-            $"{DataAnnotations}.Apply(ref ctx, {accessor}({access}), {fieldLiteral}, {NamerInstance(fieldNamer)})",
+            $"{DataAnnotations}.Apply(ref ctx, {accessor}({access}), {fieldLiteral}, {memberNamer})",
             $"{accessor}({access}) is not null"
         );
     }
@@ -1818,14 +1900,16 @@ public sealed class ValidatorEmitter
         // A resx-backed message wants a per-render template read, which only the structured shape
         // can carry - so it forces the pool path for every kind, parameterless ones included. The
         // baked template is the ordinary default for the kind; it is the constructor's required
-        // fallback and unreached while the provider is set.
+        // fallback and unreached while the provider is set. Its {0} was written against the
+        // DataAnnotations display name, which the info carries because the field is the wire name.
         if (constraint.MessageResourceAccessor is { } accessor && infos is not null)
         {
             var resourceArgs = string.Concat(
                 constraint.MessageResourceArgs.Select(static argument => $", {argument}")
             );
             var suffix =
-                $" {{ Provider = new {MessageProviderType}(static () => {accessor}), DataAnnotationsHoles = true }}";
+                $" {{ Provider = new {MessageProviderType}(static () => {accessor}), DataAnnotationsHoles = true, "
+                + $"DisplayName = {QuoteString(property.DisplayName ?? property.PropertyName)} }}";
 
             return Structured(
                 field,
@@ -1838,16 +1922,28 @@ public sealed class ValidatorEmitter
             );
         }
 
-        return constraint.Kind switch
+        // A [Display(Name)] label rides on the info, so a labelled property takes a hoisted info at
+        // every site, including the parameterless kinds that otherwise share the runtime's
+        // singletons through the helpers.
+        var label = LabelFor(constraint, property);
+
+        if (infos is not null && (label is not null || HasArguments(constraint.Kind)))
         {
-            ConstraintKind.StringLength when infos is not null => Structured(
+            var (template, arguments) = StructuredShape(constraint);
+
+            return Structured(
                 field,
                 constraint,
                 valueAccess,
                 infos,
-                BoundedTemplate(constraint, "StringLength"),
-                BoundedArgs(constraint)
-            ),
+                template,
+                arguments,
+                label is null ? null : $" {{ DisplayName = {QuoteString(label)} }}"
+            );
+        }
+
+        return constraint.Kind switch
+        {
             ConstraintKind.StringLength => Report(
                 field,
                 constraint,
@@ -1855,14 +1951,6 @@ public sealed class ValidatorEmitter
                 Bounds(constraint),
                 property,
                 valueAccess
-            ),
-            ConstraintKind.ItemCount when infos is not null => Structured(
-                field,
-                constraint,
-                valueAccess,
-                infos,
-                BoundedTemplate(constraint, "ItemCount"),
-                BoundedArgs(constraint)
             ),
             ConstraintKind.ItemCount => Report(
                 field,
@@ -1872,15 +1960,7 @@ public sealed class ValidatorEmitter
                 property,
                 valueAccess
             ),
-            ConstraintKind.Range => RangeReport(field, constraint, property, valueAccess, infos),
-            ConstraintKind.MultipleOf when infos is not null => Structured(
-                field,
-                constraint,
-                valueAccess,
-                infos,
-                $"{MessageTemplates}.MultipleOf",
-                $", {constraint.Divisor}"
-            ),
+            ConstraintKind.Range => RangeReport(field, constraint, property, valueAccess),
             ConstraintKind.MultipleOf => Report(
                 field,
                 constraint,
@@ -1905,21 +1985,11 @@ public sealed class ValidatorEmitter
                 property,
                 valueAccess
             ),
-            ConstraintKind.AllowedValues when infos is not null => Structured(
-                field,
-                constraint,
-                valueAccess,
-                infos,
-                constraint.Negated
-                    ? $"{MessageTemplates}.DeniedValues"
-                    : $"{MessageTemplates}.AllowedValues",
-                $", {QuoteString(string.Join(", ", Displays(constraint)))}"
-            ),
             ConstraintKind.AllowedValues => Report(
                 field,
                 constraint,
                 constraint.Negated ? "ReportDeniedValues" : "ReportAllowedValues",
-                $", {QuoteString(string.Join(", ", Displays(constraint)))}",
+                DisplayArguments(constraint),
                 property,
                 valueAccess
             ),
@@ -1956,19 +2026,11 @@ public sealed class ValidatorEmitter
                 property,
                 valueAccess
             ),
-            ConstraintKind.FileExtension when infos is not null => Structured(
-                field,
-                constraint,
-                valueAccess,
-                infos,
-                $"{MessageTemplates}.FileExtension",
-                $", {QuoteString(string.Join(", ", Displays(constraint)))}"
-            ),
             ConstraintKind.FileExtension => Report(
                 field,
                 constraint,
                 "ReportFileExtension",
-                $", {QuoteString(string.Join(", ", Displays(constraint)))}",
+                DisplayArguments(constraint),
                 property,
                 valueAccess
             ),
@@ -1980,34 +2042,15 @@ public sealed class ValidatorEmitter
                 property,
                 valueAccess
             ),
-            // A flags value is a combination, so "must be one of" would be wrong about what the
-            // type accepts. Says which flags exist instead.
-            ConstraintKind.EnumDefined when constraint.FlagsMask is not null && infos is not null =>
-                Structured(
-                    field,
-                    constraint,
-                    valueAccess,
-                    infos,
-                    $"{MessageTemplates}.EnumFlags",
-                    $", {QuoteString(string.Join(", ", Displays(constraint)))}"
-                ),
             ConstraintKind.EnumDefined when constraint.FlagsMask is not null =>
                 $"ctx.Report({field}, "
                     + $"{(constraint.Code is { } flagsCode ? QuoteString(flagsCode) : $"{Codes}.Enum")}, "
-                    + $"{QuoteString($"{Unquote(field)} must be a combination of: {string.Join(", ", Displays(constraint))}.")})",
-            ConstraintKind.EnumDefined when infos is not null => Structured(
-                field,
-                constraint,
-                valueAccess,
-                infos,
-                $"{MessageTemplates}.AllowedValues",
-                $", {QuoteString(string.Join(", ", Displays(constraint)))}"
-            ),
+                    + $"{QuoteString($"{label ?? Unquote(field)} must be a combination of: {string.Join(", ", Displays(constraint))}.")})",
             ConstraintKind.EnumDefined => Report(
                 field,
                 constraint,
                 "ReportAllowedValues",
-                $", {QuoteString(string.Join(", ", Displays(constraint)))}",
+                DisplayArguments(constraint),
                 property,
                 valueAccess
             ),
@@ -2028,6 +2071,77 @@ public sealed class ValidatorEmitter
     }
 
     /// <summary>
+    /// The <c>[Display(Name)]</c> label a report names the field by, or null. A rule that renamed
+    /// its own field reports under a name the label was not written for, and a predicate's message
+    /// names no field.
+    /// </summary>
+    private static string? LabelFor(ConstraintModel constraint, ValidatedPropertyModel property) =>
+        constraint.Field is null && constraint.Kind != ConstraintKind.Predicate
+            ? property.Label
+            : null;
+
+    /// <summary>
+    /// The kinds whose message carries the constraint's own arguments, and so hoists an info at
+    /// every site whether or not the property has a label.
+    /// </summary>
+    private static bool HasArguments(ConstraintKind kind) =>
+        kind
+            is ConstraintKind.StringLength
+                or ConstraintKind.ItemCount
+                or ConstraintKind.Range
+                or ConstraintKind.MultipleOf
+                or ConstraintKind.AllowedValues
+                or ConstraintKind.EnumDefined
+                or ConstraintKind.FileExtension;
+
+    /// <summary>
+    /// The template and the argument list a hoisted info for this constraint is built from, in
+    /// hole order.
+    /// </summary>
+    private static (string Template, string Arguments) StructuredShape(
+        ConstraintModel constraint
+    ) =>
+        constraint.Kind switch
+        {
+            ConstraintKind.StringLength => (
+                BoundedTemplate(constraint, "StringLength"),
+                BoundedArgs(constraint)
+            ),
+            ConstraintKind.ItemCount => (
+                BoundedTemplate(constraint, "ItemCount"),
+                BoundedArgs(constraint)
+            ),
+            ConstraintKind.Range => (RangeTemplate(constraint), RangeArgs(constraint)),
+            ConstraintKind.MultipleOf => (
+                $"{MessageTemplates}.MultipleOf",
+                $", {constraint.Divisor}"
+            ),
+            ConstraintKind.AllowedValues => (
+                constraint.Negated
+                    ? $"{MessageTemplates}.DeniedValues"
+                    : $"{MessageTemplates}.AllowedValues",
+                DisplayArguments(constraint)
+            ),
+            // A flags value is a combination, so "must be one of" would be wrong about what the
+            // type accepts. Says which flags exist instead.
+            ConstraintKind.EnumDefined => (
+                constraint.FlagsMask is not null
+                    ? $"{MessageTemplates}.EnumFlags"
+                    : $"{MessageTemplates}.AllowedValues",
+                DisplayArguments(constraint)
+            ),
+            ConstraintKind.FileExtension => (
+                $"{MessageTemplates}.FileExtension",
+                DisplayArguments(constraint)
+            ),
+            _ => (TemplateFor(constraint), string.Empty),
+        };
+
+    /// <summary>The permitted set as one quoted, comma-joined argument.</summary>
+    private static string DisplayArguments(ConstraintModel constraint) =>
+        $", {QuoteString(string.Join(", ", Displays(constraint)))}";
+
+    /// <summary>
     /// The report call for a range, which has a different message per shape rather than one message
     /// with a bound the author never wrote standing in for the missing side - and, since the
     /// message became data, a different template per exclusivity, so a bound the check treats as
@@ -2037,31 +2151,9 @@ public sealed class ValidatorEmitter
         string field,
         ConstraintModel constraint,
         ValidatedPropertyModel property,
-        string? valueAccess,
-        MessageInfoPool? infos
-    )
-    {
-        if (infos is not null)
-        {
-            var arguments = constraint switch
-            {
-                { Min: { } min, Max: { } max } => $", {min}, {max}",
-                { Min: { } min } => $", {min}",
-                { Max: { } max } => $", {max}",
-                _ => string.Empty,
-            };
-
-            return Structured(
-                field,
-                constraint,
-                valueAccess,
-                infos,
-                RangeTemplate(constraint),
-                arguments
-            );
-        }
-
-        return constraint switch
+        string? valueAccess
+    ) =>
+        constraint switch
         {
             { Min: { } min, Max: { } max } => Report(
                 field,
@@ -2091,7 +2183,16 @@ public sealed class ValidatorEmitter
             // Unreachable: a range with neither bound is VM1102 and never reaches the emitter.
             _ => Report(field, constraint, "ReportRequired", "", property, valueAccess),
         };
-    }
+
+    /// <summary>The info arguments matching <see cref="RangeTemplate"/>'s holes.</summary>
+    private static string RangeArgs(ConstraintModel constraint) =>
+        constraint switch
+        {
+            { Min: { } min, Max: { } max } => $", {min}, {max}",
+            { Min: { } min } => $", {min}",
+            { Max: { } max } => $", {max}",
+            _ => string.Empty,
+        };
 
     private static string Exclusivity(bool exclusive, string parameter) =>
         exclusive ? $", {parameter}: true" : string.Empty;
@@ -2211,8 +2312,9 @@ public sealed class ValidatorEmitter
     /// <summary>
     /// The literal branch: text the author chose rather than text this library owns. Its
     /// substitutions happen here, at generation time, because everything they need is compile-time
-    /// data - <c>{field}</c> is the wire name at this very site, and a DataAnnotations message's
-    /// <c>{0}</c> is the display name the front end already resolved.
+    /// data - <c>{field}</c> is the property's <c>[Display(Name)]</c> label or else the wire name
+    /// at this very site, and a DataAnnotations message's <c>{0}</c> is the display name the front
+    /// end already resolved.
     /// </summary>
     private static string LiteralReport(
         string field,
@@ -2226,7 +2328,10 @@ public sealed class ValidatorEmitter
         var code = constraint.Code is { } custom
             ? QuoteString(custom)
             : CodeConstant(constraint.Kind);
-        var text = constraint.Message!.Replace("{field}", Unquote(field));
+        var text = constraint.Message!.Replace(
+            "{field}",
+            LabelFor(constraint, property) ?? Unquote(field)
+        );
 
         if (constraint.DataAnnotationsMessage)
         {

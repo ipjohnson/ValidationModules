@@ -59,8 +59,9 @@ public sealed partial class AddressValidator : global::ValidationModules.IValida
     {
     }
 
-    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Address value)
+    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext context, global::Sample.Address value)
     {
+        var ctx = context.WithResolvedFieldNames();
         if (string.IsNullOrWhiteSpace(value.PostalCode) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "postalCode", value: value.PostalCode).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
@@ -96,8 +97,9 @@ public sealed partial class LineValidator : global::ValidationModules.IValidator
     {
     }
 
-    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Line value)
+    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext context, global::Sample.Line value)
     {
+        var ctx = context.WithResolvedFieldNames();
         if (string.IsNullOrWhiteSpace(value.Sku) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "sku", value: value.Sku).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
@@ -199,8 +201,9 @@ public sealed partial class OrderValidator : global::ValidationModules.IValidato
 
     private global::ValidationModules.IValidatorFor<global::Sample.Line>[] LinesValidators => _linesValidators ??= new global::ValidationModules.IValidatorFor<global::Sample.Line>[] { new global::Sample.LineValidator() };
 
-    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Order value)
+    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext context, global::Sample.Order value)
     {
+        var ctx = context.WithResolvedFieldNames();
         if (global::Sample.OrderRules_Rules.Describe(ref ctx, value, ShipToValidators, LinesValidators).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;

@@ -142,7 +142,8 @@ public sealed class Parcel
 ```
 
 `Message` is literal text. The one placeholder is `{field}`, which becomes the property's field
-name, here `contactEmail`. Other placeholders, such as `{0}`, are printed as written. A language
+name, here `contactEmail`, or its `[Display(Name)]` label when it has one. Other placeholders, such
+as `{0}`, are printed as written. A language
 pack does not replace a `Message` set on a built-in attribute or on a `CustomConstraintAttribute`.
 The default messages are listed in
 [Messages and languages](./messages#default-messages).

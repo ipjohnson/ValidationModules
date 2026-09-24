@@ -98,7 +98,7 @@ Reports an error when `condition` is `false`. The expression is copied into the 
 written and is not guarded against `null`. Without `field:`, the field is the first member of `x`
 that the condition reads. Without `code:`, the code is derived from the condition, as described in
 [Validation codes](./codes#codes-from-ensure). Without `message:`, the message is the condition's
-text.
+text, with each member of `x` written as its field name.
 
 ### Other members
 

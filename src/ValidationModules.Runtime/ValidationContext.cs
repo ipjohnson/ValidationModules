@@ -54,6 +54,16 @@ public readonly struct ValidationContext : IValidationContextReporter
     /// </summary>
     private readonly int _depth;
 
+    /// <summary>
+    /// Whether a report's field is final as given. Set by <see cref="WithResolvedFieldNames"/> and
+    /// never carried into a descent.
+    /// </summary>
+    /// <remarks>
+    /// Declared beside <see cref="_depth"/> so it takes padding the struct already had rather than
+    /// growing it: every <see cref="Push(string)"/> copies the whole struct.
+    /// </remarks>
+    private readonly bool _resolvedFieldNames;
+
     /// <summary>The stamp this context's own segment was written with; 0 at the root.</summary>
     private readonly long _stamp;
 
@@ -95,14 +105,43 @@ public readonly struct ValidationContext : IValidationContextReporter
         ValidationErrorCollector collector,
         PathSegment[] path,
         int depth,
-        long stamp
+        long stamp,
+        bool resolvedFieldNames = false
     )
     {
         _collector = collector;
         _path = path;
         _depth = depth;
         _stamp = stamp;
+        _resolvedFieldNames = resolvedFieldNames;
     }
+
+    /// <summary>
+    /// A copy of this context at the same position whose reports take field names as final,
+    /// rather than running a bare identifier through the pass's
+    /// <see cref="Naming.IValidationFieldNamer"/>. Generated validators report through one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The generator resolves every field name at build time, from <c>[JsonPropertyName]</c> or
+    /// else the naming policy. A second pass through the namer can only change a name the author
+    /// chose: <c>[JsonPropertyName("GivenName")]</c> became <c>givenName</c> through a runner and
+    /// stayed <c>GivenName</c> without one. A generated validator's own reports, an
+    /// <c>IConstraintFor&lt;T&gt;</c> attribute reporting the field it was handed, and the
+    /// DataAnnotations bridge's mapped member names all carry names of that kind.
+    /// </para>
+    /// <para>
+    /// A descent returns an ordinary context, so a hand-written validator reached through a
+    /// nested property still has its <c>nameof</c> spelled by the namer. Generated code hands a
+    /// <c>rules.Apply</c> method the context it was given, for the same reason.
+    /// </para>
+    /// </remarks>
+    /// <param name="resolved">
+    /// True for a context whose field names are final; false for an ordinary one, which is what a
+    /// rules class hands a facet validator resolved from the container.
+    /// </param>
+    public ValidationContext WithResolvedFieldNames(bool resolved = true) =>
+        new(_collector, _path, _depth, _stamp, resolved);
 
     /// <summary>
     /// The services this validation pass can reach, or null when it was started without any.
@@ -231,7 +270,8 @@ public readonly struct ValidationContext : IValidationContextReporter
     /// Anything carrying a separator or an index - <c>steps[0]</c>, <c>owner.name</c> - was shaped
     /// deliberately and passes through verbatim. So does everything when the pass carries no
     /// services or no registered namer: there is no policy to consult, and guessing one would
-    /// break a project whose wire names are the CLR names.
+    /// break a project whose wire names are the CLR names. So does everything reported through a
+    /// context from <see cref="WithResolvedFieldNames"/>, whose names were resolved at build time.
     /// </para>
     /// <para>
     /// Resolved per report rather than cached, because caching would put a field on the collector
@@ -240,7 +280,7 @@ public readonly struct ValidationContext : IValidationContextReporter
     /// </remarks>
     private string Normalized(string field)
     {
-        if (field.Length == 0 || field.IndexOfAny(FieldShaping) >= 0)
+        if (_resolvedFieldNames || field.Length == 0 || field.IndexOfAny(FieldShaping) >= 0)
         {
             return field;
         }

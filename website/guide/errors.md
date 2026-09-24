@@ -42,8 +42,9 @@ Key application logic and translations on `Code`. The codes of the built-in chec
 
 `Message` renders the default English text each time it is read. A `{field}` in a template becomes
 the last segment of `Field`, so an error at `lines[1].shipTo.postcode` reads
-`postcode is required.` Numbers and dates in a message are formatted with the invariant culture. To
-show messages in another language, use a formatter as described in
+`postcode is required.` A property with `[Display(Name = "Postcode")]` is named by that label
+instead, so its message reads `Postcode is required.` Numbers and dates in a message are formatted
+with the invariant culture. To show messages in another language, use a formatter as described in
 [Messages and languages](./messages).
 
 ## Severity
@@ -61,9 +62,11 @@ from hand-written code such as a validator or an `IConstraintFor<T>` attribute.
 ## Field names
 
 Field names are fixed when the generator runs. By default each member name is written in camelCase,
-so `PostalCode` becomes `postalCode`. A member with `[JsonPropertyName("postal_code")]` or
-`[Display(Name = "postal_code")]` uses that name instead. When a property has both, the one declared
-first wins. The `ValidationModules_FieldNaming` property changes the default for the whole project:
+so `PostalCode` becomes `postalCode`. A member with `[JsonPropertyName("postal_code")]` uses that
+name instead. `[Display(Name = "Postal code")]` does not change the field. It labels the member in
+messages, as it does in DataAnnotations, so the error's `Field` is `postalCode` and its `Message` is
+`Postal code is required.` The `ValidationModules_FieldNaming` property changes the default for the
+whole project:
 
 | Value | `PostalCode` becomes |
 | --- | --- |
@@ -82,23 +85,21 @@ The value is case-sensitive. An unrecognised value means camelCase.
 The registration method also registers an `IValidationFieldNamer` for the same policy:
 `CamelCaseFieldNamer`, `SnakeCaseFieldNamer` or `PascalCaseFieldNamer`, each with a shared
 `Instance`. When a validation pass has a service provider, as it does through `ValidationRunner<T>`
-and in ASP.NET Core, every field name without a `.` or `[` goes through that namer. A hand-written
-report such as `context.Report(nameof(Order.Reference), ...)` then uses the same spelling as the
-generated checks. A pass without a service provider, such as `validator.Validate(value)`, keeps
-field names as written.
+and in ASP.NET Core, a field name that your own validator reports without a `.` or `[` goes through
+that namer. A report such as `context.Report(nameof(Order.Reference), ...)` then uses the same
+spelling as the generated checks. A pass without a service provider, such as
+`validator.Validate(value)`, keeps field names as written.
 
-::: warning
-In this version the namer also changes the names that `[JsonPropertyName]` and `[Display(Name)]`
-supply. With the default camelCase policy, `[JsonPropertyName("GivenName")]` reports `GivenName`
-from `validator.Validate(value)` and `givenName` through a runner. Use names that start with a
-lowercase letter, or set `ValidationModules_FieldNaming` to `PascalCase`, to get the same name from
-both.
-:::
+The generated checks report their final names, so the namer never changes them, and a
+`[JsonPropertyName("GivenName")]` reports `GivenName` with or without a runner. The same holds for
+the member names that `IValidatableObject` and `[CustomValidation]` return: `nameof(GivenName)` is
+reported under the property's field name.
 
 A policy of your own derives from `FieldNamer` and implements `ToFieldName`. Register it before the
-registration method, which keeps a namer that is already registered. Because the pass also sends the
-generated names through it, it must leave a name that is already converted unchanged. `FieldNamer`
-also provides `Combine` and `CombineIndex`, which join a parent path and a field name.
+registration method, which keeps a namer that is already registered. It spells the names your own
+validators report. The generated checks keep the names `ValidationModules_FieldNaming` gave them, so
+a policy of your own should spell a name the way that setting does. `FieldNamer` also provides
+`Combine` and `CombineIndex`, which join a parent path and a field name.
 
 ## Paths
 

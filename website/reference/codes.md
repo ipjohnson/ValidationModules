@@ -32,7 +32,8 @@ The same attributes in `ValidationModules.Constraints` and in
 ## Codes from Ensure
 
 An `Ensure` in a rules class without `code:` gets a code derived from its condition. The members
-are written in snake_case and the operators as words:
+are written in snake_case from their C# names, so a `[JsonPropertyName]` changes the message of an
+`Ensure` and not its code. The operators are written as words:
 
 | Condition | Code |
 | --- | --- |

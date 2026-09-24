@@ -38,6 +38,13 @@ namespace ValidationModules.SourceGenerator.Impl.Models;
 /// need. A type with any region loses the straight-line <c>IsValid</c> - regions carry free-form
 /// computation and reporter calls a boolean path with no collector cannot always project.
 /// </param>
+/// <param name="MemberFieldNames">
+/// The properties whose field name is not the naming policy's spelling of their CLR name, which
+/// means a <c>[JsonPropertyName]</c>. Filled only for a type whose validator hands member names to
+/// the DataAnnotations bridge, through <c>IValidatableObject</c> or <c>[CustomValidation]</c>: a
+/// <c>ValidationResult</c> names members by CLR name, and the policy alone would spell those the
+/// way the client does not.
+/// </param>
 public sealed record ValidatedTypeModel(
     string Namespace,
     string TypeName,
@@ -47,8 +54,13 @@ public sealed record ValidatedTypeModel(
     EquatableArray<string> AppliedRules = default,
     bool IsPublic = true,
     bool ImplementsValidatableObject = false,
-    EquatableArray<RegionModel> Regions = default
+    EquatableArray<RegionModel> Regions = default,
+    EquatableArray<MemberFieldName> MemberFieldNames = default
 ) : IEquatable<ValidatedTypeModel>;
+
+/// <summary>A property's CLR name and the field name the generator resolved for it.</summary>
+public sealed record MemberFieldName(string MemberName, string FieldName)
+    : IEquatable<MemberFieldName>;
 
 /// <summary>
 /// One transcribed rules-class region: where its method lives and which of the validator's
