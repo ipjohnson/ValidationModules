@@ -1948,19 +1948,24 @@ public sealed class AttributeFrontEnd
                 _compilation
             );
 
+            var read = outcome.Constraint;
+
             // [RegularExpression] compiles to the same Regex field an inline [Pattern] does, so it
-            // answers to the same policy.
-            var read = outcome.Constraint is { Kind: ConstraintKind.Pattern, Pattern: { } pattern }
-                ? ApplyPatternPolicy(
-                    outcome.Constraint,
+            // answers to the same timeout check and the same policy.
+            if (read is { Kind: ConstraintKind.Pattern, Pattern: { } pattern })
+            {
+                read = CheckMatchTimeout(read, attribute, member, regularExpression: true);
+                read = ApplyPatternPolicy(
+                    read,
                     member,
                     ValidationDiagnostics.RegularExpressionFix(
                         member.Name,
                         member.ContainingType?.Name,
-                        pattern
+                        pattern,
+                        read.MatchTimeoutMilliseconds > 0 ? read.MatchTimeoutMilliseconds : null
                     )
-                )
-                : outcome.Constraint;
+                );
+            }
 
             if (read is not null)
             {
@@ -2010,8 +2015,8 @@ public sealed class AttributeFrontEnd
     }
 
     /// <summary>
-    /// Resolves the reference form's member and reports the settings it ignores, or applies the
-    /// policy to the inline form.
+    /// Resolves the reference form's member and reports the settings it ignores, or checks the
+    /// inline form's timeout and applies the policy to it.
     /// </summary>
     private ConstraintModel? ResolvePattern(
         ConstraintModel constraint,
@@ -2089,10 +2094,54 @@ public sealed class AttributeFrontEnd
         }
 
         return ApplyPatternPolicy(
-            constraint,
+            CheckMatchTimeout(constraint, attribute, owner, regularExpression: false),
             owner,
             ValidationDiagnostics.InlinePatternFix(owner.Name, owner.ContainingType?.Name)
         );
+    }
+
+    /// <summary>
+    /// Reports a match timeout that the <c>Regex</c> constructor rejects, and returns the
+    /// constraint with the attribute's default timeout in its place.
+    /// </summary>
+    /// <remarks>
+    /// Read off the attribute rather than the constraint, because an explicit zero on
+    /// <c>[Pattern]</c> reads the same as an unset timeout there, and the constructor rejects zero.
+    /// </remarks>
+    private ConstraintModel CheckMatchTimeout(
+        ConstraintModel constraint,
+        AttributeData attribute,
+        ISymbol owner,
+        bool regularExpression
+    )
+    {
+        var setting = regularExpression ? "MatchTimeoutInMilliseconds" : "MatchTimeoutMilliseconds";
+
+        if (
+            NativeConstraintReader.Named(attribute, setting) is not int timeout
+            || TypeFacts.IsValidMatchTimeout(timeout)
+        )
+        {
+            return constraint;
+        }
+
+        Report(
+            ValidationDiagnostics.InvalidMatchTimeout,
+            owner,
+            owner.Name,
+            regularExpression ? "[RegularExpression]" : "[Pattern]",
+            $"{setting} = {timeout}",
+            regularExpression
+                ? ValidationDiagnostics.RegularExpressionTimeoutTail
+                : ValidationDiagnostics.PatternTimeoutTail
+        );
+
+        return constraint with
+        {
+            MatchTimeoutMilliseconds = regularExpression
+                ? DataAnnotationsConstraintReader.DefaultMatchTimeoutMilliseconds
+                : 0,
+        };
     }
 
     /// <summary>

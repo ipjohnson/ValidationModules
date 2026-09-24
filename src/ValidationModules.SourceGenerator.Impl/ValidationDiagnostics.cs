@@ -14,7 +14,7 @@ namespace ValidationModules.SourceGenerator.Impl;
 /// <list type="bullet">
 /// <item><description>VM1xxx - constraint declarations, from <c>AttributeFrontEnd</c>.
 /// VM10xx a constraint on a member that cannot carry it, VM11xx arguments that do not resolve,
-/// VM12xx checks that cannot fail or would mislead, VM13xx patterns under the AOT policy,
+/// VM12xx checks that cannot fail or would mislead, VM13xx patterns and their settings,
 /// VM14xx When/Unless conditions, VM15xx nesting and descent, VM16xx custom constraint
 /// shapes.</description></item>
 /// <item><description>VM2xxx - the DataAnnotations bridge, keyed on the vocabulary rather than
@@ -342,12 +342,21 @@ public static class ValidationDiagnostics
         + $"[Pattern(typeof({type}Patterns), nameof({type}Patterns.{member}))]";
 
     /// <summary>
-    /// VM1301's fix for a DataAnnotations <c>[RegularExpression]</c>, with its expression written
-    /// out the way <c>[Pattern]</c> needs it to keep the same meaning.
+    /// VM1301's fix for a DataAnnotations <c>[RegularExpression]</c>, with its expression and its
+    /// timeout written out the way <c>[Pattern]</c> needs them to keep the same meaning.
     /// </summary>
-    public static string RegularExpressionFix(string member, string? type, string pattern) =>
-        $"Declare it as {GeneratedRegexDeclaration(@"\A(?:" + pattern + @")?\z", 0, null, null)}, "
-        + "anchored because [RegularExpression] matches the whole value and optional because it "
+    /// <param name="matchTimeoutMilliseconds">
+    /// The timeout the attribute compiles with, or null for none.
+    /// </param>
+    public static string RegularExpressionFix(
+        string member,
+        string? type,
+        string pattern,
+        int? matchTimeoutMilliseconds
+    ) =>
+        "Declare it as "
+        + GeneratedRegexDeclaration(@"\A(?:" + pattern + @")?\z", 0, matchTimeoutMilliseconds, null)
+        + ", anchored because [RegularExpression] matches the whole value and optional because it "
         + "passes an empty one. Then replace [RegularExpression] with "
         + $"[Pattern(typeof({type}Patterns), nameof({type}Patterns.{member}))]";
 
@@ -484,6 +493,35 @@ public static class ValidationDiagnostics
         (512, "CultureInvariant"),
         (1024, "NonBacktracking"),
     };
+
+    /// <summary>
+    /// A match timeout that the <c>Regex</c> constructor rejects, set on an inline
+    /// <c>[Pattern]</c> or a DataAnnotations <c>[RegularExpression]</c>.
+    /// </summary>
+    /// <remarks>
+    /// Passed on, the value would throw from the validator's static <c>Regex</c> field when the
+    /// type initializes, and every validation of the type would fail. It is ignored instead, and
+    /// the attribute's default applies. Warning rather than error, because the pattern is still
+    /// enforced and only the timeout is lost. The tail differs by attribute because the defaults
+    /// differ. See <see cref="PatternTimeoutTail"/> and <see cref="RegularExpressionTimeoutTail"/>.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor InvalidMatchTimeout = Descriptor(
+        "VM1304",
+        "Match timeout is not one the Regex constructor accepts",
+        "{1} on '{0}' sets '{2}', which is not a match timeout the Regex constructor accepts, so "
+            + "it is ignored. {3}",
+        DiagnosticSeverity.Warning
+    );
+
+    /// <summary>VM1304's tail for an inline <c>[Pattern]</c>.</summary>
+    public const string PatternTimeoutTail =
+        "The pattern has no timeout. Set it from 1 to 2147483646 milliseconds, or remove it for no "
+        + "timeout";
+
+    /// <summary>VM1304's tail for a DataAnnotations <c>[RegularExpression]</c>.</summary>
+    public const string RegularExpressionTimeoutTail =
+        "The pattern keeps the DataAnnotations default of 2000 milliseconds. Set it from 1 to "
+        + "2147483646 milliseconds, or -1 for no timeout";
 
     public static readonly DiagnosticDescriptor ConditionMemberNotFound = Descriptor(
         "VM1401",
