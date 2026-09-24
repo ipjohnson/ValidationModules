@@ -1,4 +1,3 @@
-using System.Text;
 using CSharpAuthor;
 using Microsoft.CodeAnalysis.CSharp;
 using ValidationModules.SourceGenerator.Impl.Models;
@@ -29,7 +28,9 @@ public sealed class LanguagePackEmitter
         "IValidationLanguagePack"
     );
 
-    private const string Pair = "global::System.Collections.Generic.KeyValuePair<string, string>";
+    private static readonly ITypeDefinition Pair = TypeDefinition.Get(
+        typeof(KeyValuePair<string, string>)
+    );
 
     /// <param name="model">The pack to emit, already read and validated.</param>
     /// <param name="assemblyNamespace">The sanitized assembly namespace the class lands in.</param>
@@ -57,17 +58,11 @@ public sealed class LanguagePackEmitter
             + "shape keys - never wording, which is why rewording a default breaks no pack.";
         pack.AddBaseType(PackInterface);
 
-        var entries = pack.AddField(
-            TypeDefinition.Get(typeof(KeyValuePair<string, string>)).MakeArray(),
-            "Entries"
-        );
+        var entries = pack.AddField(Pair.MakeArray(), "Entries");
 
         entries.Modifiers =
             ComponentModifier.Private | ComponentModifier.Static | ComponentModifier.Readonly;
-        entries.InitializeValue = new CodeOutputComponent(EntriesInitializer(model))
-        {
-            Indented = false,
-        };
+        entries.InitializeValue = new EntriesInitializer(model) { Indented = false };
 
         var culture = pack.AddProperty(typeof(string), "Culture");
 
@@ -91,25 +86,37 @@ public sealed class LanguagePackEmitter
     /// The array initializer, one pair per line: readable in the emitted file, and every string a
     /// literal so identical keys across an assembly's packs share one heap entry.
     /// </summary>
-    private static string EntriesInitializer(LanguagePackModel model)
+    /// <remarks>
+    /// Written through the output context, so the braces follow the file's brace style and the
+    /// indentation follows the field it initializes. The closing brace is written without
+    /// <c>CloseScope</c>, which ends the line and would leave the field's semicolon on a line of
+    /// its own.
+    /// </remarks>
+    private sealed class EntriesInitializer : BaseOutputComponent
     {
-        var builder = new StringBuilder();
+        private readonly LanguagePackModel _model;
 
-        builder.Append("new ").Append(Pair).Append("[]\n        {\n");
+        public EntriesInitializer(LanguagePackModel model) => _model = model;
 
-        foreach (var entry in model.Entries)
+        protected override void WriteComponentOutput(IOutputContext output)
         {
-            builder
-                .Append("            new(")
-                .Append(Literal(entry.Key))
-                .Append(", ")
-                .Append(Literal(entry.Template))
-                .Append("),\n");
+            output.Write("new ");
+            output.Write(Pair);
+            output.WriteLine("[]");
+            output.OpenScope();
+
+            foreach (var entry in _model.Entries)
+            {
+                output.WriteIndent("new(");
+                output.Write(Literal(entry.Key));
+                output.Write(", ");
+                output.Write(Literal(entry.Template));
+                output.WriteLine("),");
+            }
+
+            output.DecrementIndent();
+            output.WriteIndent("}");
         }
-
-        builder.Append("        }");
-
-        return builder.ToString();
     }
 
     private static string Literal(string value) => SymbolDisplay.FormatLiteral(value, quote: true);
