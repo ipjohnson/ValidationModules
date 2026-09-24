@@ -176,18 +176,19 @@ static string[] DefaultFiles(string root) =>
 
 // A file-based app builds into a temp directory, so AppContext.BaseDirectory says nothing about
 // where the repository is, and CallerFilePath is no better: a deterministic build rewrites it to
-// /_/. Both callers run from the working tree, so walk up from there.
+// /_/. Both callers run from the working tree, so walk up from there. In a worktree, .git is a
+// file that points at the repository rather than a directory, so either one marks the root.
 static string FindRepositoryRoot()
 {
     var directory = new DirectoryInfo(Environment.CurrentDirectory);
 
-    while (directory is not null && !Directory.Exists(Path.Combine(directory.FullName, ".git")))
+    while (directory is not null && !Path.Exists(Path.Combine(directory.FullName, ".git")))
     {
         directory = directory.Parent;
     }
 
     return directory?.FullName
         ?? throw new InvalidOperationException(
-            $"No .git directory at or above {Environment.CurrentDirectory}."
+            $"No .git directory or file at or above {Environment.CurrentDirectory}."
         );
 }

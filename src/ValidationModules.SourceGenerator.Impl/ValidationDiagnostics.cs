@@ -14,7 +14,7 @@ namespace ValidationModules.SourceGenerator.Impl;
 /// <list type="bullet">
 /// <item><description>VM1xxx - constraint declarations, from <c>AttributeFrontEnd</c>.
 /// VM10xx a constraint on a member that cannot carry it, VM11xx arguments that do not resolve,
-/// VM12xx checks that cannot fail or would mislead, VM13xx patterns under the AOT policy,
+/// VM12xx checks that cannot fail or would mislead, VM13xx patterns and their settings,
 /// VM14xx When/Unless conditions, VM15xx nesting and descent, VM16xx custom constraint
 /// shapes.</description></item>
 /// <item><description>VM2xxx - the DataAnnotations bridge, keyed on the vocabulary rather than
@@ -168,15 +168,43 @@ public static class ValidationDiagnostics
     );
 
     /// <summary>
-    /// Two types would get validators with one name in one namespace. A nested <c>Order.Item</c>
-    /// and a top-level <c>Order_Item</c> both get <c>Order_ItemValidator</c>.
+    /// Two types would get generated classes with one name in one namespace. A nested
+    /// <c>Order.Item</c> and a top-level <c>Order_Item</c> both get <c>Order_ItemValidator</c>. A
+    /// nested rules class <c>Order.ItemRules</c> and a top-level <c>Order_ItemRules</c> both get
+    /// the companion <c>Order_ItemRules_Rules</c>.
     /// </summary>
-    public static readonly DiagnosticDescriptor ValidatorNameCollision = Descriptor(
+    public static readonly DiagnosticDescriptor GeneratedNameCollision = Descriptor(
         "VM1013",
-        "Two types would get validators with the same name",
-        "'{0}' and '{1}' would both get a validator named {2}, so neither is generated. Rename one "
-            + "of the two types, or move it to another namespace",
+        "Two types would get generated classes with the same name",
+        "'{0}' and '{1}' would both get a generated class named {2}, so {3}. Rename one of the two "
+            + "types, or move it to another namespace",
         DiagnosticSeverity.Error
+    );
+
+    /// <summary>VM1013's consequence when the two classes are validators.</summary>
+    public const string NeitherValidatorGenerated = "neither validator is generated";
+
+    /// <summary>VM1013's consequence when the two classes are rules-class companions.</summary>
+    public const string NeitherRulesClassCompiled = "neither rules class is compiled";
+
+    /// <summary>
+    /// A constraint on an indexer. The attribute usage admits a property, and an indexer is one,
+    /// so the compiler accepts it. The walk leaves indexers out, because the validator has no
+    /// argument to read one with, so the constraint is never evaluated.
+    /// </summary>
+    /// <remarks>
+    /// Warning rather than error, for VM1011's reason. Unlike VM1011 there is no declaration to
+    /// print, because the values an indexer returns are held wherever it reads them from.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor ConstraintOnIndexer = Descriptor(
+        "VM1014",
+        "Constraint on an indexer has no effect",
+        "'{0}' on '{1}' is never evaluated, because an indexer takes an argument and the validator "
+            + "has none to pass. Constraints apply to instance properties that take no arguments. "
+            + "Remove [{0}]. To check the values the indexer returns, expose the collection it reads "
+            + "from as an instance property, and check its elements with [ValidateNested] or "
+            + "rules.Each",
+        DiagnosticSeverity.Warning
     );
 
     /// <summary>
@@ -334,12 +362,21 @@ public static class ValidationDiagnostics
         + $"[Pattern(typeof({type}Patterns), nameof({type}Patterns.{member}))]";
 
     /// <summary>
-    /// VM1301's fix for a DataAnnotations <c>[RegularExpression]</c>, with its expression written
-    /// out the way <c>[Pattern]</c> needs it to keep the same meaning.
+    /// VM1301's fix for a DataAnnotations <c>[RegularExpression]</c>, with its expression and its
+    /// timeout written out the way <c>[Pattern]</c> needs them to keep the same meaning.
     /// </summary>
-    public static string RegularExpressionFix(string member, string? type, string pattern) =>
-        $"Declare it as {GeneratedRegexDeclaration(@"\A(?:" + pattern + @")?\z", 0, null, null)}, "
-        + "anchored because [RegularExpression] matches the whole value and optional because it "
+    /// <param name="matchTimeoutMilliseconds">
+    /// The timeout the attribute compiles with, or null for none.
+    /// </param>
+    public static string RegularExpressionFix(
+        string member,
+        string? type,
+        string pattern,
+        int? matchTimeoutMilliseconds
+    ) =>
+        "Declare it as "
+        + GeneratedRegexDeclaration(@"\A(?:" + pattern + @")?\z", 0, matchTimeoutMilliseconds, null)
+        + ", anchored because [RegularExpression] matches the whole value and optional because it "
         + "passes an empty one. Then replace [RegularExpression] with "
         + $"[Pattern(typeof({type}Patterns), nameof({type}Patterns.{member}))]";
 
@@ -476,6 +513,35 @@ public static class ValidationDiagnostics
         (512, "CultureInvariant"),
         (1024, "NonBacktracking"),
     };
+
+    /// <summary>
+    /// A match timeout that the <c>Regex</c> constructor rejects, set on an inline
+    /// <c>[Pattern]</c> or a DataAnnotations <c>[RegularExpression]</c>.
+    /// </summary>
+    /// <remarks>
+    /// Passed on, the value would throw from the validator's static <c>Regex</c> field when the
+    /// type initializes, and every validation of the type would fail. It is ignored instead, and
+    /// the attribute's default applies. Warning rather than error, because the pattern is still
+    /// enforced and only the timeout is lost. The tail differs by attribute because the defaults
+    /// differ. See <see cref="PatternTimeoutTail"/> and <see cref="RegularExpressionTimeoutTail"/>.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor InvalidMatchTimeout = Descriptor(
+        "VM1304",
+        "Match timeout is not one the Regex constructor accepts",
+        "{1} on '{0}' sets '{2}', which is not a match timeout the Regex constructor accepts, so "
+            + "it is ignored. {3}",
+        DiagnosticSeverity.Warning
+    );
+
+    /// <summary>VM1304's tail for an inline <c>[Pattern]</c>.</summary>
+    public const string PatternTimeoutTail =
+        "The pattern has no timeout. Set it from 1 to 2147483646 milliseconds, or remove it for no "
+        + "timeout";
+
+    /// <summary>VM1304's tail for a DataAnnotations <c>[RegularExpression]</c>.</summary>
+    public const string RegularExpressionTimeoutTail =
+        "The pattern keeps the DataAnnotations default of 2000 milliseconds. Set it from 1 to "
+        + "2147483646 milliseconds, or -1 for no timeout";
 
     public static readonly DiagnosticDescriptor ConditionMemberNotFound = Descriptor(
         "VM1401",
@@ -995,6 +1061,31 @@ public static class ValidationDiagnostics
     );
 
     /// <summary>
+    /// A generic fragment called with a type argument its expansion cannot name: an anonymous
+    /// type, or a type that is private or protected in the type that declares it.
+    /// </summary>
+    /// <remarks>
+    /// Each expansion is a method of its own in the fragment's container, with every mention of a
+    /// type parameter written as the type it stands for. A type the container cannot name failed
+    /// as an error inside that generated file. The tail says why the type cannot be named and what
+    /// to pass instead.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor FragmentTypeArgumentNotNameable = Descriptor(
+        "VM3009",
+        "Fragment type argument cannot be named in generated code",
+        "'{0}' is called with {1} = '{2}', which its generated expansion cannot name. {3}",
+        DiagnosticSeverity.Error
+    );
+
+    /// <summary>VM3009's tail for an anonymous type.</summary>
+    public const string AnonymousTypeArgumentTail =
+        "An anonymous type has no name. Pass a value of a named type, such as a record, instead";
+
+    /// <summary>VM3009's tail for a type that is private or protected.</summary>
+    public static string InaccessibleTypeArgumentTail(string type) =>
+        $"'{type}' is not accessible outside the type that declares it. Make it internal";
+
+    /// <summary>
     /// The selector overload matrix used to make this unwritable; values cannot, because a
     /// non-nullable value type converts to its nullable form implicitly.
     /// </summary>
@@ -1128,6 +1219,63 @@ public static class ValidationDiagnostics
             + "remove it",
         DiagnosticSeverity.Warning
     );
+
+    /// <summary>
+    /// <c>As</c> over the subject's own type, including a generic fragment's <c>As&lt;T&gt;</c>
+    /// over its subject parameter.
+    /// </summary>
+    /// <remarks>
+    /// The facet's validator is the one the call runs in. It would validate the same value and run
+    /// the same region again, until the stack overflows. Nothing is emitted for the call.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor FacetIsTheSubjectType = Descriptor(
+        "VM3110",
+        "As names the subject's own type",
+        "As<{0}> names the subject's own type, so the validator for '{0}' would call itself and "
+            + "never return. Remove the call, because the rules for '{0}' already run here, or "
+            + "name an interface or base type of '{0}' instead",
+        DiagnosticSeverity.Error
+    );
+
+    /// <summary>
+    /// A rules-class descent into a type that is not sealed. The region walks the validators for
+    /// the declared type, so the rules declared for a more derived type do not run.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// VM1503 asks the same question of <c>[ValidateNested]</c>, and its answer is a
+    /// <c>Polymorphism</c> argument, which <c>Nested</c> and <c>Each</c> do not take. So this one
+    /// is reported at the call instead. Its advice is what the author of a rules class can do:
+    /// seal the type, move the descent to the attribute, or keep the declared type's rules and
+    /// suppress the warning.
+    /// </para>
+    /// <para>
+    /// Warning, as VM1503 is, and keyed on the same local fact: whether the target is sealed, never
+    /// which subtypes are visible from here.
+    /// </para>
+    /// </remarks>
+    public static readonly DiagnosticDescriptor RulesDescentIntoUnsealedType = Descriptor(
+        "VM3111",
+        "Rules-class descent reaches a type that is not sealed",
+        "'{0}' is not sealed, so a value of a more derived type may reach '{1}'. {2} checks it "
+            + "against the rules for '{0}' only. {3}. To keep checking '{0}' only, suppress this "
+            + "warning at the call",
+        DiagnosticSeverity.Warning
+    );
+
+    /// <summary>
+    /// VM3111's fix. Sealing is offered only for a class that can be sealed, which an abstract
+    /// class and an interface cannot.
+    /// </summary>
+    public static string RulesDescentIntoUnsealedTypeFix(
+        bool sealable,
+        string type,
+        string member,
+        string construct
+    ) =>
+        (sealable ? $"Seal '{type}', or replace" : "Replace")
+        + $" {construct} with [ValidateNested(Polymorphism.CompileTime)] on '{member}' to run the "
+        + "rules for its actual type";
 
     public static readonly DiagnosticDescriptor LanguagePackUnreadable = Descriptor(
         "VM4001",

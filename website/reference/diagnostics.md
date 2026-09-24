@@ -74,7 +74,9 @@ constraint is dropped. To check the elements of a collection of strings, use `Ea
 
 **Severity:** Error
 
-`[MultipleOf]` is on a property that is not a number.
+`[MultipleOf]` is on a property that is not a number, or a rules-class `MultipleOf` chain is on a
+number the check cannot divide, such as `nint`. The check reads integral, `decimal`, `double` and
+`float` values.
 
 ### VM1005
 
@@ -129,10 +131,22 @@ the constraint is never evaluated. Declare the member as an instance property, a
 
 **Severity:** Error
 
-Two types in one namespace would get validators with the same name, so neither validator is
-generated. The validator for a type declared inside another type carries the containing types'
-names, joined with underscores. A nested `Order.Item` and a top-level `Order_Item` therefore both get
-`Order_ItemValidator`. Rename one of the two types, or move it to another namespace.
+Two types in one namespace would get generated classes with the same name. A class generated for a
+type declared inside another type carries the containing types' names, joined with underscores. A
+nested `Order.Item` and a top-level `Order_Item` therefore both get the validator
+`Order_ItemValidator`, and neither validator is generated. The body of a rules class is generated
+into a class named after the rules class with `_Rules` appended. A nested rules class
+`Order.ItemRules` and a top-level `Order_ItemRules` therefore both get `Order_ItemRules_Rules`, and
+neither rules class is compiled. Rename one of the two types, or move it to another namespace.
+
+### VM1014
+
+**Severity:** Warning
+
+A constraint is on an indexer. An indexer takes an argument and the validator has none to pass, so
+the constraint is never evaluated. Remove it. To check the values the indexer returns, expose the
+collection it reads from as an instance property, and check its elements with `[ValidateNested]` or
+with `Each` in a [rules class](../guide/rule-classes#nested-objects-and-collections).
 
 ### VM1101
 
@@ -141,10 +155,10 @@ names, joined with underscores. A nested `Order.Item` and a top-level `Order_Ite
 No value can satisfy a constraint's bounds, so the constraint can never pass. That is a minimum
 greater than its maximum on `[StringLength]`, `[ItemCount]` or `[Range]`, or equal `[Range]` bounds
 with `ExclusiveMin` or `ExclusiveMax` set. The DataAnnotations `[StringLength]`, `[Length]` and
-`[Range]` are checked too, and so is `rules.Range` in a rules class when both bounds are constants.
-`[Range]` bounds are compared as the property's type, so date bounds compare as instants. The
-positional argument of `[StringLength]` is the maximum, and the first argument of `[ItemCount]` is
-the minimum.
+`[Range]` are checked too. So are `Range`, `Length` and `Count` in a rules class, chained or not,
+when both bounds are constants. `[Range]` bounds are compared as the property's type, so date bounds
+compare as instants. The positional argument of `[StringLength]` is the maximum, and the first
+argument of `[ItemCount]` is the minimum.
 
 ### VM1102
 
@@ -223,7 +237,8 @@ parsed at run time, which adds the regular expression interpreter to a Native AO
 the expression with `[GeneratedRegex]` and point at it with `[Pattern(typeof(T), nameof(T.Member))]`,
 or set `ValidationModules_PatternPolicy` to `Allow`. For `[RegularExpression]`, the message prints
 the expression anchored and made optional, because that attribute matches the whole value and
-passes an empty string. See [Patterns](../guide/patterns).
+passes an empty string. It also prints the attribute's match timeout, which is 2000 milliseconds
+unless `MatchTimeoutInMilliseconds` sets another. See [Patterns](../guide/patterns).
 
 ### VM1302
 
@@ -243,6 +258,18 @@ referenced regex was built with its own options and timeout, so the setting has 
 it and declare it on the `[GeneratedRegex]` instead. The message prints that declaration, merged
 into the member's own `[GeneratedRegex]` when it has one. `RegexOptions.Compiled` is reported here
 rather than as `VM1302`, and only needs removing.
+
+### VM1304
+
+**Severity:** Warning
+
+An inline `[Pattern]` sets `MatchTimeoutMilliseconds`, or a DataAnnotations `[RegularExpression]`
+sets `MatchTimeoutInMilliseconds`, to a value the `Regex` constructor rejects. That is zero, a
+negative number other than `-1`, or `int.MaxValue`. The generator ignores the value, so the
+validator does not throw when it loads. The `[Pattern]` then has no timeout, and the
+`[RegularExpression]` keeps the DataAnnotations default of 2000 milliseconds. Set a value from 1 to
+2147483646 milliseconds. For no timeout, remove `MatchTimeoutMilliseconds` from `[Pattern]`, or set
+`MatchTimeoutInMilliseconds` to `-1` on `[RegularExpression]`.
 
 ### VM1401
 
@@ -290,6 +317,7 @@ class. The descent is dropped. Wrap the inner collection in a type that has its 
 The type of a `[ValidateNested]` property is not sealed, so a value of a derived type may
 reach it, and no `Polymorphism` is given. Seal the type, or pass `Polymorphism.DeclaredOnly`,
 `Polymorphism.CompileTime` or `Polymorphism.Runtime`. See [Subtypes](../guide/nesting#subtypes).
+`Nested` and `Each` in a rules class report `VM3111` instead.
 
 ### VM1504
 
@@ -502,6 +530,16 @@ lambda whose whole body calls one static method, such as `() => SkuPattern()`, i
 method. A lambda that does anything else, a delegate stored in a field, and an instance method are
 reported here. The message gives the method-group form to write.
 
+### VM3009
+
+**Severity:** Error
+
+A generic fragment is called with a type argument that its generated expansion cannot name. The
+generator expands the fragment once for each set of type arguments, and writes each use of a type
+parameter, such as `typeof(T)`, as the type it stands for. An anonymous type has no name, and a
+`private` or `protected` type cannot be reached from the generated code. Pass a value of a named
+type, such as a record, or make the type `internal`.
+
 ### VM3101
 
 **Severity:** Error
@@ -562,6 +600,26 @@ the rule as an `Ensure`.
 An `AllowedValues` in a rules class, or an `[AllowedValues]` attribute from either vocabulary,
 lists no values. An empty set checks nothing, so the rule is dropped. List the permitted values, or
 remove the rule. An empty `[DeniedValues]` is not reported, because it denies nothing.
+
+### VM3110
+
+**Severity:** Error
+
+`As<TFacet>` names the type of `x` itself. The validator for that type would call itself until the
+stack overflows. The same applies to `As<T>` in a generic fragment, where `T` is the type of the
+fragment's subject. Remove the call, because the rules for the type already run, or name an
+interface or base type of `x` instead.
+
+### VM3111
+
+**Severity:** Warning
+
+`Nested` or `Each` in a rules class descends into a type that is not sealed, so a value of a more
+derived type may reach it. The descent runs only the validators for the declared type, so rules
+declared for the more derived type do not run. `Nested` and `Each` take no `Polymorphism`. To run
+the rules for the actual type, replace the descent with `[ValidateNested(Polymorphism.CompileTime)]`
+on the property. A class that nothing derives from can be sealed instead. To keep checking the
+declared type only, suppress the warning at the call. See [Subtypes](../guide/nesting#subtypes).
 
 ## Language packs
 
@@ -625,8 +683,10 @@ one, so fix it first.
 The generator failed while writing code. The build fails so that a validator cannot go
 missing without notice. The message names the stage and the exception. Please
 [report it](https://github.com/ipjohnson/ValidationModules/issues). Until it is fixed, change the
-construct the message names. One known cause is two types in one namespace whose names differ only
-in case.
+construct the message names. One known cause is a language pack whose `culture` holds a character
+that a generated file name cannot contain, such as `:`. Another is a nested `Order.Shared` and a
+top-level `Order_Shared` that both declare fragments, because both fragment containers are named
+`Order_Shared_Fragments`.
 
 ### VM5003
 

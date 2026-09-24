@@ -176,7 +176,7 @@ public sealed class RulesFrontEnd
                     target,
                     rulesClass,
                     describe.Parameters[1].Name,
-                    writer.Lines,
+                    writer.Body,
                     writer.Dependencies,
                     writer.AppliedRules,
                     writer.Fields,
@@ -277,6 +277,24 @@ public sealed class RulesFrontEnd
             return null;
         }
 
+        // Checked before the method is registered, so a type the container cannot name never
+        // reaches a generated file.
+        for (var i = 0; i < definition.TypeParameters.Length; i++)
+        {
+            if (Unnameable(constructed.TypeArguments[i], compilation) is { } reason)
+            {
+                Report(
+                    ValidationDiagnostics.FragmentTypeArgumentNotNameable,
+                    site,
+                    $"{definition.ContainingType.Name}.{definition.Name}",
+                    definition.TypeParameters[i].Name,
+                    constructed.TypeArguments[i].ToDisplayString(),
+                    reason
+                );
+                return null;
+            }
+        }
+
         // The fragment's own parameter roles, resolved on the constructed symbol so a generic
         // fragment's subject parameter is already typed as the concrete target.
         IParameterSymbol? builder = null;
@@ -353,13 +371,39 @@ public sealed class RulesFrontEnd
             writer.ReadExpressionStatement(arrow.Expression, depth: 0, report: arrow.Expression);
         }
 
-        method.BodyLines.AddRange(writer.Lines);
+        method.Body.AddRange(writer.Body);
         method.Fields.AddRange(writer.Fields);
         method.MessageInfos.AddRange(writer.MessageInfos);
         method.Facets.AddRange(writer.Facets);
 
         return FailedSince(before) ? null : method;
     }
+
+    /// <summary>
+    /// Why a fragment container cannot name a type, or null when it can. An anonymous type has no
+    /// name, and a private or protected type is out of the container's reach.
+    /// </summary>
+    private static string? Unnameable(ITypeSymbol type, Compilation compilation) =>
+        type switch
+        {
+            { TypeKind: TypeKind.Error } => null,
+            { IsAnonymousType: true } => ValidationDiagnostics.AnonymousTypeArgumentTail,
+            IArrayTypeSymbol array => Unnameable(array.ElementType, compilation),
+            INamedTypeSymbol named
+                when !compilation.IsSymbolAccessibleWithin(
+                    named.OriginalDefinition,
+                    compilation.Assembly
+                ) => ValidationDiagnostics.InaccessibleTypeArgumentTail(
+                named.OriginalDefinition.ToDisplayString()
+            ),
+            INamedTypeSymbol named => (
+                named.ContainingType is { } outer ? Unnameable(outer, compilation) : null
+            )
+                ?? named
+                    .TypeArguments.Select(argument => Unnameable(argument, compilation))
+                    .FirstOrDefault(reason => reason is not null),
+            _ => null,
+        };
 
     /// <summary>
     /// The concrete type each of a fragment's type parameters stands for in one instantiation.
@@ -420,7 +464,7 @@ public sealed class RulesFrontEnd
     }
 
     /// <summary>
-    /// Walks one body - a Describe or a fragment - producing the region's statement lines.
+    /// Walks one body - a Describe or a fragment - producing the region's statements.
     /// </summary>
     private sealed class RegionWriter
     {
@@ -444,7 +488,11 @@ public sealed class RulesFrontEnd
         /// </summary>
         private readonly IReadOnlyDictionary<ITypeParameterSymbol, ITypeSymbol> _typeArguments;
 
-        private readonly List<string> _lines = new();
+        private readonly List<RegionStatement> _body = new();
+
+        /// <summary>The blocks opened and not yet closed, innermost on top.</summary>
+        private readonly Stack<RegionBlock> _open = new();
+
         private readonly List<RegionDependency> _dependencies = new();
         private readonly List<string> _applied = new();
         private readonly List<CompanionField> _fields = new();
@@ -516,7 +564,7 @@ public sealed class RulesFrontEnd
                 );
         }
 
-        public IReadOnlyList<string> Lines => _lines;
+        public IReadOnlyList<RegionStatement> Body => _body;
 
         public IReadOnlyList<RegionDependency> Dependencies => _dependencies;
 
@@ -666,7 +714,7 @@ public sealed class RulesFrontEnd
                         return;
                     }
 
-                    Transcribe(declaration, depth);
+                    Transcribe(declaration);
                     return;
 
                 case IfStatementSyntax conditional:
@@ -681,7 +729,7 @@ public sealed class RulesFrontEnd
                     ReadLoop(
                         loop,
                         loop.Statement,
-                        $"for ({Rewrite(loop.Declaration?.ToString() ?? loop.Initializers.ToString())}; {RewriteOptional(loop.Condition)}; {Rewrite(loop.Incrementors.ToString())})",
+                        $"for ({(loop.Declaration is { } declared ? Rewrite(declared) : string.Join(", ", loop.Initializers.Select(Rewrite)))}; {RewriteOptional(loop.Condition)}; {string.Join(", ", loop.Incrementors.Select(Rewrite))})",
                         depth
                     );
                     return;
@@ -690,7 +738,7 @@ public sealed class RulesFrontEnd
                     ReadLoop(
                         each,
                         each.Statement,
-                        $"foreach ({each.Type} {each.Identifier.Text} in {Rewrite(each.Expression)})",
+                        $"foreach ({Rewrite(each.Type)} {each.Identifier.Text} in {Rewrite(each.Expression)})",
                         depth
                     );
                     return;
@@ -700,15 +748,15 @@ public sealed class RulesFrontEnd
                     return;
 
                 case DoStatementSyntax done:
-                    Line(depth, "do {");
+                    Open("do");
                     ReadEmbedded(done.Statement, depth + 1, inLoop: true);
-                    Line(depth, $"}} while ({Rewrite(done.Condition)});");
+                    Close(footer: $"while ({Rewrite(done.Condition)});");
                     return;
 
                 case ReturnStatementSyntax { Expression: null }:
                     // The region is a method, so an early return ends this rules class's checks and
                     // nothing else. Continue rather than Stop: the author is done, not failing.
-                    Line(depth, $"return {Flow}.Continue;");
+                    Statement($"return {Flow}.Continue;");
                     return;
 
                 case ReturnStatementSyntax:
@@ -721,23 +769,23 @@ public sealed class RulesFrontEnd
                     return;
 
                 case BlockSyntax nested:
-                    Line(depth, "{");
+                    Open(null);
                     ReadBlock(nested.Statements, depth + 1, inLoop, inSwitch);
-                    Line(depth, "}");
+                    Close();
                     return;
 
                 case LocalFunctionStatementSyntax function:
                     GuardIslandsInside(function, "a local function");
-                    Transcribe(function, depth);
+                    Transcribe(function);
                     return;
 
                 case BreakStatementSyntax when inLoop || inSwitch:
                 case ContinueStatementSyntax when inLoop:
-                    Transcribe(statement, depth);
+                    Transcribe(statement);
                     return;
 
                 case ThrowStatementSyntax:
-                    Transcribe(statement, depth);
+                    Transcribe(statement);
                     return;
 
                 case EmptyStatementSyntax:
@@ -774,13 +822,11 @@ public sealed class RulesFrontEnd
 
                     if (reported?.ToDisplayString() == "ValidationModules.ValidationFlow")
                     {
-                        Line(depth, $"if (({Rewrite(expression)}).ShouldStop) {{");
-                        Line(depth + 1, $"return {Flow}.Stop;");
-                        Line(depth, "}");
+                        StopIf($"({Rewrite(expression)}).ShouldStop");
                     }
                     else
                     {
-                        Line(depth, $"{Rewrite(expression)};");
+                        Statement($"{Rewrite(expression)};");
                     }
 
                     return;
@@ -814,7 +860,7 @@ public sealed class RulesFrontEnd
                     return;
                 }
 
-                ReadFragmentCall(fragmentCall!, method!, depth);
+                ReadFragmentCall(fragmentCall!, method!);
                 return;
             }
 
@@ -838,13 +884,11 @@ public sealed class RulesFrontEnd
 
             if (type?.ToDisplayString() == "ValidationModules.ValidationFlow")
             {
-                Line(depth, $"if (({Rewrite(expression)}).ShouldStop) {{");
-                Line(depth + 1, $"return {Flow}.Stop;");
-                Line(depth, "}");
+                StopIf($"({Rewrite(expression)}).ShouldStop");
                 return;
             }
 
-            Line(depth, $"{Rewrite(expression)};");
+            Statement($"{Rewrite(expression)};");
         }
 
         private void ReadIf(
@@ -854,8 +898,9 @@ public sealed class RulesFrontEnd
             bool inSwitch = false
         )
         {
-            Line(depth, $"if ({Rewrite(conditional.Condition)}) {{");
+            Open($"if ({Rewrite(conditional.Condition)})");
             ReadEmbedded(conditional.Statement, depth + 1, inLoop, inSwitch);
+            Close();
 
             var alternative = conditional.Else;
 
@@ -863,44 +908,44 @@ public sealed class RulesFrontEnd
             {
                 if (alternative.Statement is IfStatementSyntax chained)
                 {
-                    Line(depth, $"}} else if ({Rewrite(chained.Condition)}) {{");
+                    Open($"else if ({Rewrite(chained.Condition)})");
                     ReadEmbedded(chained.Statement, depth + 1, inLoop, inSwitch);
+                    Close();
                     alternative = chained.Else;
                 }
                 else
                 {
-                    Line(depth, "} else {");
+                    Open("else");
                     ReadEmbedded(alternative.Statement, depth + 1, inLoop, inSwitch);
+                    Close();
                     alternative = null;
                 }
             }
-
-            Line(depth, "}");
         }
 
         private void ReadSwitch(SwitchStatementSyntax dispatch, int depth, bool inLoop)
         {
-            Line(depth, $"switch ({Rewrite(dispatch.Expression)}) {{");
+            Open($"switch ({Rewrite(dispatch.Expression)})");
 
             foreach (var section in dispatch.Sections)
             {
-                foreach (var label in section.Labels)
-                {
-                    Line(depth + 1, Rewrite(label).TrimEnd());
-                }
-
+                Open(
+                    string.Join("\n", section.Labels.Select(label => Rewrite(label).TrimEnd())),
+                    braced: false
+                );
                 ReadBlock(section.Statements, depth + 2, inLoop, inSwitch: true);
+                Close();
             }
 
-            Line(depth, "}");
+            Close();
         }
 
         private void ReadLoop(StatementSyntax loop, StatementSyntax body, string header, int depth)
         {
             _ = loop;
-            Line(depth, $"{header} {{");
+            Open(header);
             ReadEmbedded(body, depth + 1, inLoop: true);
-            Line(depth, "}");
+            Close();
         }
 
         private void ReadEmbedded(
@@ -1192,11 +1237,21 @@ public sealed class RulesFrontEnd
                 _ => type,
             };
 
-        private void ReadFragmentCall(
-            InvocationExpressionSyntax call,
-            IMethodSymbol method,
-            int depth
-        )
+        /// <summary>
+        /// The enclosing fragment's type parameter a name refers to, with the type it stands for
+        /// in this expansion, or null when the name refers to anything else.
+        /// </summary>
+        private (ITypeParameterSymbol Parameter, ITypeSymbol Concrete)? TypeArgumentOf(
+            IdentifierNameSyntax name
+        ) =>
+            _typeArguments.Count > 0
+            && !name.IsVar
+            && _model.GetSymbolInfo(name).Symbol is ITypeParameterSymbol parameter
+            && _typeArguments.TryGetValue(parameter, out var concrete)
+                ? (parameter, concrete)
+                : null;
+
+        private void ReadFragmentCall(InvocationExpressionSyntax call, IMethodSymbol method)
         {
             var fragment = _owner.FragmentFor(method, _target, _compilation, call, _expanding);
 
@@ -1268,12 +1323,9 @@ public sealed class RulesFrontEnd
                 ? string.Empty
                 : fragment.Definition.ContainingType.ContainingNamespace.ToDisplayString() + ".";
 
-            Line(
-                depth,
-                $"if (global::{ns}{GeneratedNames.FragmentContainer(fragment.Definition.ContainingType)}.{fragment.Name}({string.Join(", ", rendered)}).ShouldStop) {{"
+            StopIf(
+                $"global::{ns}{GeneratedNames.FragmentContainer(fragment.Definition.ContainingType)}.{fragment.Name}({string.Join(", ", rendered)}).ShouldStop"
             );
-            Line(depth + 1, $"return {Flow}.Stop;");
-            Line(depth, "}");
         }
 
         private static string FormatDefault(IParameterSymbol parameter) =>
@@ -1350,29 +1402,24 @@ public sealed class RulesFrontEnd
             }
         }
 
-        private void Transcribe(StatementSyntax statement, int depth)
-        {
-            foreach (var line in Rewrite(statement).Split('\n'))
-            {
-                Line(depth, line.TrimEnd('\r'));
-            }
-        }
+        private void Transcribe(StatementSyntax statement) =>
+            RegionSyntax.Add(Current, (StatementSyntax)Rewritten(statement));
 
         private string RewriteOptional(ExpressionSyntax? expression) =>
             expression is null ? string.Empty : Rewrite(expression);
 
-        private string Rewrite(SyntaxNode node)
+        private string Rewrite(SyntaxNode node) =>
+            Rewritten(node).NormalizeWhitespace("    ", "\n").ToFullString();
+
+        private SyntaxNode Rewritten(SyntaxNode node)
         {
             GuardBuilderInside(node);
             CheckAccessibility(node);
 
             var rewriter = new TranscriptionRewriter(this);
-            var rewritten = rewriter.Visit(node);
 
-            return rewritten.NormalizeWhitespace("    ", "\n").ToFullString();
+            return rewriter.Visit(node);
         }
-
-        private string Rewrite(string text) => text;
 
         /// <summary>
         /// Invariant 1: inside transcribed code the builder may appear only under
@@ -1663,15 +1710,31 @@ public sealed class RulesFrontEnd
             return formatted + suffix;
         }
 
-        private void Line(int depth, string text)
-        {
-            if (text.Length == 0)
-            {
-                _lines.Add(string.Empty);
-                return;
-            }
+        /// <summary>Where the next statement goes: the innermost open block, or the body.</summary>
+        private List<RegionStatement> Current => _open.Count == 0 ? _body : _open.Peek().Body;
 
-            _lines.Add(new string(' ', depth * 4) + text);
+        private void Statement(string text) => Current.Add(new RegionCode(text));
+
+        /// <summary>
+        /// Adds a block under <paramref name="header"/>. The statements after it go into the block
+        /// until <see cref="Close"/>.
+        /// </summary>
+        private void Open(string? header, bool braced = true)
+        {
+            var block = new RegionBlock(header, braced);
+
+            Current.Add(block);
+            _open.Push(block);
+        }
+
+        private void Close(string? footer = null) => _open.Pop().Footer = footer;
+
+        /// <summary>The check every island and every flow-typed call ends in.</summary>
+        private void StopIf(string condition)
+        {
+            Open($"if ({condition})");
+            Statement($"return {Flow}.Stop;");
+            Close();
         }
 
         /// <summary>
@@ -2257,9 +2320,10 @@ public sealed class RulesFrontEnd
             /// <c>rules.As&lt;TFacet&gt;(x)</c>: validate the subject as one of its facets. One
             /// spelling, two bindings - a facet generated in this compilation binds statically
             /// through a lazily-built validator cached on the companion; a facet from a referenced
-            /// assembly resolves the closed <c>IValidatorFor&lt;TFacet&gt;</c> through the pass's
-            /// services, and a missing registration throws naming the module to compose. The path
-            /// does not push; suppression shares the collector as everywhere.
+            /// assembly resolves every registered <c>IValidatorFor&lt;TFacet&gt;</c> through the
+            /// pass's services and runs them in registration order, and none registered throws
+            /// naming the module to compose. The path does not push; suppression shares the
+            /// collector as everywhere.
             /// </summary>
             private bool ReadFacet(
                 InvocationExpressionSyntax call,
@@ -2284,11 +2348,23 @@ public sealed class RulesFrontEnd
                     return false;
                 }
 
+                // Substituted first, so a generic fragment's As<T> over its own subject parameter is
+                // compared as the type it was expanded for.
                 if (
                     method.TypeArguments.Length != 1
-                    || method.TypeArguments[0] is not INamedTypeSymbol facet
+                    || _writer.Substituted(method.TypeArguments[0]) is not INamedTypeSymbol facet
                 )
                 {
+                    return false;
+                }
+
+                if (SymbolEqualityComparer.Default.Equals(facet, _writer._target))
+                {
+                    _writer._owner.Report(
+                        ValidationDiagnostics.FacetIsTheSubjectType,
+                        call,
+                        facet.Name
+                    );
                     return false;
                 }
 
@@ -2324,12 +2400,9 @@ public sealed class RulesFrontEnd
                     var validator = $"global::{ns}{GeneratedNames.Validator(facet)}";
                     var field = _writer.CompanionField(validator);
 
-                    _writer.Line(
-                        _depth,
-                        $"if (({field} ??= new {validator}()).Validate(ref ctx, {subject}).ShouldStop) {{"
+                    _writer.StopIf(
+                        $"({field} ??= new {validator}()).Validate(ref ctx, {subject}).ShouldStop"
                     );
-                    _writer.Line(_depth + 1, $"return {Flow}.Stop;");
-                    _writer.Line(_depth, "}");
 
                     return true;
                 }
@@ -2339,7 +2412,9 @@ public sealed class RulesFrontEnd
                 // exception message can name the module because the generator knows the facet's
                 // assembly and the Add{Assembly}Validators convention.
                 var service = $"global::ValidationModules.IValidatorFor<{facetQualified}>";
-                var local = $"facet{_writer._locals++}";
+                var registered = $"global::System.Collections.Generic.IEnumerable<{service}>";
+                var n = _writer._locals++;
+                var local = $"facet{n}";
                 var assembly = facet.ContainingAssembly.Name;
                 var module = $"Add{ModuleIdentifier(assembly)}Validators";
                 var message = SymbolDisplay.FormatLiteral(
@@ -2348,21 +2423,31 @@ public sealed class RulesFrontEnd
                     quote: true
                 );
 
-                _writer.Line(
-                    _depth,
-                    $"var {local} = ({service}?)ctx.Services?.GetService(typeof({service})) ?? "
-                        + $"throw new global::System.InvalidOperationException({message});"
+                // Every registration, in registration order, as ValidationRunner<T> composes them.
+                // The array the container returns is used as it is rather than copied.
+                _writer.Statement(
+                    $"var {local}Registered = ctx.Services?.GetService(typeof({registered})) as "
+                        + $"{registered} ?? global::System.Array.Empty<{service}>();"
                 );
+                _writer.Statement(
+                    $"var {local} = {local}Registered as {service}[] ?? "
+                        + $"global::System.Linq.Enumerable.ToArray({local}Registered);"
+                );
+                _writer.Open($"if ({local}.Length == 0)");
+                _writer.Statement(
+                    $"throw new global::System.InvalidOperationException({message});"
+                );
+                _writer.Close();
+                _writer.Open($"for (var vi{n} = 0; vi{n} < {local}.Length; vi{n}++)");
 
                 // An ordinary context rather than ctx: the container may hand back a hand-written
-                // validator, whose nameof(...) fields the pass's namer is there to spell.
-                _writer.Line(_depth, $"var {local}Context = ctx.WithResolvedFieldNames(false);");
-                _writer.Line(
-                    _depth,
-                    $"if ({local}.Validate(ref {local}Context, {subject}).ShouldStop) {{"
+                // validator, whose nameof(...) fields the pass's namer is there to spell. A fresh
+                // one per validator, as the runner gives each of its validators.
+                _writer.Statement($"var {local}Context = ctx.WithResolvedFieldNames(false);");
+                _writer.StopIf(
+                    $"{local}[vi{n}].Validate(ref {local}Context, {subject}).ShouldStop"
                 );
-                _writer.Line(_depth + 1, $"return {Flow}.Stop;");
-                _writer.Line(_depth, "}");
+                _writer.Close();
 
                 return true;
             }
@@ -2571,12 +2656,9 @@ public sealed class RulesFrontEnd
                 // replaces it; the derived wording belongs to the library and stays replaceable.
                 var report = explicitMessage is null ? "Report" : "ReportAuthored";
 
-                _writer.Line(
-                    _depth,
-                    $"if (!({_writer.Rewrite(condition)}) && ctx.{report}({Quote(field)}, {code}, {Quote(message)}{severity}).ShouldStop) {{"
+                _writer.StopIf(
+                    $"!({_writer.Rewrite(condition)}) && ctx.{report}({Quote(field)}, {code}, {Quote(message)}{severity}).ShouldStop"
                 );
-                _writer.Line(_depth + 1, $"return {Flow}.Stop;");
-                _writer.Line(_depth, "}");
 
                 return true;
             }
@@ -2593,7 +2675,7 @@ public sealed class RulesFrontEnd
                     if (_constraints.Count > 0 || _descents.Count > 0)
                     {
                         missing = _writer.MissingLocal(facts.PropertyName);
-                        _writer.Line(_depth, $"var {missing} = {test};");
+                        _writer.Statement($"var {missing} = {test};");
                         test = missing;
                     }
 
@@ -2604,9 +2686,7 @@ public sealed class RulesFrontEnd
                         infos: InfosFor(required, facts)
                     );
 
-                    _writer.Line(_depth, $"if ({test} && {report}.ShouldStop) {{");
-                    _writer.Line(_depth + 1, $"return {Flow}.Stop;");
-                    _writer.Line(_depth, "}");
+                    _writer.StopIf($"{test} && {report}.ShouldStop");
                 }
 
                 foreach (var constraint in _constraints)
@@ -2644,9 +2724,7 @@ public sealed class RulesFrontEnd
                             ? test
                             : $"!{missing} && ({test})";
 
-                    _writer.Line(_depth, $"if ({ValidatorEmitter.Conjoin(condition, report)}) {{");
-                    _writer.Line(_depth + 1, $"return {Flow}.Stop;");
-                    _writer.Line(_depth, "}");
+                    _writer.StopIf(ValidatorEmitter.Conjoin(condition, report));
                 }
 
                 if (
@@ -2705,12 +2783,13 @@ public sealed class RulesFrontEnd
                     default
                 );
 
-                _writer.Line(_depth, $"if ({guard}{access} is {{ }} {items}) {{");
-                _writer.Line(
-                    _depth + 1,
-                    $"for (var {index} = 0; {index} < {items}.{collection.CountAccessor}; {index}++) {{"
+                var present = ValidatorEmitter.PresentPattern(collection.MissingWhenDefault);
+
+                _writer.Open($"if ({guard}{access} is {present} {items})");
+                _writer.Open(
+                    $"for (var {index} = 0; {index} < {items}.{collection.CountAccessor}; {index}++)"
                 );
-                _writer.Line(_depth + 2, $"var {element} = {items}[{index}];");
+                _writer.Statement($"var {element} = {items}[{index}];");
 
                 foreach (var constraint in _elementConstraints)
                 {
@@ -2733,13 +2812,11 @@ public sealed class RulesFrontEnd
                         elementFacts
                     );
 
-                    _writer.Line(_depth + 2, $"if ({ValidatorEmitter.Conjoin(test, report)}) {{");
-                    _writer.Line(_depth + 3, $"return {Flow}.Stop;");
-                    _writer.Line(_depth + 2, "}");
+                    _writer.StopIf(ValidatorEmitter.Conjoin(test, report));
                 }
 
-                _writer.Line(_depth + 1, "}");
-                _writer.Line(_depth, "}");
+                _writer.Close();
+                _writer.Close();
             }
 
             private void EmitDescent(
@@ -2786,6 +2863,29 @@ public sealed class RulesFrontEnd
                     return;
                 }
 
+                // The walk below runs the validators for the declared type only, and a rules-class
+                // descent has no Polymorphism to ask for more.
+                if (
+                    (elements ? TypeFacts.ElementTypeOf(property.Type) : Unwrap(property.Type))
+                        is { } target
+                    && AttributeFrontEnd.CanHaveSubtypes(target)
+                )
+                {
+                    _writer._owner.Report(
+                        ValidationDiagnostics.RulesDescentIntoUnsealedType,
+                        site,
+                        target.Name,
+                        property.Name,
+                        construct,
+                        ValidationDiagnostics.RulesDescentIntoUnsealedTypeFix(
+                            target is { TypeKind: TypeKind.Class, IsAbstract: false },
+                            target.Name,
+                            property.Name,
+                            construct
+                        )
+                    );
+                }
+
                 var n = _writer._locals++;
                 var access = value.ToString();
                 var guard = missing is null ? string.Empty : $"!{missing} && ";
@@ -2794,49 +2894,42 @@ public sealed class RulesFrontEnd
                 {
                     var items = $"items{n}";
                     var index = $"i{n}";
-
-                    _writer.Line(_depth, $"if ({guard}{access} is {{ }} {items}) {{");
-                    _writer.Line(
-                        _depth + 1,
-                        $"for (var {index} = 0; {index} < {items}.{dependency.CountAccessor}; {index}++) {{"
+                    var present = ValidatorEmitter.PresentPattern(
+                        TypeFacts.IsMissingWhenDefault(property.Type)
                     );
-                    _writer.Line(_depth + 2, $"var element{n} = {items}[{index}];");
-                    _writer.Line(_depth + 2, $"if (element{n} is not null) {{");
-                    _writer.Line(
-                        _depth + 3,
+
+                    _writer.Open($"if ({guard}{access} is {present} {items})");
+                    _writer.Open(
+                        $"for (var {index} = 0; {index} < {items}.{dependency.CountAccessor}; {index}++)"
+                    );
+                    _writer.Statement($"var element{n} = {items}[{index}];");
+                    _writer.Open($"if (element{n} is not null)");
+                    _writer.Statement(
                         $"var elementCtx{n} = ctx.PushIndex({Quote(field)}, {index});"
                     );
-                    _writer.Line(
-                        _depth + 3,
-                        $"for (var vi{n} = 0; vi{n} < {dependency.ParameterName}.Length; vi{n}++) {{"
+                    _writer.Open(
+                        $"for (var vi{n} = 0; vi{n} < {dependency.ParameterName}.Length; vi{n}++)"
                     );
-                    _writer.Line(
-                        _depth + 4,
-                        $"if ({dependency.ParameterName}[vi{n}].Validate(ref elementCtx{n}, element{n}).ShouldStop) {{"
+                    _writer.StopIf(
+                        $"{dependency.ParameterName}[vi{n}].Validate(ref elementCtx{n}, element{n}).ShouldStop"
                     );
-                    _writer.Line(_depth + 5, $"return {Flow}.Stop;");
-                    _writer.Line(_depth + 4, "}");
-                    _writer.Line(_depth + 3, "}");
-                    _writer.Line(_depth + 2, "}");
-                    _writer.Line(_depth + 1, "}");
-                    _writer.Line(_depth, "}");
+                    _writer.Close();
+                    _writer.Close();
+                    _writer.Close();
+                    _writer.Close();
                 }
                 else
                 {
-                    _writer.Line(_depth, $"if ({guard}{access} is {{ }} nested{n}) {{");
-                    _writer.Line(_depth + 1, $"var ctx{n} = ctx.Push({Quote(field)});");
-                    _writer.Line(
-                        _depth + 1,
-                        $"for (var vi{n} = 0; vi{n} < {dependency.ParameterName}.Length; vi{n}++) {{"
+                    _writer.Open($"if ({guard}{access} is {{ }} nested{n})");
+                    _writer.Statement($"var ctx{n} = ctx.Push({Quote(field)});");
+                    _writer.Open(
+                        $"for (var vi{n} = 0; vi{n} < {dependency.ParameterName}.Length; vi{n}++)"
                     );
-                    _writer.Line(
-                        _depth + 2,
-                        $"if ({dependency.ParameterName}[vi{n}].Validate(ref ctx{n}, nested{n}).ShouldStop) {{"
+                    _writer.StopIf(
+                        $"{dependency.ParameterName}[vi{n}].Validate(ref ctx{n}, nested{n}).ShouldStop"
                     );
-                    _writer.Line(_depth + 3, $"return {Flow}.Stop;");
-                    _writer.Line(_depth + 2, "}");
-                    _writer.Line(_depth + 1, "}");
-                    _writer.Line(_depth, "}");
+                    _writer.Close();
+                    _writer.Close();
                 }
             }
 
@@ -2870,7 +2963,8 @@ public sealed class RulesFrontEnd
                     default,
                     Label: labelled && path is { Count: > 0 }
                         ? _writer.LabelOf(path[path.Count - 1])
-                        : null
+                        : null,
+                    MissingWhenDefault: type is not null && TypeFacts.IsMissingWhenDefault(type)
                 );
             }
 
@@ -2890,16 +2984,12 @@ public sealed class RulesFrontEnd
             ) =>
                 name switch
                 {
-                    "Length" => new ConstraintModel(
+                    "Length" => LengthOrCountConstraint(
                         ConstraintKind.StringLength,
-                        Min: Bound(arguments, "min", "0"),
-                        Max: Bound(arguments, "max", int.MaxValue.ToString())
+                        arguments,
+                        call
                     ),
-                    "Count" => new ConstraintModel(
-                        ConstraintKind.ItemCount,
-                        Min: Bound(arguments, "min", "0"),
-                        Max: Bound(arguments, "max", int.MaxValue.ToString())
-                    ),
+                    "Count" => LengthOrCountConstraint(ConstraintKind.ItemCount, arguments, call),
                     "Range" => RangeConstraint(arguments, call),
                     "RangeAtLeast" => new ConstraintModel(
                         ConstraintKind.Range,
@@ -2916,10 +3006,11 @@ public sealed class RulesFrontEnd
 
             /// <summary>
             /// <c>MultipleOf</c>, with its divisor in the denomination the check runs in - the one
-            /// <c>[MultipleOf]</c> produces. The overload the call bound to decides it: the long
-            /// and decimal overloads divide with <c>%</c>, and the double overload's check takes a
-            /// decimal divisor, so a constant goes through <see cref="MultipleOfReader"/> exactly as
-            /// an attribute's does, and anything else is converted where the check reads it.
+            /// <c>[MultipleOf]</c> produces. The divisor's type in the overload the call bound to
+            /// decides it: an integral or decimal divisor divides with <c>%</c>, and a double or
+            /// float one's check takes a decimal divisor, so a constant goes through
+            /// <see cref="MultipleOfReader"/> exactly as an attribute's does, and anything else is
+            /// converted where the check reads it.
             /// </summary>
             private bool ReadMultipleOf(
                 InvocationExpressionSyntax call,
@@ -2927,11 +3018,11 @@ public sealed class RulesFrontEnd
                 IReadOnlyDictionary<string, ExpressionSyntax> arguments
             )
             {
+                // The bound method's own parameters, because they carry the generic overloads'
+                // type argument where the definition has only TValue.
                 if (
                     !arguments.TryGetValue("divisor", out var divisor)
-                    || (method.ReducedFrom ?? method).Parameters.FirstOrDefault(parameter =>
-                        parameter.Name == "divisor"
-                    )
+                    || method.Parameters.FirstOrDefault(parameter => parameter.Name == "divisor")
                         is not { } declared
                 )
                 {
@@ -2945,7 +3036,24 @@ public sealed class RulesFrontEnd
                 }
 
                 var member = _facts?.PropertyName ?? _access ?? "the value";
-                var floating = declared.Type.SpecialType == SpecialType.System_Double;
+
+                // The generic overloads take any INumber<T>, which includes types such as nint
+                // that the check has no divisor form for.
+                if (!MultipleOfReader.IsSupported(declared.Type))
+                {
+                    _writer._owner.Report(
+                        ValidationDiagnostics.MultipleOfOnUnsupportedType,
+                        call,
+                        member,
+                        declared.Type.ToDisplayString()
+                    );
+                    return false;
+                }
+
+                var floating =
+                    declared.Type.SpecialType
+                    is SpecialType.System_Double
+                        or SpecialType.System_Single;
                 string rendered;
                 var decimalDomain = floating;
 
@@ -3011,10 +3119,44 @@ public sealed class RulesFrontEnd
             }
 
             /// <summary>
-            /// <c>Range</c>, with the check <c>[Range]</c> gets for inverted bounds. Only constant
-            /// bounds are compared, because a bound computed at run time has no value here.
+            /// <c>Length</c> or <c>Count</c>, with the check <c>[StringLength]</c> and
+            /// <c>[ItemCount]</c> get for inverted bounds.
             /// </summary>
+            private ConstraintModel LengthOrCountConstraint(
+                ConstraintKind kind,
+                IReadOnlyDictionary<string, ExpressionSyntax> arguments,
+                InvocationExpressionSyntax call
+            )
+            {
+                ReportInvertedBounds(arguments, call);
+
+                return new ConstraintModel(
+                    kind,
+                    Min: Bound(arguments, "min", "0"),
+                    Max: Bound(arguments, "max", int.MaxValue.ToString())
+                );
+            }
+
+            /// <summary><c>Range</c>, with the check <c>[Range]</c> gets for inverted bounds.</summary>
             private ConstraintModel RangeConstraint(
+                IReadOnlyDictionary<string, ExpressionSyntax> arguments,
+                InvocationExpressionSyntax call
+            )
+            {
+                ReportInvertedBounds(arguments, call);
+
+                return new ConstraintModel(
+                    ConstraintKind.Range,
+                    Min: OptionalBound(arguments, "min"),
+                    Max: OptionalBound(arguments, "max")
+                );
+            }
+
+            /// <summary>
+            /// Reports a minimum above the maximum as VM1101. Only constant bounds are compared,
+            /// because a bound computed at run time has no value here.
+            /// </summary>
+            private void ReportInvertedBounds(
                 IReadOnlyDictionary<string, ExpressionSyntax> arguments,
                 InvocationExpressionSyntax call
             )
@@ -3035,12 +3177,6 @@ public sealed class RulesFrontEnd
                         ValidationDiagnostics.InvertedBoundsFix(min.ToString(), max.ToString())
                     );
                 }
-
-                return new ConstraintModel(
-                    ConstraintKind.Range,
-                    Min: OptionalBound(arguments, "min"),
-                    Max: OptionalBound(arguments, "max")
-                );
             }
 
             /// <summary>
@@ -3616,10 +3752,24 @@ public sealed class RulesFrontEnd
         /// answers for them: <c>nameof</c> through the subject becomes the wire path,
         /// <c>rules.Context</c> becomes the live context, and a bare reference to the rules class's
         /// own statics is qualified - the companion is a different class, so the name has lost its
-        /// scope (the lifted-predicate precedent).
+        /// scope (the lifted-predicate precedent). An expansion of a generic fragment is not
+        /// generic, so each mention of the fragment's type parameter is written as the type it
+        /// stands for in that expansion.
         /// </summary>
         private sealed class TranscriptionRewriter : CSharpSyntaxRewriter
         {
+            private static readonly SymbolDisplayFormat Annotated =
+                SymbolDisplayFormat.FullyQualifiedFormat.AddMiscellaneousOptions(
+                    SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier
+                );
+
+            /// <summary>
+            /// A type where only a plain one is accepted. See <see cref="TakesPlainType"/>.
+            /// </summary>
+            private static readonly SymbolDisplayFormat Plain = Annotated.AddMiscellaneousOptions(
+                SymbolDisplayMiscellaneousOptions.ExpandValueTuple
+            );
+
             private readonly RegionWriter _writer;
 
             public TranscriptionRewriter(RegionWriter writer) => _writer = writer;
@@ -3638,7 +3788,48 @@ public sealed class RulesFrontEnd
                     );
                 }
 
+                // C# evaluates nameof(T) to the type parameter's own name, whatever type it stands
+                // for, so every expansion gets that name.
+                if (
+                    node.Expression is IdentifierNameSyntax { Identifier.Text: "nameof" }
+                    && node.ArgumentList.Arguments.Count == 1
+                    && node.ArgumentList.Arguments[0].Expression is IdentifierNameSyntax named
+                    && _writer.TypeArgumentOf(named) is { } typeArgument
+                )
+                {
+                    return SyntaxFactory.ParseExpression(
+                        SymbolDisplay.FormatLiteral(typeArgument.Parameter.Name, quote: true)
+                    );
+                }
+
                 return base.VisitInvocationExpression(node);
+            }
+
+            /// <summary>
+            /// <c>T?</c> over a type parameter without the <c>struct</c> constraint means
+            /// <c>T</c> itself when a value type stands for it. Written as <c>int?</c> it would be
+            /// <c>Nullable&lt;int&gt;</c>, which is another type.
+            /// </summary>
+            public override SyntaxNode? VisitNullableType(NullableTypeSyntax node)
+            {
+                if (
+                    node.ElementType is IdentifierNameSyntax element
+                    && _writer.TypeArgumentOf(element)
+                        is { Parameter.HasValueTypeConstraint: false } typeArgument
+                )
+                {
+                    var concrete = typeArgument
+                        .Concrete.WithNullableAnnotation(NullableAnnotation.NotAnnotated)
+                        .ToDisplayString(Annotated);
+
+                    return SyntaxFactory
+                        .ParseTypeName(
+                            typeArgument.Concrete.IsValueType ? concrete : concrete + "?"
+                        )
+                        .WithTriviaFrom(node);
+                }
+
+                return base.VisitNullableType(node);
             }
 
             public override SyntaxNode? VisitMemberAccessExpression(
@@ -3667,6 +3858,17 @@ public sealed class RulesFrontEnd
                 if (node.Parent is MemberAccessExpressionSyntax access && access.Name == node)
                 {
                     return base.VisitIdentifierName(node);
+                }
+
+                if (_writer.TypeArgumentOf(node) is { } typeArgument)
+                {
+                    var written = TakesPlainType(node)
+                        ? typeArgument
+                            .Concrete.WithNullableAnnotation(NullableAnnotation.NotAnnotated)
+                            .ToDisplayString(Plain)
+                        : typeArgument.Concrete.ToDisplayString(Annotated);
+
+                    return SyntaxFactory.ParseTypeName(written).WithTriviaFrom(node);
                 }
 
                 if (
@@ -3698,6 +3900,29 @@ public sealed class RulesFrontEnd
                     $"{_writer._declaringClass.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{node.Identifier.Text}"
                 );
             }
+
+            /// <summary>
+            /// Whether the type written in place of <paramref name="name"/> has to be plain, where
+            /// the type parameter it replaces accepted any type. <c>typeof</c>, <c>is</c>,
+            /// <c>as</c>, a pattern, a <c>new</c>, a <c>catch</c> and a member access refuse a
+            /// nullable reference annotation. After <c>is</c> and in a pattern a tuple reads as a
+            /// positional pattern, and <c>new</c> refuses tuple syntax, so a tuple is written as a
+            /// <c>ValueTuple</c>.
+            /// </summary>
+            private static bool TakesPlainType(IdentifierNameSyntax name) =>
+                name.Parent switch
+                {
+                    TypeOfExpressionSyntax
+                    or DeclarationPatternSyntax
+                    or TypePatternSyntax
+                    or RecursivePatternSyntax
+                    or ObjectCreationExpressionSyntax
+                    or CatchDeclarationSyntax
+                    or MemberAccessExpressionSyntax => true,
+                    BinaryExpressionSyntax binary => binary.IsKind(SyntaxKind.IsExpression)
+                        || binary.IsKind(SyntaxKind.AsExpression),
+                    _ => false,
+                };
 
             private bool DeclaredByTheClass(INamedTypeSymbol declaring)
             {
@@ -3747,7 +3972,7 @@ public sealed record RulesDeclaration(
     INamedTypeSymbol Target,
     INamedTypeSymbol RulesClass,
     string SubjectParameterName,
-    IReadOnlyList<string> BodyLines,
+    IReadOnlyList<RegionStatement> Body,
     IReadOnlyList<RegionDependency> Dependencies,
     IReadOnlyList<string> AppliedRules,
     IReadOnlyList<CompanionField> Fields,
@@ -3799,7 +4024,7 @@ public sealed class FragmentMethod
 
     public IReadOnlyList<IParameterSymbol> ExtraParameters { get; }
 
-    public List<string> BodyLines { get; } = new();
+    public List<RegionStatement> Body { get; } = new();
 
     public List<CompanionField> Fields { get; } = new();
 

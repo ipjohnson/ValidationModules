@@ -129,6 +129,114 @@ public class ConstraintDiagnosticsTests
         Assert.Contains(".Length;", result.Sources["Sample.PetValidator.g.cs"]);
     }
 
+    /// <summary>
+    /// A default <c>ImmutableArray&lt;T&gt;</c> has no array behind it, so its <c>Length</c>, its
+    /// enumerator and its <c>IReadOnlyList&lt;T&gt;</c> view all throw. Every read tests
+    /// <c>IsDefault</c> first and passes a default value as missing, the way a reference-typed
+    /// collection passes null.
+    /// </summary>
+    [Theory]
+    [InlineData(
+        "[ItemCount(1, 3)] public System.Collections.Immutable.ImmutableArray<string> Tags { get; init; }",
+        "!value.Tags.IsDefault && (value.Tags.Length < 1 || value.Tags.Length > 3)"
+    )]
+    [InlineData(
+        "[UniqueItems] public System.Collections.Immutable.ImmutableArray<string> Tags { get; init; }",
+        "!value.Tags.IsDefault && !global::ValidationModules.ConstraintChecks.AllUnique(value.Tags)"
+    )]
+    [InlineData(
+        "[System.ComponentModel.DataAnnotations.Length(1, 3)] public System.Collections.Immutable.ImmutableArray<string> Tags { get; init; }",
+        "!value.Tags.IsDefault && (value.Tags.Length < 1 || value.Tags.Length > 3)"
+    )]
+    [InlineData(
+        "[System.ComponentModel.DataAnnotations.MinLength(1)] public System.Collections.Immutable.ImmutableArray<string> Tags { get; init; }",
+        "!value.Tags.IsDefault && (value.Tags.Length < 1)"
+    )]
+    [InlineData(
+        "[System.ComponentModel.DataAnnotations.MaxLength(3)] public System.Collections.Immutable.ImmutableArray<string> Tags { get; init; }",
+        "!value.Tags.IsDefault && (value.Tags.Length > 3)"
+    )]
+    public void ImmutableArray_DefaultValue_PassesAsMissing(string member, string expected)
+    {
+        var result = GeneratorHarness.Run(Model(member));
+
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains(expected, result.Sources["Sample.PetValidator.g.cs"]);
+    }
+
+    [Fact]
+    public void ValidateNested_OnADefaultImmutableArray_SkipsTheWalk()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using System.Collections.Immutable;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public record Toy {
+                [Required] public string? Name { get; init; }
+            }
+
+            public record Pet {
+                [ValidateNested] public ImmutableArray<Toy> Toys { get; init; }
+            }
+            """
+        );
+
+        var emitted = result.Sources["Sample.PetValidator.g.cs"];
+
+        // Validate and IsValid each walk the array.
+        Assert.Empty(result.CompilationErrors);
+        Assert.Equal(2, emitted.Split("value.Toys is { IsDefault: false } itemsToys").Length - 1);
+        Assert.DoesNotContain("value.Toys is { } itemsToys", emitted);
+    }
+
+    [Theory]
+    [InlineData(
+        "rules.Count(x.Skus, 1, 3);",
+        "!x.Skus.IsDefault && (x.Skus.Length < 1 || x.Skus.Length > 3)"
+    )]
+    [InlineData(
+        "rules.Unique(x.Skus);",
+        "!x.Skus.IsDefault && !global::ValidationModules.ConstraintChecks.AllUnique(x.Skus)"
+    )]
+    [InlineData("rules.Each(x.Skus).Length(1, 5);", "x.Skus is { IsDefault: false } items0")]
+    [InlineData("rules.Each(x.Lines);", "x.Lines is { IsDefault: false } items0")]
+    public void ImmutableArray_DefaultValue_PassesAsMissingInARulesClass(
+        string statement,
+        string expected
+    )
+    {
+        var result = GeneratorHarness.Run(
+            $$"""
+            using System.Collections.Immutable;
+            using ValidationModules;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed record Line {
+                [Required] public string? Sku { get; init; }
+            }
+
+            public sealed record Order {
+                public ImmutableArray<string> Skus { get; init; }
+                public ImmutableArray<Line> Lines { get; init; }
+            }
+
+            public sealed class OrderRules : IValidationRulesFor<Order> {
+                public static void Describe(ValidationRules<Order> rules, Order x) {
+                    {{statement}}
+                }
+            }
+            """
+        );
+
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains(expected, result.Sources["Sample.OrderRules_Rules.g.cs"]);
+    }
+
     [Fact]
     public void ItemCount_OnString_IsVM1002_BecauseAStringIsNotACollectionHere()
     {
@@ -666,6 +774,54 @@ public class ConstraintDiagnosticsTests
     }
 
     /// <summary>
+    /// <c>[CustomValidation]</c> compiles to a call on a property, so it counts too. Under Ignore
+    /// nothing is compiled from it, as with the other DataAnnotations attributes.
+    /// </summary>
+    [Fact]
+    public void CustomValidationOnAFieldOrAStaticProperty_IsVM1011()
+    {
+        var source = """
+            using System.ComponentModel.DataAnnotations;
+
+            namespace Sample;
+
+            public static class Checks {
+                public static ValidationResult? Check(string? value) => ValidationResult.Success;
+            }
+
+            public class M {
+                [CustomValidation(typeof(Checks), nameof(Checks.Check))]
+                public string? Field;
+
+                [CustomValidation(typeof(Checks), nameof(Checks.Check))]
+                public static string? Shared { get; set; }
+
+                [Required]
+                public string? Name { get; set; }
+            }
+            """;
+
+        var compiled = GeneratorHarness.Run(source);
+        var ignored = GeneratorHarness.Run(source, ("ValidationModules_DataAnnotations", "Ignore"));
+
+        Assert.Equal(
+            [
+                "'CustomValidation' on 'Field' is never evaluated, because 'Field' is a field. "
+                    + "Constraints apply to instance properties. Declare it as one: "
+                    + "public string? Field { get; set; }",
+                "'CustomValidation' on 'Shared' is never evaluated, because 'Shared' is a static "
+                    + "property. Constraints apply to instance properties. Declare it as one: "
+                    + "public string? Shared { get; set; }",
+            ],
+            compiled
+                .Diagnostics.Where(d => d.Id == "VM1011")
+                .Select(d => d.GetMessage())
+                .OrderBy(message => message, StringComparer.Ordinal)
+        );
+        Assert.DoesNotContain(ignored.Diagnostics, d => d.Id == "VM1011");
+    }
+
+    /// <summary>
     /// A field declared on a base type is reported once, where it is declared, rather than once
     /// per type that inherits it.
     /// </summary>
@@ -691,6 +847,81 @@ public class ConstraintDiagnosticsTests
         );
 
         Assert.Single(result.Diagnostics, d => d.Id == "VM1011");
+    }
+
+    // VM1014 — a constraint on an indexer, which the walk never reads.
+
+    [Fact]
+    public void ConstraintOnAnIndexer_IsVM1014()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public class M {
+                [Required] public string? this[int index] => null;
+                [Required] public string? Name { get; init; }
+            }
+            """
+        );
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1014");
+
+        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Equal(
+            "'Required' on 'M.this[int]' is never evaluated, because an indexer takes an argument "
+                + "and the validator has none to pass. Constraints apply to instance properties that "
+                + "take no arguments. Remove [Required]. To check the values the indexer returns, "
+                + "expose the collection it reads from as an instance property, and check its "
+                + "elements with [ValidateNested] or rules.Each",
+            diagnostic.GetMessage()
+        );
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains(
+            "ReportRequired(ctx, \"name\", value: value.Name)",
+            result.Sources["Sample.MValidator.g.cs"]
+        );
+    }
+
+    /// <summary>
+    /// Every constraint on every indexer, and each once, where it is declared. An attribute that
+    /// is not a constraint is not reported.
+    /// </summary>
+    [Fact]
+    public void ConstraintsOnIndexers_ReportOncePerAttributeWhereTheyAreDeclared()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using System.Text.Json.Serialization;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public class Base {
+                [Required, StringLength(10)] public string? this[int index] => null;
+                [ValidateNested] public Base? this[string key] => null;
+                [JsonPropertyName("plain")] public string? this[long index] => null;
+            }
+
+            public sealed class Derived : Base {
+                [Required] public string? Name { get; init; }
+            }
+            """
+        );
+
+        Assert.Equal(
+            [
+                "'Required' on 'Base.this[int]'",
+                "'StringLength' on 'Base.this[int]'",
+                "'ValidateNested' on 'Base.this[string]'",
+            ],
+            result
+                .Diagnostics.Where(d => d.Id == "VM1014")
+                .Select(d => d.GetMessage().Substring(0, d.GetMessage().IndexOf(" is never")))
+                .OrderBy(prefix => prefix, StringComparer.Ordinal)
+        );
     }
 
     // VM1008 — a constraint on a record parameter, which binds to the parameter and is never read.

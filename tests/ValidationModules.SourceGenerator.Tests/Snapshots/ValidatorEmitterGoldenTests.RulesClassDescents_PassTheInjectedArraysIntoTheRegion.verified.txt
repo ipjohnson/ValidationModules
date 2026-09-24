@@ -142,24 +142,33 @@ internal static class OrderRules_Rules
 
     public static global::ValidationModules.ValidationFlow Describe(ref global::ValidationModules.ValidationContext ctx, global::Sample.Order x, global::ValidationModules.IValidatorFor<global::Sample.Address>[] shipToValidators, global::ValidationModules.IValidatorFor<global::Sample.Line>[] linesValidators)
     {
-        if (x.ShipTo is { } nested0) {
+        if (x.ShipTo is { } nested0)
+        {
             var ctx0 = ctx.Push("shipTo");
-            for (var vi0 = 0; vi0 < shipToValidators.Length; vi0++) {
-                if (shipToValidators[vi0].Validate(ref ctx0, nested0).ShouldStop) {
+            for (var vi0 = 0; vi0 < shipToValidators.Length; vi0++)
+            {
+                if (shipToValidators[vi0].Validate(ref ctx0, nested0).ShouldStop)
+                {
                     return global::ValidationModules.ValidationFlow.Stop;
                 }
             }
         }
-        if (x.Lines is not null && (x.Lines.Count < 1 || x.Lines.Count > 50) && global::ValidationModules.ValidationContextExtensions.ReportItemCount(ctx, "lines", 1, 50).ShouldStop) {
+        if (x.Lines is not null && (x.Lines.Count < 1 || x.Lines.Count > 50) && global::ValidationModules.ValidationContextExtensions.ReportItemCount(ctx, "lines", 1, 50).ShouldStop)
+        {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (x.Lines is { } items1) {
-            for (var i1 = 0; i1 < items1.Count; i1++) {
+        if (x.Lines is { } items1)
+        {
+            for (var i1 = 0; i1 < items1.Count; i1++)
+            {
                 var element1 = items1[i1];
-                if (element1 is not null) {
+                if (element1 is not null)
+                {
                     var elementCtx1 = ctx.PushIndex("lines", i1);
-                    for (var vi1 = 0; vi1 < linesValidators.Length; vi1++) {
-                        if (linesValidators[vi1].Validate(ref elementCtx1, element1).ShouldStop) {
+                    for (var vi1 = 0; vi1 < linesValidators.Length; vi1++)
+                    {
+                        if (linesValidators[vi1].Validate(ref elementCtx1, element1).ShouldStop)
+                        {
                             return global::ValidationModules.ValidationFlow.Stop;
                         }
                     }

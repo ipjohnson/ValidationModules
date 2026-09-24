@@ -40,6 +40,8 @@ name derived from the value.
 | `Length(string? value, int min = 0, int max = int.MaxValue)` | The length is within the bounds. | `string_length` |
 | `Pattern(string? value, Func<Regex> pattern)` | The regular expression matches. Pass a method group, such as a `[GeneratedRegex]` method. | `pattern` |
 
+`Length` with constant bounds in the wrong order is reported as `VM1101`.
+
 ### Numbers, dates and times
 
 | Method | Passes when | Code |
@@ -80,11 +82,15 @@ Write `allowed` as an array or a collection expression of constants, such as
 | `Each<TElement>(IReadOnlyList<TElement>? value)` | Runs the validators for `TElement` on every element. | from those validators |
 | `Nested<TValue>(TValue? value)` | Runs the validators for `TValue` on the value. | from those validators |
 
+`Count` with constant bounds in the wrong order is reported as `VM1101`.
+
 `Nested` is for a single object. Use `Each` for a collection of objects. `Each` accepts a list of
 strings or of a reference type. For a list of numbers or other value types, check the elements in a
 loop and report through `Context`. `Nested` on a collection, and a second `Nested` or `Each` in the
 chain after a descent, are reported as `VM3001`. A descent into a type with no rules is dropped with
 `VM1501`, and one into a property that already has `[ValidateNested]` is dropped with `VM3106`.
+`Nested` and `Each` take no `Polymorphism` and run only the validators for the declared type. A
+descent into a type that is not sealed is reported as `VM3111`.
 
 ### Conditions
 
@@ -109,7 +115,7 @@ text, with each member of `x` written as its field name.
 | Member | Effect |
 | --- | --- |
 | `For<TValue>(TValue value, string? field = null)` | Starts a chain for a value without a rule of its own. |
-| `As<TFacet>(TFacet value)` | Runs the rules declared for an interface or base type of `x`, at the current level, including the constraint attributes on its properties. The type's own checks leave those attributes out. The argument must be `x`. |
+| `As<TFacet>(TFacet value)` | Runs the rules declared for an interface or base type of `x`, at the current level, including the constraint attributes on its properties. The type's own checks leave those attributes out. The argument must be `x`. The type of `x` itself is reported as `VM3110`. For a type from another assembly, it runs every `IValidatorFor<TFacet>` registered in the container, in registration order. |
 | `Apply(RuleAction<T> rule)` | Runs a hand-written rule after every other rule on the type. Top level of `Describe` only. |
 | `Context` | An `IValidationContextReporter` for reporting errors from code. See below. |
 
@@ -128,17 +134,24 @@ chain:
 | `RequireAllowingEmpty()` | a string |
 | `Length(min, max)` | a string |
 | `Pattern(regex)` | a string |
-| `Range(min, max)`, `RangeAtLeast(min)`, `RangeAtMost(max)` | a nullable value type |
-| `MultipleOf(divisor)` | a `long?`, `decimal?` or `double?` |
+| `Range(min, max)`, `RangeAtLeast(min)`, `RangeAtMost(max)` | a value type, nullable or not |
+| `MultipleOf(divisor)` | an integral, decimal or floating-point number, nullable or not |
 | `AllowedValues(params allowed)` | any value |
 | `Count(min, max)` | an `IReadOnlyList<T>` |
 | `Unique()` | an `IEnumerable<T>` |
 | `Each()` | an `IReadOnlyList<T>` |
 | `Nested()` | a reference type |
 
-A chain is typed by the method that starts it, so a chain method must accept that type. For example,
-`rules.Range(x.Quantity, 1, 100)` on an `int` starts a chain on `int?`, which `MultipleOf(long)`
-does not accept. Write such rules as separate statements.
+A chain is typed by the method that starts it. On an `int` property,
+`rules.Range(x.Quantity, 1, 100)` starts a chain on `int?`, and `rules.For(x.Quantity)` starts one
+on `int`. The range methods and `MultipleOf` accept both forms:
+
+```csharp
+rules.For(x.Weight).Range(0.5, 30).MultipleOf(0.5);
+```
+
+The chain's type also types the arguments. On a `float` chain, write `0.5f`. On a `byte`, `sbyte`,
+`short` or `ushort` chain, cast an integer literal, as in `.MultipleOf((short)5)`.
 
 When `Require` or `RequireAllowingEmpty` fails, the rest of its chain is skipped.
 

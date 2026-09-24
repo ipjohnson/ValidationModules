@@ -48,7 +48,7 @@ writes the same checks it writes for the attributes in `ValidationModules.Constr
 | `[StringLength]` | The string length, with `MinimumLength`. | `string_length` |
 | `[MinLength]`, `[MaxLength]`, `[Length]` | The length of a string, or the number of items in a collection. | `string_length` or `array_bounds` |
 | `[Range]` | The bounds, with `MinimumIsExclusive` and `MaximumIsExclusive`. String bounds are parsed as the property's type at build time. | `range` |
-| `[RegularExpression]` | The whole value matches the expression. An empty string passes. | `pattern` |
+| `[RegularExpression]` | The whole value matches the expression. An empty string passes. The match timeout is `MatchTimeoutInMilliseconds`, which is 2000 milliseconds unless it is set. | `pattern` |
 | `[AllowedValues]`, `[DeniedValues]` | The value is in, or not in, the list. | `enum` |
 | `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]`, `[FileExtensions]` | The same rules as the DataAnnotations attributes. | `email`, `phone`, `url`, `credit_card`, `base64`, `file_extension` |
 | `[CustomValidation]` on a property | Calls the named static method directly. | `custom` |
@@ -154,7 +154,7 @@ you do change a file's `using` from `System.ComponentModel.DataAnnotations` to
 | --- | --- |
 | `[StringLength(50, MinimumLength = 2)]` | `[StringLength(50, Min = 2)]` |
 | `[MinLength]`, `[MaxLength]`, `[Length]` | `[StringLength]` on a string, `[ItemCount]` on a collection |
-| `[RegularExpression("x")]` | `[Pattern(@"\A(?:x)?\z")]`. `[Pattern]` matches anywhere in the value unless the expression is anchored. It also tests an empty string, which `[RegularExpression]` passes, and the `?` lets an empty string through. |
+| `[RegularExpression("x")]` | `[Pattern(@"\A(?:x)?\z", MatchTimeoutMilliseconds = 2000)]`. `[Pattern]` matches anywhere in the value unless the expression is anchored. It also tests an empty string, which `[RegularExpression]` passes, and the `?` lets an empty string through. `[Pattern]` has no timeout unless it sets one, and `[RegularExpression]` has 2000 milliseconds unless it sets another. |
 | `ErrorMessage = "The {0} field is invalid."` | `Message = "The {field} field is invalid."` |
 | `[EnumDataType(typeof(Tier))]` | `[EnumDefined]` on a property of type `Tier` |
 | `[Compare]`, `IValidatableObject` | A rules class |
@@ -182,4 +182,6 @@ The built-in DataAnnotations attributes are compiled into plain checks and need 
 `[RegularExpression]` is always compiled as an inline regular expression, which adds the regular
 expression interpreter to a Native AOT binary. It follows `ValidationModules_PatternPolicy` like an
 inline `[Pattern]`, so an AOT-facing project reports it as `VM1301`. The message prints the
-`[Pattern]` and `[GeneratedRegex]` that replace it. See [Patterns](./patterns).
+`[Pattern]` and `[GeneratedRegex]` that replace it. Unless `MatchTimeoutInMilliseconds` is `-1`, its
+timeout also keeps code that the trimmer removes from an inline pattern without one. See
+[Patterns](./patterns).

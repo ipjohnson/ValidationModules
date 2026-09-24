@@ -58,6 +58,12 @@ public static class DataAnnotationsConstraintReader
     private const string DefaultFileExtensions = "png,jpg,jpeg,gif";
 
     /// <summary>
+    /// The match timeout <c>RegularExpressionAttribute</c>'s constructor sets, which applies until
+    /// <c>MatchTimeoutInMilliseconds</c> says otherwise.
+    /// </summary>
+    public const int DefaultMatchTimeoutMilliseconds = 2000;
+
+    /// <summary>
     /// Whether the attribute reads as a constraint here - including the format validators, which
     /// compile like any other constraint and so count wherever "is this enforced" is the question:
     /// VM2001 under Ignore, and VM1008 on a record parameter.
@@ -200,12 +206,23 @@ public static class DataAnnotationsConstraintReader
                 // Schema, which does not. And an empty string passes untested, as
                 // RegularExpressionAttribute.IsValid returns true for it: an HTML form posts an
                 // optional field left blank as "", and a migrated model must keep accepting it.
+                //
+                // The timeout is the attribute's own. At -1, DataAnnotations builds the Regex from
+                // the pattern alone, and so does the emitter, which passes only a positive timeout.
+                // The front end reports a value the Regex constructor rejects as VM1304.
                 return new Outcome(
                     new ConstraintModel(
                         ConstraintKind.Pattern,
                         Message: NativeConstraintReader.Named(attribute, "ErrorMessage") as string,
                         Pattern: pattern,
                         Anchored: true,
+                        MatchTimeoutMilliseconds: NativeConstraintReader.Named(
+                            attribute,
+                            "MatchTimeoutInMilliseconds"
+                        )
+                            is int timeout
+                            ? timeout
+                            : DefaultMatchTimeoutMilliseconds,
                         PassesEmpty: true
                     ),
                     null

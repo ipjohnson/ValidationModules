@@ -25,8 +25,9 @@ static method that takes the model and returns `bool`. A constraint cannot set b
 `CustomConstraintAttribute` or an attribute that implements `IConstraintFor<T>`, as in
 `myapp.weight_out_of_range`. Built-in codes are never prefixed.
 
-Every constraint except `[Required]` passes a `null` value. When `[Required]` fails, the other
-constraints on the property are skipped.
+Every constraint except `[Required]` passes a `null` value. It also passes a default
+`ImmutableArray<T>`, which has no array behind it. When `[Required]` fails, the other constraints
+on the property are skipped.
 
 ## Presence
 
@@ -103,8 +104,9 @@ See [Patterns](../guide/patterns).
 
 Diagnostics: `VM1001` on a property that is not a `string`, `VM1106` when the expression does not
 parse, `VM1107` when the referenced member cannot be used, `VM1301` for an inline expression under
-the pattern policy, `VM1302` when the first form's `Options` includes `RegexOptions.Compiled`, and
-`VM1303` when the second form sets `Options` or `MatchTimeoutMilliseconds`.
+the pattern policy, `VM1302` when the first form's `Options` includes `RegexOptions.Compiled`,
+`VM1303` when the second form sets `Options` or `MatchTimeoutMilliseconds`, and `VM1304` when the
+first form's `MatchTimeoutMilliseconds` is a value the `Regex` constructor rejects.
 
 ### [EmailAddress]
 
@@ -375,7 +377,8 @@ public Polymorphism Polymorphism { get; }
 
 `[ValidateNested]` runs the validators for the property's type on its value, or on every element of
 a collection, or on every value of a dictionary. Errors are reported under the property's path, as
-in `shipTo.postcode`, `lines[1].sku` or `addresses[work].postcode`. A `null` value is skipped.
+in `shipTo.postcode`, `lines[1].sku` or `addresses[work].postcode`. A `null` value is skipped, and
+so is a default `ImmutableArray<T>`.
 `When` and `Unless` decide whether the descent happens.
 
 `Polymorphism` chooses the validators when the value can be of a derived type:

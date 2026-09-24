@@ -85,6 +85,9 @@ reports one error. `[Required]` is checked first, whatever the order of the attr
 never fail. The generator reports `VM1201` and drops it. Make the property nullable, or constrain
 its value with `[Range]`.
 
+A default `ImmutableArray<T>` has no array behind it, so every constraint passes it as it passes
+`null`, and `[ValidateNested]` skips it.
+
 ## Bounds
 
 `[StringLength]` reads its arguments as the DataAnnotations attribute of the same name does. The
@@ -195,8 +198,9 @@ one member are easier to write in a rules class.
 ## Where attributes go
 
 The generator reads attributes on instance properties that have a readable getter. It does not read
-fields or static properties, and reports a constraint on one as `VM1011`. A constrained property
-without an accessible getter is reported as `VM1007`.
+fields or static properties, and reports a constraint on one as `VM1011`. It does not read indexers
+either, and reports a constraint on one as `VM1014`. A constrained property without an accessible
+getter is reported as `VM1007`.
 
 On a positional record, an attribute on a parameter applies to the constructor parameter, not to
 the property. Add the `property:` target:

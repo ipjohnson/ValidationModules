@@ -64,6 +64,10 @@ public enum PropertyShape
 /// name, or null when it has none. Unlike <see cref="DisplayName"/> it never falls back to the CLR
 /// name: without a label a message names the field.
 /// </param>
+/// <param name="MissingWhenDefault">
+/// Whether a default value reads as missing, as a default <c>ImmutableArray&lt;T&gt;</c> does.
+/// Reads of it test <c>IsDefault</c> where a reference type's test null.
+/// </param>
 public sealed record ValidatedPropertyModel(
     string PropertyName,
     string FieldName,
@@ -83,5 +87,6 @@ public sealed record ValidatedPropertyModel(
     EquatableArray<SubtypeModel> Subtypes = default,
     string? DisplayName = null,
     bool NestedWalkInRegion = false,
-    string? Label = null
+    string? Label = null,
+    bool MissingWhenDefault = false
 ) : IEquatable<ValidatedPropertyModel>;

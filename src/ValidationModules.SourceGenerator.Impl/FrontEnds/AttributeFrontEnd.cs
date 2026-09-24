@@ -117,7 +117,7 @@ public sealed class AttributeFrontEnd
         // Before anything reads a property, because the situations these report are precisely ones
         // where no property carries anything and the type would otherwise look unconstrained.
         ReportRecordParameterConstraints(type);
-        ReportConstraintsOnFieldsAndStaticProperties(type);
+        ReportConstraintsOnSkippedMembers(type);
 
         var properties = ImmutableArray.CreateBuilder<ValidatedPropertyModel>();
         var order = new List<int>();
@@ -295,7 +295,9 @@ public sealed class AttributeFrontEnd
                 ? NestedPolymorphism(sources)
                 : (PolymorphismMode.DeclaredOnly, false);
 
-            if (validateNested && DescentTargetOf(property) is INamedTypeSymbol surviving)
+            // Only the attribute states a mode. A rules-class descent takes none, and the rules
+            // front end reports an unsealed target at its call, as VM3111.
+            if (attributeNesting && DescentTargetOf(property) is INamedTypeSymbol surviving)
             {
                 if (!CanHaveSubtypes(surviving))
                 {
@@ -976,7 +978,8 @@ public sealed class AttributeFrontEnd
             new EquatableArray<SubtypeModel>(subtypes),
             DisplayNameFor(property),
             nestedWalkInRegion,
-            DisplayLabelOf(property)
+            DisplayLabelOf(property),
+            TypeFacts.IsMissingWhenDefault(type)
         );
     }
 
@@ -1065,7 +1068,8 @@ public sealed class AttributeFrontEnd
     }
 
     /// <summary>
-    /// Reports a constraint written on a field or on a static property.
+    /// Reports a constraint written on a member the walk skips: a field, a static property or an
+    /// indexer.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -1076,15 +1080,22 @@ public sealed class AttributeFrontEnd
     /// on. The gap is reported where it is instead, with the property to declare.
     /// </para>
     /// <para>
+    /// The usage admits an indexer too, because an indexer is a property. The walk skips it, because
+    /// the validator has no argument to read it with. VM1014 reports it rather than VM1011, because
+    /// an instance property is no replacement for one.
+    /// </para>
+    /// <para>
     /// Only members the type declares itself, like VM1008: a base type reports its own, and one
     /// from a package has no source to fix. A backing field the compiler declared is not a member
     /// anyone wrote, so it is left alone.
     /// </para>
     /// </remarks>
-    private void ReportConstraintsOnFieldsAndStaticProperties(INamedTypeSymbol type)
+    private void ReportConstraintsOnSkippedMembers(INamedTypeSymbol type)
     {
         foreach (var member in type.GetMembers())
         {
+            var descriptor = ValidationDiagnostics.ConstraintOnFieldOrStaticProperty;
+            var name = member.Name;
             string kind;
             string declaration;
 
@@ -1111,6 +1122,15 @@ public sealed class AttributeFrontEnd
                     );
                     break;
 
+                // VM1014's message reads neither the kind nor a declaration.
+                case IPropertySymbol { IsIndexer: true } indexer:
+                    descriptor = ValidationDiagnostics.ConstraintOnIndexer;
+                    name = indexer.ToDisplayString(
+                        SymbolDisplayFormat.CSharpShortErrorMessageFormat
+                    );
+                    kind = declaration = string.Empty;
+                    break;
+
                 default:
                     continue;
             }
@@ -1119,7 +1139,10 @@ public sealed class AttributeFrontEnd
             {
                 if (
                     attribute.AttributeClass is not { } attributeClass
-                    || !IsConstraintAttribute(attributeClass)
+                    || !(
+                        IsConstraintAttribute(attributeClass)
+                        || IsCompiledCustomValidation(attributeClass)
+                    )
                     || attribute.ApplicationSyntaxReference is not { } reference
                 )
                 {
@@ -1130,13 +1153,13 @@ public sealed class AttributeFrontEnd
                 // otherwise shadows the type.
                 _diagnostics.Add(
                     Diagnostic.Create(
-                        ValidationDiagnostics.ConstraintOnFieldOrStaticProperty,
+                        descriptor,
                         Microsoft.CodeAnalysis.Location.Create(
                             reference.SyntaxTree,
                             reference.Span
                         ),
                         Unsuffixed(attributeClass.Name),
-                        member.Name,
+                        name,
                         kind,
                         declaration
                     )
@@ -1202,6 +1225,15 @@ public sealed class AttributeFrontEnd
             ? DataAnnotationsConstraintReader.IsConstraint(attributeClass.Name)
             : DerivesFromValidationAttribute(attributeClass);
     }
+
+    /// <summary>
+    /// Whether the attribute is a <c>[CustomValidation]</c> that the DataAnnotations front end
+    /// compiles into a call on an instance property. <see cref="IsConstraintAttribute"/> does not
+    /// count it.
+    /// </summary>
+    private bool IsCompiledCustomValidation(INamedTypeSymbol attributeClass) =>
+        _compileDataAnnotations
+        && attributeClass.ToDisplayString() == KnownTypes.CustomValidationAttribute;
 
     /// <summary>"RequiredAttribute" to "Required", so the suggested fix reads as it would be typed.</summary>
     private static string Unsuffixed(string attributeName) =>
@@ -1948,19 +1980,24 @@ public sealed class AttributeFrontEnd
                 _compilation
             );
 
+            var read = outcome.Constraint;
+
             // [RegularExpression] compiles to the same Regex field an inline [Pattern] does, so it
-            // answers to the same policy.
-            var read = outcome.Constraint is { Kind: ConstraintKind.Pattern, Pattern: { } pattern }
-                ? ApplyPatternPolicy(
-                    outcome.Constraint,
+            // answers to the same timeout check and the same policy.
+            if (read is { Kind: ConstraintKind.Pattern, Pattern: { } pattern })
+            {
+                read = CheckMatchTimeout(read, attribute, member, regularExpression: true);
+                read = ApplyPatternPolicy(
+                    read,
                     member,
                     ValidationDiagnostics.RegularExpressionFix(
                         member.Name,
                         member.ContainingType?.Name,
-                        pattern
+                        pattern,
+                        read.MatchTimeoutMilliseconds > 0 ? read.MatchTimeoutMilliseconds : null
                     )
-                )
-                : outcome.Constraint;
+                );
+            }
 
             if (read is not null)
             {
@@ -2010,8 +2047,8 @@ public sealed class AttributeFrontEnd
     }
 
     /// <summary>
-    /// Resolves the reference form's member and reports the settings it ignores, or applies the
-    /// policy to the inline form.
+    /// Resolves the reference form's member and reports the settings it ignores, or checks the
+    /// inline form's timeout and applies the policy to it.
     /// </summary>
     private ConstraintModel? ResolvePattern(
         ConstraintModel constraint,
@@ -2056,15 +2093,14 @@ public sealed class AttributeFrontEnd
 
             if (problem is not null)
             {
-                _diagnostics.Add(
-                    Diagnostic.Create(
-                        ValidationDiagnostics.RegexMemberUnusable,
-                        Location(owner),
-                        provider.ToDisplayString(),
-                        memberName,
-                        problem,
-                        owner.Name
-                    )
+                ReportUnemittablePattern(
+                    ValidationDiagnostics.RegexMemberUnusable.DefaultSeverity,
+                    ValidationDiagnostics.RegexMemberUnusable,
+                    owner,
+                    provider.ToDisplayString(),
+                    memberName,
+                    problem,
+                    owner.Name
                 );
 
                 return null;
@@ -2090,10 +2126,54 @@ public sealed class AttributeFrontEnd
         }
 
         return ApplyPatternPolicy(
-            constraint,
+            CheckMatchTimeout(constraint, attribute, owner, regularExpression: false),
             owner,
             ValidationDiagnostics.InlinePatternFix(owner.Name, owner.ContainingType?.Name)
         );
+    }
+
+    /// <summary>
+    /// Reports a match timeout that the <c>Regex</c> constructor rejects, and returns the
+    /// constraint with the attribute's default timeout in its place.
+    /// </summary>
+    /// <remarks>
+    /// Read off the attribute rather than the constraint, because an explicit zero on
+    /// <c>[Pattern]</c> reads the same as an unset timeout there, and the constructor rejects zero.
+    /// </remarks>
+    private ConstraintModel CheckMatchTimeout(
+        ConstraintModel constraint,
+        AttributeData attribute,
+        ISymbol owner,
+        bool regularExpression
+    )
+    {
+        var setting = regularExpression ? "MatchTimeoutInMilliseconds" : "MatchTimeoutMilliseconds";
+
+        if (
+            NativeConstraintReader.Named(attribute, setting) is not int timeout
+            || TypeFacts.IsValidMatchTimeout(timeout)
+        )
+        {
+            return constraint;
+        }
+
+        Report(
+            ValidationDiagnostics.InvalidMatchTimeout,
+            owner,
+            owner.Name,
+            regularExpression ? "[RegularExpression]" : "[Pattern]",
+            $"{setting} = {timeout}",
+            regularExpression
+                ? ValidationDiagnostics.RegularExpressionTimeoutTail
+                : ValidationDiagnostics.PatternTimeoutTail
+        );
+
+        return constraint with
+        {
+            MatchTimeoutMilliseconds = regularExpression
+                ? DataAnnotationsConstraintReader.DefaultMatchTimeoutMilliseconds
+                : 0,
+        };
     }
 
     /// <summary>
@@ -2123,19 +2203,43 @@ public sealed class AttributeFrontEnd
                 ? DiagnosticSeverity.Error
                 : DiagnosticSeverity.Warning;
 
-        _diagnostics.Add(
-            Diagnostic.Create(
-                ValidationDiagnostics.InlinePatternUnderAot,
-                Location(owner),
-                severity,
-                additionalLocations: null,
-                properties: null,
-                owner.Name,
-                fix
-            )
+        ReportUnemittablePattern(
+            severity,
+            ValidationDiagnostics.InlinePatternUnderAot,
+            owner,
+            owner.Name,
+            fix
         );
 
         return _patternPolicy == PatternPolicy.Error ? null : constraint;
+    }
+
+    /// <summary>
+    /// Reports VM1107 or VM1301, through the quiet gate for an inherited declaration from this
+    /// compilation, which is reported where it is declared.
+    /// </summary>
+    /// <remarks>
+    /// A declaration from a referenced assembly is reported here, because nothing else in this
+    /// compilation reports it. Its own assembly may have accepted it: its policy may allow the
+    /// inline form, and a member it declares internal is visible there and not here. VM1107
+    /// drops the check, and VM1301 drops it under Error, so a quiet read would drop it without a
+    /// word.
+    /// </remarks>
+    private void ReportUnemittablePattern(
+        DiagnosticSeverity severity,
+        DiagnosticDescriptor descriptor,
+        ISymbol owner,
+        params object?[] args
+    )
+    {
+        var wasQuiet = _quiet;
+
+        _quiet &= SymbolEqualityComparer.Default.Equals(
+            owner.ContainingAssembly,
+            _compilation.Assembly
+        );
+        ReportAs(severity, descriptor, owner, args);
+        _quiet = wasQuiet;
     }
 
     /// <summary>
@@ -2625,9 +2729,10 @@ public sealed class AttributeFrontEnd
     /// </summary>
     /// <remarks>
     /// A sealed class, a value type and an enum can have no subtypes, so there is no decision to
-    /// make and VM1503 stays quiet. Everything else can, whether or not anything visible here does.
+    /// make and VM1503 and VM3111 stay quiet. Everything else can, whether or not anything visible
+    /// here does.
     /// </remarks>
-    private static bool CanHaveSubtypes(ITypeSymbol target) =>
+    internal static bool CanHaveSubtypes(ITypeSymbol target) =>
         target is { IsSealed: false, IsValueType: false } and not { TypeKind: TypeKind.Enum };
 
     /// <summary>

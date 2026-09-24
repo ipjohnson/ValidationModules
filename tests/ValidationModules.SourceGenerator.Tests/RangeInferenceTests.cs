@@ -1,4 +1,6 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Xunit;
 
 namespace ValidationModules.SourceGenerator.Tests;
@@ -57,6 +59,141 @@ public class RangeInferenceTests
 
         Assert.Empty(result.CompilationErrors);
         Assert.DoesNotContain(result.Diagnostics, d => d.Severity >= DiagnosticSeverity.Warning);
+    }
+
+    /// <summary>
+    /// <c>For</c> anchors a chain on the member's own type, so the chained range methods pair the
+    /// same way: a non-nullable receiver beside the nullable one.
+    /// </summary>
+    [Theory]
+    [InlineData("rules.For(x.Latitude).Range(-90, 90);", "x.Latitude < -90 || x.Latitude > 90")]
+    [InlineData("rules.For(x.Age).RangeAtLeast(0);", "x.Age < 0")]
+    [InlineData("rules.For(x.Ratio).RangeAtMost(1);", "x.Ratio > 1")]
+    [InlineData(
+        "rules.For(x.Start).Range(new DateOnly(2020, 1, 1), new DateOnly(2030, 1, 1));",
+        "x.Start < new"
+    )]
+    [InlineData("rules.For(x.BatteryKwh).Range(10, 300);", "x.BatteryKwh.Value < 10")]
+    public void AChainForStarts_TakesTheRangeMethods(string statement, string expected)
+    {
+        var result = GeneratorHarness.Run(Rules($"        {statement}"));
+
+        Assert.Empty(result.CompilationErrors);
+        Assert.DoesNotContain(result.Diagnostics, d => d.Severity >= DiagnosticSeverity.Warning);
+        Assert.Contains(expected, result.Sources["Sample.TelemetryRules_Rules.g.cs"]);
+    }
+
+    /// <summary>
+    /// The chain overloads are additive, and <c>For</c> is unchanged, so every anchor it started
+    /// before is the same type. Compiled at C# 12, which has no <c>OverloadResolutionPriority</c>
+    /// to settle an ambiguity, so every chain here has to resolve on its own.
+    /// </summary>
+    [Fact]
+    public void ForAnchors_KeepTheirTypes_AndEveryChainResolves_OnCSharp12()
+    {
+        var tree = CSharpSyntaxTree.ParseText(
+            """
+            using System.Collections.Generic;
+            using ValidationModules;
+
+            namespace Sample;
+
+            public interface IMeasured<TValue> {
+                TValue Reading { get; }
+            }
+
+            public sealed record Part {
+                public string? Sku { get; init; }
+            }
+
+            public sealed record Box {
+                public double Weight { get; init; }
+                public double? Share { get; init; }
+                public int Count { get; init; }
+                public long? Units { get; init; }
+                public string? Label { get; init; }
+                public Part? Main { get; init; }
+                public IReadOnlyList<Part>? Parts { get; init; }
+            }
+
+            public sealed class BoxRules : IValidationRulesFor<Box> {
+                public static void Describe(ValidationRules<Box> rules, Box x) {
+                    rules.For(x.Weight).Range(0, 100).MultipleOf(0.5);
+                    rules.For(x.Share).Range(0, 1).MultipleOf(0.25);
+                    rules.For(x.Count).RangeAtLeast(1).RangeAtMost(9).MultipleOf(3);
+                    rules.For(x.Units).MultipleOf(2);
+                    rules.For(x.Label).Require().Length(1, 5);
+                    rules.For(x.Main).Nested();
+                    rules.For(x.Parts).Count(1, 3).Each();
+                }
+            }
+
+            public static class MeasuredRules {
+                public static void Standard<T, TValue>(ValidationRules<T> rules, T x)
+                    where T : IMeasured<TValue> {
+                    rules.For(x.Reading);
+                }
+            }
+            """,
+            new CSharpParseOptions(LanguageVersion.CSharp12),
+            cancellationToken: TestContext.Current.CancellationToken
+        );
+
+        var compilation = CSharpCompilation.Create(
+            "ForAnchors",
+            new[] { tree },
+            GeneratorHarness.ReferencesIncluding(),
+            new CSharpCompilationOptions(
+                OutputKind.DynamicallyLinkedLibrary,
+                nullableContextOptions: NullableContextOptions.Enable
+            )
+        );
+
+        Assert.Empty(
+            compilation
+                .GetDiagnostics(TestContext.Current.CancellationToken)
+                .Where(d => d.Severity == DiagnosticSeverity.Error)
+        );
+
+        var model = compilation.GetSemanticModel(tree);
+        var calls = tree.GetRoot(TestContext.Current.CancellationToken)
+            .DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .Select(call => (IMethodSymbol)model.GetSymbolInfo(call).Symbol!)
+            .ToList();
+
+        Assert.Equal(
+            [
+                "double",
+                "double?",
+                "int",
+                "long?",
+                "string?",
+                "Sample.Part?",
+                "System.Collections.Generic.IReadOnlyList<Sample.Part>?",
+                "TValue",
+            ],
+            calls
+                .Where(method => method.Name == "For")
+                .Select(method =>
+                    ((INamedTypeSymbol)method.ReturnType).TypeArguments[1].ToDisplayString()
+                )
+        );
+
+        // A nullable chain still binds the MultipleOf overload that names its type, not the
+        // generic one beside it.
+        Assert.Equal(
+            ["double", "double", "int", "long"],
+            calls
+                .Where(method => method.Name == "MultipleOf")
+                .Select(method => method.Parameters.Single().Type.ToDisplayString())
+        );
+        Assert.Equal(
+            [2, 1, 2, 1],
+            calls
+                .Where(method => method.Name == "MultipleOf")
+                .Select(method => method.ReducedFrom!.TypeParameters.Length)
+        );
     }
 
     /// <summary>

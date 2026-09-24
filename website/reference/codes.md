@@ -49,9 +49,11 @@ are written in snake_case from their C# names, so a `[JsonPropertyName]` changes
 | `x.Total - x.Paid > 0` | `total_minus_paid_greater_than_0` |
 
 Changing the condition changes the code. A local variable in the condition appears in the code
-under its own name, so renaming the variable changes the code too. The generator reports each
-derived code as `VM3103`, an informational diagnostic. Pass `code:` to fix the code when clients
-depend on it. When nothing can be derived, the code is `predicate`.
+under its own name, so renaming the variable changes the code too. In a generic fragment, a type
+parameter appears under its own name as well, as in `typeof(T).Name`, so every type the fragment is
+expanded for reports the same code. The generator reports each derived code as `VM3103`, an
+informational diagnostic. Pass `code:` to fix the code when clients depend on it. When nothing can
+be derived, the code is `predicate`.
 
 The rules for deriving codes are versioned in the runtime, and they change only in a major release.
 An update to the library does not change the code of a condition you have not edited.

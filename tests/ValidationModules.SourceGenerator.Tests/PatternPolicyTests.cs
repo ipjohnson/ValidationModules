@@ -222,12 +222,16 @@ public class PatternPolicyTests
     {
         // Replacing the attribute is the fix, and the expression changes on the way: anchored,
         // because [RegularExpression] matches the whole value, and optional, because it passes an
-        // empty one. Printing it is what saves the reader from working that out.
+        // empty one. It keeps the attribute's timeout, which is 2000 milliseconds when unset.
+        // Printing it is what saves the reader from working that out.
         var result = GeneratorHarness.Run(RegularExpressionModel, ("PublishAot", "true"));
 
         var message = Assert.Single(result.Diagnostics, d => d.Id == "VM1301").GetMessage();
 
-        Assert.Contains("""[GeneratedRegex(@"\A(?:[A-Z]{3})?\z")]""", message);
+        Assert.Contains(
+            """[GeneratedRegex(@"\A(?:[A-Z]{3})?\z", RegexOptions.None, matchTimeoutMilliseconds: 2000)]""",
+            message
+        );
         Assert.Contains(
             "replace [RegularExpression] with [Pattern(typeof(FormPatterns), nameof(FormPatterns.Code))]",
             message
@@ -486,6 +490,153 @@ public class PatternPolicyTests
         );
     }
 
+    // A pattern on a base property is reported where it is declared, not once per derived type.
+
+    private static string SpanText(Diagnostic diagnostic) =>
+        diagnostic
+            .Location.SourceTree!.GetText(TestContext.Current.CancellationToken)
+            .ToString(diagnostic.Location.SourceSpan);
+
+    [Fact]
+    public void InlinePattern_OnABaseProperty_IsReportedOnceWhereItIsDeclared()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public class Base { [Pattern("^[a-z]+$")] public string? Code { get; init; } }
+            public class A : Base { [Required] public string? X { get; init; } }
+            public class B : Base { [Required] public string? Y { get; init; } }
+            """,
+            ("ValidationModules_PatternPolicy", "Warn")
+        );
+
+        Assert.Equal("Code", SpanText(Assert.Single(result.Diagnostics, d => d.Id == "VM1301")));
+
+        // Warn keeps the constraint in the validators that read it quietly.
+        Assert.Contains(
+            "new global::System.Text.RegularExpressions.Regex(",
+            result.Sources["Sample.AValidator.g.cs"]
+        );
+        Assert.Contains(
+            "new global::System.Text.RegularExpressions.Regex(",
+            result.Sources["Sample.BValidator.g.cs"]
+        );
+    }
+
+    [Fact]
+    public void InlinePattern_OnAHiddenBaseProperty_IsReportedOnceWhereItIsDeclared()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public class Base { [Pattern("^[a-z]+$")] public string? Code { get; init; } }
+            public class A : Base { public new string? Code { get; init; } }
+            """,
+            ("ValidationModules_PatternPolicy", "Warn")
+        );
+
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1301");
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1009");
+    }
+
+    /// <summary>
+    /// A base from a referenced assembly is the exception. Its own build may have allowed the inline
+    /// form, and nothing else in this compilation reports it. Under Error its check is dropped, so
+    /// staying quiet would drop it without a word.
+    /// </summary>
+    [Fact]
+    public void InlinePattern_OnABaseFromAReferencedAssembly_IsStillReported()
+    {
+        var result = GeneratorHarness.RunWithReference(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Shared;
+
+            public class Base { [Pattern("^[a-z]+$")] public string? Code { get; init; } }
+            """,
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public class A : Shared.Base { [Required] public string? X { get; init; } }
+            """,
+            buildProperties: ("PublishAot", "true")
+        );
+
+        Assert.Equal(
+            DiagnosticSeverity.Error,
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1301").Severity
+        );
+    }
+
+    /// <summary>
+    /// The same exception for VM1107. An internal regex member is usable in its own assembly and is
+    /// not visible here, so the check is dropped, and a quiet read would drop it without a word.
+    /// </summary>
+    [Fact]
+    public void UnusableReferencedPattern_OnABaseFromAReferencedAssembly_IsStillReported()
+    {
+        var result = GeneratorHarness.RunWithReference(
+            """
+            using System.Text.RegularExpressions;
+            using ValidationModules.Constraints;
+
+            namespace Shared;
+
+            public static class Patterns { internal static Regex Code() => new Regex("^[a-z]+$"); }
+
+            public class Base { [Pattern(typeof(Patterns), nameof(Patterns.Code))] public string? Code { get; init; } }
+            """,
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public class A : Shared.Base { [Required] public string? X { get; init; } }
+            """
+        );
+
+        Assert.Equal(
+            DiagnosticSeverity.Error,
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1107").Severity
+        );
+    }
+
+    [Fact]
+    public void UnusableReferencedPattern_OnABaseProperty_IsReportedOnceWhereItIsDeclared()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using System.Text.RegularExpressions;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public static class Patterns { private static Regex Hidden() => null!; }
+
+            public class Base { [Pattern(typeof(Patterns), "Hidden")] public string? Code { get; init; } }
+            public class A : Base { [Required] public string? X { get; init; } }
+            public class B : Base { [Required] public string? Y { get; init; } }
+            """
+        );
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1107");
+
+        Assert.Equal(
+            "'Sample.Patterns.Hidden' is not accessible, so the pattern on 'Code' cannot be emitted",
+            diagnostic.GetMessage()
+        );
+        Assert.Equal("Code", SpanText(diagnostic));
+    }
+
     // MatchTimeoutMilliseconds - the attribute's only ReDoS mitigation.
 
     [Fact]
@@ -514,9 +665,9 @@ public class PatternPolicyTests
     [Fact]
     public void NoMatchTimeout_KeepsTheSingleArgumentConstructor()
     {
-        // Zero means no timeout, and the single-argument form is load-bearing: it lets ILC prove
-        // RegexOptions.Compiled is never set and trim the RegexCompiler path with it, measured at
-        // 713 KB. Honouring the timeout must not cost that where nobody asked for one.
+        // An unset timeout means none, and the single-argument form is load-bearing: it lets ILC
+        // prove RegexOptions.Compiled is never set and trim the RegexCompiler path with it,
+        // measured at 713 KB. Honouring the timeout must not cost that where nobody asked for one.
         var result = GeneratorHarness.Run(InlinePattern);
 
         var emitted = result.Sources["Sample.PetValidator.g.cs"];
@@ -524,4 +675,120 @@ public class PatternPolicyTests
         Assert.Contains("new global::System.Text.RegularExpressions.Regex(", emitted);
         Assert.DoesNotContain("TimeSpan", emitted);
     }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-2")]
+    [InlineData("-2147483648")]
+    [InlineData("2147483647")]
+    public void MatchTimeout_TheRegexConstructorRejects_IsVM1304AndIgnored(string timeout)
+    {
+        // Passed on, the value would throw from the validator's static Regex field when the type
+        // initializes, and every validation of the type would fail with it. Zero counts, because
+        // leaving the property unset is how to ask for no timeout.
+        var result = GeneratorHarness.Run(InlinePatternWithTimeout(timeout));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1304");
+        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Contains(
+            $"[Pattern] on 'Sku' sets 'MatchTimeoutMilliseconds = {timeout}'",
+            diagnostic.GetMessage()
+        );
+        Assert.Contains("or remove it for no timeout", diagnostic.GetMessage());
+        Assert.DoesNotContain("TimeSpan", result.Sources["Sample.PetValidator.g.cs"]);
+    }
+
+    [Theory]
+    [InlineData("-1")]
+    [InlineData("1")]
+    [InlineData("2147483646")]
+    public void MatchTimeout_TheRegexConstructorAccepts_IsNotReported(string timeout)
+    {
+        // -1 is Regex.InfiniteMatchTimeout in milliseconds, and 2147483646 is the longest timeout
+        // the constructor takes.
+        var result = GeneratorHarness.Run(InlinePatternWithTimeout(timeout));
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1304");
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    [Fact]
+    public void RegularExpression_WithoutATimeout_UsesTheDataAnnotationsDefault()
+    {
+        // RegularExpressionAttribute's constructor sets MatchTimeoutInMilliseconds to 2000, so a
+        // model moved from DataAnnotations keeps that protection.
+        var emitted = GeneratorHarness.Run(RegularExpressionModel).Sources[
+            "Sample.FormValidator.g.cs"
+        ];
+
+        Assert.Contains("TimeSpan.FromMilliseconds(2000)", emitted);
+    }
+
+    [Fact]
+    public void RegularExpression_MatchTimeout_IsPassedToTheEmittedRegex()
+    {
+        var emitted = GeneratorHarness
+            .Run(RegularExpressionWith("MatchTimeoutInMilliseconds = 150"))
+            .Sources["Sample.FormValidator.g.cs"];
+
+        Assert.Contains("TimeSpan.FromMilliseconds(150)", emitted);
+    }
+
+    [Fact]
+    public void RegularExpression_MinusOneTimeout_KeepsTheSingleArgumentConstructor()
+    {
+        // DataAnnotations builds the Regex from the pattern alone when the timeout is -1.
+        var result = GeneratorHarness.Run(RegularExpressionWith("MatchTimeoutInMilliseconds = -1"));
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1304");
+        Assert.DoesNotContain("TimeSpan", result.Sources["Sample.FormValidator.g.cs"]);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-5")]
+    public void RegularExpression_TimeoutTheRegexConstructorRejects_IsVM1304AndKeepsTheDefault(
+        string timeout
+    )
+    {
+        // RegularExpressionAttribute.IsValid throws on these values, so the model never validated
+        // under DataAnnotations either.
+        var result = GeneratorHarness.Run(
+            RegularExpressionWith($"MatchTimeoutInMilliseconds = {timeout}")
+        );
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1304");
+        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Contains(
+            $"[RegularExpression] on 'Code' sets 'MatchTimeoutInMilliseconds = {timeout}'",
+            diagnostic.GetMessage()
+        );
+        Assert.Contains("or -1 for no timeout", diagnostic.GetMessage());
+        Assert.Contains(
+            "TimeSpan.FromMilliseconds(2000)",
+            result.Sources["Sample.FormValidator.g.cs"]
+        );
+    }
+
+    private static string InlinePatternWithTimeout(string timeout) =>
+        $$"""
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public record Pet {
+                [Pattern("^[A-Z]{3}$", MatchTimeoutMilliseconds = {{timeout}})]
+                public string? Sku { get; init; }
+            }
+            """;
+
+    private static string RegularExpressionWith(string setting) =>
+        $$"""
+            namespace Sample;
+
+            public record Form {
+                [System.ComponentModel.DataAnnotations.RegularExpression("[A-Z]{3}", {{setting}})]
+                public string? Code { get; init; }
+            }
+            """;
 }

@@ -106,8 +106,9 @@ rules.Require(x.Guest?.Trim(), field: "guest");
 | `Each(list)` | Runs the rules that follow for every element. | from those rules |
 | `Ensure(condition)` | Any `bool` expression. | derived, see below |
 
-Every rule except `Require`, `RequireAllowingEmpty` and `Ensure` passes a `null` value. The
-[rules API reference](../reference/rules-api) lists each method's overloads.
+Every rule except `Require`, `RequireAllowingEmpty` and `Ensure` passes a `null` value, and a
+default `ImmutableArray<T>`. The [rules API reference](../reference/rules-api) lists each method's
+overloads.
 
 The range rules accept any value type that implements `IComparable<T>` and `IFormattable`, such as
 `int`, `decimal`, `DateOnly` or `TimeSpan`, and the nullable form of each:
@@ -324,10 +325,12 @@ public sealed class InvoiceRules : IValidationRulesFor<Invoice>
 ```
 
 The generator expands the fragment for each type that calls it, so `audited.CreatedBy` reports at
-`createdBy` for an `Invoice`. A fragment can take extra parameters. A fragment can call other
-fragments, and a generic fragment's call to another generic fragment is expanded for the same type.
-A fragment must be source in the same project. A fragment in a referenced assembly is reported as
-`VM3005`. `Nested`, `Each` and `Apply` belong in `Describe` itself, not in a fragment.
+`createdBy` for an `Invoice`, and `typeof(T)` there is `typeof(Invoice)`. `nameof(T)` is `"T"`, as
+it is in C#. A type argument that the expansion cannot name, such as an anonymous type, is reported
+as `VM3009`. A fragment can take extra parameters. A fragment can call other fragments, and a
+generic fragment's call to another generic fragment is expanded for the same type. A fragment must
+be source in the same project. A fragment in a referenced assembly is reported as `VM3005`.
+`Nested`, `Each` and `Apply` belong in `Describe` itself, not in a fragment.
 
 ## Validate through an interface
 
@@ -375,11 +378,12 @@ attributes on an interface's properties apply to every type that implements it. 
 calls `As` for the interface, the type's own checks leave those attributes to the interface's
 validator, so each is checked once, where `As` runs. Under an `if`, they are checked only when the
 condition holds. A base type passed to `As` is handled the same way. An interface with no rules at
-all is reported as `VM3105`.
+all is reported as `VM3105`, and the type of `x` itself as `VM3110`.
 
-When the interface is declared in another assembly, the validator resolves `IValidatorFor<IAudited>`
-from the container at run time. Validate such a type through `ValidationRunner<T>` resolved from a
-scope, and call the other assembly's registration method.
+When the interface is declared in another assembly, the validator resolves every
+`IValidatorFor<IAudited>` registered in the container at run time, and runs them in registration
+order as `ValidationRunner<T>` does. Validate such a type through `ValidationRunner<T>` resolved from
+a scope, and call the other assembly's registration method.
 [Registration](./registration#validators-from-other-assemblies) covers this.
 
 ## Nested objects and collections
@@ -398,6 +402,10 @@ collection. `Nested` on a collection, and a second `Nested` or `Each` in the cha
 are reported as `VM3001`. For a list of numbers or other value types, check the elements in a loop
 and report through `rules.Context`. [Nested objects and
 collections](./nesting) describes how paths are built.
+
+`Nested` and `Each` run only the validators for the declared type, and a descent into a type that
+is not sealed is reported as `VM3111`. [Subtypes](./nesting#subtypes) describes how to run the
+validators for a more derived type.
 
 ## Rules classes and attributes together
 

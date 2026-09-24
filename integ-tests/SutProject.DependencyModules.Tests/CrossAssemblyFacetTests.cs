@@ -57,6 +57,78 @@ public class CrossAssemblyFacetTests
         );
     }
 
+    /// <summary>
+    /// A second <c>IValidatorFor&lt;IAudited&gt;</c>, registered after the one SutProject generates.
+    /// It reports under <c>nameof</c>, which the pass's field namer spells.
+    /// </summary>
+    private sealed class ReservedAuthorValidator : IValidatorFor<SutProject.Declared.IAudited>
+    {
+        public ValidationFlow Validate(
+            ref ValidationContext context,
+            SutProject.Declared.IAudited value
+        ) =>
+            value.CreatedBy == "system"
+                ? context.Report(nameof(value.CreatedBy), "reserved", "createdBy is reserved.")
+                : ValidationFlow.Continue;
+    }
+
+    private static ServiceProvider BuildProviderWithTwoFacetValidators()
+    {
+        var services = new ServiceCollection();
+
+        services.AddModule<ApplicationModule>();
+        services.AddSutProjectValidators();
+        services.AddSingleton<IValidatorFor<SutProject.Declared.IAudited>>(
+            new ReservedAuthorValidator()
+        );
+
+        return services.BuildServiceProvider();
+    }
+
+    private static Deployment BySystemAtVersionZero() =>
+        new()
+        {
+            CreatedBy = "system",
+            Version = 0,
+            Environment = "prod",
+        };
+
+    /// <summary>
+    /// Every registered facet validator runs, in registration order, as
+    /// <see cref="ValidationRunner{T}"/> runs every validator registered for its type.
+    /// </summary>
+    [Fact]
+    public void WithTwoFacetValidatorsRegistered_BothRunInRegistrationOrder()
+    {
+        using var provider = BuildProviderWithTwoFacetValidators();
+
+        var result = Validate(provider, BySystemAtVersionZero());
+
+        Assert.Equal(
+            [("version", ValidationCodes.Range), ("createdBy", "reserved")],
+            result.Errors.Select(error => (error.Field, error.Code))
+        );
+    }
+
+    /// <summary>
+    /// A facet validator that asks to stop ends the pass, so the ones registered after it do not
+    /// run.
+    /// </summary>
+    [Fact]
+    public void UnderStopOnFirstError_TheFacetValidatorsAfterTheFirstFailureDoNotRun()
+    {
+        using var provider = BuildProviderWithTwoFacetValidators();
+
+        var collector = new ValidationErrorCollector(provider)
+        {
+            StopMode = ValidationStopMode.StopOnFirstError,
+        };
+
+        new DeploymentValidator().ValidateInto(collector, BySystemAtVersionZero());
+
+        Assert.Equal(["version"], collector.ToResult().Errors.Select(error => error.Field));
+    }
+
     [Fact]
     public void WithTheFacetModuleComposed_AValidValuePasses()
     {

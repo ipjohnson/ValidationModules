@@ -64,7 +64,7 @@ public class ControlFlowTests
             """
         );
 
-        Assert.Contains("if (x.IsExpedited) {", region);
+        Assert.Contains("if (x.IsExpedited)\n        {", region);
         Assert.Contains("var missingReason = string.IsNullOrWhiteSpace(x.Reason);", region);
         Assert.Contains(
             "!missingReason && (x.Reason is not null && (x.Reason.Length < 2 || x.Reason.Length > 500))",
@@ -87,9 +87,9 @@ public class ControlFlowTests
             """
         );
 
-        Assert.Contains("if (x.IsAuto) {", region);
-        Assert.Contains("} else if (x.Tier > 2) {", region);
-        Assert.Contains("} else {", region);
+        Assert.Contains("if (x.IsAuto)\n        {", region);
+        Assert.Contains("}\n        else if (x.Tier > 2)\n        {", region);
+        Assert.Contains("}\n        else\n        {", region);
         Assert.Contains("ReportRequired(ctx, \"plate\")", region);
         Assert.Contains("ReportRequired(ctx, \"reference\")", region);
         Assert.Contains("ReportRequired(ctx, \"reason\")", region);
@@ -111,7 +111,7 @@ public class ControlFlowTests
             """
         );
 
-        Assert.Contains("switch (x.Tier) {", region);
+        Assert.Contains("switch (x.Tier)\n        {", region);
         Assert.Contains("case 1:", region);
         Assert.Contains("ReportRequired(ctx, \"reason\")", region);
         Assert.Contains("ReportRequired(ctx, \"reference\")", region);
@@ -159,7 +159,7 @@ public class ControlFlowTests
         );
 
         Assert.Contains("var digits = x.Plate?.Length ?? 0;", region);
-        Assert.Contains("if (digits > 3) {", region);
+        Assert.Contains("if (digits > 3)\n        {", region);
     }
 
     [Fact]
@@ -173,7 +173,7 @@ public class ControlFlowTests
             """
         );
 
-        Assert.Contains("if (x.IsExpedited) {", region);
+        Assert.Contains("if (x.IsExpedited)\n        {", region);
         Assert.Contains(
             "if (!(x.Tier >= 2) && ctx.Report(\"tier\", \"expedite_tier\", \"tier >= 2.\").ShouldStop)",
             region

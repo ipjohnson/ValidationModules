@@ -345,4 +345,51 @@ public class NestedTypeNameTests
         Assert.Contains("Shop.Order_Item", diagnostic.GetMessage());
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM5002");
     }
+
+    /// <summary>
+    /// The same holds for a rules class's companion: a nested <c>Order.ItemRules</c> and a
+    /// top-level <c>Order_ItemRules</c> both get <c>Order_ItemRules_Rules</c>. The second companion's
+    /// <c>AddSource</c> threw outside the VM5002 handler, so Roslyn reported CS8785 and dropped every
+    /// generated file, <c>Pet</c>'s validator included.
+    /// </summary>
+    [Fact]
+    public void ATopLevelRulesClassSpelledLikeANestedOne_IsVM1013NamingBoth()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public record Item { public string? Sku { get; init; } }
+            public record Other { public string? Code { get; init; } }
+            public record Pet { [Required] public string? Name { get; init; } }
+
+            public class Order {
+                public sealed class ItemRules : IValidationRulesFor<Item> {
+                    public static void Describe(ValidationRules<Item> rules, Item x) => rules.Require(x.Sku);
+                }
+            }
+
+            public sealed class Order_ItemRules : IValidationRulesFor<Other> {
+                public static void Describe(ValidationRules<Other> rules, Other x) => rules.Require(x.Code);
+            }
+            """
+        );
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1013");
+
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        Assert.Contains("Sample.Order.ItemRules", diagnostic.GetMessage());
+        Assert.Contains("Sample.Order_ItemRules", diagnostic.GetMessage());
+        Assert.Contains("Order_ItemRules_Rules", diagnostic.GetMessage());
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id is "VM5002" or "CS8785");
+
+        // Neither rules class is compiled, so nothing refers to the companion that is not emitted.
+        Assert.Empty(result.CompilationErrors);
+        Assert.DoesNotContain("Sample.Order_ItemRules_Rules.g.cs", result.Sources.Keys);
+        Assert.Contains("Sample.PetValidator.g.cs", result.Sources.Keys);
+        Assert.Contains("GeneratedValidatorRegistration.g.cs", result.Sources.Keys);
+    }
 }
