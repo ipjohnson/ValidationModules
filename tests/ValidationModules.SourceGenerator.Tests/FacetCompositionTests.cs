@@ -235,6 +235,120 @@ public class FacetCompositionTests
         Assert.Contains(result.Diagnostics, d => d.Id == "VM3002");
     }
 
+    /// <summary>
+    /// A facet is an interface or base type of the subject. The subject's own type would run the
+    /// validator the call is in, which calls the same region again until the stack overflows.
+    /// </summary>
+    [Fact]
+    public void TheSubjectsOwnType_IsVM3110AndDoesNotDescend()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules;
+
+            namespace Sample;
+
+            public record Pet { public string? Name { get; init; } }
+
+            public sealed class PetRules : IValidationRulesFor<Pet> {
+                public static void Describe(ValidationRules<Pet> rules, Pet x) {
+                    rules.Require(x.Name);
+                    rules.As<Pet>(x);
+                }
+            }
+            """
+        );
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM3110");
+
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        Assert.Equal(
+            "As<Pet> names the subject's own type, so the validator for 'Pet' would call itself "
+                + "and never return. Remove the call, because the rules for 'Pet' already run "
+                + "here, or name an interface or base type of 'Pet' instead",
+            diagnostic.GetMessage()
+        );
+        Assert.Equal(
+            "rules.As<Pet>(x)",
+            diagnostic
+                .Location.SourceTree!.GetText(TestContext.Current.CancellationToken)
+                .ToString(diagnostic.Location.SourceSpan)
+        );
+        Assert.DoesNotContain(
+            result.Sources.Values,
+            source => source.Contains("PetValidator()).Validate")
+        );
+    }
+
+    /// <summary>
+    /// In a generic fragment, <c>As&lt;T&gt;</c> over the fragment's subject parameter is the
+    /// subject's own type in every expansion. It used to be dropped without a word.
+    /// </summary>
+    [Fact]
+    public void AFragmentsAsOverItsSubjectTypeParameter_IsVM3110()
+    {
+        var result = GeneratorHarness.Run(
+            AttributedFacet
+                .Replace("rules.As<IAudited>(x);", "Auditing.Standard(rules, x);")
+                .Replace(
+                    "public sealed record Receipt",
+                    """
+                    public static class Auditing {
+                        public static void Standard<T>(ValidationRules<T> rules, T audited)
+                            where T : IAudited {
+                            rules.As<T>(audited);
+                        }
+                    }
+
+                    public sealed record Receipt
+                    """
+                )
+        );
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM3110");
+
+        Assert.StartsWith("As<Invoice> names the subject's own type", diagnostic.GetMessage());
+        Assert.Equal(
+            "rules.As<T>(audited)",
+            diagnostic
+                .Location.SourceTree!.GetText(TestContext.Current.CancellationToken)
+                .ToString(diagnostic.Location.SourceSpan)
+        );
+    }
+
+    /// <summary>
+    /// The facet is compared after the fragment's type arguments are put in, so a facet passed as
+    /// a type argument is validated like one written out.
+    /// </summary>
+    [Fact]
+    public void AFragmentsAsOverAFacetTypeParameter_BindsTheFacet()
+    {
+        var result = GeneratorHarness.Run(
+            SameCompilation
+                .Replace("rules.As<IAudited>(x);", "Auditing.Standard<Order, IAudited>(rules, x);")
+                .Replace(
+                    "public sealed class OrderRules",
+                    """
+                    public static class Auditing {
+                        public static void Standard<T, TFacet>(ValidationRules<T> rules, T audited)
+                            where T : TFacet {
+                            rules.As<TFacet>(audited);
+                        }
+                    }
+
+                    public sealed class OrderRules
+                    """
+                )
+        );
+
+        Assert.Empty(result.CompilationErrors);
+        Assert.DoesNotContain(result.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        Assert.Contains(
+            "new global::Sample.IAuditedValidator()).Validate(ref ctx, audited)",
+            result.Sources["Sample.Auditing_Fragments.g.cs"]
+        );
+    }
+
     [Fact]
     public void AnAsUnderAnIf_IsGuardedLikeAnyIsland()
     {

@@ -375,7 +375,7 @@ attributes on an interface's properties apply to every type that implements it. 
 calls `As` for the interface, the type's own checks leave those attributes to the interface's
 validator, so each is checked once, where `As` runs. Under an `if`, they are checked only when the
 condition holds. A base type passed to `As` is handled the same way. An interface with no rules at
-all is reported as `VM3105`.
+all is reported as `VM3105`, and the type of `x` itself as `VM3110`.
 
 When the interface is declared in another assembly, the validator resolves `IValidatorFor<IAudited>`
 from the container at run time. Validate such a type through `ValidationRunner<T>` resolved from a

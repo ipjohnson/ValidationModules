@@ -1175,6 +1175,23 @@ public static class ValidationDiagnostics
         DiagnosticSeverity.Warning
     );
 
+    /// <summary>
+    /// <c>As</c> over the subject's own type, including a generic fragment's <c>As&lt;T&gt;</c>
+    /// over its subject parameter.
+    /// </summary>
+    /// <remarks>
+    /// The facet's validator is the one the call runs in. It would validate the same value and run
+    /// the same region again, until the stack overflows. Nothing is emitted for the call.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor FacetIsTheSubjectType = Descriptor(
+        "VM3110",
+        "As names the subject's own type",
+        "As<{0}> names the subject's own type, so the validator for '{0}' would call itself and "
+            + "never return. Remove the call, because the rules for '{0}' already run here, or "
+            + "name an interface or base type of '{0}' instead",
+        DiagnosticSeverity.Error
+    );
+
     public static readonly DiagnosticDescriptor LanguagePackUnreadable = Descriptor(
         "VM4001",
         "Language pack cannot be read",
