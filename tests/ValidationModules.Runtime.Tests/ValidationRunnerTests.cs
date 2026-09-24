@@ -102,6 +102,30 @@ public class ValidationRunnerTests
             Toys = [new Toy { Name = "ball" }],
         };
 
+    /// <summary>
+    /// The runner rejects a null value as the extension methods do. The async form throws at the
+    /// call, before a task exists, so a caller that never awaits still sees it.
+    /// </summary>
+    [Fact]
+    public void ANullValue_IsRejectedByEveryEntryPoint()
+    {
+        var runner = new ValidationRunner<Pet>([PetValidator.Instance], []);
+
+        Assert.Equal(
+            "value",
+            Assert.Throws<ArgumentNullException>(() => runner.Validate(null!)).ParamName
+        );
+        Assert.Equal(
+            "value",
+            Assert
+                .Throws<ArgumentNullException>(() =>
+                {
+                    _ = runner.ValidateAsync(null!, TestContext.Current.CancellationToken);
+                })
+                .ParamName
+        );
+    }
+
     private sealed class RecordingAsyncValidator : IAsyncValidatorFor<Pet>
     {
         public bool WasCalled { get; private set; }

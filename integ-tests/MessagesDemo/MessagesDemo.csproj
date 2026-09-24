@@ -30,12 +30,14 @@
     </ItemGroup>
 
     <!--
-        The app-local override, included after the packs: MSBuild item order is registration
-        order, and the layering rule makes the later registration win per key - so this one file
-        rewords exactly one French message and inherits the rest.
+        The app-local files, included after the packs: MSBuild item order is registration order,
+        and the layering rule makes the later registration win per key. The override rewords
+        exactly one French message and inherits the rest. The Codes files translate date_order,
+        this application's own code, which no shipped pack carries.
     -->
     <ItemGroup>
         <AdditionalFiles Include="Overrides/overrides.fr.validation-messages.json"/>
+        <AdditionalFiles Include="Codes/*.validation-messages.json"/>
     </ItemGroup>
 
     <ItemGroup>

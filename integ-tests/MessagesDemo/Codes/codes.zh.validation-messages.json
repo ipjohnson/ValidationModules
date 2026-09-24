@@ -1,0 +1,6 @@
+{
+    "culture": "zh",
+    "templates": {
+        "date_order": "结束日期不能早于开始日期。"
+    }
+}

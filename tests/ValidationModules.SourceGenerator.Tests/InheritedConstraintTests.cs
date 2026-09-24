@@ -206,7 +206,7 @@ public class InheritedConstraintTests
             }
 
             public record Document : IAudited {
-                [StringLength(1, 64)]
+                [StringLength(64, Min = 1)]
                 public string? ModifiedBy { get; init; }
             }
             """
@@ -242,12 +242,12 @@ public class InheritedConstraintTests
 
             public class Base {
                 [Required]
-                [StringLength(1, 10)]
+                [StringLength(10, Min = 1)]
                 public virtual string? Name { get; set; }
             }
 
             public class Derived : Base {
-                [StringLength(1, 200)]
+                [StringLength(200, Min = 1)]
                 public new string? Name { get; set; }
             }
             """
@@ -384,7 +384,7 @@ public class InheritedConstraintTests
                 [Required]
                 public string? CorrelationId { get; init; }
 
-                [StringLength(1, 64)]
+                [StringLength(64, Min = 1)]
                 public string? TenantId { get; init; }
             }
             """,
@@ -477,7 +477,7 @@ public class InheritedConstraintTests
 
             public record BaseRequest {
                 // [StringLength] on an int: VM1001 where it is declared, not here.
-                [StringLength(1, 10)]
+                [StringLength(10, Min = 1)]
                 public int Count { get; init; }
             }
             """,

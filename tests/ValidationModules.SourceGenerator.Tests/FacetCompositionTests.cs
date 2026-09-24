@@ -185,6 +185,45 @@ public class FacetCompositionTests
         Assert.Empty(result.CompilationErrors);
     }
 
+    /// <summary>
+    /// A rules class may describe several facets. The pre-scan records every target it implements,
+    /// not only the first, so an As over the second one is not accused of having no rules.
+    /// </summary>
+    [Fact]
+    public void AFacetDescribedByAMultiTargetRulesClass_IsSilent()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules;
+
+            namespace Sample;
+
+            public interface IA { string? A { get; } }
+            public interface IB { string? B { get; } }
+
+            public sealed class Facets : IValidationRulesFor<IA>, IValidationRulesFor<IB> {
+                public static void Describe(ValidationRules<IA> rules, IA x) { rules.Require(x.A); }
+                public static void Describe(ValidationRules<IB> rules, IB x) { rules.Require(x.B); }
+            }
+
+            public sealed record M : IA, IB {
+                public string? A { get; init; }
+                public string? B { get; init; }
+            }
+
+            public sealed class MRules : IValidationRulesFor<M> {
+                public static void Describe(ValidationRules<M> rules, M x) {
+                    rules.As<IA>(x);
+                    rules.As<IB>(x);
+                }
+            }
+            """
+        );
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM3105");
+        Assert.Empty(result.CompilationErrors);
+    }
+
     [Fact]
     public void TheArgument_MustBeTheSubject()
     {

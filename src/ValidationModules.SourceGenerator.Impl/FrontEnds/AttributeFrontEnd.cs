@@ -116,7 +116,7 @@ public sealed class AttributeFrontEnd
         var properties = ImmutableArray.CreateBuilder<ValidatedPropertyModel>();
         var order = new List<int>();
         var sawAnything =
-            HasGenerateValidator(type)
+            DescentTargets.HasGenerateValidator(type)
             || declared is { Count: > 0 }
             || applied is { Count: > 0 }
             || regions is { Count: > 0 };
@@ -148,7 +148,7 @@ public sealed class AttributeFrontEnd
                 _quiet = wasQuiet;
             }
 
-            var validateNested = member.Sources.Any(HasValidateNested);
+            var validateNested = member.Sources.Any(DescentTargets.HasValidateNested);
             string? overriddenField = null;
 
             // Inherited constraints count. Without this a derived type that adds nothing of its own
@@ -235,49 +235,38 @@ public sealed class AttributeFrontEnd
                 continue;
             }
 
-            if (validateNested)
+            // A rules class's descent was judged where it was read, and reaches here only when it
+            // has a validator to call. The attribute's descent is judged now.
+            if (attributeNesting)
             {
                 var target = DescentTargetOf(property);
+                var verdict = DescentTargets.Judge(
+                    target,
+                    _compilation,
+                    _compileDataAnnotations,
+                    _hasRulesClass
+                );
 
-                // Dropped rather than emitted, in both arms, because emitting either descent calls
-                // a validator that does not exist and fails the consumer's build inside generated
-                // code - or, for a constructed generic, throws inside the emitter. A descent a
-                // rules class declared keeps its machinery: the region's transcribed text owns
-                // that walk and still names it.
-                if (target is not INamedTypeSymbol { IsGenericType: false } named)
+                // Dropped rather than emitted, because the descent would call a validator that does
+                // not exist, which fails the consumer's build inside generated code. A constructed
+                // generic name would throw inside the emitter instead.
+                if (verdict != DescentTargets.Verdict.Callable)
                 {
-                    // A type-parameter target only occurs inside a generic validated type, which
-                    // VM1010 refuses wholesale below; a second diagnostic there would be noise.
-                    if (target.TypeKind != TypeKind.TypeParameter)
+                    if (
+                        DescentTargets.Problem(
+                            verdict,
+                            target,
+                            property.Name,
+                            "[ValidateNested]"
+                        ) is
+                        { } problem
+                    )
                     {
-                        Report(
-                            ValidationDiagnostics.NestedTargetCannotHaveValidator,
-                            property,
-                            target.ToDisplayString(),
-                            property.Name
-                        );
+                        Report(problem.Descriptor, property, problem.Arguments);
                     }
 
-                    if (!declaredNesting)
-                    {
-                        validateNested = false;
-                    }
-                }
-                else if (named.DeclaringSyntaxReferences.Length > 0 && !ProducesAValidator(named))
-                {
-                    // Anything not declared in this compilation is left alone - it may carry a
-                    // validator generated in its own assembly, which is invisible from here.
-                    Report(
-                        ValidationDiagnostics.NestedTypeHasNoRules,
-                        property,
-                        named.Name,
-                        property.Name
-                    );
-
-                    if (!declaredNesting)
-                    {
-                        validateNested = false;
-                    }
+                    attributeNesting = false;
+                    validateNested = declaredNesting;
                 }
             }
 
@@ -415,7 +404,8 @@ public sealed class AttributeFrontEnd
             new EquatableArray<RegionModel>(
                 ImmutableArray.CreateRange(regions ?? Array.Empty<RegionModel>())
             ),
-            new EquatableArray<ConstraintModel>(objectRules.ToImmutableArray())
+            new EquatableArray<ConstraintModel>(objectRules.ToImmutableArray()),
+            type.IsValueType
         );
     }
 
@@ -596,7 +586,7 @@ public sealed class AttributeFrontEnd
     /// ordered by name, because <c>AllInterfaces</c> order is not contractual and a rule that moved
     /// between builds would reorder the generated code for nothing.
     /// </summary>
-    private static IEnumerable<INamedTypeSymbol> ObjectRuleSources(INamedTypeSymbol type)
+    internal static IEnumerable<INamedTypeSymbol> ObjectRuleSources(INamedTypeSymbol type)
     {
         for (
             INamedTypeSymbol? current = type;
@@ -671,106 +661,23 @@ public sealed class AttributeFrontEnd
     }
 
     /// <summary>
-    /// Whether anything about <paramref name="type"/> asks for a validator to be generated.
+    /// Whether anything about <paramref name="type"/> asks for a validator to be generated. See
+    /// <see cref="DescentTargets.ProducesAValidator"/>.
     /// </summary>
-    /// <remarks>
-    /// Deliberately the same things <see cref="Build"/> itself treats as "saw something" - a
-    /// constraint on a member, a class-level <c>ValidationAttribute</c>, <c>[GenerateValidator]</c>,
-    /// or a rules class - plus <c>[ValidateNested]</c>, which produces a validator that descends
-    /// even with no constraints of its own. Any narrower test would warn about a type that does get
-    /// one.
-    /// </remarks>
-    private bool ProducesAValidator(INamedTypeSymbol type)
-    {
-        if (HasGenerateValidator(type) || _hasRulesClass?.Invoke(type) == true)
-        {
-            return true;
-        }
-
-        // A class-level ValidationAttribute is a rule of the type's own, found where
-        // ReadObjectRules looks for it, so Build gives the type a validator on its strength.
-        if (
-            _compileDataAnnotations
-            && ObjectRuleSources(type)
-                .Any(declaring =>
-                    declaring
-                        .GetAttributes()
-                        .Any(attribute =>
-                            attribute.AttributeClass is { } attributeClass
-                            && DerivesFromValidationAttribute(attributeClass)
-                        )
-                )
-        )
-        {
-            return true;
-        }
-
-        // The walk rather than GetMembers(): a type whose only constraints are inherited still
-        // produces a validator, so asking only about declared members would make VM1501 accuse it
-        // of having no rules.
-        foreach (var member in MemberWalk.PropertiesOf(type, _compilation, CarriesConstraints))
-        {
-            if (member.Sources.Any(CarriesConstraints))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    private bool ProducesAValidator(INamedTypeSymbol type) =>
+        DescentTargets.ProducesAValidator(
+            type,
+            _compilation,
+            _compileDataAnnotations,
+            _hasRulesClass
+        );
 
     /// <summary>
-    /// Whether a declaration carries anything either front-end reads.
+    /// Whether a declaration carries anything either front end reads. See
+    /// <see cref="DescentTargets.CarriesConstraints"/>.
     /// </summary>
-    /// <remarks>
-    /// Shared with the walk, which consults it to decide whether an interface declaration is worth
-    /// resolving to its implementer and whether a hidden base declaration is worth a VM1009.
-    /// </remarks>
-    private bool CarriesConstraints(IPropertySymbol property)
-    {
-        if (HasValidateNested(property))
-        {
-            return true;
-        }
-
-        foreach (var attribute in property.GetAttributes())
-        {
-            if (attribute.AttributeClass is not { } attributeClass)
-            {
-                continue;
-            }
-
-            var ns = attributeClass.ContainingNamespace?.ToDisplayString();
-
-            if (
-                ns == KnownTypes.ConstraintsNamespace
-                || (_compileDataAnnotations && ns == KnownTypes.DataAnnotationsNamespace)
-            )
-            {
-                return true;
-            }
-
-            // A CustomConstraintAttribute subclass is native vocabulary wherever it is declared,
-            // independent of the DataAnnotations switch. An IConstraintFor<T> implementer is the
-            // same vocabulary's instance shape, and counts for the same reason.
-            if (
-                DerivesFromCustomConstraint(attributeClass)
-                || ImplementsConstraintInterface(attributeClass)
-            )
-            {
-                return true;
-            }
-
-            // A custom ValidationAttribute now compiles to an invocation, so a property carrying
-            // only one is a validated property - without this, the walk would never read it.
-            if (_compileDataAnnotations && DerivesFromValidationAttribute(attributeClass))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    private bool CarriesConstraints(IPropertySymbol property) =>
+        DescentTargets.CarriesConstraints(property, _compileDataAnnotations);
 
     /// <summary>
     /// Whether the type - and every type it is nested in - is visible outside the assembly.
@@ -1915,9 +1822,11 @@ public sealed class AttributeFrontEnd
             }
         }
 
-        // The one place every authored code this front end reads leaves by, whichever attribute
-        // shape supplied it. The built-in vocabulary is not here: an unset Code means the emitter
-        // writes a ValidationCodes constant, which is never namespaced.
+        // Where every authored code the emitter writes into a report call leaves by, whichever
+        // attribute shape supplied it. An IConstraintFor<T> attribute reports its own Code, so
+        // ReadInstanceConstraint applies the namespace inside the construction instead. The
+        // built-in vocabulary is not here: an unset Code means the emitter writes a ValidationCodes
+        // constant, which is never namespaced.
         if (!string.IsNullOrWhiteSpace(_codeNamespace))
         {
             for (var index = 0; index < constraints.Count; index++)
@@ -2247,12 +2156,6 @@ public sealed class AttributeFrontEnd
             : $"global::{type.ContainingNamespace.ToDisplayString()}.{name}";
     }
 
-    private static bool HasGenerateValidator(INamedTypeSymbol type) =>
-        type.GetAttributes()
-            .Any(attribute =>
-                attribute.AttributeClass?.ToDisplayString() == KnownTypes.GenerateValidatorAttribute
-            );
-
     /// <summary>
     /// Turns a <c>When</c>/<c>Unless</c> member name into the boolean expression the emitter tests,
     /// with the negation baked in so that the emitter cannot tell the two apart.
@@ -2491,16 +2394,7 @@ public sealed class AttributeFrontEnd
     private static string? NamedArgument(AttributeData attribute, string name) =>
         attribute.NamedArguments.FirstOrDefault(pair => pair.Key == name).Value.Value as string;
 
-    private static bool HasValidateNested(IPropertySymbol property) =>
-        property
-            .GetAttributes()
-            .Any(attribute =>
-                attribute.AttributeClass?.Name == "ValidateNestedAttribute"
-                && attribute.AttributeClass.ContainingNamespace?.ToDisplayString()
-                    == KnownTypes.ConstraintsNamespace
-            );
-
-    private static bool DerivesFromValidationAttribute(INamedTypeSymbol attributeClass)
+    internal static bool DerivesFromValidationAttribute(INamedTypeSymbol attributeClass)
     {
         for (var current = attributeClass.BaseType; current is not null; current = current.BaseType)
         {
@@ -2513,7 +2407,7 @@ public sealed class AttributeFrontEnd
         return false;
     }
 
-    private static bool DerivesFromCustomConstraint(INamedTypeSymbol attributeClass)
+    internal static bool DerivesFromCustomConstraint(INamedTypeSymbol attributeClass)
     {
         for (var current = attributeClass.BaseType; current is not null; current = current.BaseType)
         {
@@ -2803,7 +2697,21 @@ public sealed class AttributeFrontEnd
             matched = fits[0];
         }
 
-        if (AttributeConstructionRenderer.Render(attribute) is not { } construction)
+        // The base's knobs are read only off the base that declares them; on a plain Attribute
+        // implementer, a property that happens to be called When or Code is the author's and rides
+        // into the construction like any other.
+        var conditional = DerivesFromValidationConstraint(attributeClass);
+
+        // The instance reads its own Code when it reports, so the assembly's code namespace goes
+        // into the construction, where the other attribute shapes take it into the report call.
+        var code = conditional
+            ? CodeNaming.Apply(
+                _codeNamespace,
+                NativeConstraintReader.Named(attribute, "Code") as string
+            )
+            : null;
+
+        if (AttributeConstructionRenderer.Render(attribute, code) is not { } construction)
         {
             Report(
                 ValidationDiagnostics.ConstraintInterfaceUnusable,
@@ -2826,11 +2734,6 @@ public sealed class AttributeFrontEnd
                 member.Name
             );
         }
-
-        // The base's condition knobs are read only off the base that declares them; on a plain
-        // Attribute implementer, a property that happens to be called When is the author's and
-        // rides into the construction like any other.
-        var conditional = DerivesFromValidationConstraint(attributeClass);
 
         var constraint = new ConstraintModel(
             ConstraintKind.CustomInstance,
@@ -2904,7 +2807,7 @@ public sealed class AttributeFrontEnd
         return contracts;
     }
 
-    private static bool ImplementsConstraintInterface(INamedTypeSymbol attributeClass) =>
+    internal static bool ImplementsConstraintInterface(INamedTypeSymbol attributeClass) =>
         attributeClass.AllInterfaces.Any(contract =>
             contract.OriginalDefinition.ToDisplayString() == KnownTypes.ConstraintForInterface
         );
