@@ -150,13 +150,34 @@ public static class GeneratorHarness
             additionalFiles: null
         );
 
+    /// <summary>
+    /// Runs the generator with the emit of each file whose hint name
+    /// <paramref name="failingEmit"/> accepts made to throw. That drives VM5002, which no input is
+    /// known to reach.
+    /// </summary>
+    public static Result RunWithFailingEmit(
+        string source,
+        Func<string, bool> failingEmit,
+        IReadOnlyCollection<(string Path, string Content)>? additionalFiles = null
+    ) =>
+        Run(
+            source,
+            "GeneratorTests",
+            OutputKind.DynamicallyLinkedLibrary,
+            Array.Empty<MetadataReference>(),
+            Array.Empty<(string, string)>(),
+            additionalFiles,
+            new ValidationSourceGenerator { FailingEmit = failingEmit }
+        );
+
     private static Result Run(
         string source,
         string assemblyName,
         OutputKind outputKind,
         IReadOnlyCollection<MetadataReference> extraReferences,
         (string Key, string Value)[] buildProperties,
-        IReadOnlyCollection<(string Path, string Content)>? additionalFiles
+        IReadOnlyCollection<(string Path, string Content)>? additionalFiles,
+        ValidationSourceGenerator? generator = null
     )
     {
         var references = BaseReferences();
@@ -179,7 +200,7 @@ public static class GeneratorHarness
             .ToImmutableArray();
 
         var driver = CSharpGeneratorDriver
-            .Create(new ValidationSourceGenerator())
+            .Create(generator ?? new ValidationSourceGenerator())
             .AddAdditionalTexts(texts)
             .WithUpdatedAnalyzerConfigOptions(new OptionsProvider(buildProperties))
             .RunGeneratorsAndUpdateCompilation(compilation, out var output, out var diagnostics);

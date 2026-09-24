@@ -347,6 +347,50 @@ public class NestedTypeNameTests
     }
 
     /// <summary>
+    /// Neither colliding validator is generated, so a validator that nests one of the two types
+    /// would name a class that does not exist. It is left out with them, and VM1013 is the only
+    /// error.
+    /// </summary>
+    [Fact]
+    public void AValidatorThatNestsACollidingType_IsLeftOutWithIt()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Shop;
+
+            public class Order {
+                public sealed class Item {
+                    [Required] public string? Sku { get; init; }
+                }
+            }
+
+            public sealed class Order_Item {
+                [Required] public string? Sku { get; init; }
+            }
+
+            public sealed class Cart {
+                [ValidateNested] public Order_Item? Item { get; init; }
+            }
+
+            public sealed class Tag {
+                [Required] public string? Label { get; init; }
+            }
+            """
+        );
+
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1013");
+        Assert.Empty(result.CompilationErrors);
+        Assert.DoesNotContain("Shop.CartValidator.g.cs", result.Sources.Keys);
+        Assert.Contains("Shop.TagValidator.g.cs", result.Sources.Keys);
+        Assert.DoesNotContain(
+            "CartValidator",
+            result.Sources["GeneratedValidatorRegistration.g.cs"]
+        );
+    }
+
+    /// <summary>
     /// The same holds for a rules class's companion: a nested <c>Order.ItemRules</c> and a
     /// top-level <c>Order_ItemRules</c> both get <c>Order_ItemRules_Rules</c>. The second companion's
     /// <c>AddSource</c> threw outside the VM5002 handler, so Roslyn reported CS8785 and dropped every
