@@ -563,6 +563,15 @@ An `AllowedValues` in a rules class, or an `[AllowedValues]` attribute from eith
 lists no values. An empty set checks nothing, so the rule is dropped. List the permitted values, or
 remove the rule. An empty `[DeniedValues]` is not reported, because it denies nothing.
 
+### VM3110
+
+**Severity:** Error
+
+`As<TFacet>` names the type of `x` itself. The validator for that type would call itself until the
+stack overflows. The same applies to `As<T>` in a generic fragment, where `T` is the type of the
+fragment's subject. Remove the call, because the rules for the type already run, or name an
+interface or base type of `x` instead.
+
 ## Language packs
 
 These diagnostics point at the JSON file.

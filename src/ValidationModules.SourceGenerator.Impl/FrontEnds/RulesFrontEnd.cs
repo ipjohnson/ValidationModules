@@ -2284,11 +2284,23 @@ public sealed class RulesFrontEnd
                     return false;
                 }
 
+                // Substituted first, so a generic fragment's As<T> over its own subject parameter is
+                // compared as the type it was expanded for.
                 if (
                     method.TypeArguments.Length != 1
-                    || method.TypeArguments[0] is not INamedTypeSymbol facet
+                    || _writer.Substituted(method.TypeArguments[0]) is not INamedTypeSymbol facet
                 )
                 {
+                    return false;
+                }
+
+                if (SymbolEqualityComparer.Default.Equals(facet, _writer._target))
+                {
+                    _writer._owner.Report(
+                        ValidationDiagnostics.FacetIsTheSubjectType,
+                        call,
+                        facet.Name
+                    );
                     return false;
                 }
 
