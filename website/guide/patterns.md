@@ -108,7 +108,9 @@ trimmer remove.
 
 ## In a rules class
 
-A rules class passes the regular expression as a method group, not as a lambda:
+A rules class passes the `[GeneratedRegex]` method as a method group. The generated code calls it
+from another class, so the method must be `internal` or `public`. A `private` method is reported as
+`VM3004`. A lambda that only calls the method, such as `() => SkuRegex()`, is read as the method:
 
 ```csharp
 using System.Text.RegularExpressions;

@@ -1871,16 +1871,23 @@ public sealed class RulesFrontEnd
 
                     default:
                     {
+                        var reported = _writer._owner._diagnostics.Count;
                         var constraint = ConstraintFor(name, arguments, call);
 
                         if (constraint is null)
                         {
-                            _writer._owner.Report(
-                                ValidationDiagnostics.NotTranscribable,
-                                report,
-                                _writer._declaringClass.Name,
-                                $"a call to '{name}' the reader does not know"
-                            );
+                            // A reader that already said what is wrong with the call has said
+                            // enough; a VM3001 beside it would only repeat that it was refused.
+                            if (_writer._owner._diagnostics.Count == reported)
+                            {
+                                _writer._owner.Report(
+                                    ValidationDiagnostics.NotTranscribable,
+                                    report,
+                                    _writer._declaringClass.Name,
+                                    $"a call to '{name}' the reader does not know"
+                                );
+                            }
+
                             return false;
                         }
 
@@ -2084,16 +2091,16 @@ public sealed class RulesFrontEnd
                 }
 
                 if (
-                    !arguments.TryGetValue("rule", out var rule)
-                    || _writer._model.GetSymbolInfo(rule).Symbol is not IMethodSymbol method
+                    CalledMethod(
+                        arguments.TryGetValue("rule", out var rule) ? rule : call,
+                        "Apply",
+                        "Move the rule into a static method that takes (ref ValidationContext, "
+                            + $"{_writer._target.Name}) and returns ValidationFlow, and pass the "
+                            + $"method by name: {_writer._builder.Name}.Apply(Check)"
+                    )
+                    is not { } method
                 )
                 {
-                    _writer._owner.Report(
-                        ValidationDiagnostics.NotTranscribable,
-                        call,
-                        _writer._declaringClass.Name,
-                        "an Apply whose argument is not a method group"
-                    );
                     return false;
                 }
 
@@ -2502,15 +2509,158 @@ public sealed class RulesFrontEnd
                     return null;
                 }
 
-                // The accessor is a method group for a [GeneratedRegex] partial method, so the
-                // emitted form is that method invoked. No inline pattern can reach here at all.
-                return _writer._model.GetSymbolInfo(accessor).Symbol is IMethodSymbol regex
+                // The replacement names a method after the anchored property, and keeps the
+                // value argument where the call had one: the chained form has none.
+                var suggested = $"{_facts?.PropertyName ?? "Value"}Pattern";
+                var replacement = arguments.TryGetValue("value", out var value)
+                    ? $"{_writer._builder.Name}.Pattern({value}, {suggested})"
+                    : $".Pattern({suggested})";
+
+                // The accessor is a [GeneratedRegex] method, so the emitted form is that method
+                // invoked. No inline pattern can reach here at all.
+                return
+                    CalledMethod(
+                        accessor,
+                        "Pattern",
+                        "Declare the expression as a [GeneratedRegex] method and pass the method "
+                            + $"by name: {replacement}"
+                    )
+                        is { } regex
                     ? new ConstraintModel(
                         ConstraintKind.Pattern,
                         RegexAccessor: $"{regex.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{regex.Name}()"
                     )
                     : null;
             }
+
+            /// <summary>
+            /// The static method a <c>Pattern</c> or <c>Apply</c> argument names, or null after
+            /// reporting why generated code cannot call it.
+            /// </summary>
+            /// <remarks>
+            /// <para>
+            /// Generated code calls the method by name, so a method group is the form both take. A
+            /// lambda whose whole body is one call to a static method is read as that method:
+            /// <c>() =&gt; SkuPattern()</c>, or <c>(ref ValidationContext c, T v) =&gt; Check(ref c, v)</c>
+            /// with the lambda's own parameters passed through in order. Anything else names no
+            /// method, and is VM3008 with the method-group form in its tail.
+            /// </para>
+            /// <para>
+            /// Generated code is another class in the same assembly, so the method also has to be
+            /// reachable from there. A <c>[GeneratedRegex]</c> method is usually written
+            /// <c>private</c>. A private method is VM3004, as it is anywhere else in the body,
+            /// rather than CS0122 inside a generated file.
+            /// </para>
+            /// </remarks>
+            private IMethodSymbol? CalledMethod(
+                ExpressionSyntax argument,
+                string vocabulary,
+                string replacement
+            )
+            {
+                var method =
+                    StaticMethod(_writer._model.GetSymbolInfo(argument).Symbol)
+                    ?? LambdaTarget(argument);
+
+                if (method is null)
+                {
+                    _writer._owner.Report(
+                        ValidationDiagnostics.DelegateArgumentNamesNoMethod,
+                        argument,
+                        _writer._declaringClass.Name,
+                        vocabulary,
+                        replacement
+                    );
+                    return null;
+                }
+
+                if (
+                    !_writer._compilation.IsSymbolAccessibleWithin(
+                        method,
+                        _writer._declaringClass.ContainingAssembly
+                    )
+                )
+                {
+                    _writer._owner.Report(
+                        ValidationDiagnostics.MemberNotReachableFromRegion,
+                        argument,
+                        $"{method.ContainingType.Name}.{method.Name}",
+                        _writer._declaringClass.Name
+                    );
+                    return null;
+                }
+
+                return method;
+            }
+
+            /// <summary>
+            /// The method a lambda's whole body calls, when it is static and receives the lambda's
+            /// own parameters in order, or null.
+            /// </summary>
+            private IMethodSymbol? LambdaTarget(ExpressionSyntax argument)
+            {
+                if (
+                    argument is not AnonymousFunctionExpressionSyntax lambda
+                    || _writer._model.GetSymbolInfo(lambda).Symbol is not IMethodSymbol signature
+                )
+                {
+                    return null;
+                }
+
+                var body = lambda.ExpressionBody;
+
+                if (
+                    body is null
+                    && lambda.Block is { Statements.Count: 1 } block
+                    && block.Statements[0] is ReturnStatementSyntax { Expression: { } returned }
+                )
+                {
+                    body = returned;
+                }
+
+                if (
+                    body is not InvocationExpressionSyntax call
+                    || StaticMethod(_writer._model.GetSymbolInfo(call).Symbol) is not { } target
+                    || call.ArgumentList.Arguments.Count != signature.Parameters.Length
+                )
+                {
+                    return null;
+                }
+
+                for (var i = 0; i < signature.Parameters.Length; i++)
+                {
+                    var passed = call.ArgumentList.Arguments[i];
+
+                    if (
+                        passed.NameColon is not null
+                        || RefKindOf(passed) != signature.Parameters[i].RefKind
+                        || passed.Expression is not IdentifierNameSyntax name
+                        || !SymbolEqualityComparer.Default.Equals(
+                            _writer._model.GetSymbolInfo(name).Symbol,
+                            signature.Parameters[i]
+                        )
+                    )
+                    {
+                        return null;
+                    }
+                }
+
+                return target;
+            }
+
+            private static IMethodSymbol? StaticMethod(ISymbol? symbol) =>
+                symbol is IMethodSymbol { IsStatic: true, MethodKind: MethodKind.Ordinary } method
+                    ? method
+                    : null;
+
+            private static RefKind RefKindOf(ArgumentSyntax argument) =>
+                argument.RefKindKeyword.Kind() switch
+                {
+                    SyntaxKind.RefKeyword => RefKind.Ref,
+                    SyntaxKind.OutKeyword => RefKind.Out,
+                    SyntaxKind.InKeyword => RefKind.In,
+                    _ => RefKind.None,
+                };
 
             private ConstraintModel AllowedValuesConstraint(
                 IReadOnlyDictionary<string, ExpressionSyntax> arguments,

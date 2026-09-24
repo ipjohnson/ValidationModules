@@ -5,3 +5,4 @@
 
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
+VM3008 | ValidationModules.Usage | Error | A Pattern or Apply argument names no static method that generated code can call.

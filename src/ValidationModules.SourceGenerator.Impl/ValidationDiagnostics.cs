@@ -648,6 +648,24 @@ public static class ValidationDiagnostics
     );
 
     /// <summary>
+    /// A <c>Pattern</c> or <c>Apply</c> argument that names no static method: a lambda that does
+    /// more than call one, a delegate held in a field, or an instance method.
+    /// </summary>
+    /// <remarks>
+    /// Generated code calls the method by name, so both take a method group, and a lambda whose
+    /// whole body is one call to a static method is read as that method. Anything else reached the
+    /// emitter as the lambda's own symbol, whose name is empty, and failed as CS1001 inside a
+    /// generated file. The tail prints the method-group form to write instead.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor DelegateArgumentNamesNoMethod = Descriptor(
+        "VM3008",
+        "Pattern or Apply argument names no static method",
+        "'{0}.Describe' passes {1} a delegate that names no static method, so the generated code "
+            + "has nothing to call. {2}",
+        DiagnosticSeverity.Error
+    );
+
+    /// <summary>
     /// The selector overload matrix used to make this unwritable; values cannot, because a
     /// non-nullable value type converts to its nullable form implicitly.
     /// </summary>
