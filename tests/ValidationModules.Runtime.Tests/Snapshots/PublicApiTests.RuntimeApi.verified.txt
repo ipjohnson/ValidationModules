@@ -26,6 +26,7 @@ namespace ValidationModules
         public static bool IsBase64(string value) { }
         public static bool IsCreditCard(string value) { }
         public static bool IsEmail(string value) { }
+        public static bool IsMatch(System.Text.RegularExpressions.Regex regex, string value) { }
         public static bool IsMultipleOf(double value, decimal divisor) { }
         public static bool IsMultipleOf(float value, decimal divisor) { }
         public static bool IsPhone(string value) { }
@@ -131,7 +132,7 @@ namespace ValidationModules
     public delegate ValidationModules.ValidationFlow RuleAction<in T>(ref ValidationModules.ValidationContext context, T value);
     public static class RuntimeContract
     {
-        public const int Version = 11;
+        public const int Version = 12;
     }
     public static class ValidationCodes
     {

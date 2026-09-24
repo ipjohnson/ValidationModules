@@ -11,12 +11,13 @@ namespace ValidationModules.Constraints;
 /// </para>
 /// <para>
 /// <b>The inline form</b> - <c>[Pattern("^[A-Z]{3}$")]</c> - compiles to a
-/// <c>static readonly Regex</c> built once at type initialization. It never passes
-/// <c>RegexOptions.Compiled</c>, so nothing reaches <c>Reflection.Emit</c> and it publishes
-/// AOT-clean. What it costs is size: constructing a <see cref="Regex"/> from a pattern string
-/// roots the regex parser and interpreter, which measures at <b>+448 KB</b> on a published AOT
-/// binary against +16 KB for the same pattern through <c>[GeneratedRegex]</c>. A project that is
-/// AOT-facing therefore rejects this form by default - see VM1301.
+/// <c>static readonly Regex</c> built once at type initialization. The generator removes
+/// <c>RegexOptions.Compiled</c> from <see cref="Options"/> and reports VM1302, so nothing reaches
+/// <c>Reflection.Emit</c> and it publishes AOT-clean. What it costs is size: constructing a
+/// <see cref="Regex"/> from a pattern string roots the regex parser and interpreter, which measures
+/// at <b>+448 KB</b> on a published AOT binary against +16 KB for the same pattern through
+/// <c>[GeneratedRegex]</c>. A project that is AOT-facing therefore rejects this form by default -
+/// see VM1301.
 /// </para>
 /// <para>
 /// <b>The reference form</b> - <c>[Pattern(typeof(PetPatterns), nameof(PetPatterns.Sku))]</c> -
@@ -82,16 +83,19 @@ public sealed class PatternAttribute : ValidationConstraintAttribute
 
     /// <summary>
     /// Options for the inline form, passed to the <see cref="Regex"/> constructor. The reference
-    /// form uses the options on the consumer's <c>[GeneratedRegex]</c> and does not read this.
-    /// <c>RegexOptions.Compiled</c> is reported by VM1302.
+    /// form uses the options on the consumer's <c>[GeneratedRegex]</c> and does not read this, so
+    /// setting it there reports VM1303. <c>RegexOptions.Compiled</c> is removed and reported by
+    /// VM1302.
     /// </summary>
     public RegexOptions Options { get; init; }
 
     /// <summary>
     /// Match timeout for the inline form, passed to the <see cref="Regex"/> constructor. Zero means
     /// no timeout. Worth setting for patterns that can backtrack catastrophically on hostile input.
-    /// The reference form uses the timeout on the consumer's <c>[GeneratedRegex]</c> and does not
-    /// read this.
+    /// A match that runs past the timeout fails the pattern and reports code <c>pattern</c>,
+    /// rather than throwing <see cref="RegexMatchTimeoutException"/> out of <c>Validate</c>. The
+    /// reference form uses the timeout on the consumer's <c>[GeneratedRegex]</c> and does not read
+    /// this, so setting it there reports VM1303.
     /// </summary>
     public int MatchTimeoutMilliseconds { get; init; }
 }
