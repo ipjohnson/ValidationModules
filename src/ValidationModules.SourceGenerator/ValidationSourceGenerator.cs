@@ -713,7 +713,8 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                         )
                     )
                 ))
-                .ToArray()
+                .ToArray(),
+            declared?.SelectMany(static declaration => declaration.Facets).ToArray()
         );
 
         var diagnostics = frontEnd.Diagnostics.ToImmutableArray();
