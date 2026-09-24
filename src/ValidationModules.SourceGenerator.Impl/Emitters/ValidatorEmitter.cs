@@ -547,6 +547,16 @@ public sealed class ValidatorEmitter
             isValid.SetReturnType(typeof(bool));
             isValid.AddParameter(TypeRef(model.QualifiedTypeName), "value");
 
+            // The one public entry point that reaches generated code without passing through a
+            // runtime method that has already rejected a null value: validator.IsValid(x) binds
+            // here directly.
+            if (!model.IsValueType)
+            {
+                isValid.AddIndentedStatement(
+                    Invoke(typeof(ArgumentNullException), "ThrowIfNull", "value")
+                );
+            }
+
             foreach (var (name, expression) in fastConditions.Declarations)
             {
                 isValid.Assign(expression).ToVar(name);

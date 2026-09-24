@@ -401,7 +401,8 @@ public sealed class AttributeFrontEnd
             new EquatableArray<RegionModel>(
                 ImmutableArray.CreateRange(regions ?? Array.Empty<RegionModel>())
             ),
-            new EquatableArray<ConstraintModel>(objectRules.ToImmutableArray())
+            new EquatableArray<ConstraintModel>(objectRules.ToImmutableArray()),
+            type.IsValueType
         );
     }
 
