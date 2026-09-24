@@ -234,6 +234,114 @@ public class DataAnnotationsDiagnosticsTests
         );
     }
 
+    // VM2011 — ErrorMessageResourceName names nothing the generated validator can read.
+
+    private static string ResourceModel(string name) =>
+        $$"""
+            using System.ComponentModel.DataAnnotations;
+
+            namespace Sample;
+
+            public class ResBase {
+                public static string Inherited => "{0} is missing";
+            }
+
+            public class Res : ResBase {
+                public static string NameRequired => "{0} is missing";
+                internal static string Internal => "{0} is missing";
+                public const string Constant = "{0} is missing";
+                public static int Count => 3;
+                private static string Hidden => "{0} is missing";
+                public static string Method() => "{0} is missing";
+                public string Instance => "{0} is missing";
+            }
+
+            public class Customer {
+                [Required(ErrorMessageResourceType = typeof(Res), ErrorMessageResourceName = "{{name}}")]
+                public string? Name { get; set; }
+            }
+            """;
+
+    /// <summary>
+    /// The generated code reads the resource member directly, so each of these used to fail with a
+    /// compiler error at a column of the generated file. The constraint now compiles with its
+    /// default message, and the error is at the attribute.
+    /// </summary>
+    [Theory]
+    [InlineData(
+        "Nope",
+        "'Sample.Res' has no property named 'Nope'. Write the name with nameof, as in "
+            + "ErrorMessageResourceName = nameof(Sample.Res.Nope)"
+    )]
+    [InlineData("Instance", "'Sample.Res.Instance' is not static")]
+    [InlineData("Count", "'Sample.Res.Count' is of type 'int', not string")]
+    [InlineData("Hidden", "'Sample.Res.Hidden' cannot be read from the generated validator")]
+    [InlineData("Method", "'Sample.Res.Method' is not a property")]
+    public void ResourceNameThatDoesNotResolve_IsVM2011(string name, string reason)
+    {
+        var result = GeneratorHarness.Run(ResourceModel(name));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM2011");
+
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        Assert.StartsWith(
+            $"'RequiredAttribute' on 'Name' sets ErrorMessageResourceName to \"{name}\", but ",
+            diagnostic.GetMessage()
+        );
+        Assert.Contains(reason, diagnostic.GetMessage());
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    [Theory]
+    [InlineData("NameRequired")]
+    [InlineData("Internal")]
+    [InlineData("Constant")]
+    [InlineData("Inherited")]
+    public void ResourceNameTheGeneratedCodeCanRead_IsSilent(string name)
+    {
+        var result = GeneratorHarness.Run(ResourceModel(name));
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM2011");
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains(
+            $"global::Sample.Res.{name}",
+            result.Sources["Sample.CustomerValidator.g.cs"]
+        );
+    }
+
+    [Fact]
+    public void InternalResourceInAnotherAssembly_IsVM2011()
+    {
+        // DataAnnotations would read it by reflection. The generated validator names it directly,
+        // and an internal member of another assembly does not compile there.
+        var result = GeneratorHarness.RunWithReference(
+            """
+            namespace Shared;
+
+            public class Res {
+                internal static string NameRequired => "{0} is missing";
+            }
+            """,
+            """
+            using System.ComponentModel.DataAnnotations;
+
+            namespace Sample;
+
+            public class Customer {
+                [Required(ErrorMessageResourceType = typeof(Shared.Res), ErrorMessageResourceName = "NameRequired")]
+                public string? Name { get; set; }
+            }
+            """
+        );
+
+        Assert.Contains(
+            "'Shared.Res' has no public property named 'NameRequired', and the generated validator "
+                + "cannot read an internal one in another assembly. Make it public",
+            Assert.Single(result.Diagnostics, d => d.Id == "VM2011").GetMessage()
+        );
+        Assert.Empty(result.CompilationErrors);
+    }
+
     [Fact]
     public void CustomValidationAttribute_UnderIgnore_IsVM2002AsInfo()
     {

@@ -93,9 +93,10 @@ This reports `The nickname must be at most 10 characters.` The code stays `strin
 text is authored, so language packs leave it unchanged.
 
 `ErrorMessageResourceType` with `ErrorMessageResourceName` on a built-in attribute reads the
-resource property each time the message is rendered, without reflection. On a custom
-`ValidationAttribute`, DataAnnotations resolves the resource with reflection, which trimming can
-break. The generator reports that case as `VM2009`.
+resource property each time the message is rendered, without reflection. The property must be
+static, return a string, and be public or in the same assembly. The generator reports `VM2011` when
+it is not. On a custom `ValidationAttribute`, DataAnnotations resolves the resource with reflection,
+which trimming can break. The generator reports that case as `VM2009`.
 
 ## Differences from Validator
 

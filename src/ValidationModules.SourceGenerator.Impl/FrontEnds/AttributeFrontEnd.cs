@@ -513,7 +513,8 @@ public sealed class AttributeFrontEnd
             var outcome = DataAnnotationsConstraintReader.Read(
                 attribute,
                 attributeClass.Name,
-                type
+                type,
+                _compilation
             );
 
             if (outcome.Constraint is not { } method)
@@ -1781,7 +1782,8 @@ public sealed class AttributeFrontEnd
             var outcome = DataAnnotationsConstraintReader.Read(
                 attribute,
                 attributeClass.Name,
-                memberType
+                memberType,
+                _compilation
             );
 
             // [RegularExpression] compiles to the same Regex field an inline [Pattern] does, so it

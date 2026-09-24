@@ -753,6 +753,24 @@ public static class ValidationDiagnostics
         + "rule into IValidatableObject.Validate, or into an Ensure in a rules class";
 
     /// <summary>
+    /// A compiled DataAnnotations attribute sets <c>ErrorMessageResourceType</c> and
+    /// <c>ErrorMessageResourceName</c>, and the name is not a static string property the generated
+    /// validator can read.
+    /// </summary>
+    /// <remarks>
+    /// The generated code reads the resource property directly. Without this check a typo fails
+    /// with CS0117 at a column of a generated file, naming neither the attribute nor the property
+    /// that carries it. DataAnnotations throws for the same attribute when it formats the message.
+    /// The constraint is still compiled, with its default message, so nothing else reports.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor ErrorMessageResourceUnreadable = Descriptor(
+        "VM2011",
+        "ErrorMessageResourceName does not resolve",
+        "'{0}' on '{1}' sets ErrorMessageResourceName to {2}",
+        DiagnosticSeverity.Error
+    );
+
+    /// <summary>
     /// A Describe body is transcribed, and almost everything transcribes; what remains rejected is
     /// the short blacklist - exotica, mutation of the subject, misplaced islands. Never silently
     /// dropped: a statement the reader cannot carry has to break the build, because the generated
