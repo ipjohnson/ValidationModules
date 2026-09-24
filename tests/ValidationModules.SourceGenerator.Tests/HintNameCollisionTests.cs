@@ -201,4 +201,135 @@ public class HintNameCollisionTests
         Assert.Contains("CustomerValidator.g.cs", result.Sources.Keys);
         Assert.Contains("Api.V1.CustomerValidator.g.cs", result.Sources.Keys);
     }
+
+    /// <summary>
+    /// Roslyn compares hint names without regard to case, so <c>Batch</c> and <c>batch</c> made the
+    /// second <c>AddSource</c> throw, and the registration referred to the validator that was never
+    /// added. The first file name in ordinal order is kept, and the other is numbered.
+    /// </summary>
+    [Fact]
+    public void Generate_TypeNamesThatDifferOnlyInCase_EmitsBothValidators()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public record Batch {
+                [Required] public string? A { get; init; }
+            }
+
+            public record batch {
+                [Required] public string? B { get; init; }
+            }
+            """
+        );
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM5002");
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains("class BatchValidator", result.Sources["Sample.BatchValidator.g.cs"]);
+        Assert.Contains("class batchValidator", result.Sources["Sample.batchValidator.2.g.cs"]);
+    }
+
+    /// <summary>
+    /// The number follows ordinal order rather than declaration order, so moving a declaration does
+    /// not rename a file.
+    /// </summary>
+    [Fact]
+    public void Generate_TypeNamesThatDifferOnlyInCase_GetTheSameFileNamesInEitherOrder()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public record batch {
+                [Required] public string? B { get; init; }
+            }
+
+            public record Batch {
+                [Required] public string? A { get; init; }
+            }
+            """
+        );
+
+        Assert.Contains("class BatchValidator", result.Sources["Sample.BatchValidator.g.cs"]);
+        Assert.Contains("class batchValidator", result.Sources["Sample.batchValidator.2.g.cs"]);
+    }
+
+    [Fact]
+    public void Generate_NamespacesThatDifferOnlyInCase_EmitsBothValidators()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Api {
+                public record Customer {
+                    [Required] public string? Name { get; init; }
+                }
+            }
+
+            namespace api {
+                public record Customer {
+                    [Required] public string? Name { get; init; }
+                }
+            }
+            """
+        );
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM5002");
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains("namespace Api;", result.Sources["Api.CustomerValidator.g.cs"]);
+        Assert.Contains("namespace api;", result.Sources["api.CustomerValidator.2.g.cs"]);
+    }
+
+    /// <summary>
+    /// A rules class's companion and a fragment container are named after a type too. Their
+    /// <c>AddSource</c> threw outside the VM5002 handler, so Roslyn dropped every generated file.
+    /// </summary>
+    [Fact]
+    public void Generate_CompanionsAndFragmentContainersThatDifferOnlyInCase_AreBothEmitted()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules;
+
+            namespace Sample;
+
+            public sealed class Pet {
+                public string? Name { get; init; }
+            }
+
+            public sealed class Dog {
+                public string? Name { get; init; }
+            }
+
+            public static class Shared {
+                public static void Named(ValidationRules<Pet> rules, Pet x) => rules.Require(x.Name);
+            }
+
+            public static class shared {
+                public static void Named(ValidationRules<Dog> rules, Dog x) => rules.Require(x.Name);
+            }
+
+            public sealed class PetRules : IValidationRulesFor<Pet> {
+                public static void Describe(ValidationRules<Pet> rules, Pet x) => Shared.Named(rules, x);
+            }
+
+            public sealed class petRules : IValidationRulesFor<Dog> {
+                public static void Describe(ValidationRules<Dog> rules, Dog x) => shared.Named(rules, x);
+            }
+            """
+        );
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id is "VM5002" or "CS8785");
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains("class PetRules_Rules", result.Sources["Sample.PetRules_Rules.g.cs"]);
+        Assert.Contains("class petRules_Rules", result.Sources["Sample.petRules_Rules.2.g.cs"]);
+        Assert.Contains("class Shared_Fragments", result.Sources["Sample.Shared_Fragments.g.cs"]);
+        Assert.Contains("class shared_Fragments", result.Sources["Sample.shared_Fragments.2.g.cs"]);
+    }
 }

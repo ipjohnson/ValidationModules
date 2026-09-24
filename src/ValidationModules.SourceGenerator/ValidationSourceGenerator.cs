@@ -249,6 +249,14 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                         .Select(model => model!)
                 );
 
+                var hintNames = UniqueHintNames(
+                    results
+                        .Select(result => result.Model is { } model ? HintNameFor(model) : null)
+                        .Concat(results.Select(result => result.PredicateHintName))
+                        .Where(hint => hint is not null)
+                        .Select(hint => hint!)
+                );
+
                 foreach (var result in results)
                 {
                     foreach (var diagnostic in result.Diagnostics)
@@ -263,7 +271,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                         try
                         {
                             production.AddSource(
-                                HintNameFor(model),
+                                hintNames[HintNameFor(model)],
                                 new ValidatorEmitter().Emit(
                                     model,
                                     dispatchesDynamically,
@@ -291,7 +299,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                         // generator added, not only this one.
                         try
                         {
-                            production.AddSource(result.PredicateHintName!, predicates);
+                            production.AddSource(hintNames[result.PredicateHintName!], predicates);
                         }
                         catch (Exception exception)
                         {
@@ -478,6 +486,50 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
     /// generated at all.
     /// </summary>
     private static string HintSafe(string hintName) => hintName.Replace("@", string.Empty);
+
+    /// <summary>
+    /// Each hint name, mapped to one that no other hint name equals without regard to case.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Roslyn compares hint names without regard to case, so the files for <c>Batch</c> and
+    /// <c>batch</c>, two distinct types, made the second <c>AddSource</c> throw. Among names that
+    /// differ only in case, the first in ordinal order is kept and each later one is numbered from
+    /// 2, as in <c>Sample.batchValidator.2.g.cs</c>. Ordinal order rather than arrival order keeps
+    /// a file's name when a declaration moves. A numbered name cannot equal a name built from a
+    /// type, because no identifier starts with a digit.
+    /// </para>
+    /// <para>
+    /// Names equal in case too stay equal. They are two declarations of one class, and a second
+    /// file name would not make that compile.
+    /// </para>
+    /// </remarks>
+    private static Dictionary<string, string> UniqueHintNames(IEnumerable<string> hintNames)
+    {
+        const string extension = ".g.cs";
+
+        var unique = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (
+            var group in hintNames
+                .Distinct(StringComparer.Ordinal)
+                .GroupBy(static name => name, StringComparer.OrdinalIgnoreCase)
+        )
+        {
+            var ordered = group.OrderBy(static name => name, StringComparer.Ordinal).ToList();
+
+            unique[ordered[0]] = ordered[0];
+
+            for (var i = 1; i < ordered.Count; i++)
+            {
+                var stem = ordered[i].Substring(0, ordered[i].Length - extension.Length);
+
+                unique[ordered[i]] = $"{stem}.{i + 1}{extension}";
+            }
+        }
+
+        return unique;
+    }
 
     /// <summary>
     /// Reads every candidate, folds each rules class into its target's model, and emits one model per
@@ -732,7 +784,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
     /// </para>
     /// <para>
     /// Names are compared by exact case. Two names that differ only in case are two classes, and
-    /// the hint name collision between them is still VM5002's.
+    /// <see cref="UniqueHintNames"/> gives their files distinct hint names.
     /// </para>
     /// </remarks>
     private static void DropCollidingValidators(

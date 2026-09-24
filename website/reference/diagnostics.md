@@ -628,9 +628,10 @@ one, so fix it first.
 The generator failed while writing code. The build fails so that a validator cannot go
 missing without notice. The message names the stage and the exception. Please
 [report it](https://github.com/ipjohnson/ValidationModules/issues). Until it is fixed, change the
-construct the message names. One known cause is two types in one namespace whose names differ only
-in case. Another is a nested `Order.Shared` and a top-level `Order_Shared` that both declare
-fragments, because both fragment containers are named `Order_Shared_Fragments`.
+construct the message names. One known cause is a language pack whose `culture` holds a character
+that a generated file name cannot contain, such as `:`. Another is a nested `Order.Shared` and a
+top-level `Order_Shared` that both declare fragments, because both fragment containers are named
+`Order_Shared_Fragments`.
 
 ### VM5003
 
