@@ -33,9 +33,6 @@ namespace ValidationModules.SourceGenerator.Impl.Emitters;
 /// </remarks>
 public sealed class RegionEmitter
 {
-    /// <summary>The companion class a rules class's region is emitted into.</summary>
-    public static string CompanionFor(INamedTypeSymbol rulesClass) => $"{rulesClass.Name}_Rules";
-
     /// <summary>
     /// Emits the region companion for one rules class - every region it declares, one
     /// <c>Describe</c> overload per target, in one file. One file because two would collide on the
@@ -53,7 +50,7 @@ public sealed class RegionEmitter
 
         CopyUsings(file, rulesClass);
 
-        var container = file.AddClass(CompanionFor(rulesClass));
+        var container = file.AddClass(GeneratedNames.Companion(rulesClass));
 
         container.Modifiers = ComponentModifier.Internal | ComponentModifier.Static;
         container.Comment =

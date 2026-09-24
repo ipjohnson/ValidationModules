@@ -980,6 +980,15 @@ public sealed class ValidatorEmitter
             ? model.ValidatorName
             : $"{model.Namespace}.{model.ValidatorName}";
 
+    /// <summary>
+    /// The validated type's name as a message shows it. For a nested type that is
+    /// <c>Order.Item</c>, where <see cref="ValidatedTypeModel.TypeName"/> is <c>Order_Item</c>.
+    /// </summary>
+    private static string DisplayName(ValidatedTypeModel model) =>
+        model.QualifiedTypeName.Substring(
+            "global::".Length + (model.Namespace.Length == 0 ? 0 : model.Namespace.Length + 1)
+        );
+
     private static void EmitProperty(
         StatementBuffer builder,
         StatementBuffer fast,
@@ -1209,7 +1218,7 @@ public sealed class ValidatorEmitter
                 conditions,
                 fastConditions,
                 dispatchers,
-                model.TypeName,
+                DisplayName(model),
                 failFast
             );
         }

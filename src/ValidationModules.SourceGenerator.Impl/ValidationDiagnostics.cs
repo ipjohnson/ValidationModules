@@ -149,6 +149,18 @@ public static class ValidationDiagnostics
         DiagnosticSeverity.Error
     );
 
+    /// <summary>
+    /// Two types would get validators with one name in one namespace. A nested <c>Order.Item</c>
+    /// and a top-level <c>Order_Item</c> both get <c>Order_ItemValidator</c>.
+    /// </summary>
+    public static readonly DiagnosticDescriptor ValidatorNameCollision = Descriptor(
+        "VM1013",
+        "Two types would get validators with the same name",
+        "'{0}' and '{1}' would both get a validator named {2}, so neither is generated. Rename one "
+            + "of the two types, or move it to another namespace",
+        DiagnosticSeverity.Error
+    );
+
     public static readonly DiagnosticDescriptor MinExceedsMax = Descriptor(
         "VM1101",
         "Lower bound exceeds upper bound",

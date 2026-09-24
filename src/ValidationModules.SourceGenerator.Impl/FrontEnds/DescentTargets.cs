@@ -46,8 +46,6 @@ public static class DescentTargets
         NoValidatorVisible,
     }
 
-    private const string ValidatorSuffix = "Validator";
-
     /// <summary>What a descent into <paramref name="target"/> would find.</summary>
     /// <param name="target">
     /// The type the descent reaches: the property's own type, a collection's element or a
@@ -118,13 +116,13 @@ public static class DescentTargets
                 ValidationDiagnostics.NestedTargetCannotHaveValidator,
                 new object?[] { target.ToDisplayString(), member, construct }
             ),
-            Verdict.NoValidatorVisible => (
+            Verdict.NoValidatorVisible when target is INamedTypeSymbol named => (
                 ValidationDiagnostics.NestedTargetHasNoVisibleValidator,
                 new object?[]
                 {
                     target.Name,
                     target.ContainingAssembly?.Name,
-                    target.Name + ValidatorSuffix,
+                    GeneratedNames.Validator(named),
                     construct,
                     member,
                 }
@@ -290,7 +288,7 @@ public static class DescentTargets
     /// </remarks>
     private static bool HasReachableValidator(INamedTypeSymbol target, Compilation compilation)
     {
-        var name = MetadataName(target.ContainingNamespace, target.Name + ValidatorSuffix);
+        var name = MetadataName(target.ContainingNamespace, GeneratedNames.Validator(target));
 
         foreach (var candidate in compilation.GetTypesByMetadataName(name))
         {

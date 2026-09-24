@@ -118,6 +118,15 @@ A generic type declares constraints. Its validator could not be registered witho
 `MakeGenericType`, so none is generated. Declare the constraints on a closed type, or validate the
 generic type's payload and leave the generic type without constraints.
 
+### VM1013
+
+**Severity:** Error
+
+Two types in one namespace would get validators with the same name, so neither validator is
+generated. The validator for a type declared inside another type carries the containing types'
+names, joined with underscores. A nested `Order.Item` and a top-level `Order_Item` therefore both get
+`Order_ItemValidator`. Rename one of the two types, or move it to another namespace.
+
 ### VM1101
 
 **Severity:** Error

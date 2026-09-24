@@ -82,7 +82,7 @@ public class EnumAndAccessibilityTests
     {
         // Effective accessibility is the minimum along the containing chain, so this is internal
         // despite the declaration saying public.
-        var result = new NestedValidator().Validate(new Enclosing.Nested { Name = null });
+        var result = new Enclosing_NestedValidator().Validate(new Enclosing.Nested { Name = null });
 
         Assert.Equal("name", Assert.Single(result.Errors).Field);
     }
