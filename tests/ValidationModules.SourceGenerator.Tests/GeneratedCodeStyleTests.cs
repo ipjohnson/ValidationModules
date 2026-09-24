@@ -74,4 +74,37 @@ public class GeneratedCodeStyleTests
             result.Sources["GeneratedValidatorRegistration.g.cs"]
         );
     }
+
+    private const string FrenchPack = """
+        { "culture": "fr", "templates": { "required": "{field} est obligatoire." } }
+        """;
+
+    private const string EntriesDeclaration =
+        "private static readonly global::System.Collections.Generic.KeyValuePair<string,string>[] "
+        + "Entries = new global::System.Collections.Generic.KeyValuePair<string,string>";
+
+    /// <summary>
+    /// A language pack's entries initializer used to be fixed text with its braces on their own
+    /// lines, whatever the style said.
+    /// </summary>
+    [Theory]
+    [InlineData(
+        "Allman",
+        "[]\n        {\n            new(\"required\", \"{field} est obligatoire.\"),\n        };\n"
+    )]
+    [InlineData(
+        "KAndR",
+        "[] {\n            new(\"required\", \"{field} est obligatoire.\"),\n        };\n"
+    )]
+    public void TheLanguagePackInitializer_FollowsTheStyle(string style, string layout)
+    {
+        var result = GeneratorHarness.RunWithFiles(
+            Source,
+            [("fr.validation-messages.json", FrenchPack)],
+            ("GeneratedCodeStyle", style)
+        );
+
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains(EntriesDeclaration + layout, result.Sources["LanguagePack.fr.0.g.cs"]);
+    }
 }

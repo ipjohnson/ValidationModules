@@ -71,8 +71,9 @@ public sealed partial class PetValidator : global::ValidationModules.IValidatorF
 
     private global::ValidationModules.IValidatorFor<global::Sample.Toy>[] ToysValidators => _toysValidators ??= new global::ValidationModules.IValidatorFor<global::Sample.Toy>[] { new global::Sample.ToyValidator() };
 
-    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Pet value)
+    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext context, global::Sample.Pet value)
     {
+        var ctx = context.WithResolvedFieldNames();
         if (value.Toys is { } itemsToys)
         {
             var iToys = 0;
@@ -138,8 +139,9 @@ public sealed partial class ToyValidator : global::ValidationModules.IValidatorF
     {
     }
 
-    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Toy value)
+    public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext context, global::Sample.Toy value)
     {
+        var ctx = context.WithResolvedFieldNames();
         if (string.IsNullOrWhiteSpace(value.Name) && global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, "name", value: value.Name).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;

@@ -566,7 +566,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                         null,
                         ImmutableArray<Diagnostic>.Empty,
                         new RegionEmitter().EmitRegion(companion.ToList(), options.CodeStyle),
-                        HintSafe($"{QualifiedName(rulesClass)}_Rules.g.cs")
+                        HintSafe($"{CompanionName(rulesClass)}.g.cs")
                     )
                 );
             }
@@ -613,6 +613,18 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
         );
         bool HasRulesClass(INamedTypeSymbol type) => ruleTargets.Contains(type);
 
+        var validated = new List<(int Index, INamedTypeSymbol Type, ValidatedTypeModel Model)>();
+
+        void AddBuilt(INamedTypeSymbol type, ModelResult result)
+        {
+            if (result.Model is { } model)
+            {
+                validated.Add((results.Count, type, model));
+            }
+
+            results.Add(result);
+        }
+
         foreach (var candidate in plain)
         {
             byTarget.TryGetValue(candidate, out var declared);
@@ -625,7 +637,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                     { } result
                 )
                 {
-                    results.Add(result);
+                    AddBuilt(candidate, result);
                 }
             }
             catch (Exception exception)
@@ -649,7 +661,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                     { } result
                 )
                 {
-                    results.Add(result);
+                    AddBuilt(target, result);
                 }
             }
             catch (Exception exception)
@@ -657,6 +669,8 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                 results.Add(FailureResult($"the model for '{QualifiedName(target)}'", exception));
             }
         }
+
+        DropCollidingValidators(results, validated);
 
         results.AddRange(
             rulesFrontEnd.Diagnostics.Select(static diagnostic => new ModelResult(
@@ -668,6 +682,76 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
         );
 
         return results.ToImmutable();
+    }
+
+    /// <summary>
+    /// Reports VM1013 for two types whose validators would have one name in one namespace, and
+    /// generates neither.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Emitting both made the second <c>AddSource</c> throw, and VM5002 reported that as a
+    /// generator failure. Neither is emitted, because which of the two keeps the name is the
+    /// author's choice. The diagnostic names both.
+    /// </para>
+    /// <para>
+    /// Names are compared by exact case. Two names that differ only in case are two classes, and
+    /// the hint name collision between them is still VM5002's.
+    /// </para>
+    /// </remarks>
+    private static void DropCollidingValidators(
+        ImmutableArray<ModelResult>.Builder results,
+        List<(int Index, INamedTypeSymbol Type, ValidatedTypeModel Model)> validated
+    )
+    {
+        foreach (
+            var group in validated.GroupBy(static entry =>
+                (entry.Model.Namespace, entry.Model.ValidatorName)
+            )
+        )
+        {
+            var types = group
+                .Select(static entry => entry.Type)
+                .Distinct<INamedTypeSymbol>(SymbolEqualityComparer.Default)
+                .OrderBy(static type => type.ToDisplayString(), StringComparer.Ordinal)
+                .ToList();
+
+            if (types.Count < 2)
+            {
+                continue;
+            }
+
+            foreach (var entry in group)
+            {
+                results[entry.Index] = results[entry.Index] with { Model = null };
+            }
+
+            for (var i = 1; i < types.Count; i++)
+            {
+                var location =
+                    types[i]
+                        .Locations.Concat(types[0].Locations)
+                        .FirstOrDefault(static candidate => candidate.IsInSource)
+                    ?? Location.None;
+
+                results.Add(
+                    new ModelResult(
+                        null,
+                        ImmutableArray.Create(
+                            Diagnostic.Create(
+                                ValidationDiagnostics.ValidatorNameCollision,
+                                location,
+                                types[0].ToDisplayString(),
+                                types[i].ToDisplayString(),
+                                group.Key.ValidatorName
+                            )
+                        ),
+                        null,
+                        null
+                    )
+                );
+            }
+        }
     }
 
     private static ModelResult? Build(
@@ -689,7 +773,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
 
         var model = frontEnd.Build(
             target,
-            static type => $"{type.Name}Validator",
+            GeneratedNames.Validator,
             // A region's descents merge as nesting-only rules, so the validator grows the injected
             // machinery the region call passes; the walk itself lives in the region's text.
             declared
@@ -727,10 +811,14 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
             : new ModelResult(model, diagnostics, null, null);
     }
 
-    private static string CompanionQualifiedName(INamedTypeSymbol rulesClass) =>
+    /// <summary>The companion's name qualified by its namespace. Its hint name is built from it.</summary>
+    private static string CompanionName(INamedTypeSymbol rulesClass) =>
         rulesClass.ContainingNamespace.IsGlobalNamespace
-            ? $"global::{RegionEmitter.CompanionFor(rulesClass)}"
-            : $"global::{rulesClass.ContainingNamespace.ToDisplayString()}.{RegionEmitter.CompanionFor(rulesClass)}";
+            ? GeneratedNames.Companion(rulesClass)
+            : $"{rulesClass.ContainingNamespace.ToDisplayString()}.{GeneratedNames.Companion(rulesClass)}";
+
+    private static string CompanionQualifiedName(INamedTypeSymbol rulesClass) =>
+        $"global::{CompanionName(rulesClass)}";
 
     /// <summary>
     /// Indexes each candidate against every ancestor it has, so that "the subtypes of X" is
