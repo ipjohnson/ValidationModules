@@ -186,9 +186,9 @@ public sealed class ValidationErrorCollector
     }
 
     /// <summary>
-    /// An O(1) token that changes whenever an error is recorded. Compared by reference around a
-    /// block to answer "did that add anything", which <see cref="Count"/> would answer in linear
-    /// time - and a rule chain asks it once per field, so linear would compound.
+    /// An O(1) token that changes whenever an error is recorded: the newest node, or null before
+    /// anything is. <see cref="ValidationContext.Mark"/> hands it out as a
+    /// <see cref="ValidationMark"/>, and <see cref="HasBlockingErrorsSince"/> walks back to it.
     /// </summary>
     internal object? ChangeToken => _head;
 
@@ -197,20 +197,29 @@ public sealed class ValidationErrorCollector
     /// "valid" means - a warning is surfaced but the value is accepted. Stops at the first one, and
     /// on a clean pass never leaves the null check.
     /// </summary>
-    internal bool HasBlockingErrors
-    {
-        get
-        {
-            for (var node = _head; node is not null; node = node.Next)
-            {
-                if (node.Error.Severity == ValidationSeverity.Error)
-                {
-                    return true;
-                }
-            }
+    internal bool HasBlockingErrors => HasBlockingErrorsSince(null);
 
-            return false;
+    /// <summary>
+    /// Whether anything Error-severity was recorded after <paramref name="token"/>, a value
+    /// <see cref="ChangeToken"/> had earlier in the pass.
+    /// </summary>
+    /// <remarks>
+    /// The chain runs newest to oldest, so the walk visits exactly the failures recorded since the
+    /// token and stops at it. A null token is the start of the pass. A token taken before
+    /// <see cref="Reset"/> is no longer in the chain, so every failure recorded since the reset
+    /// counts, and each of those was recorded after the token was taken.
+    /// </remarks>
+    internal bool HasBlockingErrorsSince(object? token)
+    {
+        for (var node = _head; node is not null && !ReferenceEquals(node, token); node = node.Next)
+        {
+            if (node.Error.Severity == ValidationSeverity.Error)
+            {
+                return true;
+            }
         }
+
+        return false;
     }
 
     /// <summary>

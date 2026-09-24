@@ -131,7 +131,7 @@ namespace ValidationModules
     public delegate ValidationModules.ValidationFlow RuleAction<in T>(ref ValidationModules.ValidationContext context, T value);
     public static class RuntimeContract
     {
-        public const int Version = 11;
+        public const int Version = 12;
     }
     public static class ValidationCodes
     {
@@ -160,6 +160,8 @@ namespace ValidationModules
         public bool HasErrors { get; }
         public System.IServiceProvider? Services { get; }
         public ValidationModules.ValidationStopMode StopMode { get; }
+        public bool HasBlockingErrorsSince(ValidationModules.ValidationMark mark) { }
+        public ValidationModules.ValidationMark Mark() { }
         public ValidationModules.ValidationContext Push(string segment) { }
         public ValidationModules.ValidationContext PushIndex(string segment, int index) { }
         public ValidationModules.ValidationContext PushKey(string segment, string key) { }
@@ -258,6 +260,7 @@ namespace ValidationModules
         public static bool operator !=(ValidationModules.ValidationFlow left, ValidationModules.ValidationFlow right) { }
         public static bool operator ==(ValidationModules.ValidationFlow left, ValidationModules.ValidationFlow right) { }
     }
+    public readonly struct ValidationMark { }
     public abstract class ValidationMessageFormatter
     {
         protected ValidationMessageFormatter() { }

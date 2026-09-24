@@ -118,10 +118,17 @@ public static class RuntimeContract
     // registers CollectionValidatorFor<T>/CollectionAsyncValidatorFor<T> for List<T> and T[].
     // None of it exists in a contract-10 runtime. Additive, as the rule below requires.
 
+    // 11 -> 12: object-level rules are gated on what their own validator found. A generated
+    // validator for a type with class-level ValidationAttributes or IValidatableObject takes
+    // ctx.Mark() before its first rule and asks ctx.HasBlockingErrorsSince(mark) at the gate, where
+    // it used to ask ctx.HasErrors - which counted warnings and every other object's errors too.
+    // ValidationMark and both members are new, so a contract-11 runtime cannot supply them.
+    // Additive, as the rule below requires.
+
     /// <summary>
     /// The contract this runtime implements. Compared against
     /// <c>EmitterContract.RequiredRuntimeContract</c> by the generator, and against
     /// <c>$(ValidationModulesRuntimeContract)</c> by build tasks driving the emitter.
     /// </summary>
-    public const int Version = 11;
+    public const int Version = 12;
 }
