@@ -173,13 +173,16 @@ public static class DataAnnotationsConstraintReader
 
                 // Anchored, unlike the native [Pattern]. DataAnnotations checks that the match
                 // starts at 0 and consumes the whole value; the native attribute follows JSON
-                // Schema, which does not.
+                // Schema, which does not. And an empty string passes untested, as
+                // RegularExpressionAttribute.IsValid returns true for it: an HTML form posts an
+                // optional field left blank as "", and a migrated model must keep accepting it.
                 return new Outcome(
                     new ConstraintModel(
                         ConstraintKind.Pattern,
                         Message: NativeConstraintReader.Named(attribute, "ErrorMessage") as string,
                         Pattern: pattern,
-                        Anchored: true
+                        Anchored: true,
+                        PassesEmpty: true
                     ),
                     null
                 );
