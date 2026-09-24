@@ -164,3 +164,7 @@ The files are then written under `obj/<configuration>/<target framework>/generat
 folder named by `CompilerGeneratedFilesOutputPath`. The validator for `Shop.SignUp` is in
 `Shop.SignUpValidator.g.cs`, the body of a rules class is in `<rules class>_Rules.g.cs`, and the
 registration method is in `GeneratedValidatorRegistration.g.cs`.
+
+The compiler compares these file names without regard to case. When two of them differ only in
+case, the one that is later in ordinal order gets a number before `.g.cs`. The validators for
+`Shop.Batch` and `Shop.batch` are in `Shop.BatchValidator.g.cs` and `Shop.batchValidator.2.g.cs`.
