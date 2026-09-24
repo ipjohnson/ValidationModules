@@ -146,7 +146,7 @@ public class FragmentTests
             "global::Sample.CustomsRules_Fragments.Declare(ref ctx, x, x.Tier > 2)",
             region
         );
-        Assert.Contains("if (strict) {", container);
+        Assert.Contains("if (strict)\n        {", container);
     }
 
     [Fact]

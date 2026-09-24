@@ -56,10 +56,12 @@ internal static class VehicleRules_Rules
 
     public static global::ValidationModules.ValidationFlow Describe(ref global::ValidationModules.ValidationContext ctx, global::Sample.Vehicle x)
     {
-        if (x.BatteryKwh is not null && (x.BatteryKwh.Value < 10m || x.BatteryKwh.Value > 300m) && global::ValidationModules.ValidationContextExtensions.ReportRange(ctx, "batteryKwh", 10m, 300m).ShouldStop) {
+        if (x.BatteryKwh is not null && (x.BatteryKwh.Value < 10m || x.BatteryKwh.Value > 300m) && global::ValidationModules.ValidationContextExtensions.ReportRange(ctx, "batteryKwh", 10m, 300m).ShouldStop)
+        {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (x.ReserveKwh is not null && (x.ReserveKwh.Value < 1m || x.ReserveKwh.Value > 50m) && global::ValidationModules.ValidationContextExtensions.ReportRange(ctx, "reserveKwh", 1m, 50m).ShouldStop) {
+        if (x.ReserveKwh is not null && (x.ReserveKwh.Value < 1m || x.ReserveKwh.Value > 50m) && global::ValidationModules.ValidationContextExtensions.ReportRange(ctx, "reserveKwh", 1m, 50m).ShouldStop)
+        {
             return global::ValidationModules.ValidationFlow.Stop;
         }
         return global::ValidationModules.ValidationFlow.Continue;
