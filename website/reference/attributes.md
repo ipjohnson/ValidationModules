@@ -94,7 +94,8 @@ value, so anchor the expression with `^` and `$` to match all of it. Applies to 
 
 The first constructor takes the expression. The second names a static member of type `Regex` on
 another type, usually a `[GeneratedRegex]` method. `Options` and `MatchTimeoutMilliseconds` apply
-to the first form only. See [Patterns](../guide/patterns).
+to the first form only. A match that runs past its timeout fails the pattern rather than throwing.
+See [Patterns](../guide/patterns).
 
 | Code | Message |
 | --- | --- |
@@ -102,7 +103,8 @@ to the first form only. See [Patterns](../guide/patterns).
 
 Diagnostics: `VM1001` on a property that is not a `string`, `VM1106` when the expression does not
 parse, `VM1107` when the referenced member cannot be used, `VM1301` for an inline expression under
-the pattern policy, and `VM1302` when `Options` includes `RegexOptions.Compiled`.
+the pattern policy, `VM1302` when the first form's `Options` includes `RegexOptions.Compiled`, and
+`VM1303` when the second form sets `Options` or `MatchTimeoutMilliseconds`.
 
 ### [EmailAddress]
 

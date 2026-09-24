@@ -263,23 +263,171 @@ public static class ValidationDiagnostics
     /// severity is overridden per site from the resolved policy, because the same situation is a
     /// build error for an AOT-facing project and unremarkable for a JIT one.
     /// </summary>
+    /// <remarks>
+    /// The fix is an argument rather than part of the format, because the two attributes that
+    /// reach this need different ones. An inline <c>[Pattern]</c> keeps its attribute and changes
+    /// its arguments. A DataAnnotations <c>[RegularExpression]</c> is replaced by <c>[Pattern]</c>,
+    /// and its expression has to change on the way, because it matched the whole value and passed
+    /// an empty one. See <see cref="InlinePatternFix"/> and <see cref="RegularExpressionFix"/>.
+    /// </remarks>
     public static readonly DiagnosticDescriptor InlinePatternUnderAot = Descriptor(
         "VM1301",
         "Inline pattern roots the regex engine",
         "The pattern on '{0}' is built from a string at run time, which roots the regex parser and "
-            + "interpreter - about 450 KB on an AOT-published binary, once, however many patterns follow. "
-            + "Declare it as a "
-            + "[GeneratedRegex] and point at it: [Pattern(typeof({1}Patterns), nameof({1}Patterns.{0}))]. "
-            + "Set ValidationModules_PatternPolicy to Allow to keep the inline form",
+            + "interpreter. That costs about 450 KB on an AOT-published binary, once, however many "
+            + "patterns follow. {1}. Set ValidationModules_PatternPolicy to Allow to keep the "
+            + "inline form",
         DiagnosticSeverity.Warning
     );
 
+    /// <summary>VM1301's fix for an inline <c>[Pattern]</c>.</summary>
+    public static string InlinePatternFix(string member, string? type) =>
+        "Declare it as a [GeneratedRegex] and point at it: "
+        + $"[Pattern(typeof({type}Patterns), nameof({type}Patterns.{member}))]";
+
+    /// <summary>
+    /// VM1301's fix for a DataAnnotations <c>[RegularExpression]</c>, with its expression written
+    /// out the way <c>[Pattern]</c> needs it to keep the same meaning.
+    /// </summary>
+    public static string RegularExpressionFix(string member, string? type, string pattern) =>
+        $"Declare it as {GeneratedRegexDeclaration(@"\A(?:" + pattern + @")?\z", 0, null, null)}, "
+        + "anchored because [RegularExpression] matches the whole value and optional because it "
+        + "passes an empty one. Then replace [RegularExpression] with "
+        + $"[Pattern(typeof({type}Patterns), nameof({type}Patterns.{member}))]";
+
+    /// <summary>
+    /// <c>RegexOptions.Compiled</c> on an inline pattern, where it would compile the expression
+    /// through <c>Reflection.Emit</c> when the validator loads.
+    /// </summary>
+    /// <remarks>
+    /// Removed rather than passed through, so the emitted constructor never carries it and the
+    /// message is true. With nothing else set, the validator then uses the single-argument
+    /// constructor. On the reference form the option is VM1303's business, like every other
+    /// setting that form ignores.
+    /// </remarks>
     public static readonly DiagnosticDescriptor CompiledRegexRequested = Descriptor(
         "VM1302",
-        "RegexOptions.Compiled is not meaningful here",
-        "Patterns compile through [GeneratedRegex]; RegexOptions.Compiled on '{0}' is ignored",
+        "RegexOptions.Compiled is removed from an inline pattern",
+        "RegexOptions.Compiled on '{0}' is removed, so the inline pattern is interpreted. "
+            + "Compiling it would emit IL through Reflection.Emit when the validator loads, which "
+            + "this library does not do. For a matcher compiled at build time, declare it as a "
+            + "[GeneratedRegex] and point at it: [Pattern(typeof({1}Patterns), "
+            + "nameof({1}Patterns.{0}))]",
         DiagnosticSeverity.Warning
     );
+
+    /// <summary>
+    /// <c>Options</c> or <c>MatchTimeoutMilliseconds</c> on the reference form, which calls a regex
+    /// that was built with its own options and timeout and reads neither.
+    /// </summary>
+    /// <remarks>
+    /// A setting that does nothing is worse than no setting: <c>Options = RegexOptions.IgnoreCase</c>
+    /// reads as case-insensitive matching, and the check stays case-sensitive. The tail prints the
+    /// declaration that would do what was asked, from the referenced method's own
+    /// <c>[GeneratedRegex]</c> when there is one to read.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor ReferencedPatternSettingIgnored = Descriptor(
+        "VM1303",
+        "Options and MatchTimeoutMilliseconds do not apply to a referenced regex",
+        "[Pattern] on '{0}' uses '{1}', which carries its own options and timeout, so '{2}' does "
+            + "nothing. {3}",
+        DiagnosticSeverity.Warning
+    );
+
+    /// <summary>VM1303's tail when the setting belongs on the regex.</summary>
+    public static string ReferencedPatternMoveTail(string declaration) =>
+        $"Declare it on the regex instead: {declaration}";
+
+    /// <summary>VM1303's tail when <c>RegexOptions.Compiled</c> is all that was set.</summary>
+    public const string ReferencedPatternCompiledTail =
+        "Remove it. [GeneratedRegex] writes the matcher as C# at build time, so it is compiled "
+        + "already";
+
+    /// <summary>VM1303's tail when the regex already declares what was set.</summary>
+    public const string ReferencedPatternRedundantTail =
+        "Remove it. The regex already declares the same";
+
+    /// <summary>
+    /// A <c>[GeneratedRegex]</c> attribute as it would be typed. A null pattern prints as
+    /// <c>"..."</c>, for a regex whose declaration cannot be read.
+    /// </summary>
+    public static string GeneratedRegexDeclaration(
+        string? pattern,
+        int options,
+        int? matchTimeoutMilliseconds,
+        string? cultureName
+    )
+    {
+        // Verbatim, because an expression is usually full of backslashes.
+        var arguments = new List<string>
+        {
+            pattern is null ? "\"...\"" : "@\"" + pattern.Replace("\"", "\"\"") + "\"",
+        };
+
+        // The constructors that take a timeout or a culture take the options before them.
+        if (options != 0 || matchTimeoutMilliseconds is not null || cultureName is not null)
+        {
+            arguments.Add(RegexOptionsText(options));
+        }
+
+        if (matchTimeoutMilliseconds is { } timeout)
+        {
+            arguments.Add($"matchTimeoutMilliseconds: {timeout}");
+        }
+
+        if (cultureName is not null)
+        {
+            arguments.Add($"cultureName: \"{cultureName}\"");
+        }
+
+        return $"[GeneratedRegex({string.Join(", ", arguments)})]";
+    }
+
+    /// <summary><c>RegexOptions</c> flags as they would be typed.</summary>
+    public static string RegexOptionsText(int options)
+    {
+        if (options == 0)
+        {
+            return "RegexOptions.None";
+        }
+
+        var parts = new List<string>();
+        var unnamed = options;
+
+        foreach (var (flag, name) in RegexOptionNames)
+        {
+            if ((options & flag) != 0)
+            {
+                parts.Add($"RegexOptions.{name}");
+                unnamed &= ~flag;
+            }
+        }
+
+        if (unnamed != 0)
+        {
+            parts.Add($"(RegexOptions){unnamed}");
+        }
+
+        return string.Join(" | ", parts);
+    }
+
+    /// <summary>
+    /// The named <c>RegexOptions</c> flags. A table rather than the enum, because netstandard2.0's
+    /// <c>RegexOptions</c> predates <c>NonBacktracking</c>.
+    /// </summary>
+    private static readonly (int Flag, string Name)[] RegexOptionNames =
+    {
+        (1, "IgnoreCase"),
+        (2, "Multiline"),
+        (4, "ExplicitCapture"),
+        (8, "Compiled"),
+        (16, "Singleline"),
+        (32, "IgnorePatternWhitespace"),
+        (64, "RightToLeft"),
+        (256, "ECMAScript"),
+        (512, "CultureInvariant"),
+        (1024, "NonBacktracking"),
+    };
 
     public static readonly DiagnosticDescriptor ConditionMemberNotFound = Descriptor(
         "VM1401",
