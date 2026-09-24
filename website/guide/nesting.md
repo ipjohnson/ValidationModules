@@ -112,7 +112,7 @@ public abstract class Payment
 
 public sealed class Card : Payment
 {
-    [StringLength(16, 16)]
+    [StringLength(16, Min = 16)]
     public string? Number { get; init; }
 }
 

@@ -204,7 +204,7 @@ public class AttributeConditionTests
                 public bool IsAuto { get; init; }
 
                 [Required(When = nameof(IsAuto))]
-                [StringLength(2, 8)]
+                [StringLength(8, Min = 2)]
                 public string? PolicyNumber { get; init; }
             """
         );
@@ -226,7 +226,7 @@ public class AttributeConditionTests
                 public bool IsAuto { get; init; }
 
                 [Required]
-                [StringLength(2, 8, When = nameof(IsAuto))]
+                [StringLength(8, Min = 2, When = nameof(IsAuto))]
                 public string? PolicyNumber { get; init; }
             """
         );

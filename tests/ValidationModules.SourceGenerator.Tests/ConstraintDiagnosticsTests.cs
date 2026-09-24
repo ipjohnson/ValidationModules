@@ -32,9 +32,9 @@ public class ConstraintDiagnosticsTests
     // VM1001 — a string constraint on something that is not a string.
 
     [Theory]
-    [InlineData("[StringLength(1, 10)] public int Age { get; init; }", "[StringLength]")]
+    [InlineData("[StringLength(10, Min = 1)] public int Age { get; init; }", "[StringLength]")]
     [InlineData(
-        "[StringLength(1, 10)] public List<string> Tags { get; init; } = new();",
+        "[StringLength(10, Min = 1)] public List<string> Tags { get; init; } = new();",
         "[StringLength]"
     )]
     [InlineData("[Pattern(\"^a$\")] public int Age { get; init; }", "[Pattern]")]
@@ -53,7 +53,7 @@ public class ConstraintDiagnosticsTests
         var result = GeneratorHarness.Run(
             Model(
                 """
-                [StringLength(1, 10)]
+                [StringLength(10, Min = 1)]
                 [Pattern("^a$")]
                 public string? Name { get; init; }
                 """
@@ -207,7 +207,7 @@ public class ConstraintDiagnosticsTests
     // VM1101 — bounds that cannot both be satisfied.
 
     [Theory]
-    [InlineData("[StringLength(10, 1)] public string? Name { get; init; }")]
+    [InlineData("[StringLength(1, Min = 10)] public string? Name { get; init; }")]
     [InlineData("[StringLength(Min = 10, Max = 1)] public string? Name { get; init; }")]
     [InlineData("[ItemCount(10, 1)] public List<string> Tags { get; init; } = new();")]
     public void InvertedBounds_IsVM1101(string member)
@@ -221,8 +221,8 @@ public class ConstraintDiagnosticsTests
     }
 
     [Theory]
-    [InlineData("[StringLength(1, 10)] public string? Name { get; init; }")]
-    [InlineData("[StringLength(5, 5)] public string? Name { get; init; }")]
+    [InlineData("[StringLength(10, Min = 1)] public string? Name { get; init; }")]
+    [InlineData("[StringLength(5, Min = 5)] public string? Name { get; init; }")]
     [InlineData("[StringLength(Max = 500)] public string? Notes { get; init; }")]
     [InlineData("[StringLength(Min = 1)] public string? Name { get; init; }")]
     public void SatisfiableBounds_IsSilent(string member)
@@ -407,7 +407,7 @@ public class ConstraintDiagnosticsTests
 
             namespace Sample;
 
-            public record Pet([Required][StringLength(1, 10)] string Name, [Range(0, 30)] int Age);
+            public record Pet([Required][StringLength(10, Min = 1)] string Name, [Range(0, 30)] int Age);
             """
         );
 
@@ -443,7 +443,7 @@ public class ConstraintDiagnosticsTests
 
             namespace Sample;
 
-            public record Pet([property: Required] string Name, [StringLength(1, 10)] string Tag);
+            public record Pet([property: Required] string Name, [StringLength(10, Min = 1)] string Tag);
             """
         );
 
@@ -568,13 +568,13 @@ public class ConstraintDiagnosticsTests
             // leaves open what should happen to a value of a more derived type, and VM1503 asks.
             public sealed record Address {
                 [Required]
-                [StringLength(1, 100)]
+                [StringLength(100, Min = 1)]
                 public string? Street { get; init; }
             }
 
             public record Pet {
                 [Required]
-                [StringLength(1, 100)]
+                [StringLength(100, Min = 1)]
                 public string? Name { get; init; }
 
                 [Range(0, 30)]
@@ -804,7 +804,7 @@ public class ConstraintDiagnosticsTests
     /// while the useful diagnostic named their property.
     /// </summary>
     [Theory]
-    [InlineData("[StringLength(1, 10)] public int Quantity { get; init; }", "VM1001")]
+    [InlineData("[StringLength(10, Min = 1)] public int Quantity { get; init; }", "VM1001")]
     [InlineData("[Pattern(\"^a$\")] public int Quantity { get; init; }", "VM1001")]
     [InlineData("[ItemCount(1, 5)] public int Quantity { get; init; }", "VM1002")]
     [InlineData("[Range(1, 10)] public object? Thing { get; init; }", "VM1003")]
@@ -834,7 +834,7 @@ public class ConstraintDiagnosticsTests
         var result = GeneratorHarness.Run(
             Model(
                 """
-                [StringLength(1, 10)] public int Quantity { get; init; }
+                [StringLength(10, Min = 1)] public int Quantity { get; init; }
 
                 [Required] public string? Name { get; init; }
                 """

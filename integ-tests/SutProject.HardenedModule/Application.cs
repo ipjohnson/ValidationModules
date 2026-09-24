@@ -48,7 +48,7 @@ public partial class Application : IDependencyModule
 public sealed record Shipment
 {
     [Required]
-    [StringLength(min: 3, max: 20)]
+    [StringLength(20, Min = 3)]
     public string? Tracking { get; init; }
 
     [Range(1, 500)]

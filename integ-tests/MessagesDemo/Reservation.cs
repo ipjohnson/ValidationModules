@@ -11,7 +11,7 @@ namespace MessagesDemo;
 public sealed record Reservation
 {
     [Required]
-    [StringLength(min: 1, max: 60)]
+    [StringLength(60, Min = 1)]
     public string? Name { get; init; }
 
     [Range(1, 8)]
@@ -49,6 +49,6 @@ public sealed record Signup
     [Required(Message = "pick a handle")]
     public string? Handle { get; init; }
 
-    [StringLength(min: 3, max: 120, Message = "keep notes between 3 and 120 characters")]
+    [StringLength(120, Min = 3, Message = "keep notes between 3 and 120 characters")]
     public string? Notes { get; init; }
 }

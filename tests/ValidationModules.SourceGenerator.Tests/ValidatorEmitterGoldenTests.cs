@@ -110,7 +110,7 @@ public class ValidatorEmitterGoldenTests
 
                 public record Pet {
                     [Required]
-                    [StringLength(1, 100)]
+                    [StringLength(100, Min = 1)]
                     public string? Name { get; init; }
 
                     [Range(0, 30)]

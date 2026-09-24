@@ -128,7 +128,7 @@ using DataAnnotations = System.ComponentModel.DataAnnotations;
 
 public sealed class Account
 {
-    [Required, StringLength(3, 20)]
+    [Required, StringLength(20, Min = 3)]
     public string? Handle { get; init; }
 
     [DataAnnotations.EmailAddress]
@@ -146,8 +146,7 @@ you do change a file's `using` from `System.ComponentModel.DataAnnotations` to
 
 | DataAnnotations | ValidationModules |
 | --- | --- |
-| `[StringLength(50)]` | `[StringLength(max: 50)]`. The first argument here is the minimum. |
-| `[StringLength(50, MinimumLength = 2)]` | `[StringLength(2, 50)]` |
+| `[StringLength(50, MinimumLength = 2)]` | `[StringLength(50, Min = 2)]` |
 | `[MinLength]`, `[MaxLength]`, `[Length]` | `[StringLength]` on a string, `[ItemCount]` on a collection |
 | `[RegularExpression("x")]` | `[Pattern(@"\A(?:x)\z")]`. `[Pattern]` matches anywhere in the value unless the expression is anchored. |
 | `ErrorMessage = "The {0} field is invalid."` | `Message = "The {field} field is invalid."` |
