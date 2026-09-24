@@ -111,7 +111,8 @@ text.
 | `Context` | An `IValidationContextReporter` for reporting errors from code. See below. |
 
 `RuleAction<T>` is a delegate: `ValidationFlow RuleAction<in T>(ref ValidationContext context, T
-value)`. Pass a static method group.
+value)`. Pass a static method group, `internal` or `public`. A lambda whose whole body calls one
+such method with its own parameters is read as that method, and any other lambda is `VM3008`.
 
 ## PropertyRules&lt;T, TValue&gt;
 

@@ -275,9 +275,10 @@ public static class BookingChecks
 rules.Apply(BookingChecks.RoomsHoldGuests);
 ```
 
-Pass a method group. A lambda passed to `Apply` produces generated code that does not compile in
-this version. `Apply` must be a top-level statement in `Describe`, and applied rules run after every
-other rule on the type. Return the `ValidationFlow` that `Report` returned, so that a pass that
+Pass a method group that is `internal` or `public`. A lambda whose whole body calls one static
+method, such as `(ref ValidationContext c, Booking v) => RoomsHoldGuests(ref c, v)`, is read as that
+method, and any other lambda is reported as `VM3008`. `Apply` must be a top-level statement in
+`Describe`, and applied rules run after every other rule on the type. Return the `ValidationFlow` that `Report` returned, so that a pass that
 [stops at the first error](./errors#stop-at-the-first-error) can end there.
 
 ## Share rules between types
