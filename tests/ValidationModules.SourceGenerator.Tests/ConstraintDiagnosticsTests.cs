@@ -693,6 +693,81 @@ public class ConstraintDiagnosticsTests
         Assert.Single(result.Diagnostics, d => d.Id == "VM1011");
     }
 
+    // VM1014 — a constraint on an indexer, which the walk never reads.
+
+    [Fact]
+    public void ConstraintOnAnIndexer_IsVM1014()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public class M {
+                [Required] public string? this[int index] => null;
+                [Required] public string? Name { get; init; }
+            }
+            """
+        );
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1014");
+
+        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Equal(
+            "'Required' on 'M.this[int]' is never evaluated, because an indexer takes an argument "
+                + "and the validator has none to pass. Constraints apply to instance properties that "
+                + "take no arguments. Remove [Required]. To check the values the indexer returns, "
+                + "expose the collection it reads from as an instance property, and check its "
+                + "elements with [ValidateNested] or rules.Each",
+            diagnostic.GetMessage()
+        );
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains(
+            "ReportRequired(ctx, \"name\", value: value.Name)",
+            result.Sources["Sample.MValidator.g.cs"]
+        );
+    }
+
+    /// <summary>
+    /// Every constraint on every indexer, and each once, where it is declared. An attribute that
+    /// is not a constraint is not reported.
+    /// </summary>
+    [Fact]
+    public void ConstraintsOnIndexers_ReportOncePerAttributeWhereTheyAreDeclared()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using System.Text.Json.Serialization;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public class Base {
+                [Required, StringLength(10)] public string? this[int index] => null;
+                [ValidateNested] public Base? this[string key] => null;
+                [JsonPropertyName("plain")] public string? this[long index] => null;
+            }
+
+            public sealed class Derived : Base {
+                [Required] public string? Name { get; init; }
+            }
+            """
+        );
+
+        Assert.Equal(
+            [
+                "'Required' on 'Base.this[int]'",
+                "'StringLength' on 'Base.this[int]'",
+                "'ValidateNested' on 'Base.this[string]'",
+            ],
+            result
+                .Diagnostics.Where(d => d.Id == "VM1014")
+                .Select(d => d.GetMessage().Substring(0, d.GetMessage().IndexOf(" is never")))
+                .OrderBy(prefix => prefix, StringComparer.Ordinal)
+        );
+    }
+
     // VM1008 — a constraint on a record parameter, which binds to the parameter and is never read.
 
     [Fact]

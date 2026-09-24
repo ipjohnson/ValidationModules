@@ -180,6 +180,26 @@ public static class ValidationDiagnostics
     );
 
     /// <summary>
+    /// A constraint on an indexer. The attribute usage admits a property, and an indexer is one,
+    /// so the compiler accepts it. The walk leaves indexers out, because the validator has no
+    /// argument to read one with, so the constraint is never evaluated.
+    /// </summary>
+    /// <remarks>
+    /// Warning rather than error, for VM1011's reason. Unlike VM1011 there is no declaration to
+    /// print, because the values an indexer returns are held wherever it reads them from.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor ConstraintOnIndexer = Descriptor(
+        "VM1014",
+        "Constraint on an indexer has no effect",
+        "'{0}' on '{1}' is never evaluated, because an indexer takes an argument and the validator "
+            + "has none to pass. Constraints apply to instance properties that take no arguments. "
+            + "Remove [{0}]. To check the values the indexer returns, expose the collection it reads "
+            + "from as an instance property, and check its elements with [ValidateNested] or "
+            + "rules.Each",
+        DiagnosticSeverity.Warning
+    );
+
+    /// <summary>
     /// Bounds that no value satisfies: a minimum above the maximum, or equal bounds that exclude
     /// themselves.
     /// </summary>

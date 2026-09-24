@@ -117,7 +117,7 @@ public sealed class AttributeFrontEnd
         // Before anything reads a property, because the situations these report are precisely ones
         // where no property carries anything and the type would otherwise look unconstrained.
         ReportRecordParameterConstraints(type);
-        ReportConstraintsOnFieldsAndStaticProperties(type);
+        ReportConstraintsOnSkippedMembers(type);
 
         var properties = ImmutableArray.CreateBuilder<ValidatedPropertyModel>();
         var order = new List<int>();
@@ -1065,7 +1065,8 @@ public sealed class AttributeFrontEnd
     }
 
     /// <summary>
-    /// Reports a constraint written on a field or on a static property.
+    /// Reports a constraint written on a member the walk skips: a field, a static property or an
+    /// indexer.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -1076,15 +1077,22 @@ public sealed class AttributeFrontEnd
     /// on. The gap is reported where it is instead, with the property to declare.
     /// </para>
     /// <para>
+    /// The usage admits an indexer too, because an indexer is a property. The walk skips it, because
+    /// the validator has no argument to read it with. VM1014 reports it rather than VM1011, because
+    /// an instance property is no replacement for one.
+    /// </para>
+    /// <para>
     /// Only members the type declares itself, like VM1008: a base type reports its own, and one
     /// from a package has no source to fix. A backing field the compiler declared is not a member
     /// anyone wrote, so it is left alone.
     /// </para>
     /// </remarks>
-    private void ReportConstraintsOnFieldsAndStaticProperties(INamedTypeSymbol type)
+    private void ReportConstraintsOnSkippedMembers(INamedTypeSymbol type)
     {
         foreach (var member in type.GetMembers())
         {
+            var descriptor = ValidationDiagnostics.ConstraintOnFieldOrStaticProperty;
+            var name = member.Name;
             string kind;
             string declaration;
 
@@ -1111,6 +1119,15 @@ public sealed class AttributeFrontEnd
                     );
                     break;
 
+                // VM1014's message reads neither the kind nor a declaration.
+                case IPropertySymbol { IsIndexer: true } indexer:
+                    descriptor = ValidationDiagnostics.ConstraintOnIndexer;
+                    name = indexer.ToDisplayString(
+                        SymbolDisplayFormat.CSharpShortErrorMessageFormat
+                    );
+                    kind = declaration = string.Empty;
+                    break;
+
                 default:
                     continue;
             }
@@ -1130,13 +1147,13 @@ public sealed class AttributeFrontEnd
                 // otherwise shadows the type.
                 _diagnostics.Add(
                     Diagnostic.Create(
-                        ValidationDiagnostics.ConstraintOnFieldOrStaticProperty,
+                        descriptor,
                         Microsoft.CodeAnalysis.Location.Create(
                             reference.SyntaxTree,
                             reference.Span
                         ),
                         Unsuffixed(attributeClass.Name),
-                        member.Name,
+                        name,
                         kind,
                         declaration
                     )

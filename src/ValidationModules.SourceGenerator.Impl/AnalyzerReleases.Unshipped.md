@@ -7,6 +7,7 @@ Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
 VM1011 | ValidationModules.Usage | Warning | A constraint on a field or a static property is never evaluated.
 VM1013 | ValidationModules.Usage | Error | Two types would get validators with the same name in one namespace, such as a nested Order.Item and a top-level Order_Item. Neither validator is generated.
+VM1014 | ValidationModules.Usage | Warning | A constraint on an indexer is never evaluated.
 VM1203 | ValidationModules.Usage | Warning | [AllowedValues] sets Comparison on a member that is not a string, where it has no effect.
 VM1303 | ValidationModules.Usage | Warning | Options or MatchTimeoutMilliseconds is set on the reference form of [Pattern], which reads neither.
 VM1505 | ValidationModules.Usage | Warning | A nested target from another assembly has no validator this compilation can call; the descent is dropped.
