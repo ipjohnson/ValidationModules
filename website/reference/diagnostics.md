@@ -144,7 +144,8 @@ A `[Range]` bound does not parse as the property's type, for example a date on a
 
 **Severity:** Error
 
-The `[MultipleOf]` divisor is zero or negative. The constraint is dropped.
+The divisor of `[MultipleOf]`, or a constant divisor of `rules.MultipleOf`, is zero or negative.
+The constraint is dropped.
 
 ### VM1105
 
