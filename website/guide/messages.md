@@ -211,8 +211,9 @@ an `IConstraintFor<T>` attribute that uses the default `Validate`, and the messa
 DataAnnotations attributes, `[CustomValidation]` methods and `IValidatableObject`, which all report
 the code `custom`. Every pack in `ValidationModules.Messages` has an entry for `custom`, so with
 that package installed those messages become its general sentence, such as `{field} n'est pas
-valide.` in French. A pack entry that replaces a message without template arguments can use only
-`{field}`.
+valide.` in French. These errors carry no template arguments, so an entry that replaces one can
+use only `{field}`. When the entry for the code has an argument hole such as `{0}`, the formatter
+keeps the error's own message rather than show the hole.
 
 ## Messages with arguments from code
 
