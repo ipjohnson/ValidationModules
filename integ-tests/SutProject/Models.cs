@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using ValidationModules;
 using ValidationModules.Constraints;
 
 namespace SutProject;
@@ -168,7 +169,8 @@ public sealed record Passphrase
 
 /// <summary>
 /// [ItemCount] on types with no public Count: a bare sequence, and an ImmutableArray, which
-/// implements Count only explicitly.
+/// implements Count only explicitly. A default ImmutableArray has no backing array, and every rule
+/// on one, from either surface, reads it as missing.
 /// </summary>
 public sealed record Post
 {
@@ -176,7 +178,25 @@ public sealed record Post
     public IEnumerable<string>? Tags { get; init; }
 
     [ItemCount(max: 3)]
+    [UniqueItems]
     public ImmutableArray<string> Labels { get; init; } = [];
+
+    [ValidateNested]
+    public ImmutableArray<Comment> Comments { get; init; } = [];
+
+    public ImmutableArray<string> Keywords { get; init; } = [];
+
+    public ImmutableArray<Comment> Replies { get; init; } = [];
+}
+
+public sealed class PostRules : IValidationRulesFor<Post>
+{
+    public static void Describe(ValidationRules<Post> rules, Post x)
+    {
+        rules.Count(x.Keywords, max: 3).Each().Length(1, 20);
+        rules.Unique(x.Keywords);
+        rules.Each(x.Replies);
+    }
 }
 
 /// <summary>

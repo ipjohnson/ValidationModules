@@ -76,6 +76,56 @@ public class GeneratedValidatorTests
     }
 
     /// <summary>
+    /// A default ImmutableArray has no backing array, so reading its Length, enumerating it or
+    /// boxing it as an IReadOnlyList throws. It reads as missing instead, the way null does for a
+    /// reference-typed collection, under the attributes and the rules class alike.
+    /// </summary>
+    [Fact]
+    public void DefaultImmutableArrays_ReadAsMissing()
+    {
+        var validator = new PostValidator();
+        var post = new Post
+        {
+            Tags = ["a"],
+            Labels = default,
+            Comments = default,
+            Keywords = default,
+            Replies = default,
+        };
+
+        Assert.True(validator.Validate(post).IsValid);
+        Assert.True(validator.IsValid(post));
+    }
+
+    [Fact]
+    public void PresentImmutableArrays_AreStillChecked()
+    {
+        var result = new PostValidator().Validate(
+            new Post
+            {
+                Tags = ["a"],
+                Labels = ["x", "x"],
+                Comments = [new Comment { Text = "b" }],
+                Keywords = ["", "k", "k"],
+                Replies = [new Comment { Text = "b" }],
+            }
+        );
+
+        Assert.Equal(
+            [
+                ("comments[0].text", ValidationCodes.Pattern),
+                ("keywords", ValidationCodes.UniqueItems),
+                ("keywords[0]", ValidationCodes.StringLength),
+                ("labels", ValidationCodes.UniqueItems),
+                ("replies[0].text", ValidationCodes.Pattern),
+            ],
+            result
+                .Errors.Select(e => (e.Field, e.Code))
+                .OrderBy(e => e.Field, StringComparer.Ordinal)
+        );
+    }
+
+    /// <summary>
     /// A null value is rejected where it enters. <c>IsValid</c> reached through the interface binds
     /// straight to the generated method, which is why that method carries a guard of its own.
     /// </summary>

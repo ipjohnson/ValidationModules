@@ -129,6 +129,114 @@ public class ConstraintDiagnosticsTests
         Assert.Contains(".Length;", result.Sources["Sample.PetValidator.g.cs"]);
     }
 
+    /// <summary>
+    /// A default <c>ImmutableArray&lt;T&gt;</c> has no array behind it, so its <c>Length</c>, its
+    /// enumerator and its <c>IReadOnlyList&lt;T&gt;</c> view all throw. Every read tests
+    /// <c>IsDefault</c> first and passes a default value as missing, the way a reference-typed
+    /// collection passes null.
+    /// </summary>
+    [Theory]
+    [InlineData(
+        "[ItemCount(1, 3)] public System.Collections.Immutable.ImmutableArray<string> Tags { get; init; }",
+        "!value.Tags.IsDefault && (value.Tags.Length < 1 || value.Tags.Length > 3)"
+    )]
+    [InlineData(
+        "[UniqueItems] public System.Collections.Immutable.ImmutableArray<string> Tags { get; init; }",
+        "!value.Tags.IsDefault && !global::ValidationModules.ConstraintChecks.AllUnique(value.Tags)"
+    )]
+    [InlineData(
+        "[System.ComponentModel.DataAnnotations.Length(1, 3)] public System.Collections.Immutable.ImmutableArray<string> Tags { get; init; }",
+        "!value.Tags.IsDefault && (value.Tags.Length < 1 || value.Tags.Length > 3)"
+    )]
+    [InlineData(
+        "[System.ComponentModel.DataAnnotations.MinLength(1)] public System.Collections.Immutable.ImmutableArray<string> Tags { get; init; }",
+        "!value.Tags.IsDefault && (value.Tags.Length < 1)"
+    )]
+    [InlineData(
+        "[System.ComponentModel.DataAnnotations.MaxLength(3)] public System.Collections.Immutable.ImmutableArray<string> Tags { get; init; }",
+        "!value.Tags.IsDefault && (value.Tags.Length > 3)"
+    )]
+    public void ImmutableArray_DefaultValue_PassesAsMissing(string member, string expected)
+    {
+        var result = GeneratorHarness.Run(Model(member));
+
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains(expected, result.Sources["Sample.PetValidator.g.cs"]);
+    }
+
+    [Fact]
+    public void ValidateNested_OnADefaultImmutableArray_SkipsTheWalk()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using System.Collections.Immutable;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public record Toy {
+                [Required] public string? Name { get; init; }
+            }
+
+            public record Pet {
+                [ValidateNested] public ImmutableArray<Toy> Toys { get; init; }
+            }
+            """
+        );
+
+        var emitted = result.Sources["Sample.PetValidator.g.cs"];
+
+        // Validate and IsValid each walk the array.
+        Assert.Empty(result.CompilationErrors);
+        Assert.Equal(2, emitted.Split("value.Toys is { IsDefault: false } itemsToys").Length - 1);
+        Assert.DoesNotContain("value.Toys is { } itemsToys", emitted);
+    }
+
+    [Theory]
+    [InlineData(
+        "rules.Count(x.Skus, 1, 3);",
+        "!x.Skus.IsDefault && (x.Skus.Length < 1 || x.Skus.Length > 3)"
+    )]
+    [InlineData(
+        "rules.Unique(x.Skus);",
+        "!x.Skus.IsDefault && !global::ValidationModules.ConstraintChecks.AllUnique(x.Skus)"
+    )]
+    [InlineData("rules.Each(x.Skus).Length(1, 5);", "x.Skus is { IsDefault: false } items0")]
+    [InlineData("rules.Each(x.Lines);", "x.Lines is { IsDefault: false } items0")]
+    public void ImmutableArray_DefaultValue_PassesAsMissingInARulesClass(
+        string statement,
+        string expected
+    )
+    {
+        var result = GeneratorHarness.Run(
+            $$"""
+            using System.Collections.Immutable;
+            using ValidationModules;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed record Line {
+                [Required] public string? Sku { get; init; }
+            }
+
+            public sealed record Order {
+                public ImmutableArray<string> Skus { get; init; }
+                public ImmutableArray<Line> Lines { get; init; }
+            }
+
+            public sealed class OrderRules : IValidationRulesFor<Order> {
+                public static void Describe(ValidationRules<Order> rules, Order x) {
+                    {{statement}}
+                }
+            }
+            """
+        );
+
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains(expected, result.Sources["Sample.OrderRules_Rules.g.cs"]);
+    }
+
     [Fact]
     public void ItemCount_OnString_IsVM1002_BecauseAStringIsNotACollectionHere()
     {

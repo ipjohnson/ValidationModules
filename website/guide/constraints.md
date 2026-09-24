@@ -85,6 +85,9 @@ reports one error. `[Required]` is checked first, whatever the order of the attr
 never fail. The generator reports `VM1201` and drops it. Make the property nullable, or constrain
 its value with `[Range]`.
 
+A default `ImmutableArray<T>` has no array behind it, so every constraint passes it as it passes
+`null`, and `[ValidateNested]` skips it.
+
 ## Bounds
 
 `[StringLength]` reads its arguments as the DataAnnotations attribute of the same name does. The

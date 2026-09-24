@@ -176,6 +176,16 @@ public static class TypeFacts
     public static bool IsNullableValueType(ITypeSymbol type) =>
         type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T };
 
+    /// <summary>
+    /// Whether a default value of the type reads as missing, the way null does for a reference
+    /// type. True for <c>ImmutableArray&lt;T&gt;</c>, whose default has no array behind it, so its
+    /// <c>Length</c>, its enumerator and its interface views all throw.
+    /// </summary>
+    public static bool IsMissingWhenDefault(ITypeSymbol type) =>
+        type is INamedTypeSymbol { IsValueType: true, IsGenericType: true } named
+        && named.ConstructedFrom.ToDisplayString()
+            == "System.Collections.Immutable.ImmutableArray<T>";
+
     /// <summary>Whether a [Range] can be emitted as a pair of comparisons against this type.</summary>
     public static bool IsOrdered(ITypeSymbol type)
     {
