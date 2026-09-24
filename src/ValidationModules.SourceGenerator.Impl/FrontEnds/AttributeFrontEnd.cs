@@ -405,7 +405,8 @@ public sealed class AttributeFrontEnd
             compilesValidatableObject,
             new EquatableArray<RegionModel>(
                 ImmutableArray.CreateRange(regions ?? Array.Empty<RegionModel>())
-            )
+            ),
+            type.IsValueType
         );
     }
 

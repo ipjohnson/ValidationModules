@@ -82,6 +82,7 @@ public sealed partial class ProductValidator : global::ValidationModules.IValida
     /// </summary>
     public bool IsValid(global::Sample.Product value)
     {
+        global::System.ArgumentNullException.ThrowIfNull(value);
         if (string.IsNullOrWhiteSpace(value.Sku))
         {
             return false;

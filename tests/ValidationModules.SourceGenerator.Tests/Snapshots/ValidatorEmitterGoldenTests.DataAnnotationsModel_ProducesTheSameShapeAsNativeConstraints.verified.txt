@@ -90,6 +90,7 @@ public sealed partial class CustomerValidator : global::ValidationModules.IValid
     /// </summary>
     public bool IsValid(global::Sample.Customer value)
     {
+        global::System.ArgumentNullException.ThrowIfNull(value);
         if (string.IsNullOrWhiteSpace(value.Name))
         {
             return false;

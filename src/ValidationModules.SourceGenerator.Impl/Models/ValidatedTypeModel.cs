@@ -38,6 +38,11 @@ namespace ValidationModules.SourceGenerator.Impl.Models;
 /// need. A type with any region loses the straight-line <c>IsValid</c> - regions carry free-form
 /// computation and reporter calls a boolean path with no collector cannot always project.
 /// </param>
+/// <param name="IsValueType">
+/// Whether the validated type is a struct. The straight-line <c>IsValid</c> rejects a null value
+/// only for a class, because <c>value is null</c> does not compile against a struct and
+/// <c>ArgumentNullException.ThrowIfNull</c> would box one on every call.
+/// </param>
 public sealed record ValidatedTypeModel(
     string Namespace,
     string TypeName,
@@ -47,7 +52,8 @@ public sealed record ValidatedTypeModel(
     EquatableArray<string> AppliedRules = default,
     bool IsPublic = true,
     bool ImplementsValidatableObject = false,
-    EquatableArray<RegionModel> Regions = default
+    EquatableArray<RegionModel> Regions = default,
+    bool IsValueType = false
 ) : IEquatable<ValidatedTypeModel>;
 
 /// <summary>
