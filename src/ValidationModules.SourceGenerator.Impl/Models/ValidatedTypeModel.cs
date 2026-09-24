@@ -60,13 +60,18 @@ public sealed record RegionModel(
     EquatableArray<string> ValidatorAccessors = default
 ) : IEquatable<RegionModel>;
 
-/// <summary>Which registration shape the assembly gets. See plan §7.3.</summary>
+/// <summary>Which registration shape the assembly gets.</summary>
 public enum RegistrationMode
 {
-    /// <summary>Emit a complete IDependencyModule.</summary>
+    /// <summary>
+    /// Emit the <c>Add&lt;Assembly&gt;Validators()</c> extension and register it into every
+    /// DependencyModules entry point, or into an emitted module when the compilation has none.
+    /// </summary>
     DependencyModules,
 
-    /// <summary>Emit a static table of factories plus AddValidationModules.</summary>
+    /// <summary>
+    /// Emit the <c>Add&lt;Assembly&gt;Validators()</c> extension on <c>IServiceCollection</c>.
+    /// </summary>
     ServiceCollection,
 
     /// <summary>Emit neither; the consumer wires validators up themselves.</summary>

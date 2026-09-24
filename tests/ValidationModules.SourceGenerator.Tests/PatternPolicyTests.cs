@@ -8,10 +8,10 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// </summary>
 /// <remarks>
 /// The inline form is correct and publishes AOT-clean; what it costs is size. Constructing a Regex
-/// from a pattern string roots the regex parser and interpreter, measured at +1.16 MB on a
+/// from a pattern string roots the regex parser and interpreter, measured at +448 KB on a
 /// published AOT binary against +16 KB for the same pattern reached through a consumer-declared
-/// [GeneratedRegex]. So the diagnostic is about a doubling of the binary, not a broken build, and
-/// it only fires where that matters.
+/// [GeneratedRegex]. So the diagnostic is about a binary roughly 40% larger, not a broken build,
+/// and it only fires where that matters.
 /// </remarks>
 public class PatternPolicyTests
 {

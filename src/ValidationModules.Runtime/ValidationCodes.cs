@@ -120,15 +120,15 @@ public static class ValidationCodes
     public const string Custom = "custom";
 
     /// <summary>
-    /// A rule declared with <c>rules.Ensure(…)</c> failed.
+    /// A rule declared with <c>rules.Ensure(…)</c> failed, and no code could be derived from its
+    /// condition.
     /// </summary>
     /// <remarks>
-    /// One code for every predicate, deliberately. Slugging or hashing the expression would read
-    /// better and would make widening a bound from 30 to 35 a breaking change for every client
-    /// switching on this - the <i>message</i> may track the rule, because it is human-facing, but the
-    /// code is a wire contract. Two predicates on one field are told apart by their messages; pass
-    /// <c>code:</c> when a client needs to tell them apart programmatically, which promotes that one
-    /// rule into the contract deliberately rather than by accident.
+    /// An <c>Ensure</c> without <c>code:</c> reports a code derived from its condition, such as
+    /// <c>start_less_than_end</c> for <c>x.Start &lt; x.End</c>, and the generator reports each
+    /// derived code as VM3103. This constant is the fallback for a condition the derivation cannot
+    /// name. Editing the condition changes a derived code, so pass <c>code:</c> when a client
+    /// depends on it.
     /// </remarks>
     public const string Predicate = "predicate";
 }

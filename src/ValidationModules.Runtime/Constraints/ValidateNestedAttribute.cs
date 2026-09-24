@@ -10,11 +10,6 @@ namespace ValidationModules.Constraints;
 /// prefixed with this property's path.
 /// </para>
 /// <para>
-/// The active profile propagates automatically: validating a <c>Pet</c> under V2 validates its
-/// <c>Address</c> under V2, falling back to the aliased validator when V2 adds nothing to
-/// <c>Address</c>.
-/// </para>
-/// <para>
 /// Does not recurse into a value that failed <see cref="RequiredAttribute"/>.
 /// </para>
 /// </remarks>

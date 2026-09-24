@@ -27,10 +27,7 @@ public class DiagnosticCatalogueTests
     /// </summary>
     /// <remarks>
     /// <b>Empty, and keeping it empty is the point.</b> VM1008 and VM1103 were here and were wired
-    /// up; VM1501 was the last entry and its descriptor was deleted rather than implemented -
-    /// <c>[ValidateNested]</c> on a type with no rules still says nothing, but a descriptor nothing
-    /// constructs is a promise the catalogue does not keep, and deleting it is honest where
-    /// carrying it was not.
+    /// up. A descriptor nothing constructs is a promise the catalogue does not keep.
     ///
     /// So every declared descriptor is now reachable. A new one added without a report site fails
     /// <see cref="DescriptorsThatAreNeverReported_AreExactlyTheOnesRecordedAsSuch"/> immediately,

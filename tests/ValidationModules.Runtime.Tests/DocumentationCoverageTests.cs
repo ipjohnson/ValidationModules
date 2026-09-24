@@ -43,7 +43,7 @@ public class DocumentationCoverageTests
 
         // The generator's own wiring: consumers never write these names - generated code does.
         ["RuntimeContract"] = "written by the generator's version handshake, not by consumers",
-        ["ValidatorRegistration"] = "written by generated registrations, not by consumers",
+        ["ValidatorRegistration"] = "a hand-built registration table; nothing generates one",
         ["DataAnnotationsSupport"] = "called by generated validators, not by consumers",
 
         // The chaining surface behind rules.Require(...).Length(...): a reader writes the calls,

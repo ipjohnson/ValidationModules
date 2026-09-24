@@ -28,8 +28,9 @@ public static class ValidationModulesEndpointExtensions
     /// were added, so the first failure answers and the second never runs.
     /// </para>
     /// <para>
-    /// <b>Naming a type the handler does not take throws at startup</b> rather than answering every
-    /// request as valid - see <see cref="ValidationEndpointFilterFactory"/>.
+    /// <b>Naming a type the handler does not take throws when the endpoint is built</b> rather than
+    /// answering every request as valid. In a default application that is the first request. See
+    /// <see cref="ValidationEndpointFilterFactory"/>.
     /// </para>
     /// </remarks>
     /// <typeparam name="T">The argument type to validate.</typeparam>
