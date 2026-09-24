@@ -40,6 +40,8 @@ name derived from the value.
 | `Length(string? value, int min = 0, int max = int.MaxValue)` | The length is within the bounds. | `string_length` |
 | `Pattern(string? value, Func<Regex> pattern)` | The regular expression matches. Pass a method group, such as a `[GeneratedRegex]` method. | `pattern` |
 
+`Length` with constant bounds in the wrong order is reported as `VM1101`.
+
 ### Numbers, dates and times
 
 | Method | Passes when | Code |
@@ -79,6 +81,8 @@ Write `allowed` as an array or a collection expression of constants, such as
 | `Each(IReadOnlyList<string>? value)` | Applies the rules chained after it to every element. | from those rules |
 | `Each<TElement>(IReadOnlyList<TElement>? value)` | Runs the validators for `TElement` on every element. | from those validators |
 | `Nested<TValue>(TValue? value)` | Runs the validators for `TValue` on the value. | from those validators |
+
+`Count` with constant bounds in the wrong order is reported as `VM1101`.
 
 `Nested` is for a single object. Use `Each` for a collection of objects. `Each` accepts a list of
 strings or of a reference type. For a list of numbers or other value types, check the elements in a
