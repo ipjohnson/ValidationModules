@@ -648,7 +648,7 @@ public class DataAnnotationsDiagnosticsTests
     // VM2006 — IValidatableObject, compiled with TryValidateObject's sequencing.
 
     [Fact]
-    public void ValidatableObject_IsCompiledLastAndGatedOnACleanPass()
+    public void ValidatableObject_IsCompiledLastAndGatedOnItsOwnValidatorsRules()
     {
         var source = """
             using System.Collections.Generic;
@@ -676,11 +676,15 @@ public class DataAnnotationsDiagnosticsTests
 
         var emitted = result.Sources["Sample.CustomerValidator.g.cs"];
 
-        // Last, and only when nothing else failed - Validator.TryValidateObject's sequencing.
+        // Last, and only when this validator's own rules found nothing blocking -
+        // Validator.TryValidateObject's sequencing. The mark is taken before the first rule, so a
+        // warning, or an error the parent recorded before this validator began, does not count.
+        Assert.Contains("var mark = ctx.Mark();", emitted);
         Assert.Contains(
-            "!ctx.HasErrors && global::ValidationModules.DataAnnotationsSupport.ValidateObject(ref ctx, value",
+            "!ctx.HasBlockingErrorsSince(mark) && global::ValidationModules.DataAnnotationsSupport.ValidateObject(ref ctx, value",
             emitted
         );
+        Assert.DoesNotContain("ctx.HasErrors", emitted);
 
         // The boolean fast path cannot know "the whole pass was clean", so the type falls back to
         // the interface default, the way applied rules do.
@@ -757,6 +761,368 @@ public class DataAnnotationsDiagnosticsTests
         );
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM2006");
+    }
+
+    // VM2010 — a ValidationAttribute on the class, compiled with TryValidateObject's sequencing.
+
+    private const string AlwaysFails = """
+        [AttributeUsage(AttributeTargets.Class)]
+        public sealed class AlwaysFailsAttribute : ValidationAttribute {
+            public override bool IsValid(object? value) => false;
+        }
+        """;
+
+    private static string ClassLevel(string types) =>
+        $$"""
+            using System;
+            using System.Collections.Generic;
+            using System.ComponentModel.DataAnnotations;
+
+            namespace Sample;
+
+            {{AlwaysFails}}
+
+            {{types}}
+            """;
+
+    [Fact]
+    public void ClassLevelValidationAttribute_RunsAfterThePropertyRulesAndReportsVM2010()
+    {
+        var result = GeneratorHarness.Run(
+            ClassLevel(
+                """
+                [AlwaysFails]
+                public class Booking {
+                    [Required]
+                    public string? Name { get; set; }
+                }
+                """
+            )
+        );
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM2010");
+
+        Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
+        Assert.Contains("'AlwaysFailsAttribute' on 'Booking'", diagnostic.GetMessage());
+        Assert.Contains(
+            "after every property rule on the type has passed",
+            diagnostic.GetMessage()
+        );
+        Assert.Equal(
+            "AlwaysFails",
+            diagnostic
+                .Location.SourceTree!.GetText(TestContext.Current.CancellationToken)
+                .ToString(diagnostic.Location.SourceSpan)
+        );
+
+        var emitted = result.Sources["Sample.BookingValidator.g.cs"];
+
+        // Constructed once, like a property-level custom attribute, and called with the object as
+        // the value behind the same gate IValidatableObject uses. A result naming no members
+        // reports against the object, which is what the null field asks of Apply.
+        Assert.Contains("ObjectAttribute0 = new global::Sample.AlwaysFailsAttribute();", emitted);
+        Assert.Contains("var mark = ctx.Mark();", emitted);
+        Assert.Contains("if (!ctx.HasBlockingErrorsSince(mark))", emitted);
+        Assert.Contains(
+            "global::ValidationModules.DataAnnotationsSupport.Apply(ref ctx, ObjectAttribute0.GetValidationResult(value, "
+                + "global::ValidationModules.DataAnnotationsSupport.CreateContext(ctx.Services, value, null, value.GetType().Name)), null, ",
+            emitted
+        );
+        Assert.True(
+            emitted.IndexOf("ReportRequired", StringComparison.Ordinal)
+                < emitted.IndexOf("ObjectAttribute0.GetValidationResult", StringComparison.Ordinal)
+        );
+        Assert.DoesNotContain("public bool IsValid", emitted);
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    [Fact]
+    public void ClassLevelValidationAttribute_OnATypeWithNoOtherRule_StillGetsAValidator()
+    {
+        // Validator.TryValidateObject runs it whatever else the type carries, so the attribute is a
+        // rule in its own right rather than something that rides on a property's constraints.
+        var result = GeneratorHarness.Run(
+            ClassLevel(
+                """
+                [AlwaysFails]
+                public class Booking {
+                    public string? Name { get; set; }
+                }
+                """
+            )
+        );
+
+        Assert.Contains("ObjectAttribute0", result.Sources["Sample.BookingValidator.g.cs"]);
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    [Fact]
+    public void ClassLevelValidationAttribute_RunsBeforeValidatableObject_BehindOneGateEach()
+    {
+        var result = GeneratorHarness.Run(
+            ClassLevel(
+                """
+                [AlwaysFails]
+                public class Booking : IValidatableObject {
+                    [Required]
+                    public string? Name { get; set; }
+
+                    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext) {
+                        yield break;
+                    }
+                }
+                """
+            )
+        );
+
+        var emitted = result.Sources["Sample.BookingValidator.g.cs"];
+
+        // One mark, two gates: IValidatableObject asks again, so a failing class-level attribute
+        // holds it back exactly as it does under Validator.TryValidateObject.
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(emitted, @"ctx\.Mark\(\)"));
+        Assert.Equal(
+            2,
+            System
+                .Text.RegularExpressions.Regex.Matches(emitted, @"HasBlockingErrorsSince\(mark\)")
+                .Count
+        );
+        Assert.True(
+            emitted.IndexOf("ObjectAttribute0.GetValidationResult", StringComparison.Ordinal)
+                < emitted.IndexOf("DataAnnotationsSupport.ValidateObject", StringComparison.Ordinal)
+        );
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    [Fact]
+    public void ClassLevelValidationAttribute_UnderIgnore_IsVM2010AsInfoAndIsNotEmitted()
+    {
+        var result = GeneratorHarness.Run(
+            ClassLevel(
+                """
+                [AlwaysFails]
+                public class Booking {
+                    [ValidationModules.Constraints.Required]
+                    public string? Name { get; set; }
+                }
+                """
+            ),
+            ("ValidationModules_DataAnnotations", "Ignore")
+        );
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM2010");
+
+        Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
+        Assert.Contains("ValidationModules is ignoring it", diagnostic.GetMessage());
+        Assert.Contains("another validation system may still enforce it", diagnostic.GetMessage());
+
+        var emitted = result.Sources["Sample.BookingValidator.g.cs"];
+
+        Assert.DoesNotContain("ObjectAttribute", emitted);
+        Assert.DoesNotContain("ctx.Mark()", emitted);
+    }
+
+    [Fact]
+    public void ClassLevelValidationAttribute_WithAnArgumentThatCannotBeRendered_IsVM2010AsAWarning()
+    {
+        // A non-constant argument is CS0182 already; the generator adds what it did with the rule
+        // rather than emitting a construction that cannot compile.
+        var result = GeneratorHarness.Run(
+            ClassLevel(
+                """
+                [AttributeUsage(AttributeTargets.Class)]
+                public sealed class AtMostAttribute : ValidationAttribute {
+                    public AtMostAttribute(int max) { }
+                    public override bool IsValid(object? value) => false;
+                }
+
+                public static class Limits {
+                    public static readonly int Max = 3;
+                }
+
+                [AtMost(Limits.Max)]
+                public class Booking {
+                    [Required]
+                    public string? Name { get; set; }
+                }
+                """
+            )
+        );
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM2010");
+
+        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Contains("It is not enforced", diagnostic.GetMessage());
+        Assert.Contains("IValidatableObject.Validate", diagnostic.GetMessage());
+        Assert.DoesNotContain("ObjectAttribute", result.Sources["Sample.BookingValidator.g.cs"]);
+    }
+
+    [Fact]
+    public void ClassLevelCustomValidation_ResolvesToADirectStaticCallWithTheObjectAsTheValue()
+    {
+        var result = GeneratorHarness.Run(
+            ClassLevel(
+                """
+                [CustomValidation(typeof(Booking), nameof(Booking.CheckDates))]
+                [CustomValidation(typeof(Booking), nameof(Booking.CheckGuests))]
+                public class Booking {
+                    [Required]
+                    public string? Name { get; set; }
+
+                    public static ValidationResult? CheckDates(Booking booking, ValidationContext context) =>
+                        ValidationResult.Success;
+
+                    public static ValidationResult? CheckGuests(object booking) => ValidationResult.Success;
+                }
+                """
+            )
+        );
+
+        Assert.Equal(2, result.Diagnostics.Count(d => d.Id == "VM2010"));
+        Assert.Contains(
+            result.Diagnostics,
+            d => d.Id == "VM2010" && d.GetMessage().Contains("calls its method directly")
+        );
+
+        var emitted = result.Sources["Sample.BookingValidator.g.cs"];
+
+        // No attribute instance and no reflective dispatch, as on a property. Two methods on one
+        // class both run: [CustomValidation] is keyed by its method, not by its attribute type.
+        Assert.Contains(
+            "global::Sample.Booking.CheckDates(value, global::ValidationModules.DataAnnotationsSupport.CreateContext(ctx.Services, value, null, value.GetType().Name)), null, ",
+            emitted
+        );
+        Assert.Contains("global::Sample.Booking.CheckGuests(value), null, ", emitted);
+        Assert.DoesNotContain("CustomValidationAttribute", emitted);
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    [Fact]
+    public void ClassLevelCustomValidation_WhoseMethodCannotTakeTheObject_IsVM2008()
+    {
+        var result = GeneratorHarness.Run(
+            ClassLevel(
+                """
+                [CustomValidation(typeof(Booking), nameof(Booking.Check))]
+                public class Booking {
+                    [Required]
+                    public string? Name { get; set; }
+
+                    public static ValidationResult? Check(string value) => ValidationResult.Success;
+                }
+                """
+            )
+        );
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM2008");
+
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        Assert.Contains("'CustomValidationAttribute' on 'Booking'", diagnostic.GetMessage());
+        Assert.Contains("takes 'string'", diagnostic.GetMessage());
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM2010");
+    }
+
+    [Fact]
+    public void ClassLevelValidationAttribute_OnABaseType_RunsForTheDerivedTypeAndIsReportedOnce()
+    {
+        // TypeDescriptor.GetAttributes, which DataAnnotations reads type-level attributes through,
+        // merges the base types' attributes whatever their Inherited says. The finding belongs to
+        // the declaration, so the derived type does not repeat it.
+        var result = GeneratorHarness.Run(
+            ClassLevel(
+                """
+                [AttributeUsage(AttributeTargets.Class, Inherited = false)]
+                public sealed class NotInheritedAttribute : ValidationAttribute {
+                    public override bool IsValid(object? value) => false;
+                }
+
+                [AlwaysFails, NotInherited]
+                public abstract class BookingBase {
+                    [Required]
+                    public string? Name { get; set; }
+                }
+
+                public sealed class Booking : BookingBase {
+                    [Required]
+                    public string? Code { get; set; }
+                }
+                """
+            )
+        );
+
+        Assert.Equal(2, result.Diagnostics.Count(d => d.Id == "VM2010"));
+        Assert.All(
+            result.Diagnostics.Where(d => d.Id == "VM2010"),
+            d => Assert.Contains("on 'BookingBase'", d.GetMessage())
+        );
+
+        var emitted = result.Sources["Sample.BookingValidator.g.cs"];
+
+        Assert.Contains("new global::Sample.AlwaysFailsAttribute()", emitted);
+        Assert.Contains("new global::Sample.NotInheritedAttribute()", emitted);
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    [Fact]
+    public void ClassLevelValidationAttribute_OnBothBaseAndDerived_RunsOnceWithTheDerivedDeclaration()
+    {
+        // One per attribute type, most-derived first - TypeDescriptor's dedupe, which is what
+        // decides whether DataAnnotations runs the base's declaration or the derived one's.
+        var result = GeneratorHarness.Run(
+            ClassLevel(
+                """
+                [AttributeUsage(AttributeTargets.Class)]
+                public sealed class LabelledAttribute : ValidationAttribute {
+                    public LabelledAttribute(string label) { }
+                    public override bool IsValid(object? value) => false;
+                }
+
+                [Labelled("base")]
+                public abstract class BookingBase {
+                    [Required]
+                    public string? Name { get; set; }
+                }
+
+                [Labelled("derived")]
+                public sealed class Booking : BookingBase {
+                }
+                """
+            )
+        );
+
+        var emitted = result.Sources["Sample.BookingValidator.g.cs"];
+
+        Assert.Contains("new global::Sample.LabelledAttribute(\"derived\")", emitted);
+        Assert.DoesNotContain("\"base\"", emitted);
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    [Fact]
+    public void ClassLevelValidationAttribute_MakesTheTypeANestingTarget()
+    {
+        // The nesting side asks the same question Build answers, so a descent into a type whose
+        // only rule is class-level is kept rather than dropped as VM1501.
+        var result = GeneratorHarness.Run(
+            ClassLevel(
+                """
+                [AlwaysFails]
+                public sealed class Stay {
+                    public string? Room { get; set; }
+                }
+
+                public sealed class Trip {
+                    [ValidationModules.Constraints.ValidateNested]
+                    public Stay? Stay { get; set; }
+                }
+                """
+            )
+        );
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1501");
+        Assert.Contains(
+            "global::Sample.StayValidator",
+            result.Sources["Sample.TripValidator.g.cs"]
+        );
+        Assert.Empty(result.CompilationErrors);
     }
 
     // The clean case, so none of the above can pass because the front end never ran.

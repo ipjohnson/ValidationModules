@@ -56,6 +56,7 @@ public sealed partial class OrderValidator : global::ValidationModules.IValidato
 
     public global::ValidationModules.ValidationFlow Validate(ref global::ValidationModules.ValidationContext ctx, global::Sample.Order value)
     {
+        var mark = ctx.Mark();
         if (global::ValidationModules.DataAnnotationsSupport.Validate(ref ctx, CountCustom0, value, value.Count, "count", "Count", "Count").ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
@@ -68,7 +69,7 @@ public sealed partial class OrderValidator : global::ValidationModules.IValidato
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }
-        if (!ctx.HasErrors && global::ValidationModules.DataAnnotationsSupport.ValidateObject(ref ctx, value, global::ValidationModules.Naming.CamelCaseFieldNamer.Instance).ShouldStop)
+        if (!ctx.HasBlockingErrorsSince(mark) && global::ValidationModules.DataAnnotationsSupport.ValidateObject(ref ctx, value, global::ValidationModules.Naming.CamelCaseFieldNamer.Instance).ShouldStop)
         {
             return global::ValidationModules.ValidationFlow.Stop;
         }

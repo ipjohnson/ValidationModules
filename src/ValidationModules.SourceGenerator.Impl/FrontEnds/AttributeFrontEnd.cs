@@ -338,6 +338,12 @@ public sealed class AttributeFrontEnd
             _quiet = enclosingQuiet;
         }
 
+        // A class-level attribute is a rule of its own, so a type carrying nothing else still gets
+        // a validator - Validator.TryValidateObject would still run it.
+        var objectRules = ReadObjectRules(type);
+
+        sawAnything |= objectRules.Count > 0;
+
         if (!sawAnything)
         {
             return null;
@@ -405,8 +411,238 @@ public sealed class AttributeFrontEnd
             compilesValidatableObject,
             new EquatableArray<RegionModel>(
                 ImmutableArray.CreateRange(regions ?? Array.Empty<RegionModel>())
-            )
+            ),
+            new EquatableArray<ConstraintModel>(objectRules.ToImmutableArray())
         );
+    }
+
+    /// <summary>
+    /// The class-level <c>ValidationAttribute</c>s <c>Validator.TryValidateObject</c> would run on
+    /// <paramref name="type"/>, read into the rules its validator calls once the property rules
+    /// pass.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// DataAnnotations reads type-level attributes through <c>TypeDescriptor.GetAttributes</c>. That
+    /// takes them from the type, from every base type whatever the attribute's <c>Inherited</c>
+    /// says, and from the public interfaces, and keeps one per attribute type, the most-derived
+    /// declaration winning. This reads the same set in the same order. <c>[CustomValidation]</c>
+    /// is keyed by its validator type and method instead, as its own <c>TypeId</c> is, so two
+    /// methods named on one class both run.
+    /// </para>
+    /// <para>
+    /// A <c>[CustomValidation]</c> resolves to a direct static call, as it does on a property; any
+    /// other <c>ValidationAttribute</c> is constructed once and invoked. Only the declaring type
+    /// reports: an attribute a base type or an interface carries is reported where it is declared,
+    /// not once per type that inherits it.
+    /// </para>
+    /// </remarks>
+    private List<ConstraintModel> ReadObjectRules(INamedTypeSymbol type)
+    {
+        var rules = new List<ConstraintModel>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var declaring in ObjectRuleSources(type))
+        {
+            var owned = SymbolEqualityComparer.Default.Equals(declaring, type);
+
+            foreach (var attribute in declaring.GetAttributes())
+            {
+                if (
+                    attribute.AttributeClass is not { } attributeClass
+                    || !DerivesFromValidationAttribute(attributeClass)
+                )
+                {
+                    continue;
+                }
+
+                var isCustomValidation =
+                    attributeClass.ToDisplayString() == KnownTypes.CustomValidationAttribute;
+
+                if (
+                    ObjectRuleKey(attribute, attributeClass, isCustomValidation) is { } key
+                    && !seen.Add(key)
+                )
+                {
+                    continue;
+                }
+
+                var wasQuiet = _quiet;
+
+                _quiet = !owned;
+                ReadObjectRule(type, attribute, attributeClass, isCustomValidation, rules);
+                _quiet = wasQuiet;
+            }
+        }
+
+        return rules;
+    }
+
+    /// <summary>
+    /// One class-level attribute: the rule it becomes, if any, and VM2010 or VM2008 saying what
+    /// happened to it.
+    /// </summary>
+    private void ReadObjectRule(
+        INamedTypeSymbol type,
+        AttributeData attribute,
+        INamedTypeSymbol attributeClass,
+        bool isCustomValidation,
+        List<ConstraintModel> rules
+    )
+    {
+        var descriptor = ValidationDiagnostics.ClassLevelValidationAttribute;
+
+        if (!_compileDataAnnotations)
+        {
+            ReportAt(
+                attribute,
+                type,
+                descriptor,
+                DiagnosticSeverity.Info,
+                attributeClass.Name,
+                type.Name,
+                ValidationDiagnostics.CustomValidationIgnoreTail
+            );
+            return;
+        }
+
+        if (isCustomValidation)
+        {
+            // The object is the value: the method's first parameter has to accept the type, which
+            // is the check the property form makes against the property's type.
+            var outcome = DataAnnotationsConstraintReader.Read(
+                attribute,
+                attributeClass.Name,
+                type
+            );
+
+            if (outcome.Constraint is not { } method)
+            {
+                if (outcome.Diagnostic is { } unusable)
+                {
+                    ReportAt(
+                        attribute,
+                        type,
+                        unusable,
+                        unusable.DefaultSeverity,
+                        attributeClass.Name,
+                        type.Name,
+                        outcome.Detail
+                    );
+                }
+
+                return;
+            }
+
+            rules.Add(method);
+            ReportAt(
+                attribute,
+                type,
+                descriptor,
+                descriptor.DefaultSeverity,
+                attributeClass.Name,
+                type.Name,
+                ValidationDiagnostics.ClassLevelMethodTail
+            );
+            return;
+        }
+
+        if (AttributeConstructionRenderer.Render(attribute) is not { } construction)
+        {
+            ReportAt(
+                attribute,
+                type,
+                descriptor,
+                DiagnosticSeverity.Warning,
+                attributeClass.Name,
+                type.Name,
+                ValidationDiagnostics.ClassLevelEnforceTail
+            );
+            return;
+        }
+
+        rules.Add(
+            new ConstraintModel(ConstraintKind.CustomAttribute, CustomConstruction: construction)
+        );
+        ReportAt(
+            attribute,
+            type,
+            descriptor,
+            descriptor.DefaultSeverity,
+            attributeClass.Name,
+            type.Name,
+            ValidationDiagnostics.ClassLevelInvokeTail
+        );
+
+        if (NativeConstraintReader.Named(attribute, "ErrorMessageResourceType") is not null)
+        {
+            ReportAt(
+                attribute,
+                type,
+                ValidationDiagnostics.ResourceErrorMessageUnderTrimming,
+                ValidationDiagnostics.ResourceErrorMessageUnderTrimming.DefaultSeverity,
+                attributeClass.Name,
+                type.Name
+            );
+        }
+    }
+
+    /// <summary>
+    /// The declarations <c>TypeDescriptor.GetAttributes</c> merges for a type, most-derived first:
+    /// the type, its base types short of <c>object</c>, then its public interfaces. Interfaces are
+    /// ordered by name, because <c>AllInterfaces</c> order is not contractual and a rule that moved
+    /// between builds would reorder the generated code for nothing.
+    /// </summary>
+    private static IEnumerable<INamedTypeSymbol> ObjectRuleSources(INamedTypeSymbol type)
+    {
+        for (
+            INamedTypeSymbol? current = type;
+            current is not null && current.SpecialType != SpecialType.System_Object;
+            current = current.BaseType
+        )
+        {
+            yield return current;
+        }
+
+        foreach (
+            var contract in type
+                .AllInterfaces.Where(contract =>
+                    contract.DeclaredAccessibility == Accessibility.Public
+                )
+                .OrderBy(contract => contract.ToDisplayString(), StringComparer.Ordinal)
+        )
+        {
+            yield return contract;
+        }
+    }
+
+    /// <summary>
+    /// What DataAnnotations dedupes a type-level attribute by: its <c>TypeId</c>, which is the
+    /// attribute's type everywhere except <c>[CustomValidation]</c>, where it is the validator type
+    /// and method. Null for a <c>[CustomValidation]</c> whose arguments do not read, which is never
+    /// deduped, so the reader still sees it and reports why.
+    /// </summary>
+    private static string? ObjectRuleKey(
+        AttributeData attribute,
+        INamedTypeSymbol attributeClass,
+        bool isCustomValidation
+    )
+    {
+        var type = attributeClass.ToDisplayString();
+
+        if (!isCustomValidation)
+        {
+            return type;
+        }
+
+        var args = attribute.ConstructorArguments;
+
+        return
+            args.Length == 2
+            && args[0].Value is INamedTypeSymbol validator
+            && args[1].Value is string method
+            ? $"{type}|{validator.ToDisplayString()}|{method}"
+            : null;
     }
 
     /// <summary>
@@ -435,14 +671,33 @@ public sealed class AttributeFrontEnd
     /// Whether anything about <paramref name="type"/> asks for a validator to be generated.
     /// </summary>
     /// <remarks>
-    /// Deliberately the same three things <see cref="Build"/> itself treats as "saw something" -
-    /// a constraint on a member, <c>[GenerateValidator]</c>, or a rules class - plus
-    /// <c>[ValidateNested]</c>, which produces a validator that descends even with no constraints
-    /// of its own. Any narrower test would warn about a type that does get one.
+    /// Deliberately the same things <see cref="Build"/> itself treats as "saw something" - a
+    /// constraint on a member, a class-level <c>ValidationAttribute</c>, <c>[GenerateValidator]</c>,
+    /// or a rules class - plus <c>[ValidateNested]</c>, which produces a validator that descends
+    /// even with no constraints of its own. Any narrower test would warn about a type that does get
+    /// one.
     /// </remarks>
     private bool ProducesAValidator(INamedTypeSymbol type)
     {
         if (HasGenerateValidator(type) || _hasRulesClass?.Invoke(type) == true)
+        {
+            return true;
+        }
+
+        // A class-level ValidationAttribute is a rule of the type's own, found where
+        // ReadObjectRules looks for it, so Build gives the type a validator on its strength.
+        if (
+            _compileDataAnnotations
+            && ObjectRuleSources(type)
+                .Any(declaring =>
+                    declaring
+                        .GetAttributes()
+                        .Any(attribute =>
+                            attribute.AttributeClass is { } attributeClass
+                            && DerivesFromValidationAttribute(attributeClass)
+                        )
+                )
+        )
         {
             return true;
         }
@@ -2668,6 +2923,41 @@ public sealed class AttributeFrontEnd
             Diagnostic.Create(
                 descriptor,
                 Location(symbol),
+                severity,
+                additionalLocations: null,
+                properties: null,
+                args
+            )
+        );
+    }
+
+    /// <summary>
+    /// Reports at an attribute's own application rather than at the symbol it sits on, falling
+    /// back to the symbol when the attribute has no source - one from metadata.
+    /// </summary>
+    private void ReportAt(
+        AttributeData attribute,
+        ISymbol owner,
+        DiagnosticDescriptor descriptor,
+        DiagnosticSeverity severity,
+        params object?[] args
+    )
+    {
+        if (_quiet)
+        {
+            return;
+        }
+
+        // Qualified because this class has a Location(ISymbol) helper of its own, which otherwise
+        // shadows the type.
+        var location = attribute.ApplicationSyntaxReference is { } reference
+            ? Microsoft.CodeAnalysis.Location.Create(reference.SyntaxTree, reference.Span)
+            : Location(owner);
+
+        _diagnostics.Add(
+            Diagnostic.Create(
+                descriptor,
+                location,
                 severity,
                 additionalLocations: null,
                 properties: null,

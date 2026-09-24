@@ -158,10 +158,12 @@ public static class DataAnnotationsSupport
     /// Runs <see cref="IValidatableObject.Validate"/> and maps every result it yields.
     /// </summary>
     /// <remarks>
-    /// The caller gates this on nothing else having failed, which is
+    /// The caller gates this on its own rules having passed, which is
     /// <c>Validator.TryValidateObject</c>'s sequencing: object-level validation runs only when
-    /// every attribute passed. The gate lives in generated code rather than here because the
-    /// generated validator owns its ordering.
+    /// every attribute passed, the class-level ones included. The gate lives in generated code
+    /// rather than here because the generated validator owns its ordering, and it asks
+    /// <see cref="ValidationContext.HasBlockingErrorsSince"/> about a mark taken before the
+    /// validator's first rule, so a warning or another object's error does not hold it back.
     /// </remarks>
     public static ValidationFlow ValidateObject(
         ref ValidationContext context,
