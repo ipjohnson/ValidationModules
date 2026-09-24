@@ -114,9 +114,10 @@ bound exclusive, and the named `Min` and `Max` properties set one bound alone:
 
 String bounds are parsed at build time as the property's own type, so they work for `DateTime`,
 `DateOnly`, `TimeOnly`, `TimeSpan`, `DateTimeOffset` and `decimal`. A bound that does not parse is
-reported as `VM1103`. Write `DateTime` and `DateOnly` bounds without a time zone. Give a
-`DateTimeOffset` bound an explicit offset, as in `2024-01-01T00:00:00+00:00`, because a bound
-without one takes the offset of the machine that builds the project.
+reported as `VM1103`, and bounds that no value satisfies are reported as `VM1101`. The parsed
+bounds do not depend on the machine that builds the project. A `DateTimeOffset` bound written
+without an offset is read as UTC. A `DateTime` bound written with `Z` or an offset keeps its
+instant, converted to UTC, and one written without a zone is compared as written.
 
 ## Codes and messages
 

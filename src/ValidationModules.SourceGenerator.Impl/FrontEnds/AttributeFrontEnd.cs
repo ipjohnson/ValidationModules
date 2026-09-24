@@ -926,17 +926,19 @@ public sealed class AttributeFrontEnd
             // 400 body.
             var min = constraint.Min;
             var max = constraint.Max;
+            IComparable? low = null;
+            IComparable? high = null;
             var parsed = true;
 
             if (min is not null)
             {
-                parsed = RangeBoundReader.TryResolve(memberType, min, out var resolved);
+                parsed = RangeBoundReader.TryResolve(memberType, min, out var resolved, out low);
                 min = resolved;
             }
 
             if (parsed && max is not null)
             {
-                parsed = RangeBoundReader.TryResolve(memberType, max, out var resolved);
+                parsed = RangeBoundReader.TryResolve(memberType, max, out var resolved, out high);
                 max = resolved;
             }
 
@@ -953,9 +955,77 @@ public sealed class AttributeFrontEnd
                 continue;
             }
 
+            ReportUnsatisfiableRange(member, constraint, low, high);
+
             constraints[i] = constraint with { Min = min, Max = max };
         }
     }
+
+    /// <summary>
+    /// Reports a <c>[Range]</c> whose bounds admit no value: a minimum above the maximum, or equal
+    /// bounds with either of them exclusive.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The bounds are compared as the member's own type, as the check itself compares them. A date
+    /// range compares instants, so a <c>DateTimeOffset</c> minimum written later in the day under
+    /// a larger offset can still be the earlier bound.
+    /// </para>
+    /// <para>
+    /// Reported and kept, as VM1101 treats the length bounds: the check compiles, and the error
+    /// fails the build.
+    /// </para>
+    /// </remarks>
+    /// <param name="member">The member the constraint was written on.</param>
+    /// <param name="constraint">The constraint, its bounds still as they were written.</param>
+    /// <param name="low">The minimum's value, or null when it has none to compare.</param>
+    /// <param name="high">The maximum's value, or null when it has none to compare.</param>
+    private void ReportUnsatisfiableRange(
+        ISymbol member,
+        ConstraintModel constraint,
+        IComparable? low,
+        IComparable? high
+    )
+    {
+        if (low is null || high is null)
+        {
+            return;
+        }
+
+        var order = low.CompareTo(high);
+
+        if (order > 0)
+        {
+            Report(
+                ValidationDiagnostics.MinExceedsMax,
+                member,
+                member.Name,
+                ValidationDiagnostics.InvertedBounds,
+                ValidationDiagnostics.InvertedBoundsFix(
+                    WrittenBound(constraint.Min!),
+                    WrittenBound(constraint.Max!)
+                )
+            );
+        }
+        else if (order == 0 && (constraint.ExclusiveMin || constraint.ExclusiveMax))
+        {
+            Report(
+                ValidationDiagnostics.MinExceedsMax,
+                member,
+                member.Name,
+                ValidationDiagnostics.EmptyBounds,
+                ValidationDiagnostics.EmptyBoundsFix(
+                    WrittenBound(constraint.Min!),
+                    constraint.ExclusiveMin,
+                    constraint.ExclusiveMax
+                )
+            );
+        }
+    }
+
+    /// <summary>A bound as the author wrote it: a string bound without its quotes.</summary>
+    private static string WrittenBound(string literal) =>
+        RangeBoundReader.IsQuoted(literal) ? RangeBoundReader.Unquote(literal) : literal;
 
     /// <summary>
     /// Resolves a member's constraints against its type and reports the ones that do not fit.
@@ -1310,7 +1380,13 @@ public sealed class AttributeFrontEnd
                 && min > max
             )
             {
-                Report(ValidationDiagnostics.MinExceedsMax, member, member.Name);
+                Report(
+                    ValidationDiagnostics.MinExceedsMax,
+                    member,
+                    member.Name,
+                    ValidationDiagnostics.InvertedBounds,
+                    ValidationDiagnostics.InvertedBoundsFix(constraint.Min!, constraint.Max!)
+                );
             }
 
             if (

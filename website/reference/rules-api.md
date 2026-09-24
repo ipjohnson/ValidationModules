@@ -51,7 +51,8 @@ name derived from the value.
 | `MultipleOf(decimal? value, decimal divisor)` | The value divides by the divisor. | `multiple_of` |
 
 The range methods take any struct that implements `IComparable<TValue>` and `IFormattable`, and each
-has an overload for the nullable form.
+has an overload for the nullable form. `Range` with constant bounds in the wrong order is reported
+as `VM1101`.
 
 ::: warning
 In a rules class, `MultipleOf` with a `double` divisor produces generated code that does not compile

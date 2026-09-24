@@ -122,9 +122,12 @@ generic type's payload and leave the generic type without constraints.
 
 **Severity:** Error
 
-A `[StringLength]` or `[ItemCount]` minimum is greater than its maximum, so the constraint can never
-pass. The DataAnnotations `[StringLength]` and `[Length]` are checked too. The first argument of
-`[StringLength]` and `[ItemCount]` is the minimum.
+No value can satisfy a constraint's bounds, so the constraint can never pass. That is a minimum
+greater than its maximum on `[StringLength]`, `[ItemCount]` or `[Range]`, or equal `[Range]` bounds
+with `ExclusiveMin` or `ExclusiveMax` set. The DataAnnotations `[StringLength]`, `[Length]` and
+`[Range]` are checked too, and so is `rules.Range` in a rules class when both bounds are constants.
+`[Range]` bounds are compared as the property's type, so date bounds compare as instants. The first
+argument of `[StringLength]` and `[ItemCount]` is the minimum.
 
 ### VM1102
 

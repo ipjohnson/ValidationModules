@@ -290,6 +290,39 @@ public class RulesClassDiagnosticsTests
 
     // VM3102 - an Ensure whose condition touches no property and names no field.
 
+    /// <summary>
+    /// Constant bounds in the wrong order are the mistake [Range] reports as VM1101, and fail the
+    /// same way. A bound computed at run time cannot be judged here and is left alone.
+    /// </summary>
+    [Fact]
+    public void RangeWithInvertedConstantBounds_IsVM1101()
+    {
+        var result = GeneratorHarness.Run(Rules("rules.Range(x.Nights, 30, 1);"));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1101");
+
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        Assert.StartsWith("The bounds on 'Nights' are inverted", diagnostic.GetMessage());
+    }
+
+    [Theory]
+    [InlineData("rules.Range(x.Nights, 1, 30);")]
+    [InlineData("rules.Range(x.Nights, 7, 7);")]
+    [InlineData(
+        "rules.Range(x.Nights, Longest, Shortest);",
+        "    internal static readonly int Longest = 30, Shortest = 1;\n"
+    )]
+    public void RangeWithSatisfiableOrRunTimeBounds_IsSilent(
+        string statement,
+        string extraMembers = ""
+    )
+    {
+        var result = GeneratorHarness.Run(Rules(statement, extraMembers));
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1101");
+        Assert.Empty(result.CompilationErrors);
+    }
+
     [Fact]
     public void EnsureReadingNoProperty_IsVM3102()
     {

@@ -107,7 +107,8 @@ true`, with these differences:
   far, warnings included, and including other objects of the same graph.
 - `[RegularExpression]` rejects an empty string unless the expression matches it. DataAnnotations
   accepts an empty string for this attribute.
-- `[Range]` with its bounds in the wrong order is accepted at build time and always fails.
+- `[Range]` with its bounds in the wrong order fails the build with `VM1101`. DataAnnotations
+  throws when it validates.
 - A custom `ValidationAttribute` that calls `ValidationContext.GetService` gets the pass's services
   only when the pass has a service provider, as it does through `ValidationRunner<T>`.
 
