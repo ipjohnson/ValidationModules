@@ -49,14 +49,14 @@ name derived from the value.
 | `RangeAtMost<TValue>(TValue value, TValue max)` | The value is at most `max`. | `range` |
 | `MultipleOf(long? value, long divisor)` | The value divides by the divisor. | `multiple_of` |
 | `MultipleOf(decimal? value, decimal divisor)` | The value divides by the divisor. | `multiple_of` |
+| `MultipleOf(double? value, double divisor)` | The value divides by the divisor. | `multiple_of` |
 
 The range methods take any struct that implements `IComparable<TValue>` and `IFormattable`, and each
 has an overload for the nullable form.
 
-::: warning
-In a rules class, `MultipleOf` with a `double` divisor produces generated code that does not compile
-in this version. Use a `decimal` property, or `[MultipleOf]` on the property.
-:::
+The `double` overload converts the value to `decimal` before it divides, as `[MultipleOf]` does on a
+`double` property, so `0.3` is a multiple of `0.1`. A constant divisor that is zero or negative is
+reported as `VM1104`.
 
 ### Values
 
