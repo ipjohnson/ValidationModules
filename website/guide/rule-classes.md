@@ -239,6 +239,10 @@ if (x.Requests is { } requests)
 }
 ```
 
+It does not work inside a lambda, an anonymous method, a local function or a query expression,
+because the generated code passes the context by reference and none of those can capture it. The
+generator reports `VM3003` there. Write the loop as a `foreach` instead.
+
 `Report(field, code, message)` reports against a field. `ReportHere(code, message)` reports
 against the object itself, with an empty field at the top level. The helpers such as
 `ReportStringLength(field, min, max)` and `ReportRange(field, min, max)` produce the built-in

@@ -738,7 +738,8 @@ public sealed class RulesFrontEnd
                     _owner.Report(
                         ValidationDiagnostics.IslandInUnreadableScope,
                         report,
-                        _declaringClass.Name
+                        _declaringClass.Name,
+                        ValidationDiagnostics.IslandScopeTail
                     );
                     return;
                 }
@@ -754,7 +755,8 @@ public sealed class RulesFrontEnd
                     _owner.Report(
                         ValidationDiagnostics.IslandInUnreadableScope,
                         report,
-                        _declaringClass.Name
+                        _declaringClass.Name,
+                        ValidationDiagnostics.IslandScopeTail
                     );
                     return;
                 }
@@ -1194,13 +1196,14 @@ public sealed class RulesFrontEnd
                     _owner.Report(
                         ValidationDiagnostics.IslandInUnreadableScope,
                         identifier,
-                        _declaringClass.Name
+                        _declaringClass.Name,
+                        IsContextAccess(identifier)
+                            ? ValidationDiagnostics.ContextCaptureTail(what)
+                            : ValidationDiagnostics.IslandScopeTail
                     );
                     return;
                 }
             }
-
-            _ = what;
         }
 
         private void Transcribe(StatementSyntax statement, int depth)
@@ -1247,12 +1250,18 @@ public sealed class RulesFrontEnd
                     continue;
                 }
 
-                if (
-                    identifier.Parent
-                        is MemberAccessExpressionSyntax { Name.Identifier.Text: "Context" } access
-                    && access.Expression == identifier
-                )
+                if (IsContextAccess(identifier))
                 {
+                    if (CapturingScope(identifier, node) is { } scope)
+                    {
+                        _owner.Report(
+                            ValidationDiagnostics.IslandInUnreadableScope,
+                            identifier.Parent!,
+                            _declaringClass.Name,
+                            ValidationDiagnostics.ContextCaptureTail(scope)
+                        );
+                    }
+
                     continue;
                 }
 
@@ -1262,6 +1271,46 @@ public sealed class RulesFrontEnd
                     "store it, capture it, return it, or pass it to anything the generator cannot read"
                 );
             }
+        }
+
+        /// <summary>Whether the builder identifier is the receiver of <c>rules.Context</c>.</summary>
+        private static bool IsContextAccess(IdentifierNameSyntax identifier) =>
+            identifier.Parent
+                is MemberAccessExpressionSyntax { Name.Identifier.Text: "Context" } access
+            && access.Expression == identifier;
+
+        /// <summary>
+        /// The scope between <paramref name="node"/> and the transcribed <paramref name="root"/>
+        /// that would capture the context, as VM3003 names it, or null when there is none.
+        /// </summary>
+        /// <remarks>
+        /// <c>rules.Context</c> becomes the region method's <c>ref</c> parameter, and C# does not
+        /// let a lambda, an anonymous method, a local function or a query clause capture one. A
+        /// local function statement that is itself the root has already been refused as a whole.
+        /// </remarks>
+        private static string? CapturingScope(SyntaxNode node, SyntaxNode root)
+        {
+            foreach (var ancestor in node.Ancestors())
+            {
+                if (ancestor == root)
+                {
+                    return null;
+                }
+
+                switch (ancestor)
+                {
+                    case AnonymousMethodExpressionSyntax:
+                        return "an anonymous method";
+                    case LambdaExpressionSyntax:
+                        return "a lambda";
+                    case LocalFunctionStatementSyntax:
+                        return "a local function";
+                    case QueryBodySyntax:
+                        return "a query expression";
+                }
+            }
+
+            return null;
         }
 
         /// <summary>

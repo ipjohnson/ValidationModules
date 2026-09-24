@@ -811,14 +811,31 @@ public static class ValidationDiagnostics
     /// lambda gives them none. Collections are Each's job; the reporter tier covers the exotic
     /// per-element case with a computed field string.
     /// </summary>
+    /// <remarks>
+    /// The tail says which of the two cases it is. A rule declared where the reader cannot expand
+    /// it takes <see cref="IslandScopeTail"/>. <c>rules.Context</c> is allowed in a loop, but it
+    /// becomes the region method's <c>ref</c> parameter, which a lambda, an anonymous method, a
+    /// local function or a query cannot capture, so there it takes
+    /// <see cref="ContextCaptureTail"/> rather than failing as CS1628 in generated code.
+    /// </remarks>
     public static readonly DiagnosticDescriptor IslandInUnreadableScope = Descriptor(
         "VM3003",
         "Rule declaration inside a loop, lambda, or local function",
-        "'{0}.Describe' declares a rule inside a scope the generator cannot expand it in. Use Each "
-            + "for collections - a collection of strings chains element rules, "
-            + "Each(x.Steps).Length(5, 500) - or report per element through rules.Context",
+        "'{0}.Describe' {1}",
         DiagnosticSeverity.Error
     );
+
+    /// <summary>VM3003's tail for a rule declared inside a loop or a local function.</summary>
+    public const string IslandScopeTail =
+        "declares a rule inside a scope the generator cannot expand it in. Use Each for "
+        + "collections - a collection of strings chains element rules, "
+        + "Each(x.Steps).Length(5, 500) - or report per element through rules.Context";
+
+    /// <summary>VM3003's tail for <c>rules.Context</c> inside a scope that would capture it.</summary>
+    public static string ContextCaptureTail(string scope) =>
+        $"uses rules.Context inside {scope}, which cannot capture the validation context the "
+        + "generated code passes by reference. Report from a foreach loop instead, which reaches "
+        + "rules.Context directly";
 
     /// <summary>
     /// Transcribed code must compile at the emission site: the companion file is internal to the
