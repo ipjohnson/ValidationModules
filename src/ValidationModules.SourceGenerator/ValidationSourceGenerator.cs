@@ -287,7 +287,20 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
 
                     if (result.Predicates is { } predicates)
                     {
-                        production.AddSource(result.PredicateHintName!, predicates);
+                        // A throw that leaves this callback makes Roslyn drop every file the
+                        // generator added, not only this one.
+                        try
+                        {
+                            production.AddSource(result.PredicateHintName!, predicates);
+                        }
+                        catch (Exception exception)
+                        {
+                            ReportEmitFailure(
+                                production,
+                                $"the file '{result.PredicateHintName}'",
+                                exception
+                            );
+                        }
                     }
                 }
             }
@@ -536,6 +549,8 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
             }
         }
 
+        DropCollidingCompanions(declarations, results);
+
         // Ordinal by name so two rules classes for one type contribute deterministically, with the
         // target as tiebreak - a multi-target class contributes several declarations, and an
         // unstable sort must not reshuffle its regions between builds.
@@ -742,31 +757,89 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                 results[entry.Index] = results[entry.Index] with { Model = null };
             }
 
-            for (var i = 1; i < types.Count; i++)
-            {
-                var location =
-                    types[i]
-                        .Locations.Concat(types[0].Locations)
-                        .FirstOrDefault(static candidate => candidate.IsInSource)
-                    ?? Location.None;
+            ReportNameCollision(
+                results,
+                types,
+                group.Key.ValidatorName,
+                ValidationDiagnostics.NeitherValidatorGenerated
+            );
+        }
+    }
 
-                results.Add(
-                    new ModelResult(
-                        null,
-                        ImmutableArray.Create(
-                            Diagnostic.Create(
-                                ValidationDiagnostics.ValidatorNameCollision,
-                                location,
-                                types[0].ToDisplayString(),
-                                types[i].ToDisplayString(),
-                                group.Key.ValidatorName
-                            )
-                        ),
-                        null,
-                        null
-                    )
-                );
-            }
+    /// <summary>
+    /// Reports VM1013 for two rules classes whose companions would have one name in one namespace,
+    /// and compiles neither.
+    /// </summary>
+    /// <remarks>
+    /// Adding both companions made the second <c>AddSource</c> throw. The declarations are removed
+    /// rather than only the companions, because each target's validator would otherwise call a
+    /// companion that is not emitted. The targets are then built as if neither rules class existed.
+    /// </remarks>
+    private static void DropCollidingCompanions(
+        List<RulesDeclaration> declarations,
+        ImmutableArray<ModelResult>.Builder results
+    )
+    {
+        var collisions = declarations
+            .Select(static declaration => declaration.RulesClass)
+            .Distinct<INamedTypeSymbol>(SymbolEqualityComparer.Default)
+            .GroupBy(CompanionName, StringComparer.Ordinal)
+            .Select(static group =>
+                group
+                    .OrderBy(static type => type.ToDisplayString(), StringComparer.Ordinal)
+                    .ToList()
+            )
+            .Where(static rulesClasses => rulesClasses.Count > 1)
+            .ToList();
+
+        foreach (var rulesClasses in collisions)
+        {
+            declarations.RemoveAll(declaration =>
+                rulesClasses.Contains(declaration.RulesClass, SymbolEqualityComparer.Default)
+            );
+
+            ReportNameCollision(
+                results,
+                rulesClasses,
+                GeneratedNames.Companion(rulesClasses[0]),
+                ValidationDiagnostics.NeitherRulesClassCompiled
+            );
+        }
+    }
+
+    /// <summary>VM1013 at each type after the first, naming it and the first.</summary>
+    private static void ReportNameCollision(
+        ImmutableArray<ModelResult>.Builder results,
+        IReadOnlyList<INamedTypeSymbol> types,
+        string name,
+        string consequence
+    )
+    {
+        for (var i = 1; i < types.Count; i++)
+        {
+            var location =
+                types[i]
+                    .Locations.Concat(types[0].Locations)
+                    .FirstOrDefault(static candidate => candidate.IsInSource)
+                ?? Location.None;
+
+            results.Add(
+                new ModelResult(
+                    null,
+                    ImmutableArray.Create(
+                        Diagnostic.Create(
+                            ValidationDiagnostics.GeneratedNameCollision,
+                            location,
+                            types[0].ToDisplayString(),
+                            types[i].ToDisplayString(),
+                            name,
+                            consequence
+                        )
+                    ),
+                    null,
+                    null
+                )
+            );
         }
     }
 

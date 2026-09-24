@@ -45,6 +45,54 @@ public class GeneratorFailureTests
         Assert.Contains("batch", failure.GetMessage(), StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// A nested fragment container <c>Order.Shared</c> and a top-level <c>Order_Shared</c> both get
+    /// <c>Order_Shared_Fragments</c>, and the second container's <c>AddSource</c> throws. It used
+    /// to throw outside the handler, so Roslyn reported CS8785 and dropped every generated file.
+    /// </summary>
+    [Fact]
+    public void AGeneratedFileThatCannotBeAdded_IsAVM5002Error_AndTheRestIsStillGenerated()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed class Item { public string? Sku { get; init; } }
+            public sealed class Other { public string? Code { get; init; } }
+            public record Pet { [Required] public string? Name { get; init; } }
+
+            public static class Order {
+                public static class Shared {
+                    public static void Skus(ValidationRules<Item> rules, Item x) => rules.Require(x.Sku);
+                }
+            }
+
+            public static class Order_Shared {
+                public static void Codes(ValidationRules<Other> rules, Other x) => rules.Require(x.Code);
+            }
+
+            public sealed class ItemRules : IValidationRulesFor<Item> {
+                public static void Describe(ValidationRules<Item> rules, Item x) => Order.Shared.Skus(rules, x);
+            }
+
+            public sealed class OtherRules : IValidationRulesFor<Other> {
+                public static void Describe(ValidationRules<Other> rules, Other x) => Order_Shared.Codes(rules, x);
+            }
+            """
+        );
+
+        var failure = Assert.Single(result.Diagnostics, d => d.Id == "VM5002");
+
+        Assert.Equal(DiagnosticSeverity.Error, failure.Severity);
+        Assert.Contains("Sample.Order_Shared_Fragments.g.cs", failure.GetMessage());
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "CS8785");
+        Assert.Contains("Sample.PetValidator.g.cs", result.Sources.Keys);
+        Assert.Contains("GeneratedValidatorRegistration.g.cs", result.Sources.Keys);
+    }
+
     [Fact]
     public void AHealthyCompilation_ReportsNoVM5002()
     {

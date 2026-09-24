@@ -168,16 +168,24 @@ public static class ValidationDiagnostics
     );
 
     /// <summary>
-    /// Two types would get validators with one name in one namespace. A nested <c>Order.Item</c>
-    /// and a top-level <c>Order_Item</c> both get <c>Order_ItemValidator</c>.
+    /// Two types would get generated classes with one name in one namespace. A nested
+    /// <c>Order.Item</c> and a top-level <c>Order_Item</c> both get <c>Order_ItemValidator</c>. A
+    /// nested rules class <c>Order.ItemRules</c> and a top-level <c>Order_ItemRules</c> both get
+    /// the companion <c>Order_ItemRules_Rules</c>.
     /// </summary>
-    public static readonly DiagnosticDescriptor ValidatorNameCollision = Descriptor(
+    public static readonly DiagnosticDescriptor GeneratedNameCollision = Descriptor(
         "VM1013",
-        "Two types would get validators with the same name",
-        "'{0}' and '{1}' would both get a validator named {2}, so neither is generated. Rename one "
-            + "of the two types, or move it to another namespace",
+        "Two types would get generated classes with the same name",
+        "'{0}' and '{1}' would both get a generated class named {2}, so {3}. Rename one of the two "
+            + "types, or move it to another namespace",
         DiagnosticSeverity.Error
     );
+
+    /// <summary>VM1013's consequence when the two classes are validators.</summary>
+    public const string NeitherValidatorGenerated = "neither validator is generated";
+
+    /// <summary>VM1013's consequence when the two classes are rules-class companions.</summary>
+    public const string NeitherRulesClassCompiled = "neither rules class is compiled";
 
     /// <summary>
     /// Bounds that no value satisfies: a minimum above the maximum, or equal bounds that exclude

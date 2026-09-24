@@ -129,10 +129,13 @@ the constraint is never evaluated. Declare the member as an instance property, a
 
 **Severity:** Error
 
-Two types in one namespace would get validators with the same name, so neither validator is
-generated. The validator for a type declared inside another type carries the containing types'
-names, joined with underscores. A nested `Order.Item` and a top-level `Order_Item` therefore both get
-`Order_ItemValidator`. Rename one of the two types, or move it to another namespace.
+Two types in one namespace would get generated classes with the same name. A class generated for a
+type declared inside another type carries the containing types' names, joined with underscores. A
+nested `Order.Item` and a top-level `Order_Item` therefore both get the validator
+`Order_ItemValidator`, and neither validator is generated. The body of a rules class is generated
+into a class named after the rules class with `_Rules` appended. A nested rules class
+`Order.ItemRules` and a top-level `Order_ItemRules` therefore both get `Order_ItemRules_Rules`, and
+neither rules class is compiled. Rename one of the two types, or move it to another namespace.
 
 ### VM1101
 
@@ -626,7 +629,8 @@ The generator failed while writing code. The build fails so that a validator can
 missing without notice. The message names the stage and the exception. Please
 [report it](https://github.com/ipjohnson/ValidationModules/issues). Until it is fixed, change the
 construct the message names. One known cause is two types in one namespace whose names differ only
-in case.
+in case. Another is a nested `Order.Shared` and a top-level `Order_Shared` that both declare
+fragments, because both fragment containers are named `Order_Shared_Fragments`.
 
 ### VM5003
 
