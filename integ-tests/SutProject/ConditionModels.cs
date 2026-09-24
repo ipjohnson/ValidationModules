@@ -23,7 +23,7 @@ public sealed record Claim
     /// the Required never runs, so it suppresses nothing and the length check still applies.
     /// </summary>
     [Required(When = nameof(IsAuto))]
-    [StringLength(2, 8)]
+    [StringLength(8, Min = 2)]
     public string? PolicyNumber { get; init; }
 
     [ValidateNested(When = nameof(IsAuto))]
@@ -58,6 +58,6 @@ public sealed record Counted
     [Required(When = nameof(Enabled))]
     public string? Second { get; init; }
 
-    [StringLength(2, 4, When = nameof(Enabled))]
+    [StringLength(4, Min = 2, When = nameof(Enabled))]
     public string? Third { get; init; }
 }

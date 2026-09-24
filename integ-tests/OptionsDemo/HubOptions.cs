@@ -9,7 +9,7 @@ namespace OptionsDemo;
 public sealed class HubOptions
 {
     [Required]
-    [StringLength(min: 3, max: 40)]
+    [StringLength(40, Min = 3)]
     public string? HubName { get; set; }
 
     [Range(1, 500)]

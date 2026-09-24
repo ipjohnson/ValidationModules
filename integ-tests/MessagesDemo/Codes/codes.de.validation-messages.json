@@ -1,0 +1,6 @@
+{
+    "culture": "de",
+    "templates": {
+        "date_order": "das Enddatum darf nicht vor dem Startdatum liegen."
+    }
+}

@@ -61,9 +61,10 @@ An update to the library does not change the code of a condition you have not ed
 helper set your own codes. Language packs can translate them like built-in codes.
 
 `ValidationModules_CodeNamespace` adds a prefix to the codes the generator sees: `Code` on a
-built-in attribute or a `CustomConstraintAttribute`, its `DefaultCode`, and the code of an `Ensure`,
-set or derived. Codes passed to `Report` calls, in a hand-written validator or through
-`rules.Context`, and the `Code` of an `IConstraintFor<T>` attribute, are not prefixed.
+built-in attribute, a `CustomConstraintAttribute` or an `IConstraintFor<T>` attribute, the
+`DefaultCode` of a `CustomConstraintAttribute`, and the code of an `Ensure`, set or derived. Codes
+passed to `Report` calls, in a hand-written validator, an `IConstraintFor<T>` attribute's own
+`Validate` or through `rules.Context`, are not prefixed.
 
 ```xml
 <PropertyGroup>
