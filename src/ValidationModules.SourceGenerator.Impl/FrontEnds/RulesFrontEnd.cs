@@ -3871,9 +3871,16 @@ public sealed class RulesFrontEnd
                     return SyntaxFactory.ParseTypeName(written).WithTriviaFrom(node);
                 }
 
+                // A static local function names the rules class as its containing type but is not a
+                // member of it. It is transcribed with the body, so its call is left as written.
                 if (
                     _writer._model.GetSymbolInfo(node).Symbol is not { IsStatic: true } symbol
-                    || symbol is not (IFieldSymbol or IPropertySymbol or IMethodSymbol)
+                    || symbol
+                        is not (
+                            IFieldSymbol
+                            or IPropertySymbol
+                            or IMethodSymbol { MethodKind: MethodKind.Ordinary }
+                        )
                     || symbol.ContainingType is not { } declaring
                     || !DeclaredByTheClass(declaring)
                 )

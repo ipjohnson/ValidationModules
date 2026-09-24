@@ -151,6 +151,27 @@ public class RegionScopeTests
         Assert.Contains("Limits.Max", result.Sources.Single(s => s.Key.Contains("_Rules")).Value);
     }
 
+    /// <summary>
+    /// A static local function names the rules class as its containing type, but it is not a
+    /// member. It is transcribed with the body, so qualifying its call failed with CS0117.
+    /// </summary>
+    [Theory]
+    [InlineData("static bool")]
+    [InlineData("bool")]
+    public void ALocalFunction_IsCalledAsWritten(string declaration)
+    {
+        var region = Region(
+            string.Empty,
+            $$"""
+            rules.Ensure(IsLong(x.Name), message: "The name is too short.");
+                    {{declaration}} IsLong(string? name) => name is { Length: > 2 };
+            """
+        );
+
+        Assert.Contains("!(IsLong(x.Name))", region);
+        Assert.DoesNotContain("ModelRules.IsLong", region);
+    }
+
     [Fact]
     public void TheSubjectParameterIsNotRewritten()
     {
