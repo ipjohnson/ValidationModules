@@ -379,6 +379,54 @@ public class RulesClassDiagnosticsTests
         Assert.Empty(result.CompilationErrors);
     }
 
+    /// <summary>
+    /// Length and Count take the same check, in every form that declares both bounds, with the
+    /// reason and fix [StringLength] and [ItemCount] get. Each of these compiled to a check that
+    /// no value passes.
+    /// </summary>
+    [Theory]
+    [InlineData("rules.Length(x.Guest, 10, 1);", "Guest")]
+    [InlineData("rules.Length(x.Guest, max: 1, min: 10);", "Guest")]
+    [InlineData("rules.Require(x.Guest).Length(10, 1);", "Guest")]
+    [InlineData("rules.Count(x.Notes, 10, 1);", "Notes")]
+    [InlineData("rules.For(x.Notes).Count(10, 1);", "Notes")]
+    [InlineData("rules.Each(x.Notes).Length(10, 1);", "Notes")]
+    [InlineData("rules.Count(x.Notes, 1, 30).Each().Length(10, 1);", "Notes")]
+    public void LengthOrCountWithInvertedConstantBounds_IsVM1101(string statement, string member)
+    {
+        var result = GeneratorHarness.Run(Rules(statement));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1101");
+
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        Assert.Equal(
+            $"The bounds on '{member}' are inverted, so the constraint can never be satisfied. "
+                + "The minimum 10 exceeds the maximum 1. Swap the two bounds",
+            diagnostic.GetMessage()
+        );
+    }
+
+    [Theory]
+    [InlineData("rules.Length(x.Guest, 1, 10);")]
+    [InlineData("rules.Length(x.Guest, 5, 5);")]
+    [InlineData("rules.Length(x.Guest, 10);")]
+    [InlineData("rules.Count(x.Notes, max: 3);")]
+    [InlineData("rules.Each(x.Notes).Length(1, 200);")]
+    [InlineData(
+        "rules.Length(x.Guest, Longest, Shortest);",
+        "    internal static readonly int Longest = 30, Shortest = 1;\n"
+    )]
+    public void LengthOrCountWithSatisfiableOrRunTimeBounds_IsSilent(
+        string statement,
+        string extraMembers = ""
+    )
+    {
+        var result = GeneratorHarness.Run(Rules(statement, extraMembers));
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1101");
+        Assert.Empty(result.CompilationErrors);
+    }
+
     [Fact]
     public void EnsureReadingNoProperty_IsVM3102()
     {

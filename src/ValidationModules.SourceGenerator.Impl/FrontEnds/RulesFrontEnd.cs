@@ -2890,16 +2890,12 @@ public sealed class RulesFrontEnd
             ) =>
                 name switch
                 {
-                    "Length" => new ConstraintModel(
+                    "Length" => LengthOrCountConstraint(
                         ConstraintKind.StringLength,
-                        Min: Bound(arguments, "min", "0"),
-                        Max: Bound(arguments, "max", int.MaxValue.ToString())
+                        arguments,
+                        call
                     ),
-                    "Count" => new ConstraintModel(
-                        ConstraintKind.ItemCount,
-                        Min: Bound(arguments, "min", "0"),
-                        Max: Bound(arguments, "max", int.MaxValue.ToString())
-                    ),
+                    "Count" => LengthOrCountConstraint(ConstraintKind.ItemCount, arguments, call),
                     "Range" => RangeConstraint(arguments, call),
                     "RangeAtLeast" => new ConstraintModel(
                         ConstraintKind.Range,
@@ -3011,10 +3007,44 @@ public sealed class RulesFrontEnd
             }
 
             /// <summary>
-            /// <c>Range</c>, with the check <c>[Range]</c> gets for inverted bounds. Only constant
-            /// bounds are compared, because a bound computed at run time has no value here.
+            /// <c>Length</c> or <c>Count</c>, with the check <c>[StringLength]</c> and
+            /// <c>[ItemCount]</c> get for inverted bounds.
             /// </summary>
+            private ConstraintModel LengthOrCountConstraint(
+                ConstraintKind kind,
+                IReadOnlyDictionary<string, ExpressionSyntax> arguments,
+                InvocationExpressionSyntax call
+            )
+            {
+                ReportInvertedBounds(arguments, call);
+
+                return new ConstraintModel(
+                    kind,
+                    Min: Bound(arguments, "min", "0"),
+                    Max: Bound(arguments, "max", int.MaxValue.ToString())
+                );
+            }
+
+            /// <summary><c>Range</c>, with the check <c>[Range]</c> gets for inverted bounds.</summary>
             private ConstraintModel RangeConstraint(
+                IReadOnlyDictionary<string, ExpressionSyntax> arguments,
+                InvocationExpressionSyntax call
+            )
+            {
+                ReportInvertedBounds(arguments, call);
+
+                return new ConstraintModel(
+                    ConstraintKind.Range,
+                    Min: OptionalBound(arguments, "min"),
+                    Max: OptionalBound(arguments, "max")
+                );
+            }
+
+            /// <summary>
+            /// Reports a minimum above the maximum as VM1101. Only constant bounds are compared,
+            /// because a bound computed at run time has no value here.
+            /// </summary>
+            private void ReportInvertedBounds(
                 IReadOnlyDictionary<string, ExpressionSyntax> arguments,
                 InvocationExpressionSyntax call
             )
@@ -3035,12 +3065,6 @@ public sealed class RulesFrontEnd
                         ValidationDiagnostics.InvertedBoundsFix(min.ToString(), max.ToString())
                     );
                 }
-
-                return new ConstraintModel(
-                    ConstraintKind.Range,
-                    Min: OptionalBound(arguments, "min"),
-                    Max: OptionalBound(arguments, "max")
-                );
             }
 
             /// <summary>

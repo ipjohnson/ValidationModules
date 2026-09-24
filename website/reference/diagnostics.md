@@ -141,10 +141,10 @@ names, joined with underscores. A nested `Order.Item` and a top-level `Order_Ite
 No value can satisfy a constraint's bounds, so the constraint can never pass. That is a minimum
 greater than its maximum on `[StringLength]`, `[ItemCount]` or `[Range]`, or equal `[Range]` bounds
 with `ExclusiveMin` or `ExclusiveMax` set. The DataAnnotations `[StringLength]`, `[Length]` and
-`[Range]` are checked too, and so is `rules.Range` in a rules class when both bounds are constants.
-`[Range]` bounds are compared as the property's type, so date bounds compare as instants. The
-positional argument of `[StringLength]` is the maximum, and the first argument of `[ItemCount]` is
-the minimum.
+`[Range]` are checked too. So are `Range`, `Length` and `Count` in a rules class, chained or not,
+when both bounds are constants. `[Range]` bounds are compared as the property's type, so date bounds
+compare as instants. The positional argument of `[StringLength]` is the maximum, and the first
+argument of `[ItemCount]` is the minimum.
 
 ### VM1102
 
