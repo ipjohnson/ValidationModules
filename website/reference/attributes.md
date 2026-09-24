@@ -20,9 +20,9 @@ Every constraint attribute derives from `ValidationConstraintAttribute`, which h
 `When` and `Unless` accept a `bool` property, a parameterless method that returns `bool`, or a
 static method that takes the model and returns `bool`. A constraint cannot set both.
 
-`ValidationModules_CodeNamespace` adds a prefix to a code set with `Code` on a built-in attribute or
-a `CustomConstraintAttribute`, as in `myapp.weight_out_of_range`. It does not change the `Code` of
-an attribute that implements `IConstraintFor<T>`, and built-in codes are never prefixed.
+`ValidationModules_CodeNamespace` adds a prefix to a code set with `Code` on a built-in attribute, a
+`CustomConstraintAttribute` or an attribute that implements `IConstraintFor<T>`, as in
+`myapp.weight_out_of_range`. Built-in codes are never prefixed.
 
 Every constraint except `[Required]` passes a `null` value. When `[Required]` fails, the other
 constraints on the property are skipped.
@@ -54,7 +54,7 @@ generator reports `VM1201` and drops it.
 ```csharp
 public StringLengthAttribute();
 
-public StringLengthAttribute(int min = 0, int max = int.MaxValue);
+public StringLengthAttribute(int max);
 
 public int Min { get; init; }
 public int Max { get; init; }
@@ -64,10 +64,9 @@ public int Max { get; init; }
 to `string` only. The length is `string.Length`, which counts UTF-16 code units, so a character
 outside the Basic Multilingual Plane, such as most emoji, counts as two.
 
-::: warning
-The first constructor argument is the minimum. `[StringLength(50)]` means at least 50 characters.
-Write `[StringLength(max: 50)]` for a maximum.
-:::
+The constructor argument is the maximum, as it is for the DataAnnotations `[StringLength]`, so
+`[StringLength(50)]` means at most 50 characters. Set a minimum by name, as in
+`[StringLength(50, Min = 2)]`, or `[StringLength(Min = 2)]` for a minimum with no maximum.
 
 | Code | Message |
 | --- | --- |
@@ -381,8 +380,9 @@ in `shipTo.postcode`, `lines[1].sku` or `addresses[work].postcode`. A `null` val
 | `Polymorphism.Runtime` | The validators registered in the container for the value's actual type. The pass needs a service provider. |
 
 Diagnostics: `VM1501` when the type has no rules, `VM1502` when no validator can exist for the type,
-`VM1503` when the type is not sealed and no `Polymorphism` is given, and `VM1504` for `Runtime` on a
-sealed or value type. See [Nested objects and collections](../guide/nesting).
+`VM1503` when the type is not sealed and no `Polymorphism` is given, `VM1504` for `Runtime` on a
+sealed or value type, and `VM1505` when the type is declared in another assembly and this project
+can reach no validator for it. See [Nested objects and collections](../guide/nesting).
 
 ## Types
 

@@ -34,7 +34,6 @@
         "credit_card": "{field}不是有效的卡号。",
         "base64": "{field}不是有效的 Base64 字符串。",
         "file_extension": "{field}的扩展名必须是：{0}。",
-        "custom": "{field}无效。",
-        "date_order": "结束日期不能早于开始日期。"
+        "custom": "{field}无效。"
     }
 }

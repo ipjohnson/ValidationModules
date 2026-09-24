@@ -253,7 +253,10 @@ public static class GeneratorHarness
             .ToList();
     }
 
-    private sealed class OptionsProvider : AnalyzerConfigOptionsProvider
+    /// <summary>
+    /// Build properties as the analyzer config the generator and the analyzer both read them from.
+    /// </summary>
+    internal sealed class OptionsProvider : AnalyzerConfigOptionsProvider
     {
         public OptionsProvider((string Key, string Value)[] properties)
         {

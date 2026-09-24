@@ -9,7 +9,7 @@ namespace SutProject;
 public sealed record Pet
 {
     [Required]
-    [StringLength(min: 1, max: 10)]
+    [StringLength(10, Min = 1)]
     public string? Name { get; init; }
 
     [Pattern("^[A-Z]{3}$")]
@@ -151,14 +151,16 @@ public sealed record Allocation
 }
 
 /// <summary>
-/// The single-bound constructor forms. [StringLength(min: 12)] was CS7036 in two consecutive
-/// trials - the two-argument constructor had no defaults, so the property-setter form was the
-/// only one-bound spelling.
+/// One bound at a time. [StringLength(20)] is a maximum, as it is in DataAnnotations. A minimum on
+/// its own is named, and [ItemCount(max: 2)] names the one bound its constructor gives.
 /// </summary>
 public sealed record Passphrase
 {
-    [StringLength(min: 12)]
+    [StringLength(Min = 12)]
     public string? Value { get; init; }
+
+    [StringLength(20)]
+    public string? Label { get; init; }
 
     [ItemCount(max: 2)]
     public List<string> Hints { get; init; } = [];

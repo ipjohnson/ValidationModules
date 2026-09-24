@@ -470,29 +470,33 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
         var results = ImmutableArray.CreateBuilder<ModelResult>();
         var declarations = new List<RulesDeclaration>();
 
-        // Pre-scanned before any body is read, so an As over a facet whose rules arrive from a
-        // rules class later in the candidate list is not accused of having none.
+        // Pre-scanned before any body is read, so an As over a facet, or a Nested or Each into a
+        // type, whose rules arrive from a rules class later in the candidate list is not accused of
+        // having none. Every contract a class implements counts: one class may describe several
+        // types.
         var declaredTargets = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
 
         foreach (var candidate in candidates)
         {
-            var contract = candidate.AllInterfaces.FirstOrDefault(i =>
-                i.ConstructedFrom.ToDisplayString() == KnownTypes.ValidationRulesForInterface
-            );
-
-            if (
-                contract is { TypeArguments.Length: 1 }
-                && contract.TypeArguments[0] is INamedTypeSymbol declaredTarget
-            )
+            foreach (var contract in candidate.AllInterfaces)
             {
-                declaredTargets.Add(declaredTarget);
+                if (
+                    contract.ConstructedFrom.ToDisplayString()
+                        == KnownTypes.ValidationRulesForInterface
+                    && contract.TypeArguments.Length == 1
+                    && contract.TypeArguments[0] is INamedTypeSymbol declaredTarget
+                )
+                {
+                    declaredTargets.Add(declaredTarget);
+                }
             }
         }
 
         var rulesFrontEnd = new RulesFrontEnd(
             options.FieldNamer,
             declaredTargets.Contains,
-            options.CodeNamespace
+            options.CodeNamespace,
+            options.CompileDataAnnotations
         );
         var plain = new List<INamedTypeSymbol>();
         var subtypes = InvertBaseChains(candidates);

@@ -73,9 +73,9 @@ public sealed class ValidatorEmitter
 
     /// <summary>
     /// The <c>static readonly ValidationMessageInfo</c> fields one validator hoists, deduplicated
-    /// by initializer text so ten properties sharing <c>[StringLength(1, 100)]</c> share one field.
-    /// The parameterless constraints never land here - they use the runtime's shared singletons -
-    /// so a field only exists where the arguments made the info site-specific.
+    /// by initializer text so ten properties sharing <c>[StringLength(100, Min = 1)]</c> share one
+    /// field. The parameterless constraints never land here - they use the runtime's shared
+    /// singletons - so a field only exists where the arguments made the info site-specific.
     /// </summary>
     internal sealed class MessageInfoPool
     {
@@ -546,6 +546,16 @@ public sealed class ValidatorEmitter
                 + "no path, message or error record - a caller wanting only a boolean pays for nothing else.";
             isValid.SetReturnType(typeof(bool));
             isValid.AddParameter(TypeRef(model.QualifiedTypeName), "value");
+
+            // The one public entry point that reaches generated code without passing through a
+            // runtime method that has already rejected a null value: validator.IsValid(x) binds
+            // here directly.
+            if (!model.IsValueType)
+            {
+                isValid.AddIndentedStatement(
+                    Invoke(typeof(ArgumentNullException), "ThrowIfNull", "value")
+                );
+            }
 
             foreach (var (name, expression) in fastConditions.Declarations)
             {

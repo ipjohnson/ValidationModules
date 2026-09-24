@@ -11,7 +11,7 @@ public partial class ApplicationModule;
 public sealed record Account
 {
     [Required]
-    [StringLength(min: 3, max: 20)]
+    [StringLength(20, Min = 3)]
     public string? Handle { get; init; }
 
     [Range(0, 150)]

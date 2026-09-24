@@ -57,8 +57,11 @@ public interface IValidatorFor<in T>
     /// Warnings do not make a value invalid, here or anywhere else in the error model.
     /// </para>
     /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="value"/> is null.</exception>
     bool IsValid(T value)
     {
+        ValidatorForExtensions.ThrowIfNullValue(value);
+
         var collector = new ValidationErrorCollector();
         var path = System.Buffers.ArrayPool<PathSegment>.Shared.Rent(
             ValidationErrorCollector.DefaultDepthLimit

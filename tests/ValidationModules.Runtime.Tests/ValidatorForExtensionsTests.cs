@@ -19,6 +19,29 @@ public class ValidatorForExtensionsTests
         Assert.False(PetValidator.Instance.IsValid(new Pet()));
     }
 
+    /// <summary>
+    /// A null value is rejected where it enters, as <c>Validator.TryValidateObject</c> rejects a
+    /// null instance, rather than reaching the validator and failing wherever it first reads a
+    /// member. <c>PetValidator</c> leaves <c>IsValid</c> to the interface's default, so the last
+    /// call covers that path.
+    /// </summary>
+    [Fact]
+    public void EveryEntryPoint_RejectsANullValue()
+    {
+        IValidatorFor<Pet> validator = PetValidator.Instance;
+
+        AssertRejectsNull(() => validator.Validate(null!));
+        AssertRejectsNull(() => validator.Validate(null!, ValidationPathMode.Full));
+        AssertRejectsNull(() => validator.ValidateFirst(null!));
+        AssertRejectsNull(() => validator.ValidateAndThrow(null!));
+        AssertRejectsNull(() => validator.ValidateInto(new ValidationErrorCollector(), null!));
+        AssertRejectsNull(() => ValidatorForExtensions.IsValid(validator, null!));
+        AssertRejectsNull(() => validator.IsValid(null!));
+    }
+
+    private static void AssertRejectsNull(Action call) =>
+        Assert.Equal("value", Assert.Throws<ArgumentNullException>(call).ParamName);
+
     [Fact]
     public void ValidateAndThrow_CleanValue_DoesNotThrow()
     {
