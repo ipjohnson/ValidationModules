@@ -129,13 +129,17 @@ jobs:
 
       - run: dotnet build ValidationModules.sln --no-restore --configuration Release
 
+      # The same projects release.yaml packs. verify-packages.sh fails the build when the two lists
+      # differ.
       - name: Pack prerelease
         run: |
           for project in \
             src/ValidationModules.Runtime/ValidationModules.Runtime.csproj \
             src/ValidationModules.AspNetCore/ValidationModules.AspNetCore.csproj \
+            src/ValidationModules.Options/ValidationModules.Options.csproj \
             src/ValidationModules.SourceGenerator/ValidationModules.SourceGenerator.csproj \
-            src/ValidationModules.SourceGenerator.Impl/ValidationModules.SourceGenerator.Impl.csproj; do
+            src/ValidationModules.SourceGenerator.Impl/ValidationModules.SourceGenerator.Impl.csproj \
+            src/ValidationModules.Messages/ValidationModules.Messages.csproj; do
             dotnet pack "$project" --configuration Release --no-build \
             --output ./artifacts/packages \
             --version-suffix "ci.${{ github.run_number }}"
