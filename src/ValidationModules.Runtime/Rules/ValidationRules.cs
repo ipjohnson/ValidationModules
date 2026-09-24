@@ -304,6 +304,11 @@ public sealed class ValidationRules<T>
     /// scanning - and a missing registration throws naming the module to compose. Never a silent
     /// skip.
     /// </para>
+    /// <para>
+    /// The facet's constraint attributes run here, with the rest of its rules. They would otherwise
+    /// reach the subject's own validator through constraint inheritance as well, so the subject's
+    /// validator leaves them out, and each is checked once, where this call runs.
+    /// </para>
     /// </remarks>
     public ValidationRules<T> As<TFacet>(TFacet value) => throw Inert();
 

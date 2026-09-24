@@ -179,7 +179,8 @@ public sealed class RulesFrontEnd
                     writer.Dependencies,
                     writer.AppliedRules,
                     writer.Fields,
-                    writer.MessageInfos
+                    writer.MessageInfos,
+                    writer.Facets
                 )
             );
         }
@@ -354,6 +355,7 @@ public sealed class RulesFrontEnd
         method.BodyLines.AddRange(writer.Lines);
         method.Fields.AddRange(writer.Fields);
         method.MessageInfos.AddRange(writer.MessageInfos);
+        method.Facets.AddRange(writer.Facets);
 
         return FailedSince(before) ? null : method;
     }
@@ -445,6 +447,7 @@ public sealed class RulesFrontEnd
         private readonly List<RegionDependency> _dependencies = new();
         private readonly List<string> _applied = new();
         private readonly List<CompanionField> _fields = new();
+        private readonly List<INamedTypeSymbol> _facets = new();
         private readonly string _fieldPrefix;
         private readonly int _fieldSeed;
 
@@ -517,6 +520,21 @@ public sealed class RulesFrontEnd
         public IReadOnlyList<RegionDependency> Dependencies => _dependencies;
 
         public IReadOnlyList<string> AppliedRules => _applied;
+
+        /// <summary>
+        /// The facets this body validates the subject through with <c>As</c>, its fragments' as
+        /// well. The subject's validator leaves their attribute declarations to the facet's own
+        /// validator, which the <c>As</c> call runs.
+        /// </summary>
+        public IReadOnlyList<INamedTypeSymbol> Facets => _facets;
+
+        private void AddFacet(INamedTypeSymbol facet)
+        {
+            if (!_facets.Contains(facet, SymbolEqualityComparer.Default))
+            {
+                _facets.Add(facet);
+            }
+        }
 
         /// <summary>The lazily-built facet validators this region caches, emitted as fields on the
         /// companion class.</summary>
@@ -1184,6 +1202,11 @@ public sealed class RulesFrontEnd
             if (fragment is null)
             {
                 return;
+            }
+
+            foreach (var facet in fragment.Facets)
+            {
+                AddFacet(facet);
             }
 
             // The subject argument must be the subject parameter - a facet of a child is Nested's
@@ -2269,6 +2292,10 @@ public sealed class RulesFrontEnd
                 var facetQualified = facet.ToDisplayString(
                     SymbolDisplayFormat.FullyQualifiedFormat
                 );
+
+                // Recorded whichever way it binds: a facet from a referenced assembly resolves a
+                // validator generated over there, which checks the same declarations.
+                _writer.AddFacet(facet);
 
                 if (
                     SymbolEqualityComparer.Default.Equals(
@@ -3583,7 +3610,8 @@ public sealed record RulesDeclaration(
     IReadOnlyList<RegionDependency> Dependencies,
     IReadOnlyList<string> AppliedRules,
     IReadOnlyList<CompanionField> Fields,
-    IReadOnlyList<(string Field, string Initializer)> MessageInfos
+    IReadOnlyList<(string Field, string Initializer)> MessageInfos,
+    IReadOnlyList<INamedTypeSymbol> Facets
 );
 
 /// <summary>A lazily-built facet validator a region caches, emitted as a nullable static field on
@@ -3635,6 +3663,9 @@ public sealed class FragmentMethod
     public List<CompanionField> Fields { get; } = new();
 
     public List<(string Field, string Initializer)> MessageInfos { get; } = new();
+
+    /// <summary>The facets this fragment validates its subject through with <c>As</c>.</summary>
+    public List<INamedTypeSymbol> Facets { get; } = new();
 }
 
 /// <summary>

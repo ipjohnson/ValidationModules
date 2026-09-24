@@ -93,6 +93,11 @@ public sealed class AttributeFrontEnd
     /// all of them; without it, VM1501 would fire on a nested type whose rules are declared
     /// externally, which is a false accusation rather than a missed one.
     /// </param>
+    /// <param name="facets">
+    /// The facets a rules class for this type validates it through with <c>As</c>. Each one's own
+    /// validator checks the attribute declarations its walk reaches, so this type's validator
+    /// leaves those declarations out rather than checking them a second time at the same level.
+    /// </param>
     public ValidatedTypeModel? Build(
         INamedTypeSymbol type,
         Func<INamedTypeSymbol, string> validatorNameFor,
@@ -101,7 +106,8 @@ public sealed class AttributeFrontEnd
         Func<INamedTypeSymbol, bool>? hasRulesClass = null,
         Func<INamedTypeSymbol, IReadOnlyList<(INamedTypeSymbol Type, int Depth)>>? subtypesOf =
             null,
-        IReadOnlyList<RegionModel>? regions = null
+        IReadOnlyList<RegionModel>? regions = null,
+        IReadOnlyList<INamedTypeSymbol>? facets = null
     )
     {
         _hasRulesClass = hasRulesClass;
@@ -120,10 +126,15 @@ public sealed class AttributeFrontEnd
             || applied is { Count: > 0 }
             || regions is { Count: > 0 };
         var sawAttribute = false;
+        var takenByFacets = FacetDeclarations(type, facets);
 
         foreach (var member in MemberWalk.PropertiesOf(type, _compilation, CarriesConstraints))
         {
             var property = member.Property;
+            var sources =
+                takenByFacets.Count == 0
+                    ? member.Sources
+                    : member.Sources.RemoveAll(takenByFacets.Contains);
 
             // A property this type inherited rather than declared is validated where it is
             // declared. Everything reported about it from here - the constraint-versus-member-type
@@ -137,7 +148,7 @@ public sealed class AttributeFrontEnd
             // because the walk hands back the most-derived declaration of each name.
             var constraints = new List<ConstraintModel>();
 
-            foreach (var source in member.Sources)
+            foreach (var source in sources)
             {
                 var owned = SymbolEqualityComparer.Default.Equals(source.ContainingType, type);
                 var wasQuiet = _quiet;
@@ -147,7 +158,7 @@ public sealed class AttributeFrontEnd
                 _quiet = wasQuiet;
             }
 
-            var validateNested = member.Sources.Any(DescentTargets.HasValidateNested);
+            var validateNested = sources.Any(DescentTargets.HasValidateNested);
             string? overriddenField = null;
 
             // Inherited constraints count. Without this a derived type that adds nothing of its own
@@ -278,7 +289,7 @@ public sealed class AttributeFrontEnd
             }
 
             var (polymorphism, stated) = validateNested
-                ? NestedPolymorphism(member.Sources)
+                ? NestedPolymorphism(sources)
                 : (PolymorphismMode.DeclaredOnly, false);
 
             if (validateNested && DescentTargetOf(property) is INamedTypeSymbol surviving)
@@ -314,7 +325,7 @@ public sealed class AttributeFrontEnd
                     validatorNameFor,
                     overriddenField,
                     validateNested
-                        ? NestedDescentCondition(member.Sources, declaredNestedCondition)
+                        ? NestedDescentCondition(sources, declaredNestedCondition)
                         : null,
                     polymorphism,
                     // The region's transcribed text owns a walk only the rules class declared; the
@@ -687,6 +698,52 @@ public sealed class AttributeFrontEnd
         return TypeFacts.IsNullableValueType(property.Type)
             ? ((INamedTypeSymbol)property.Type).TypeArguments[0]
             : property.Type;
+    }
+
+    /// <summary>
+    /// The property declarations the validators of <paramref name="facets"/> read constraints from.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>As&lt;TFacet&gt;</c> runs the facet's validator, and that validator checks the attributes
+    /// on every declaration its own walk reaches: the facet's properties, a class facet's base
+    /// declarations, and the interface declarations those implement. The same declarations merge
+    /// into this type's walk, so without this each of their constraints was checked twice at the
+    /// same level. They are left to the facet instead, which also puts them where the author placed
+    /// the <c>As</c> call: under an <c>if</c>, they run only when it holds.
+    /// </para>
+    /// <para>
+    /// A facet from a referenced assembly counts the same way. Its validator was generated over
+    /// there from the same declarations, and <c>As</c> resolves it through the container.
+    /// </para>
+    /// </remarks>
+    private HashSet<IPropertySymbol> FacetDeclarations(
+        INamedTypeSymbol type,
+        IReadOnlyList<INamedTypeSymbol>? facets
+    )
+    {
+        var taken = new HashSet<IPropertySymbol>(SymbolEqualityComparer.Default);
+
+        if (facets is null)
+        {
+            return taken;
+        }
+
+        foreach (var facet in facets)
+        {
+            // As over the type itself runs this very validator, so there is nothing to hand over.
+            if (SymbolEqualityComparer.Default.Equals(facet, type))
+            {
+                continue;
+            }
+
+            foreach (var member in MemberWalk.PropertiesOf(facet, _compilation, CarriesConstraints))
+            {
+                taken.UnionWith(member.Sources);
+            }
+        }
+
+        return taken;
     }
 
     /// <summary>
