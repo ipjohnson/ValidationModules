@@ -140,8 +140,8 @@ Field names are camelCase by default and ignore the application's JSON options. 
 
 ## An MSBuild property has no effect
 
-- The values of `ValidationModules_FieldNaming`, `ValidationModules_PatternPolicy` and
-  `ValidationModules_Registration` are case-sensitive. An unrecognised value means the default.
+- The value is not one the property accepts. The generator then uses the default and reports
+  `VM5004`, which lists the values the property accepts. Case does not matter.
 - The generator is referenced as a project rather than a package. The package's build targets
   declare which properties the generator can read, and a `ProjectReference` does not import them.
   Declare the property yourself:

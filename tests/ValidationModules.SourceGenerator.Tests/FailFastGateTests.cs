@@ -73,13 +73,16 @@ public class FailFastGateTests
     }
 
     /// <summary>
-    /// Any other value means on, mirroring how <c>ValidationModules_DataAnnotations</c> reads
-    /// anything but <c>Ignore</c> as "compile". A typo therefore keeps the safer behaviour.
+    /// Any other value means on, as an unrecognised <c>ValidationModules_DataAnnotations</c> means
+    /// "compile". A typo therefore keeps the safer behaviour, and VM5004 names it.
     /// </summary>
-    [Fact]
-    public void AnUnrecognizedValue_LeavesItOn()
+    [Theory]
+    [InlineData("Enabled")]
+    [InlineData("true")]
+    [InlineData("Off")]
+    public void AnythingElse_LeavesItOn(string setting)
     {
-        var body = Emit(("ValidationModules_FailFast", "Enabled"));
+        var body = Emit(("ValidationModules_FailFast", setting));
 
         Assert.Contains("ShouldStop", body);
     }

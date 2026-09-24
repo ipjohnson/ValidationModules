@@ -12,3 +12,4 @@ VM2010 | ValidationModules.Usage | Info | A class-level ValidationAttribute runs
 VM2011 | ValidationModules.Usage | Error | ErrorMessageResourceName on a compiled DataAnnotations attribute is not a static string property the generated validator can read.
 VM3008 | ValidationModules.Usage | Error | A Pattern or Apply argument names no static method that generated code can call.
 VM3106 | ValidationModules.Usage | Warning | A rules-class descent repeats [ValidateNested] on the same property; the rules-class descent is dropped.
+VM5004 | ValidationModules.Usage | Warning | A ValidationModules_* MSBuild property holds a value it does not accept. The generator uses the default.

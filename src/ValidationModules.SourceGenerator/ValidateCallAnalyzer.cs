@@ -53,15 +53,12 @@ public sealed class ValidateCallAnalyzer : DiagnosticAnalyzer
             // The generator's own reading of the switch: anything but Ignore compiles the
             // DataAnnotations vocabulary.
             start.Options.AnalyzerConfigOptionsProvider.GlobalOptions.TryGetValue(
-                "build_property.ValidationModules_DataAnnotations",
+                BuildProperty.DataAnnotations.Key,
                 out var dataAnnotations
             );
 
-            var compileDataAnnotations = !string.Equals(
-                dataAnnotations,
-                "Ignore",
-                StringComparison.OrdinalIgnoreCase
-            );
+            var compileDataAnnotations =
+                BuildProperty.DataAnnotations.Canonical(dataAnnotations) != "Ignore";
 
             // Whether a type is the target of a rules class is a compilation-wide question, so the
             // judging waits for the end action - the same reason the generator collects its
