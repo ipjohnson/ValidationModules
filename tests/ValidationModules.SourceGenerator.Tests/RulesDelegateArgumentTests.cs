@@ -87,7 +87,7 @@ public class RulesDelegateArgumentTests
         );
 
         Assert.Contains(
-            "global::Sample.ProductRules.Check(ref ctx, value)",
+            "global::Sample.ProductRules.Check(ref context, value)",
             result.Sources["Sample.ProductValidator.g.cs"]
         );
     }
