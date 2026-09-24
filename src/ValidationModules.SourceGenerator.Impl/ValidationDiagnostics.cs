@@ -340,30 +340,50 @@ public static class ValidationDiagnostics
     /// build error for an AOT-facing project and unremarkable for a JIT one.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The fix is an argument rather than part of the format, because the two attributes that
     /// reach this need different ones. An inline <c>[Pattern]</c> keeps its attribute and changes
     /// its arguments. A DataAnnotations <c>[RegularExpression]</c> is replaced by <c>[Pattern]</c>,
     /// and its expression has to change on the way, because it matched the whole value and passed
     /// an empty one. See <see cref="InlinePatternFix"/> and <see cref="RegularExpressionFix"/>.
+    /// </para>
+    /// <para>
+    /// The figures are from osx-arm64 Native AOT publishes on .NET 10.0.12 that differ only in the
+    /// attribute. The inline form is 356 KB larger than the same pattern through a
+    /// <c>[GeneratedRegex]</c>. Options or a timeout add 486 KB more, because every <c>Regex</c>
+    /// constructor that takes them keeps the <c>RegexOptions.NonBacktracking</c> engine. The fix
+    /// argument opens with that cost when the site has either. Neither figure grows with a second
+    /// pattern.
+    /// </para>
     /// </remarks>
     public static readonly DiagnosticDescriptor InlinePatternUnderAot = Descriptor(
         "VM1301",
         "Inline pattern roots the regex engine",
         "The pattern on '{0}' is built from a string at run time, which roots the regex parser and "
-            + "interpreter. That costs about 450 KB on an AOT-published binary, once, however many "
+            + "interpreter. That costs about 360 KB on an AOT-published binary, once, however many "
             + "patterns follow. {1}. Set ValidationModules_PatternPolicy to Allow to keep the "
             + "inline form",
         DiagnosticSeverity.Warning
     );
 
     /// <summary>VM1301's fix for an inline <c>[Pattern]</c>.</summary>
-    public static string InlinePatternFix(string member, string? type) =>
-        "Declare it as a [GeneratedRegex] and point at it: "
+    /// <param name="passesOptions">
+    /// Whether the emitted <c>Regex</c> constructor takes <c>RegexOptions</c>, which it does when
+    /// the attribute sets <c>Options</c> or a timeout.
+    /// </param>
+    public static string InlinePatternFix(string member, string? type, bool passesOptions) =>
+        (
+            passesOptions
+                ? "Setting Options or MatchTimeoutMilliseconds adds about 490 KB more, also once. "
+                : ""
+        )
+        + "Declare it as a [GeneratedRegex] and point at it: "
         + $"[Pattern(typeof({type}Patterns), nameof({type}Patterns.{member}))]";
 
     /// <summary>
     /// VM1301's fix for a DataAnnotations <c>[RegularExpression]</c>, with its expression and its
-    /// timeout written out the way <c>[Pattern]</c> needs them to keep the same meaning.
+    /// timeout written out the way <c>[Pattern]</c> needs them to keep the same meaning. It opens
+    /// with what the timeout costs, because the attribute has one unless it sets -1.
     /// </summary>
     /// <param name="matchTimeoutMilliseconds">
     /// The timeout the attribute compiles with, or null for none.
@@ -374,7 +394,13 @@ public static class ValidationDiagnostics
         string pattern,
         int? matchTimeoutMilliseconds
     ) =>
-        "Declare it as "
+        (
+            matchTimeoutMilliseconds is { } timeout
+                ? $"Its match timeout of {timeout} milliseconds adds about 490 KB more, also once. "
+                    + "MatchTimeoutInMilliseconds = -1 removes the timeout and that cost. "
+                : ""
+        )
+        + "Declare it as "
         + GeneratedRegexDeclaration(@"\A(?:" + pattern + @")?\z", 0, matchTimeoutMilliseconds, null)
         + ", anchored because [RegularExpression] matches the whole value and optional because it "
         + "passes an empty one. Then replace [RegularExpression] with "
