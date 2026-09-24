@@ -19,8 +19,10 @@ namespace ValidationModules;
 /// small and additive-only" means in practice.
 /// </para>
 /// <para>
-/// Bump it when, and only when, an emitter change requires a runtime member that did not exist
-/// before. Removing or changing a member is not covered by a bump - the surface is additive-only.
+/// Bump it when an emitter change requires a runtime member that did not exist before, or when the
+/// front end starts reading a runtime attribute's arguments in a way the older declaration of that
+/// attribute contradicts. Removing or changing a member is not covered by a bump - the surface is
+/// additive-only.
 /// </para>
 /// </remarks>
 public static class RuntimeContract
@@ -118,10 +120,10 @@ public static class RuntimeContract
     // registers CollectionValidatorFor<T>/CollectionAsyncValidatorFor<T> for List<T> and T[].
     // None of it exists in a contract-10 runtime. Additive, as the rule below requires.
 
-    // 11 -> 12: pattern checks, object-level gates, field names and display names. Every emitted
-    // pattern test calls ConstraintChecks.IsMatch, which counts a match that runs out of time as a
-    // failed match instead of letting RegexMatchTimeoutException out of Validate. A contract-11
-    // runtime has no such method.
+    // 11 -> 12: pattern checks, object-level gates, field names and display names, and
+    // [StringLength]. Every emitted pattern test calls ConstraintChecks.IsMatch, which counts a
+    // match that runs out of time as a failed match instead of letting RegexMatchTimeoutException
+    // out of Validate. A contract-11 runtime has no such method.
     //
     // Object-level rules are gated on what their own validator found. A generated validator for a
     // type with class-level ValidationAttributes or IValidatableObject takes ctx.Mark() before its
@@ -133,7 +135,20 @@ public static class RuntimeContract
     // name the generator resolved from [JsonPropertyName] is not run through the pass's field namer
     // a second time. A property with [Display(Name = …)] hoists infos that set
     // ValidationMessageInfo.DisplayName, which labels the message without becoming the field.
-    // Neither member exists in a contract-11 runtime either. Additive, as the rule below requires.
+    // Neither member exists in a contract-11 runtime either.
+    //
+    // [StringLength] reads as DataAnnotations reads it. The one positional argument is the
+    // maximum, the minimum is only ever named, and the two-argument constructor is gone. A
+    // contract-11 runtime's attribute has only the (min, max) constructor, so every declaration
+    // against it reaches the front end with two arguments, and this front end reads a positional
+    // bound only from the one-argument form. The bump makes that pairing VM5001 rather than a
+    // [StringLength] that checks nothing.
+    //
+    // The pattern, object-level and field-name members are additive, as the rule below requires.
+    // The [StringLength] change is not, like 4 -> 5: a constructor is removed, which the number
+    // cannot express. Nor does it cover the other direction. An Impl compiled at contract 11 reads
+    // the one-argument form as no bound at all, and a contract-12 runtime satisfies its check, so
+    // that pairing is written down here rather than caught.
 
     /// <summary>
     /// The contract this runtime implements. Compared against

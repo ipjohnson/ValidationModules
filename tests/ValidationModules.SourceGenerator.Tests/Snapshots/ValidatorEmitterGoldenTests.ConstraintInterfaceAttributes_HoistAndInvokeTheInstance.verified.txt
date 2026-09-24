@@ -86,6 +86,7 @@ public sealed partial class BroadcastValidator : global::ValidationModules.IVali
     /// </summary>
     public bool IsValid(global::Sample.Broadcast value)
     {
+        global::System.ArgumentNullException.ThrowIfNull(value);
         var c0 = value.IsScheduled;
         if (string.IsNullOrWhiteSpace(value.Channel))
         {

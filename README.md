@@ -32,7 +32,7 @@ public sealed class SignUp
     [Required, EmailAddress]
     public string? Email { get; init; }
 
-    [Required, StringLength(3, 40)]
+    [Required, StringLength(40, Min = 3)]
     public string? DisplayName { get; init; }
 
     [Range(18, 120)]
@@ -108,8 +108,8 @@ method itself is never called.
 - An attribute on the wrong kind of member is a build error. `[Range]` on a member whose type has
   no ordering reports `VM1003`.
 - A model that already uses DataAnnotations attributes can be compiled as it is.
-- `[StringLength]` takes the minimum first. Where DataAnnotations has `[StringLength(50)]`, write
-  `[StringLength(max: 50)]`.
+- `[StringLength(50)]` is a maximum here too. DataAnnotations names the minimum `MinimumLength`,
+  and this library names it `Min`.
 
 ## Packages
 

@@ -102,6 +102,7 @@ public sealed partial class PetValidator : global::ValidationModules.IValidatorF
     /// </summary>
     public bool IsValid(global::Sample.Pet value)
     {
+        global::System.ArgumentNullException.ThrowIfNull(value);
         if (value.Toys is { } entriesToys)
         {
             foreach (var pair in entriesToys)
@@ -153,6 +154,7 @@ public sealed partial class ToyValidator : global::ValidationModules.IValidatorF
     /// </summary>
     public bool IsValid(global::Sample.Toy value)
     {
+        global::System.ArgumentNullException.ThrowIfNull(value);
         if (string.IsNullOrWhiteSpace(value.Name))
         {
             return false;

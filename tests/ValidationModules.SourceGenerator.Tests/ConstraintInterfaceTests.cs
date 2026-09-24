@@ -273,6 +273,75 @@ public class ConstraintInterfaceTests
         Assert.Empty(result.CompilationErrors);
     }
 
+    /// <summary>
+    /// ValidationModules_CodeNamespace reaches a Code declared on an IConstraintFor&lt;T&gt;
+    /// attribute, as it reaches every other attribute shape's. The instance reports its own Code,
+    /// so the prefix is written into the construction.
+    /// </summary>
+    [Fact]
+    public void InterfaceConstraint_TheCodeNamespacePrefixesTheDeclaredCode()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed class EvenAttribute : ValidationConstraintAttribute, IConstraintFor<int> {
+                public bool IsValid(int value) => value % 2 == 0;
+            }
+
+            public record Batch {
+                [Even(Code = "pair", Message = "{field} must come in pairs.")]
+                public int Size { get; init; }
+            }
+            """,
+            ("ValidationModules_CodeNamespace", "shop")
+        );
+
+        Assert.Contains(
+            "new global::Sample.EvenAttribute() { Code = \"shop.pair\", Message = \"{field} must come in pairs.\" }",
+            result.Sources["Sample.BatchValidator.g.cs"]
+        );
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    /// <summary>
+    /// Code is the base knob only on ValidationConstraintAttribute. A plain Attribute implementer's
+    /// own property of that name is the author's, and keeps the value it was given.
+    /// </summary>
+    [Fact]
+    public void InterfaceConstraint_APlainAttributesOwnCode_IsNotPrefixed()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using System;
+            using ValidationModules;
+
+            namespace Sample;
+
+            public sealed class RegionAttribute : Attribute, IConstraintFor<string> {
+                public string? Code { get; init; }
+
+                public bool IsValid(string value) => value == Code;
+            }
+
+            public record Shipment {
+                [Region(Code = "eu")]
+                public string? Region { get; init; }
+            }
+            """,
+            ("ValidationModules_CodeNamespace", "shop")
+        );
+
+        Assert.Contains(
+            "new global::Sample.RegionAttribute() { Code = \"eu\" }",
+            result.Sources["Sample.ShipmentValidator.g.cs"]
+        );
+        Assert.Empty(result.CompilationErrors);
+    }
+
     [Fact]
     public void InterfaceConstraint_WinsOverAValidationAttributeBase()
     {

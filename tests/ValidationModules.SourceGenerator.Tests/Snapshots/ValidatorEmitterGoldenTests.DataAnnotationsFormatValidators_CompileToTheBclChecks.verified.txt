@@ -96,6 +96,7 @@ public sealed partial class ContactValidator : global::ValidationModules.IValida
     /// </summary>
     public bool IsValid(global::Sample.Contact value)
     {
+        global::System.ArgumentNullException.ThrowIfNull(value);
         if (value.Email is not null && !global::ValidationModules.ConstraintChecks.IsEmail(value.Email))
         {
             return false;

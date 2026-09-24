@@ -34,7 +34,6 @@
         "credit_card": "{field}は有効なカード番号ではありません。",
         "base64": "{field}は有効な Base64 文字列ではありません。",
         "file_extension": "{field}の拡張子は次のいずれかにしてください：{0}。",
-        "custom": "{field}は無効です。",
-        "date_order": "終了日は開始日より後にしてください。"
+        "custom": "{field}は無効です。"
     }
 }

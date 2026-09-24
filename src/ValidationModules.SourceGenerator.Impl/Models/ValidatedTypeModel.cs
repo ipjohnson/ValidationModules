@@ -48,6 +48,11 @@ namespace ValidationModules.SourceGenerator.Impl.Models;
 /// <c>IValidatableObject</c>. A type carrying any loses the straight-line <c>IsValid</c>, for the
 /// reason <paramref name="ImplementsValidatableObject"/> does.
 /// </param>
+/// <param name="IsValueType">
+/// Whether the validated type is a struct. The straight-line <c>IsValid</c> rejects a null value
+/// only for a class, because <c>value is null</c> does not compile against a struct and
+/// <c>ArgumentNullException.ThrowIfNull</c> would box one on every call.
+/// </param>
 /// <param name="MemberFieldNames">
 /// The properties whose field name is not the naming policy's spelling of their CLR name, which
 /// means a <c>[JsonPropertyName]</c>. Filled only for a type whose validator hands member names to
@@ -66,6 +71,7 @@ public sealed record ValidatedTypeModel(
     bool ImplementsValidatableObject = false,
     EquatableArray<RegionModel> Regions = default,
     EquatableArray<ConstraintModel> ObjectRules = default,
+    bool IsValueType = false,
     EquatableArray<MemberFieldName> MemberFieldNames = default
 ) : IEquatable<ValidatedTypeModel>;
 

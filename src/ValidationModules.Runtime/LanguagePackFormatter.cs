@@ -41,9 +41,13 @@ namespace ValidationModules;
 /// the same posture the nested-validator arrays take.
 /// </para>
 /// <para>
-/// Errors without a <see cref="ValidationError.MessageInfo"/> - finished-string errors - can
-/// still match at the code level; their templates render with <c>{field}</c> only, argument holes
-/// verbatim, per the tolerant-renderer rule.
+/// <b>An error without a <see cref="ValidationError.MessageInfo"/></b> carries a finished string
+/// and no arguments. It still matches at the code level, and a template that uses only
+/// <c>{field}</c> translates it. A template with an argument hole does not, because nothing can
+/// fill the hole and the reader would see a literal <c>{0}</c>. The error's own message is returned
+/// instead: a correct sentence in the default language is better than a translated one with a hole
+/// in it. A pack translates such an error with an entry for its code that uses only
+/// <c>{field}</c>.
 /// </para>
 /// </remarks>
 public sealed class LanguagePackFormatter : ValidationMessageFormatter
@@ -54,7 +58,13 @@ public sealed class LanguagePackFormatter : ValidationMessageFormatter
         StringComparer.OrdinalIgnoreCase
     );
 
-    private readonly record struct Entry(string Template, int Layer);
+    /// <param name="Template">The pack's template.</param>
+    /// <param name="Layer">Its precedence: later registration and more specific culture are higher.</param>
+    /// <param name="HasArgumentHole">
+    /// Whether the template needs an info's arguments, decided once when the table is built rather
+    /// than on every render.
+    /// </param>
+    private readonly record struct Entry(string Template, int Layer, bool HasArgumentHole);
 
     /// <summary>
     /// Builds the formatter over the registered packs, in registration order.
@@ -119,8 +129,13 @@ public sealed class LanguagePackFormatter : ValidationMessageFormatter
             return error.Message;
         }
 
-        return info is not null
-            ? info.Render(in error, byCode.Template)
+        if (info is not null)
+        {
+            return info.Render(in error, byCode.Template);
+        }
+
+        return byCode.HasArgumentHole
+            ? error.Message
             : ValidationMessageInfo.RenderStandalone(byCode.Template, error.Field);
     }
 
@@ -162,7 +177,11 @@ public sealed class LanguagePackFormatter : ValidationMessageFormatter
 
                 for (var i = 0; i < templates.Count; i++)
                 {
-                    table[templates[i].Key] = new Entry(templates[i].Value, layer);
+                    table[templates[i].Key] = new Entry(
+                        templates[i].Value,
+                        layer,
+                        ValidationMessageInfo.HasArgumentHole(templates[i].Value)
+                    );
                 }
             }
         }

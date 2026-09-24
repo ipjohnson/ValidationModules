@@ -129,6 +129,63 @@ public class LanguagePackFormatterTests
         Assert.Equal("end doit suivre la date de début.", Under("fr", formatter, error));
     }
 
+    /// <summary>
+    /// A finished-string error has no arguments, so a template that needs one cannot translate it.
+    /// Rendering it anyway showed the reader a literal hole, as in "doit être l'une de ces valeurs
+    /// : {0}."; the error keeps its own message instead.
+    /// </summary>
+    [Theory]
+    [InlineData(ValidationCodes.Enum, "{field} doit être l'une de ces valeurs : {0}.")]
+    [InlineData(ValidationCodes.MultipleOf, "{field} doit être un multiple de {0}.")]
+    [InlineData(
+        ValidationCodes.FileExtension,
+        "{field} doit porter l'une de ces extensions : {0}."
+    )]
+    public void AFinishedStringError_KeepsItsMessage_WhenTheTemplateNeedsAnArgument(
+        string code,
+        string template
+    )
+    {
+        var formatter = new LanguagePackFormatter([new Pack("fr", E(code, template))]);
+
+        var error = new ValidationError("status", code, "status must be open or closed.");
+
+        Assert.Equal("status must be open or closed.", Under("fr", formatter, error));
+    }
+
+    [Fact]
+    public void AnEscapedBrace_IsNotAnArgumentHole()
+    {
+        var formatter = new LanguagePackFormatter([
+            new Pack("fr", E("device_unknown", "{field} : code {{0}} inconnu.")),
+        ]);
+
+        var error = new ValidationError("deviceId", "device_unknown", "device is not registered.");
+
+        Assert.Equal("deviceId : code {0} inconnu.", Under("fr", formatter, error));
+    }
+
+    /// <summary>
+    /// What counts as an argument hole: a single digit in braces. Escaped braces are text, and
+    /// <c>{field}</c> is filled from the error, as the renderer reads both.
+    /// </summary>
+    [Theory]
+    [InlineData("{0}", true)]
+    [InlineData("{field} doit être {9}.", true)]
+    [InlineData("{{{0}}}", true)]
+    [InlineData("}}{0}", true)]
+    [InlineData("{field}", false)]
+    [InlineData("{field} est obligatoire.", false)]
+    [InlineData("{{0}}", false)]
+    [InlineData("{10}", false)]
+    [InlineData("{ 0}", false)]
+    [InlineData("{0", false)]
+    [InlineData("", false)]
+    public void HasArgumentHole_FindsOnlyASingleDigitHole(string template, bool expected)
+    {
+        Assert.Equal(expected, ValidationMessageInfo.HasArgumentHole(template));
+    }
+
     [Fact]
     public void NoPacks_AndUnpackedCultures_KeepTheDefaultRender()
     {

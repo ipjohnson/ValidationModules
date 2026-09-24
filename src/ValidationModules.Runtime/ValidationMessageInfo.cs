@@ -187,9 +187,9 @@ public sealed class ValidationMessageInfo
     }
 
     /// <summary>
-    /// Renders a template for an error that carries no info - a finished-string error a language
-    /// pack matched at the code level. Only <c>{field}</c> can be filled; argument holes render
-    /// verbatim, per the tolerant-renderer rule.
+    /// Renders a template for an error that carries no info: a finished-string error a language
+    /// pack matched at the code level. Only <c>{field}</c> can be filled, so a caller first checks
+    /// the template with <see cref="HasArgumentHole"/>.
     /// </summary>
     internal static string RenderStandalone(
         string template,
@@ -203,6 +203,60 @@ public sealed class ValidationMessageInfo
             daHoles: false,
             formatProvider ?? CultureInfo.InvariantCulture
         );
+
+    /// <summary>
+    /// Whether <paramref name="template"/> has an argument hole, <c>{0}</c> to <c>{9}</c>, which
+    /// only an info's arguments can fill.
+    /// </summary>
+    /// <remarks>
+    /// Scans the way <see cref="RenderTemplate"/> does, escapes and <c>{field}</c> included, so the
+    /// two agree on what a hole is. Rendered through <see cref="RenderStandalone"/>, a template
+    /// with an argument hole would reach the reader with a literal <c>{0}</c> in it.
+    /// </remarks>
+    internal static bool HasArgumentHole(string template)
+    {
+        for (var i = 0; i < template.Length; i++)
+        {
+            var current = template[i];
+
+            if (
+                (current == '{' || current == '}')
+                && i + 1 < template.Length
+                && template[i + 1] == current
+            )
+            {
+                i++;
+                continue;
+            }
+
+            if (current != '{')
+            {
+                continue;
+            }
+
+            var close = template.IndexOf('}', i + 1);
+
+            if (close < 0)
+            {
+                continue;
+            }
+
+            var hole = template.AsSpan(i + 1, close - i - 1);
+
+            if (IsArgumentHole(hole))
+            {
+                return true;
+            }
+
+            // The renderer fills {field} and resumes after it, so the scan does too.
+            if (hole.SequenceEqual("field"))
+            {
+                i = close;
+            }
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// The last segment of a field path: <c>toys[3].name</c> renders as "name must …", never
@@ -500,7 +554,7 @@ public sealed class ValidationMessageInfo
             return field;
         }
 
-        if (hole.Length != 1 || hole[0] is < '0' or > '9')
+        if (!IsArgumentHole(hole))
         {
             return null;
         }
@@ -529,4 +583,11 @@ public sealed class ValidationMessageInfo
             ? formattable.ToString(null, formatProvider)
             : argument.ToString() ?? string.Empty;
     }
+
+    /// <summary>
+    /// A hole that names an argument by position: one digit, <c>0</c> to <c>9</c>. Shared by the
+    /// renderer and <see cref="HasArgumentHole"/>.
+    /// </summary>
+    private static bool IsArgumentHole(ReadOnlySpan<char> hole) =>
+        hole.Length == 1 && hole[0] is >= '0' and <= '9';
 }

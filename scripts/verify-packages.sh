@@ -283,7 +283,7 @@ namespace Sample {
     }
 
     public sealed record Pet {
-        [Required][StringLength(min: 1, max: 10)] public string? Name { get; init; }
+        [Required][StringLength(10, Min = 1)] public string? Name { get; init; }
         [Pattern(typeof(Patterns), nameof(Patterns.Sku))] public string? Sku { get; init; }
         [ItemCount(min: 1, max: 3)][ValidateNested] public IReadOnlyList<Toy> Toys { get; init; } = new List<Toy>();
     }

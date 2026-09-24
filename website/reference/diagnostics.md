@@ -123,8 +123,8 @@ generic type's payload and leave the generic type without constraints.
 **Severity:** Error
 
 A `[StringLength]` or `[ItemCount]` minimum is greater than its maximum, so the constraint can never
-pass. The DataAnnotations `[StringLength]` and `[Length]` are checked too. The first argument of
-`[StringLength]` and `[ItemCount]` is the minimum.
+pass. The DataAnnotations `[StringLength]` and `[Length]` are checked too. The positional argument
+of `[StringLength]` is the maximum, and the first argument of `[ItemCount]` is the minimum.
 
 ### VM1102
 
@@ -242,17 +242,19 @@ combines both.
 
 **Severity:** Warning
 
-The type of a `[ValidateNested]` property declares no rules, so there is nothing to
-validate and the descent is dropped. Give the type constraints, a rules class or
-`[GenerateValidator]`, or remove `[ValidateNested]`.
+A descent reaches a type that declares no rules, so there is nothing to validate and the descent
+is dropped. The descent comes from `[ValidateNested]`, or from `Nested` or `Each` in a rules class,
+and the message names which. DataAnnotations attributes that produce no check, such as `[Display]`
+and `[Key]`, are not rules. Give the type constraints, a rules class or `[GenerateValidator]`, or
+remove the descent.
 
 ### VM1502
 
 **Severity:** Warning
 
-The type of a `[ValidateNested]` property is one no validator can be generated for, such as
-a list of lists or a list of nullable values. The descent is dropped. Wrap the inner collection in a
-type that has its own rules.
+A descent reaches a type that no validator can be generated for, such as a list of lists or a list
+of nullable values. The descent comes from `[ValidateNested]`, or from `Nested` or `Each` in a rules
+class. The descent is dropped. Wrap the inner collection in a type that has its own rules.
 
 ### VM1503
 
@@ -268,6 +270,16 @@ reach it, and no `Polymorphism` is given. Seal the type, or pass `Polymorphism.D
 
 `Polymorphism.Runtime` is on a sealed type or a value type, whose actual type can never differ
 from its declared type. Use `Polymorphism.DeclaredOnly`.
+
+### VM1505
+
+**Severity:** Warning
+
+A descent reaches a type declared in another assembly, and this project can reach no validator for
+it. The other assembly has no accessible `<Type>Validator`, and no rules class in this project
+targets the type. This is the case for a framework type such as `StringBuilder`, and for a type from
+an assembly that does not use this generator. The descent is dropped. Declare an
+`IValidationRulesFor<T>` for the type in this project, or remove the descent.
 
 ### VM1601
 
@@ -386,11 +398,13 @@ written into generated code. Move the rule into `IValidatableObject.Validate`, o
 `Describe` contains something the generator cannot copy into the validator. The message names it.
 The cases are a `try`, `lock`, `using` or `goto` statement, a `return` with a value, an assignment
 to a member of `x`, `Apply` anywhere but the top level of `Describe`, `Require` chained after
-`Each`, `Nested`, `Each` or `Apply` inside a fragment, and a rule call that does not compile.
+`Each`, `Nested`, `Each` or `Apply` inside a fragment, and a rule call that does not compile. The
+descents that are refused are `Nested` on a collection or a dictionary, and a second `Nested` or
+`Each` in the same chain as one before it. Use `Each` for a list, and `[ValidateNested]` on the
+property for a dictionary. See [the rules API reference](./rules-api#collections).
 
 Pass `Apply` a method group. A lambda passed to `Apply` produces generated code that does not
-compile in this version, and no diagnostic reports it. `Nested` or `Each` chained after `Each` is
-not supported either. See [the rules API reference](./rules-api#collections).
+compile in this version, and no diagnostic reports it.
 
 ### VM3002
 
@@ -407,6 +421,10 @@ a fragment or `As` given something other than `x`.
 A rule is declared inside a loop or a local function. A local function also gives `VM3002`, and a
 rule inside a lambda gives `VM3002` alone. Use `Each` for per-element rules, or report from the loop
 through `rules.Context`.
+
+`rules.Context` inside a lambda, an anonymous method, a local function or a query expression gives
+`VM3003` too. The generated code passes the context by reference, and none of those can capture it.
+Report from a `foreach` loop instead.
 
 ### VM3004
 
@@ -470,6 +488,15 @@ the generator corrects the call. Remove `.Value`.
 `As<TFacet>` names an interface or base type that has no rules in this project. Give it
 constraint attributes or a rules class.
 
+### VM3106
+
+**Severity:** Warning
+
+`Nested` or `Each` in a rules class descends into a property that already has `[ValidateNested]`.
+Both descents would run, and every error in the nested object would be reported twice. The
+rules-class descent is dropped. Remove it, or remove `[ValidateNested]` to keep the descent in the
+rules class.
+
 ## Language packs
 
 These diagnostics point at the JSON file.
@@ -532,18 +559,19 @@ one, so fix it first.
 The generator failed while writing code. The build fails so that a validator cannot go
 missing without notice. The message names the stage and the exception. Please
 [report it](https://github.com/ipjohnson/ValidationModules/issues). Until it is fixed, change the
-construct the message names. One known cause is `Each` over a collection of collections in a rules
-class.
+construct the message names. One known cause is two types in one namespace whose names differ only
+in case.
 
 ### VM5003
 
 **Severity:** Warning
 
 `.Validate<T>()` names a type in this project that has no constraints, no
-`[GenerateValidator]`, no rules class and no hand-written validator, so the endpoint would fail when
-it is built. Add rules or `[GenerateValidator]`. When the rules come from another assembly, the
-warning does not apply. This is the one diagnostic that an analyzer reports rather than the
-generator.
+`[GenerateValidator]`, no rules class and no hand-written validator. The endpoint throws when it is
+built, which in a default application happens on its first request. Add rules or
+`[GenerateValidator]`. When `ValidationModules_DataAnnotations` is `Ignore`, DataAnnotations
+attributes do not count as rules. When the rules come from another assembly, the warning does not
+apply. This is the one diagnostic that an analyzer reports rather than the generator.
 
 ## Registration
 

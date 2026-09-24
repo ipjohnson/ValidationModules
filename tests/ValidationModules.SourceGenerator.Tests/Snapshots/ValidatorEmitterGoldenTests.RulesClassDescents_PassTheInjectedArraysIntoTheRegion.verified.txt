@@ -76,6 +76,7 @@ public sealed partial class AddressValidator : global::ValidationModules.IValida
     /// </summary>
     public bool IsValid(global::Sample.Address value)
     {
+        global::System.ArgumentNullException.ThrowIfNull(value);
         if (string.IsNullOrWhiteSpace(value.PostalCode))
         {
             return false;
@@ -114,6 +115,7 @@ public sealed partial class LineValidator : global::ValidationModules.IValidator
     /// </summary>
     public bool IsValid(global::Sample.Line value)
     {
+        global::System.ArgumentNullException.ThrowIfNull(value);
         if (string.IsNullOrWhiteSpace(value.Sku))
         {
             return false;
