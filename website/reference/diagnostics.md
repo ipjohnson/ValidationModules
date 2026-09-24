@@ -402,6 +402,19 @@ It is a warning, and the attribute is not enforced, when the attribute's argumen
 written into generated code. Move the rule into `IValidatableObject.Validate`, or into an
 [`Ensure`](../guide/rule-classes#ensure) in a rules class.
 
+### VM2011
+
+**Severity:** Error
+
+A DataAnnotations attribute sets `ErrorMessageResourceType` and `ErrorMessageResourceName`, and the
+name is not a static string property that the generated validator can read. The generated code
+reads the property directly, without reflection. The message gives the reason: no member has the
+name, or the member is not static, not a string, or not accessible. An internal property is
+accessible only from its own assembly, so a resx file in a shared project needs the Public access
+modifier. Write the name with `nameof`, so the compiler checks it at the attribute:
+`ErrorMessageResourceName = nameof(Messages.NameRequired)`. The constraint still compiles, with its
+default message.
+
 ## Rules classes
 
 ### VM3001

@@ -94,9 +94,10 @@ text is authored, so language packs leave it unchanged.
 
 `ErrorMessageResourceType` with `ErrorMessageResourceName` on a built-in attribute reads the
 resource property each time the message is rendered, without reflection. `{0}` in the resource
-text is the display name, as it is in an `ErrorMessage`. On a custom
-`ValidationAttribute`, DataAnnotations resolves the resource with reflection, which trimming can
-break. The generator reports that case as `VM2009`.
+text is the display name, as it is in an `ErrorMessage`. The property must be static, return a
+string, and be public or in the same assembly. The generator reports `VM2011` when it is not. On a
+custom `ValidationAttribute`, DataAnnotations resolves the resource with reflection, which trimming
+can break. The generator reports that case as `VM2009`.
 
 ## Differences from Validator
 
