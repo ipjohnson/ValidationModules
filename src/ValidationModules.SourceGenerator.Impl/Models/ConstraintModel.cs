@@ -93,9 +93,9 @@ public enum ConstraintKind
 /// </summary>
 /// <remarks>
 /// Both front-ends produce this, which is the point of it: a rule declared with
-/// <c>[StringLength(1, 100)]</c> and one declared with DataAnnotations' equivalent are the same
-/// model by the time the emitter sees them, so they cannot produce different code, different field
-/// paths or different messages.
+/// <c>[StringLength(100, Min = 1)]</c> and one declared with DataAnnotations' equivalent are the
+/// same model by the time the emitter sees them, so they cannot produce different code, different
+/// field paths or different messages.
 /// </remarks>
 /// <param name="Kind">Which check this is.</param>
 /// <param name="Code">Overrides the default code for the kind.</param>

@@ -23,14 +23,24 @@ public static class NativeConstraintReader
                 };
 
             case "StringLengthAttribute":
+            {
+                // The one positional argument is the maximum, as in DataAnnotations, and the
+                // minimum is only ever named. [ItemCount]'s positional pair is (min, max), which
+                // is why this does not go through ReadBounds.
+                var (min, max) = NamedBounds(
+                    attribute,
+                    "0",
+                    attribute.ConstructorArguments.Length == 1
+                        ? Literal(attribute.ConstructorArguments[0])
+                        : int.MaxValue.ToString()
+                );
+                return common with { Kind = ConstraintKind.StringLength, Min = min, Max = max };
+            }
+
             case "ItemCountAttribute":
             {
-                var kind =
-                    attributeName == "StringLengthAttribute"
-                        ? ConstraintKind.StringLength
-                        : ConstraintKind.ItemCount;
                 var (min, max) = ReadBounds(attribute);
-                return common with { Kind = kind, Min = min, Max = max };
+                return common with { Kind = ConstraintKind.ItemCount, Min = min, Max = max };
             }
 
             case "RangeAttribute":
@@ -221,19 +231,28 @@ public static class NativeConstraintReader
             UnlessMember: Named(attribute, "Unless") as string
         );
 
+    /// <summary><c>[ItemCount]</c>'s bounds: positional <c>(min, max)</c>, or named.</summary>
     private static (string Min, string Max) ReadBounds(AttributeData attribute)
     {
         // Positional (min, max) and the named Min/Max form are both legal; named wins where set,
         // because the parameterless constructor is what makes declaring only one bound readable.
-        var min = "0";
-        var max = int.MaxValue.ToString();
+        var args = attribute.ConstructorArguments;
 
-        if (attribute.ConstructorArguments.Length == 2)
-        {
-            min = Literal(attribute.ConstructorArguments[0]);
-            max = Literal(attribute.ConstructorArguments[1]);
-        }
+        return args.Length == 2
+            ? NamedBounds(attribute, Literal(args[0]), Literal(args[1]))
+            : NamedBounds(attribute, "0", int.MaxValue.ToString());
+    }
 
+    /// <summary>
+    /// The named <c>Min</c> and <c>Max</c>, where set, over the bounds the constructor supplied.
+    /// Named wins because it is assigned after the constructor runs, which is C#'s own order.
+    /// </summary>
+    private static (string Min, string Max) NamedBounds(
+        AttributeData attribute,
+        string min,
+        string max
+    )
+    {
         if (Named(attribute, "Min") is int namedMin)
         {
             min = namedMin.ToString();

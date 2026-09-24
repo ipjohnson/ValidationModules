@@ -18,7 +18,7 @@ public sealed record Address
     [Required]
     public string? PostalCode { get; init; }
 
-    [StringLength(min: 2, max: 2)]
+    [StringLength(2, Min = 2)]
     public string? Country { get; init; }
 }
 
@@ -31,7 +31,7 @@ public sealed record Toy
 public sealed record Pet
 {
     [Required]
-    [StringLength(min: 1, max: 10)]
+    [StringLength(10, Min = 1)]
     public string? Name { get; init; }
 
     [Required]

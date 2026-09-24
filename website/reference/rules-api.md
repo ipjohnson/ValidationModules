@@ -81,8 +81,9 @@ Write `allowed` as an array or a collection expression of constants, such as
 
 `Nested` is for a single object. Use `Each` for a collection of objects. `Each` accepts a list of
 strings or of a reference type. For a list of numbers or other value types, check the elements in a
-loop and report through `Context`. `Nested` on a collection, `Nested` after `Each`, and `Each` after
-`Each` do not work in this version.
+loop and report through `Context`. `Nested` on a collection, and a second `Nested` or `Each` in the
+chain after a descent, are reported as `VM3001`. A descent into a type with no rules is dropped with
+`VM1501`, and one into a property that already has `[ValidateNested]` is dropped with `VM3106`.
 
 ### Conditions
 

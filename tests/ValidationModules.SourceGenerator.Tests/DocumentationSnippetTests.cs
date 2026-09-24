@@ -82,7 +82,7 @@ public class DocumentationSnippetTests
     private const string Models = """
 
         public record Pet {
-            [Required, StringLength(min: 1, max: 100)] public string? Name { get; init; }
+            [Required, StringLength(100, Min = 1)] public string? Name { get; init; }
             [Range(0, 30)] public int Age { get; init; }
             [Pattern("^[A-Z]{3}$")] public string? Sku { get; init; }
             [AllowedValues("available", "pending", "sold")] public string? Status { get; init; }
