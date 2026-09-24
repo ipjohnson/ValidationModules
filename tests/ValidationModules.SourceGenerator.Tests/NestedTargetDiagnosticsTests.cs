@@ -519,6 +519,65 @@ public class NestedTargetDiagnosticsTests
         Assert.DoesNotContain("AddressValidator", result.Sources["Sample.OrderValidator.g.cs"]);
     }
 
+    private const string ReferencedNestedAddress = """
+        namespace Shared;
+
+        public sealed class Customer {
+            public sealed record Address {
+                [ValidationModules.Constraints.Required] public string? Street { get; init; }
+            }
+        }
+        """;
+
+    private const string OrderShippingToAReferencedNestedAddress = """
+        using ValidationModules;
+        using ValidationModules.Constraints;
+
+        namespace Sample;
+
+        public record Order {
+            [Required] public string? Reference { get; init; }
+            [ValidateNested] public Shared.Customer.Address? ShipTo { get; init; }
+        }
+        """;
+
+    [Fact]
+    public void NestedTypeFromAnotherAssemblyWithItsValidator_KeepsTheDescent()
+    {
+        // The other assembly's generator names Customer.Address's validator after both types.
+        var result = GeneratorHarness.RunWithReference(
+            ReferencedNestedAddress
+                + """
+
+                public sealed class Customer_AddressValidator : ValidationModules.IValidatorFor<Customer.Address> {
+                    public ValidationModules.ValidationFlow Validate(
+                        ref ValidationModules.ValidationContext context, Customer.Address value) =>
+                        ValidationModules.ValidationFlow.Continue;
+                }
+                """,
+            OrderShippingToAReferencedNestedAddress
+        );
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id is "VM1501" or "VM1505");
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains("Customer_AddressValidator", result.Sources["Sample.OrderValidator.g.cs"]);
+    }
+
+    [Fact]
+    public void NestedTypeFromAnotherAssemblyWithNoValidator_IsVM1505NamingTheFlattenedValidator()
+    {
+        var result = GeneratorHarness.RunWithReference(
+            ReferencedNestedAddress,
+            OrderShippingToAReferencedNestedAddress
+        );
+
+        Assert.Contains(
+            "Customer_AddressValidator",
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1505").GetMessage()
+        );
+        Assert.Empty(result.CompilationErrors);
+    }
+
     [Fact]
     public void NestedTargetFromAnotherAssemblyWithARulesClassHere_KeepsTheDescent()
     {

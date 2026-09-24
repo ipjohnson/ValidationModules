@@ -139,8 +139,8 @@ internal static class RuleText
     }
 
     /// <summary>
-    /// Renders a predicate as its own error message: the parameter stripped, members off it in wire
-    /// names, whitespace normalised, one trailing period.
+    /// Renders a predicate as its own error message: the parameter stripped, the first member off
+    /// it through <paramref name="fieldNamer"/>, whitespace normalised, one trailing period.
     /// </summary>
     /// <remarks>
     /// The message is the rule, so it cannot drift from what is actually checked the way a composed
@@ -150,7 +150,28 @@ internal static class RuleText
     /// </remarks>
     /// <param name="predicateText">The predicate's source, as written.</param>
     /// <param name="fieldNamer">Applied to each member read directly off the parameter.</param>
-    public static string RenderPredicate(string? predicateText, Func<string, string> fieldNamer)
+    public static string RenderPredicate(string? predicateText, Func<string, string> fieldNamer) =>
+        RenderPredicate(predicateText, path => SpellFirst(path, fieldNamer));
+
+    /// <summary>
+    /// Renders a predicate as its own error message, with each member path read off the parameter
+    /// spelled by <paramref name="pathNamer"/>.
+    /// </summary>
+    /// <remarks>
+    /// The generator's form for messages. It has the symbols this file does not, so it can give
+    /// every segment of <c>x.Home.PostalCode</c> its field name, <c>[JsonPropertyName]</c>
+    /// included, where the other overload can only apply a naming policy to the first.
+    /// </remarks>
+    /// <param name="predicateText">The predicate's source, as written.</param>
+    /// <param name="pathNamer">
+    /// Receives the identifiers of one member path after the parameter, <c>["Home", "PostalCode"]</c>
+    /// for <c>x.Home?.PostalCode</c>, and returns their spellings, one per identifier. The
+    /// separators between them are kept as written.
+    /// </param>
+    public static string RenderPredicate(
+        string? predicateText,
+        Func<IReadOnlyList<string>, IReadOnlyList<string>> pathNamer
+    )
     {
         var body = BodyOf(predicateText, out var parameter);
 
@@ -177,7 +198,17 @@ internal static class RuleText
 
             if (member is not null)
             {
-                builder.Append(fieldNamer(member));
+                var separators = new List<string>();
+                var path = ReadMemberPath(body, ref index, member, separators);
+                var spelled = pathNamer(path);
+
+                builder.Append(spelled[0]);
+
+                for (var segment = 1; segment < path.Count; segment++)
+                {
+                    builder.Append(separators[segment - 1]).Append(spelled[segment]);
+                }
+
                 continue;
             }
 
@@ -199,10 +230,12 @@ internal static class RuleText
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Derived from the render, not from the source.</b> Going through
-    /// <see cref="RenderPredicate"/> is what puts members under their wire names, so a property
-    /// renamed in C# behind a pinned <c>[JsonPropertyName]</c> moves neither the message nor the
-    /// code. It also makes the two incapable of disagreeing, since one is a transform of the other.
+    /// <b>Derived from the policy render of the condition.</b> Going through
+    /// <see cref="RenderPredicate(string?, Func{string, string})"/> strips the parameter and
+    /// normalises whitespace, so reformatting the lambda moves nothing. The generator renders the
+    /// message separately, with every member under its field name, <c>[JsonPropertyName]</c>
+    /// included. The code stays with the policy's spelling of the condition as written, so
+    /// changing a <c>[JsonPropertyName]</c> rewords the message and leaves the code alone.
     /// </para>
     /// <para>
     /// <b>The code moves when the rule moves, and that is the point.</b> Widening <c>&lt;</c> to
@@ -1051,6 +1084,74 @@ internal static class RuleText
 
         index = start;
         return null;
+    }
+
+    /// <summary>
+    /// Reads the member path that continues from <paramref name="first"/>: every identifier that
+    /// follows directly after <c>.</c>, <c>?.</c> or <c>!.</c>, leaving the index after the last
+    /// one and each separator in <paramref name="separators"/>.
+    /// </summary>
+    private static List<string> ReadMemberPath(
+        string body,
+        ref int index,
+        string first,
+        List<string> separators
+    )
+    {
+        var path = new List<string> { first };
+
+        while (true)
+        {
+            var width = SeparatorWidth(body, index);
+
+            if (
+                width == 0
+                || index + width >= body.Length
+                || !IsIdentifierStart(body[index + width])
+            )
+            {
+                return path;
+            }
+
+            separators.Add(body.Substring(index, width));
+            index += width;
+            path.Add(ReadIdentifier(body, ref index)!);
+        }
+    }
+
+    /// <summary>The length of a member-access separator at <paramref name="index"/>, or 0.</summary>
+    private static int SeparatorWidth(string body, int index)
+    {
+        if (index < body.Length && body[index] == '.')
+        {
+            return 1;
+        }
+
+        return
+            index + 1 < body.Length
+            && (body[index] == '?' || body[index] == '!')
+            && body[index + 1] == '.'
+            ? 2
+            : 0;
+    }
+
+    /// <summary>
+    /// A member path with the naming policy applied to its first segment and the rest as written,
+    /// which is what the policy-only render has always produced: <c>name.Length</c>.
+    /// </summary>
+    private static IReadOnlyList<string> SpellFirst(
+        IReadOnlyList<string> path,
+        Func<string, string> fieldNamer
+    )
+    {
+        var spelled = new List<string>(path.Count) { fieldNamer(path[0]) };
+
+        for (var segment = 1; segment < path.Count; segment++)
+        {
+            spelled.Add(path[segment]);
+        }
+
+        return spelled;
     }
 
     /// <summary>

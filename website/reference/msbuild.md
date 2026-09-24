@@ -28,9 +28,10 @@ This property sets how member names become field names in errors.
 | `SnakeCase` | `postal_code` |
 | `PascalCase` or `AsDeclared` | `PostalCode` |
 
-`[JsonPropertyName]` and `[Display(Name)]` on a property take precedence. The registration method
-also registers the matching `IValidationFieldNamer`: `CamelCaseFieldNamer`, `SnakeCaseFieldNamer`
-or `PascalCaseFieldNamer`. A namer you register first takes precedence. Custom namers derive from
+`[JsonPropertyName]` on a property takes precedence. `[Display(Name)]` labels the property in
+messages and does not change the field. The registration method also registers the matching
+`IValidationFieldNamer`: `CamelCaseFieldNamer`, `SnakeCaseFieldNamer` or `PascalCaseFieldNamer`. A
+namer you register first takes precedence. Custom namers derive from
 `FieldNamer`.
 
 ## `ValidationModules_CodeNamespace`

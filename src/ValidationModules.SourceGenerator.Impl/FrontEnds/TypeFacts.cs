@@ -88,27 +88,57 @@ public static class TypeFacts
     }
 
     /// <summary>
-    /// Whether the count of a collection can be read without enumerating it. Anything that reaches
-    /// the emitter without a Count or Length is walked with a foreach instead, so an
+    /// The property that reads a collection's count by name: <c>Length</c> for an array, then a
+    /// public <c>Count</c> or <c>Length</c>, and null for a type with neither. The emitter walks
+    /// such a type with a foreach and counts it with <c>Enumerable.Count</c>, so an
     /// IEnumerable-only property still validates rather than being silently skipped.
     /// </summary>
-    public static bool HasCount(ITypeSymbol type)
+    /// <remarks>
+    /// Reading <c>.Count</c> on a bare <c>IEnumerable&lt;T&gt;</c> binds to the LINQ method group.
+    /// Implementing <c>ICollection&lt;T&gt;</c> is not enough either. <c>ImmutableArray&lt;T&gt;</c>
+    /// implements <c>Count</c> only explicitly, so its count is read through <c>Length</c>.
+    /// </remarks>
+    public static string? CountAccessor(ITypeSymbol type) =>
+        type is IArrayTypeSymbol ? "Length"
+        : HasPublicProperty(type, "Count") ? "Count"
+        : HasPublicProperty(type, "Length") ? "Length"
+        : null;
+
+    /// <summary>
+    /// Whether <c>value.name</c> reads a public instance property on a value of this type. An
+    /// interface also reaches the properties of its base interfaces, but two base interfaces that
+    /// both declare the name make it ambiguous.
+    /// </summary>
+    private static bool HasPublicProperty(ITypeSymbol type, string name)
     {
-        if (type is IArrayTypeSymbol)
+        if (type.TypeKind == TypeKind.Interface)
         {
-            return true;
+            return DeclaresPublicProperty(type, name)
+                || type.AllInterfaces.Count(i => DeclaresPublicProperty(i, name)) == 1;
         }
 
-        return type.GetMembers("Count").Any(m => m is IPropertySymbol)
-            || type.AllInterfaces.Any(i =>
-                i.ConstructedFrom.SpecialType
-                    is SpecialType.System_Collections_Generic_ICollection_T
-                        or SpecialType.System_Collections_Generic_IReadOnlyCollection_T
-            );
+        for (ITypeSymbol? current = type; current is not null; current = current.BaseType)
+        {
+            if (DeclaresPublicProperty(current, name))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
-    public static string CountAccessor(ITypeSymbol type) =>
-        type is IArrayTypeSymbol ? "Length" : "Count";
+    private static bool DeclaresPublicProperty(ITypeSymbol type, string name) =>
+        type.GetMembers(name)
+            .Any(m =>
+                m
+                    is IPropertySymbol
+                    {
+                        IsStatic: false,
+                        IsIndexer: false,
+                        DeclaredAccessibility: Accessibility.Public,
+                    }
+            );
 
     /// <summary>
     /// Whether the elements can be reached by index rather than through an enumerator.
@@ -126,10 +156,12 @@ public static class TypeFacts
             return true;
         }
 
-        if (
-            type.GetMembers("this[]").Any(m => m is IPropertySymbol { Parameters.Length: 1 })
-            && HasCount(type)
-        )
+        if (CountAccessor(type) is null)
+        {
+            return false;
+        }
+
+        if (type.GetMembers("this[]").Any(m => m is IPropertySymbol { Parameters.Length: 1 }))
         {
             return true;
         }
