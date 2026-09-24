@@ -277,6 +277,24 @@ public sealed class RulesFrontEnd
             return null;
         }
 
+        // Checked before the method is registered, so a type the container cannot name never
+        // reaches a generated file.
+        for (var i = 0; i < definition.TypeParameters.Length; i++)
+        {
+            if (Unnameable(constructed.TypeArguments[i], compilation) is { } reason)
+            {
+                Report(
+                    ValidationDiagnostics.FragmentTypeArgumentNotNameable,
+                    site,
+                    $"{definition.ContainingType.Name}.{definition.Name}",
+                    definition.TypeParameters[i].Name,
+                    constructed.TypeArguments[i].ToDisplayString(),
+                    reason
+                );
+                return null;
+            }
+        }
+
         // The fragment's own parameter roles, resolved on the constructed symbol so a generic
         // fragment's subject parameter is already typed as the concrete target.
         IParameterSymbol? builder = null;
@@ -360,6 +378,32 @@ public sealed class RulesFrontEnd
 
         return FailedSince(before) ? null : method;
     }
+
+    /// <summary>
+    /// Why a fragment container cannot name a type, or null when it can. An anonymous type has no
+    /// name, and a private or protected type is out of the container's reach.
+    /// </summary>
+    private static string? Unnameable(ITypeSymbol type, Compilation compilation) =>
+        type switch
+        {
+            { TypeKind: TypeKind.Error } => null,
+            { IsAnonymousType: true } => ValidationDiagnostics.AnonymousTypeArgumentTail,
+            IArrayTypeSymbol array => Unnameable(array.ElementType, compilation),
+            INamedTypeSymbol named
+                when !compilation.IsSymbolAccessibleWithin(
+                    named.OriginalDefinition,
+                    compilation.Assembly
+                ) => ValidationDiagnostics.InaccessibleTypeArgumentTail(
+                named.OriginalDefinition.ToDisplayString()
+            ),
+            INamedTypeSymbol named => (
+                named.ContainingType is { } outer ? Unnameable(outer, compilation) : null
+            )
+                ?? named
+                    .TypeArguments.Select(argument => Unnameable(argument, compilation))
+                    .FirstOrDefault(reason => reason is not null),
+            _ => null,
+        };
 
     /// <summary>
     /// The concrete type each of a fragment's type parameters stands for in one instantiation.
@@ -681,7 +725,7 @@ public sealed class RulesFrontEnd
                     ReadLoop(
                         loop,
                         loop.Statement,
-                        $"for ({Rewrite(loop.Declaration?.ToString() ?? loop.Initializers.ToString())}; {RewriteOptional(loop.Condition)}; {Rewrite(loop.Incrementors.ToString())})",
+                        $"for ({(loop.Declaration is { } declared ? Rewrite(declared) : string.Join(", ", loop.Initializers.Select(Rewrite)))}; {RewriteOptional(loop.Condition)}; {string.Join(", ", loop.Incrementors.Select(Rewrite))})",
                         depth
                     );
                     return;
@@ -690,7 +734,7 @@ public sealed class RulesFrontEnd
                     ReadLoop(
                         each,
                         each.Statement,
-                        $"foreach ({each.Type} {each.Identifier.Text} in {Rewrite(each.Expression)})",
+                        $"foreach ({Rewrite(each.Type)} {each.Identifier.Text} in {Rewrite(each.Expression)})",
                         depth
                     );
                     return;
@@ -1192,6 +1236,20 @@ public sealed class RulesFrontEnd
                 _ => type,
             };
 
+        /// <summary>
+        /// The enclosing fragment's type parameter a name refers to, with the type it stands for
+        /// in this expansion, or null when the name refers to anything else.
+        /// </summary>
+        private (ITypeParameterSymbol Parameter, ITypeSymbol Concrete)? TypeArgumentOf(
+            IdentifierNameSyntax name
+        ) =>
+            _typeArguments.Count > 0
+            && !name.IsVar
+            && _model.GetSymbolInfo(name).Symbol is ITypeParameterSymbol parameter
+            && _typeArguments.TryGetValue(parameter, out var concrete)
+                ? (parameter, concrete)
+                : null;
+
         private void ReadFragmentCall(
             InvocationExpressionSyntax call,
             IMethodSymbol method,
@@ -1371,8 +1429,6 @@ public sealed class RulesFrontEnd
 
             return rewritten.NormalizeWhitespace("    ", "\n").ToFullString();
         }
-
-        private string Rewrite(string text) => text;
 
         /// <summary>
         /// Invariant 1: inside transcribed code the builder may appear only under
@@ -3668,10 +3724,24 @@ public sealed class RulesFrontEnd
         /// answers for them: <c>nameof</c> through the subject becomes the wire path,
         /// <c>rules.Context</c> becomes the live context, and a bare reference to the rules class's
         /// own statics is qualified - the companion is a different class, so the name has lost its
-        /// scope (the lifted-predicate precedent).
+        /// scope (the lifted-predicate precedent). An expansion of a generic fragment is not
+        /// generic, so each mention of the fragment's type parameter is written as the type it
+        /// stands for in that expansion.
         /// </summary>
         private sealed class TranscriptionRewriter : CSharpSyntaxRewriter
         {
+            private static readonly SymbolDisplayFormat Annotated =
+                SymbolDisplayFormat.FullyQualifiedFormat.AddMiscellaneousOptions(
+                    SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier
+                );
+
+            /// <summary>
+            /// A type where only a plain one is accepted. See <see cref="TakesPlainType"/>.
+            /// </summary>
+            private static readonly SymbolDisplayFormat Plain = Annotated.AddMiscellaneousOptions(
+                SymbolDisplayMiscellaneousOptions.ExpandValueTuple
+            );
+
             private readonly RegionWriter _writer;
 
             public TranscriptionRewriter(RegionWriter writer) => _writer = writer;
@@ -3690,7 +3760,48 @@ public sealed class RulesFrontEnd
                     );
                 }
 
+                // C# evaluates nameof(T) to the type parameter's own name, whatever type it stands
+                // for, so every expansion gets that name.
+                if (
+                    node.Expression is IdentifierNameSyntax { Identifier.Text: "nameof" }
+                    && node.ArgumentList.Arguments.Count == 1
+                    && node.ArgumentList.Arguments[0].Expression is IdentifierNameSyntax named
+                    && _writer.TypeArgumentOf(named) is { } typeArgument
+                )
+                {
+                    return SyntaxFactory.ParseExpression(
+                        SymbolDisplay.FormatLiteral(typeArgument.Parameter.Name, quote: true)
+                    );
+                }
+
                 return base.VisitInvocationExpression(node);
+            }
+
+            /// <summary>
+            /// <c>T?</c> over a type parameter without the <c>struct</c> constraint means
+            /// <c>T</c> itself when a value type stands for it. Written as <c>int?</c> it would be
+            /// <c>Nullable&lt;int&gt;</c>, which is another type.
+            /// </summary>
+            public override SyntaxNode? VisitNullableType(NullableTypeSyntax node)
+            {
+                if (
+                    node.ElementType is IdentifierNameSyntax element
+                    && _writer.TypeArgumentOf(element)
+                        is { Parameter.HasValueTypeConstraint: false } typeArgument
+                )
+                {
+                    var concrete = typeArgument
+                        .Concrete.WithNullableAnnotation(NullableAnnotation.NotAnnotated)
+                        .ToDisplayString(Annotated);
+
+                    return SyntaxFactory
+                        .ParseTypeName(
+                            typeArgument.Concrete.IsValueType ? concrete : concrete + "?"
+                        )
+                        .WithTriviaFrom(node);
+                }
+
+                return base.VisitNullableType(node);
             }
 
             public override SyntaxNode? VisitMemberAccessExpression(
@@ -3719,6 +3830,17 @@ public sealed class RulesFrontEnd
                 if (node.Parent is MemberAccessExpressionSyntax access && access.Name == node)
                 {
                     return base.VisitIdentifierName(node);
+                }
+
+                if (_writer.TypeArgumentOf(node) is { } typeArgument)
+                {
+                    var written = TakesPlainType(node)
+                        ? typeArgument
+                            .Concrete.WithNullableAnnotation(NullableAnnotation.NotAnnotated)
+                            .ToDisplayString(Plain)
+                        : typeArgument.Concrete.ToDisplayString(Annotated);
+
+                    return SyntaxFactory.ParseTypeName(written).WithTriviaFrom(node);
                 }
 
                 if (
@@ -3750,6 +3872,29 @@ public sealed class RulesFrontEnd
                     $"{_writer._declaringClass.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{node.Identifier.Text}"
                 );
             }
+
+            /// <summary>
+            /// Whether the type written in place of <paramref name="name"/> has to be plain, where
+            /// the type parameter it replaces accepted any type. <c>typeof</c>, <c>is</c>,
+            /// <c>as</c>, a pattern, a <c>new</c>, a <c>catch</c> and a member access refuse a
+            /// nullable reference annotation. After <c>is</c> and in a pattern a tuple reads as a
+            /// positional pattern, and <c>new</c> refuses tuple syntax, so a tuple is written as a
+            /// <c>ValueTuple</c>.
+            /// </summary>
+            private static bool TakesPlainType(IdentifierNameSyntax name) =>
+                name.Parent switch
+                {
+                    TypeOfExpressionSyntax
+                    or DeclarationPatternSyntax
+                    or TypePatternSyntax
+                    or RecursivePatternSyntax
+                    or ObjectCreationExpressionSyntax
+                    or CatchDeclarationSyntax
+                    or MemberAccessExpressionSyntax => true,
+                    BinaryExpressionSyntax binary => binary.IsKind(SyntaxKind.IsExpression)
+                        || binary.IsKind(SyntaxKind.AsExpression),
+                    _ => false,
+                };
 
             private bool DeclaredByTheClass(INamedTypeSymbol declaring)
             {

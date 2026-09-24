@@ -520,6 +520,16 @@ lambda whose whole body calls one static method, such as `() => SkuPattern()`, i
 method. A lambda that does anything else, a delegate stored in a field, and an instance method are
 reported here. The message gives the method-group form to write.
 
+### VM3009
+
+**Severity:** Error
+
+A generic fragment is called with a type argument that its generated expansion cannot name. The
+generator expands the fragment once for each set of type arguments, and writes each use of a type
+parameter, such as `typeof(T)`, as the type it stands for. An anonymous type has no name, and a
+`private` or `protected` type cannot be reached from the generated code. Pass a value of a named
+type, such as a record, or make the type `internal`.
+
 ### VM3101
 
 **Severity:** Error

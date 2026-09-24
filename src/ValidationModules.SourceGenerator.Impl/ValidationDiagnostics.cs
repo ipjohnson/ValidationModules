@@ -1041,6 +1041,31 @@ public static class ValidationDiagnostics
     );
 
     /// <summary>
+    /// A generic fragment called with a type argument its expansion cannot name: an anonymous
+    /// type, or a type that is private or protected in the type that declares it.
+    /// </summary>
+    /// <remarks>
+    /// Each expansion is a method of its own in the fragment's container, with every mention of a
+    /// type parameter written as the type it stands for. A type the container cannot name failed
+    /// as an error inside that generated file. The tail says why the type cannot be named and what
+    /// to pass instead.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor FragmentTypeArgumentNotNameable = Descriptor(
+        "VM3009",
+        "Fragment type argument cannot be named in generated code",
+        "'{0}' is called with {1} = '{2}', which its generated expansion cannot name. {3}",
+        DiagnosticSeverity.Error
+    );
+
+    /// <summary>VM3009's tail for an anonymous type.</summary>
+    public const string AnonymousTypeArgumentTail =
+        "An anonymous type has no name. Pass a value of a named type, such as a record, instead";
+
+    /// <summary>VM3009's tail for a type that is private or protected.</summary>
+    public static string InaccessibleTypeArgumentTail(string type) =>
+        $"'{type}' is not accessible outside the type that declares it. Make it internal";
+
+    /// <summary>
     /// The selector overload matrix used to make this unwritable; values cannot, because a
     /// non-nullable value type converts to its nullable form implicitly.
     /// </summary>

@@ -14,6 +14,7 @@ VM1505 | ValidationModules.Usage | Warning | A nested target from another assemb
 VM2010 | ValidationModules.Usage | Info | A class-level ValidationAttribute runs after the property rules pass and before IValidatableObject. Reported as Warning when its arguments cannot be rendered, and with an ignoring tail when ValidationModules_DataAnnotations is Ignore.
 VM2011 | ValidationModules.Usage | Error | ErrorMessageResourceName on a compiled DataAnnotations attribute is not a static string property the generated validator can read.
 VM3008 | ValidationModules.Usage | Error | A Pattern or Apply argument names no static method that generated code can call.
+VM3009 | ValidationModules.Usage | Error | A generic fragment is called with a type argument its generated expansion cannot name: an anonymous type, or a private or protected type.
 VM3106 | ValidationModules.Usage | Warning | A rules-class descent repeats [ValidateNested] on the same property; the rules-class descent is dropped.
 VM3108 | ValidationModules.Usage | Error | A value given to AllowedValues in a rules class is not a compile-time constant.
 VM3109 | ValidationModules.Usage | Warning | An allowed-values set lists no values, so it validates nothing.
