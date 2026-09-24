@@ -288,6 +288,62 @@ public class RulesClassDiagnosticsTests
         Assert.Contains("\"start_less_than_end\"", string.Concat(result.Sources.Values));
     }
 
+    /// <summary>
+    /// An Ensure over a property the subject inherits anchors to it, the same as one the subject
+    /// declares. The lookup used to see declared members only and reported VM3102.
+    /// </summary>
+    [Fact]
+    public void EnsureOverAnInheritedProperty_AnchorsToIt()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules;
+
+            namespace Sample;
+
+            public class Base { public int A { get; init; } }
+
+            public sealed class Derived : Base { public int B { get; init; } }
+
+            public sealed class DerivedRules : IValidationRulesFor<Derived> {
+                public static void Describe(ValidationRules<Derived> rules, Derived x) {
+                    rules.Ensure(x.A > 0);
+                }
+            }
+            """
+        );
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM3102");
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains("ctx.Report(\"a\", ", result.Sources["Sample.DerivedRules_Rules.g.cs"]);
+    }
+
+    [Fact]
+    public void EnsureOverAPropertyOfABaseInterface_AnchorsToIt()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules;
+
+            namespace Sample;
+
+            public interface IVersioned { int Version { get; } }
+
+            public interface IAudited : IVersioned { string? CreatedBy { get; } }
+
+            public sealed class AuditRules : IValidationRulesFor<IAudited> {
+                public static void Describe(ValidationRules<IAudited> rules, IAudited x) {
+                    rules.Ensure(x.Version > 0);
+                }
+            }
+            """
+        );
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM3102");
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains("ctx.Report(\"version\", ", result.Sources["Sample.AuditRules_Rules.g.cs"]);
+    }
+
     // VM3102 - an Ensure whose condition touches no property and names no field.
 
     [Fact]
