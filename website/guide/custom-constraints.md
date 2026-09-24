@@ -196,6 +196,7 @@ The `ValidationContext` records errors and tracks the current path:
 | `Push(segment)`, `PushIndex(segment, index)`, `PushKey(segment, key)` | Return a context one level deeper, for validating a child object. |
 | `Services` | The pass's `IServiceProvider`, when it has one. |
 | `HasErrors`, `ErrorCount`, `StopMode` | The state of the pass so far. |
+| `Mark()`, `HasBlockingErrorsSince(mark)` | `Mark()` returns a `ValidationMark` for the current point in the pass. `HasBlockingErrorsSince` then says whether an `Error` was reported after it. Warnings, and errors reported before the mark, do not count. Generated validators use this to decide whether to run `IValidatableObject.Validate`. |
 
 To validate a child object with another validator, push a context for it and pass that context by
 reference. The child's errors then carry the prefix:
