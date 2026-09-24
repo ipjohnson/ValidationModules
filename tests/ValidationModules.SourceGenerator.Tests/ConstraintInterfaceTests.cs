@@ -170,6 +170,43 @@ public class ConstraintInterfaceTests
     }
 
     [Fact]
+    public void InterfaceConstraint_ImmutableArrayMember_SkipsADefaultValue()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using System;
+            using System.Collections.Immutable;
+            using ValidationModules;
+
+            namespace Sample;
+
+            public sealed class NonEmptyAttribute : Attribute, IConstraintFor<ImmutableArray<string>> {
+                public bool IsValid(ImmutableArray<string> value) => value.Length > 0;
+
+                public ValidationFlow Validate(ref ValidationContext context, ImmutableArray<string> value, string field) =>
+                    IsValid(value) ? ValidationFlow.Continue : context.ReportCustom(field);
+            }
+
+            public record Product {
+                [NonEmpty]
+                public ImmutableArray<string> Tags { get; init; }
+            }
+            """
+        );
+
+        var emitted = result.Sources["Sample.ProductValidator.g.cs"];
+        var fastPath = emitted.Substring(emitted.IndexOf("public bool IsValid"));
+
+        // A default ImmutableArray is missing, as null is, so it never reaches the author's check.
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains(
+            "!value.Tags.IsDefault && TagsConstraint0.Validate(ref ctx, value.Tags, \"tags\").ShouldStop",
+            emitted
+        );
+        Assert.Contains("!value.Tags.IsDefault && !TagsConstraint0.IsValid(value.Tags)", fastPath);
+    }
+
+    [Fact]
     public void InterfaceConstraint_ParticipatesInTheBooleanFastPath()
     {
         var result = GeneratorHarness.Run(

@@ -106,8 +106,9 @@ rules.Require(x.Guest?.Trim(), field: "guest");
 | `Each(list)` | Runs the rules that follow for every element. | from those rules |
 | `Ensure(condition)` | Any `bool` expression. | derived, see below |
 
-Every rule except `Require`, `RequireAllowingEmpty` and `Ensure` passes a `null` value. The
-[rules API reference](../reference/rules-api) lists each method's overloads.
+Every rule except `Require`, `RequireAllowingEmpty` and `Ensure` passes a `null` value, and a
+default `ImmutableArray<T>`. The [rules API reference](../reference/rules-api) lists each method's
+overloads.
 
 The range rules accept any value type that implements `IComparable<T>` and `IFormattable`, such as
 `int`, `decimal`, `DateOnly` or `TimeSpan`, and the nullable form of each:

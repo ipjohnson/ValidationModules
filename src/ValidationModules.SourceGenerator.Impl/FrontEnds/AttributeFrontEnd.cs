@@ -976,7 +976,8 @@ public sealed class AttributeFrontEnd
             new EquatableArray<SubtypeModel>(subtypes),
             DisplayNameFor(property),
             nestedWalkInRegion,
-            DisplayLabelOf(property)
+            DisplayLabelOf(property),
+            TypeFacts.IsMissingWhenDefault(type)
         );
     }
 

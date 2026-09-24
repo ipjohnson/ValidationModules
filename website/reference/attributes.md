@@ -25,8 +25,9 @@ static method that takes the model and returns `bool`. A constraint cannot set b
 `CustomConstraintAttribute` or an attribute that implements `IConstraintFor<T>`, as in
 `myapp.weight_out_of_range`. Built-in codes are never prefixed.
 
-Every constraint except `[Required]` passes a `null` value. When `[Required]` fails, the other
-constraints on the property are skipped.
+Every constraint except `[Required]` passes a `null` value. It also passes a default
+`ImmutableArray<T>`, which has no array behind it. When `[Required]` fails, the other constraints
+on the property are skipped.
 
 ## Presence
 
@@ -375,7 +376,8 @@ public Polymorphism Polymorphism { get; }
 
 `[ValidateNested]` runs the validators for the property's type on its value, or on every element of
 a collection, or on every value of a dictionary. Errors are reported under the property's path, as
-in `shipTo.postcode`, `lines[1].sku` or `addresses[work].postcode`. A `null` value is skipped.
+in `shipTo.postcode`, `lines[1].sku` or `addresses[work].postcode`. A `null` value is skipped, and
+so is a default `ImmutableArray<T>`.
 `When` and `Unless` decide whether the descent happens.
 
 `Polymorphism` chooses the validators when the value can be of a derived type:

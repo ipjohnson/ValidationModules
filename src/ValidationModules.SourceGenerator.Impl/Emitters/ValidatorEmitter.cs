@@ -1133,10 +1133,10 @@ public sealed class ValidatorEmitter
 
                 if (
                     constraint.Kind == ConstraintKind.CustomInstance
-                    && (property.IsReferenceType || property.IsNullableValueType)
+                    && PresentTest(access, property) is { } present
                 )
                 {
-                    guards.Add($"{access} is not null");
+                    guards.Add(present);
                 }
 
                 if (failFast)
@@ -1473,8 +1473,9 @@ public sealed class ValidatorEmitter
 
         var items = $"items{property.PropertyName}";
         var index = $"i{property.PropertyName}";
+        var bound = $"{access} is {PresentPattern(property.MissingWhenDefault)} {items}";
 
-        var walk = builder.If(Enter(conditions, $"{access} is {{ }} {items}"));
+        var walk = builder.If(Enter(conditions, bound));
 
         EmitElementWalk(
             walk,
@@ -1493,7 +1494,7 @@ public sealed class ValidatorEmitter
             }
         );
 
-        var check2 = fast.If(Enter(fastConditions, $"{access} is {{ }} {items}"));
+        var check2 = fast.If(Enter(fastConditions, bound));
 
         EmitElementWalk(
             check2,
@@ -1630,10 +1631,9 @@ public sealed class ValidatorEmitter
                 ? $"(({constraint.InstanceInterface}){instance})"
                 : instance;
 
-            var nullGuard =
-                property.IsReferenceType || property.IsNullableValueType
-                    ? $"{access} is not null && "
-                    : string.Empty;
+            var nullGuard = PresentTest(access, property) is { } present
+                ? $"{present} && "
+                : string.Empty;
 
             return (
                 $"{validateTarget}.Validate(ref ctx, {unwrapped}, {fieldLiteral})",
@@ -1716,6 +1716,23 @@ public sealed class ValidatorEmitter
     }
 
     /// <summary>
+    /// The test that a value is there to check, or null for a type that is never missing. A default
+    /// <c>ImmutableArray&lt;T&gt;</c> is missing as null is, because reading its <c>Length</c>, its
+    /// enumerator or its <c>IReadOnlyList&lt;T&gt;</c> view throws.
+    /// </summary>
+    internal static string? PresentTest(string access, ValidatedPropertyModel property) =>
+        property.IsReferenceType || property.IsNullableValueType ? $"{access} is not null"
+        : property.MissingWhenDefault ? $"!{access}.IsDefault"
+        : null;
+
+    /// <summary>
+    /// The pattern that matches a collection there to walk, for the reason <see cref="PresentTest"/>
+    /// gives.
+    /// </summary>
+    internal static string PresentPattern(bool missingWhenDefault) =>
+        missingWhenDefault ? "{ IsDefault: false }" : "{ }";
+
+    /// <summary>
     /// The failing test for one constraint against one access expression. Internal because the
     /// region transcriber expands the same vocabulary against the author's own value expressions -
     /// one implementation of every check, whichever surface declared it.
@@ -1729,10 +1746,7 @@ public sealed class ValidatorEmitter
     )
     {
         var value = property.IsNullableValueType ? $"{access}.Value" : access;
-        var guard =
-            property.IsReferenceType || property.IsNullableValueType
-                ? $"{access} is not null && "
-                : string.Empty;
+        var guard = PresentTest(access, property) is { } present ? $"{present} && " : string.Empty;
 
         switch (constraint.Kind)
         {

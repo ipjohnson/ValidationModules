@@ -2705,7 +2705,9 @@ public sealed class RulesFrontEnd
                     default
                 );
 
-                _writer.Line(_depth, $"if ({guard}{access} is {{ }} {items}) {{");
+                var present = ValidatorEmitter.PresentPattern(collection.MissingWhenDefault);
+
+                _writer.Line(_depth, $"if ({guard}{access} is {present} {items}) {{");
                 _writer.Line(
                     _depth + 1,
                     $"for (var {index} = 0; {index} < {items}.{collection.CountAccessor}; {index}++) {{"
@@ -2794,8 +2796,11 @@ public sealed class RulesFrontEnd
                 {
                     var items = $"items{n}";
                     var index = $"i{n}";
+                    var present = ValidatorEmitter.PresentPattern(
+                        TypeFacts.IsMissingWhenDefault(property.Type)
+                    );
 
-                    _writer.Line(_depth, $"if ({guard}{access} is {{ }} {items}) {{");
+                    _writer.Line(_depth, $"if ({guard}{access} is {present} {items}) {{");
                     _writer.Line(
                         _depth + 1,
                         $"for (var {index} = 0; {index} < {items}.{dependency.CountAccessor}; {index}++) {{"
@@ -2870,7 +2875,8 @@ public sealed class RulesFrontEnd
                     default,
                     Label: labelled && path is { Count: > 0 }
                         ? _writer.LabelOf(path[path.Count - 1])
-                        : null
+                        : null,
+                    MissingWhenDefault: type is not null && TypeFacts.IsMissingWhenDefault(type)
                 );
             }
 

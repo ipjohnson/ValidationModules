@@ -39,8 +39,9 @@ namespace ValidationModules;
 /// <para>
 /// <b>Null never arrives.</b> The generated guard skips the check on a null member, as it does for
 /// every constraint except <c>[Required]</c>, and a nullable value type is unwrapped - a
-/// <c>decimal?</c> member matches <c>IConstraintFor&lt;decimal&gt;</c>. Declare <c>[Required]</c>
-/// beside the attribute when absence should fail.
+/// <c>decimal?</c> member matches <c>IConstraintFor&lt;decimal&gt;</c>. A default
+/// <c>ImmutableArray&lt;T&gt;</c> is skipped the same way. Declare <c>[Required]</c> beside the
+/// attribute when absence should fail.
 /// </para>
 /// <para>
 /// <b>The base knobs work, split between the two engines.</b> An attribute that also derives from
