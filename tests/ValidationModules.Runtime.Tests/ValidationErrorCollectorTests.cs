@@ -45,6 +45,27 @@ public class ValidationErrorCollectorTests
     }
 
     [Fact]
+    public void HasBlockingErrorsSince_AMarkFromBeforeReset_CountsEverythingRecordedSince()
+    {
+        // The node the mark names left the chain with the reset, so the walk reaches the end, and
+        // every failure it passes was recorded after the mark was taken.
+        var collector = new ValidationErrorCollector();
+        var context = new ValidationContext(collector);
+
+        context.Report("name", "required", "x");
+
+        var mark = context.Mark();
+
+        collector.Reset();
+
+        Assert.False(context.HasBlockingErrorsSince(mark));
+
+        context.Report("name", "required", "x");
+
+        Assert.True(context.HasBlockingErrorsSince(mark));
+    }
+
+    [Fact]
     public void ToResult_SnapshotsRatherThanWrapping()
     {
         // A pooled collector resets under a result the caller is still holding. If ToResult wrapped
