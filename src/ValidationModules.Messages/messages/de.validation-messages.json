@@ -34,7 +34,6 @@
         "credit_card": "{field} ist keine gültige Kartennummer.",
         "base64": "{field} ist keine gültige Base64-Zeichenfolge.",
         "file_extension": "{field} muss eine dieser Dateiendungen haben: {0}.",
-        "custom": "{field} ist ungültig.",
-        "date_order": "das Enddatum darf nicht vor dem Startdatum liegen."
+        "custom": "{field} ist ungültig."
     }
 }

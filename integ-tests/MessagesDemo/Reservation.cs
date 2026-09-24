@@ -6,7 +6,7 @@ namespace MessagesDemo;
 /// <summary>
 /// A model chosen to exercise one shape from each key family the packs translate: a required
 /// string with length bounds, a two-bounded range, a pattern, an element count, and a cross-field
-/// rule carrying the user code the packs also translate.
+/// rule carrying a user code the project's own packs translate.
 /// </summary>
 public sealed record Reservation
 {
@@ -32,8 +32,9 @@ public sealed class ReservationRules : IValidationRulesFor<Reservation>
 {
     public static void Describe(ValidationRules<Reservation> rules, Reservation x)
     {
-        // A user code: unknown to the shape inventory on purpose, translated by the packs all the
-        // same - the map is keyed by string, and nothing about "date_order" is special.
+        // A user code, unknown to the shape inventory on purpose. The project's own files in
+        // Codes/ translate it, layered over the shipped packs: the map is keyed by string, and
+        // nothing about "date_order" is special.
         rules.Ensure(x.End >= x.Start, code: "date_order", field: "end");
     }
 }
