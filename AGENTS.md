@@ -30,17 +30,18 @@ in mind. Most of it maps across. Two things do not, and those two are where agen
 | `class V : AbstractValidator<T>` plus constructor body | `class V : IValidationRulesFor<T>` plus `static Describe(ValidationRules<T> rules, T x)` | Interface, not base class. The body is read at build time and never executed. |
 | `RuleFor(x => x.Name)` | `rules.Require(x.Name)` | Values, not selectors. The generator resolves `x.Name` as a symbol. |
 | `Expression<Func<T,TValue>>` | Plain values on a symbolic `x` | No expression tree and no delegate. This is what makes it AOT-safe and trimmable. |
-| `.NotNull()`, `.NotEmpty()` | `.Require()`, `.RequireAllowingEmpty()` | Name only |
+| `.NotNull()` | `.RequireAllowingEmpty()` on a string, `.Require()` on anything else | On a string, `.Require()` also rejects empty and whitespace. |
+| `.NotEmpty()` | `.Require()` | Name only on a string, where both reject `null`, empty and whitespace. On a collection, `.Require()` rejects only `null`. |
 | `.Length(1,100)` | `.Length(1,100)` | Same |
 | `.InclusiveBetween(0,30)` | `.Range(0,30)` | Name only |
 | `.GreaterThanOrEqualTo(x)` / `.LessThanOrEqualTo(x)` | `.RangeAtLeast(x)` / `.RangeAtMost(x)` | Name only |
-| `.Matches(regex)` | `.Pattern(() => MyRegex())` | Takes a thunk. Pair it with `[GeneratedRegex]`. |
+| `.Matches(regex)` | `.Pattern(MyRegex)` | Takes a method group. Pair it with an `internal` or `public` `[GeneratedRegex]` method. |
 | `.SetValidator(child)` | `rules.Nested(x.Child)` or `[ValidateNested]` | Declarative. There is no child validator to wire up. |
 | `RuleForEach(x => x.Items)` | `rules.Each(x.Items)` | Name only |
 | `.When(p)` / `.Unless(p)` | `if (p) { … }` / `if (!p) { … }` | Control flow is plain C#, evaluated where written. |
-| `.WithSeverity(...)` | `severity:` parameter | Name only |
+| `.WithSeverity(...)` | `severity:` on `Ensure` and `Report` | Capability difference. Attributes and the other rule methods always report `ValidationSeverity.Error`. |
 | `.Must((model, value) => …)` | `Ensure(bool)` | Semantic difference. See below. |
-| `.WithMessage("{PropertyName} …")` | `message:` parameter, no interpolation | Semantic difference. See below. |
+| `.WithMessage("{PropertyName} …")` | `message:` on `Ensure`, `Message =` on an attribute | Semantic difference. See below. The other rule methods take no message. |
 | `IValidator<T>` | `IValidatorFor<T>` | `IValidator<T>` is FluentValidation's name. Never introduce it here. |
 | `RuleSet` | Not implemented | Deferred past 1.0.0. See Non-goals. |
 
@@ -56,10 +57,16 @@ referring to a `private` member of the rules class produces `VM3004`. Write the 
 If a rule genuinely needs a service or captured state, write a hand-written `IValidatorFor<T>` and
 compose it through dependency injection.
 
-### Messages carry no interpolated values
+### Build on the code, not the message
 
-`ValidationError` is `Field`, `Code`, `Message`, `Severity`. Build UI and localization off the
-stable `Code`. Do not parse the message.
+`ValidationError` carries `Field`, `Code`, `Message`, `Severity`, `Value`, `MessageInfo` and
+`MessageIsAuthored`. Build UI and localization off the stable `Code`, and read a message's
+arguments from `MessageInfo`. Do not parse the message.
+
+A built-in message is rendered from `MessageInfo` and includes its arguments, as in "guests must be
+between 1 and 8." An authored message, set with `Message =` on an attribute or `message:` on
+`Ensure`, is literal text that language packs leave unchanged. On an attribute, `{field}` is its
+only placeholder.
 
 ### The baseline is DataAnnotations
 
@@ -88,13 +95,21 @@ These are easy to violate by habit.
 
 - No `MakeGenericType`, `Activator.CreateInstance`, `Expression.Compile`, assembly scanning, or
   `Type.GetMethod(...).Invoke`. Anywhere.
-- Emitted C# is built with CSharpAuthor, using `CSharpFileDefinition` and `OutputContext`. Never
-  `StringBuilder`, never string interpolation, never a raw string literal holding a class body. Both
-  generator projects already reference the package, and shared settings live in
-  `Emitters/EmitterOutput.cs`. All three emitters comply. Do not add a fourth that does not.
+- Emitted C# is built with CSharpAuthor, using `CSharpFileDefinition` and `OutputContext`, so
+  declarations, braces and indentation follow `GeneratedCodeStyle`. Never build them with
+  `StringBuilder`, and never hold a class body in a raw string literal. Interpolation is for the
+  text of one expression handed to CSharpAuthor, such as the condition in
+  `body.If($"{call}.ShouldStop")`. Both generator projects already reference the package, and shared
+  settings live in `Emitters/EmitterOutput.cs`. The four emitters are `ValidatorEmitter`,
+  `RegistrationEmitter`, `RegionEmitter` and `LanguagePackEmitter`. One gap remains:
+  `RulesFrontEnd` writes a transcribed region's statements as lines of text with their own braces
+  and indentation, and `RegionEmitter` emits those lines as they are. Do not copy that pattern.
   Runtime string building such as `FieldNamer`, `RuleText`, and `ValidationContext` is exempt,
   because it produces values rather than source code.
-- Use `[GeneratedRegex]`. Never `new Regex(..., RegexOptions.Compiled)`.
+- Use `[GeneratedRegex]`. Never `new Regex(..., RegexOptions.Compiled)`. An inline pattern, from
+  `[Pattern("...")]` or DataAnnotations `[RegularExpression]`, is the one case where generated code
+  constructs a `Regex`: once, in a static field. `RegexOptions.Compiled` on an inline `[Pattern]` is
+  removed and reported as `VM1302`.
 - Nothing expensive is constructed per validation call. No graph building, no regex construction, no
   allocation on the hot path. Rules-class computation runs per call by design.
 - The service interface is `IValidatorFor<T>`.
