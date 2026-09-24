@@ -347,8 +347,9 @@ collection.
 
 **Severity:** Info
 
-The model implements `IValidatableObject`. Its `Validate` method runs after every other rule,
-and only when nothing has been reported in the pass so far, warnings included.
+The model implements `IValidatableObject`. Its `Validate` method runs after every other rule on
+the type, and only when those rules reported no error. Warnings do not stop it, and neither do
+errors on other objects in the same pass.
 
 ### VM2007
 
@@ -371,6 +372,22 @@ static, take the value and optionally a `ValidationContext`, and return a DataAn
 A custom `ValidationAttribute` sets `ErrorMessageResourceType`. DataAnnotations reads the
 resource with reflection, which trimming can break. Set `ErrorMessage`, or keep the resource type
 from being trimmed.
+
+### VM2010
+
+**Severity:** Info
+
+A `ValidationAttribute` is on the class, so it validates the whole object. It runs after the
+property rules, and only when they reported no error, and before `IValidatableObject.Validate`.
+That is the order `Validator.TryValidateObject` uses. A `[CustomValidation]` on the class calls its
+method directly with the object as the value. Any other attribute is created once and called.
+
+The attribute is reported where it is declared. One on a base class or an interface also applies
+to the classes that derive from it or implement it.
+
+It is a warning, and the attribute is not enforced, when the attribute's arguments cannot be
+written into generated code. Move the rule into `IValidatableObject.Validate`, or into an
+[`Ensure`](../guide/rule-classes#ensure) in a rules class.
 
 ## Rules classes
 

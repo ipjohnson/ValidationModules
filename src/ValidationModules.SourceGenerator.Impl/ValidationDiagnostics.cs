@@ -744,6 +744,43 @@ public static class ValidationDiagnostics
     );
 
     /// <summary>
+    /// A <c>ValidationAttribute</c> on the class rather than on a property: a whole-object rule,
+    /// which <c>Validator.TryValidateObject</c> runs once the property attributes pass and before
+    /// <c>IValidatableObject.Validate</c>.
+    /// </summary>
+    /// <remarks>
+    /// The VM2006 arrangement, one descriptor with the outcome in the tail. Info at the default,
+    /// because the rule is enforced in DataAnnotations' order and there is nothing to fix; Info with
+    /// the ignoring tail under <c>ValidationModules_DataAnnotations=Ignore</c>; and Warning with the
+    /// not-enforced tail for an attribute whose arguments cannot be rendered. Reported where the
+    /// attribute is declared, so an attribute a base type or an interface carries is reported
+    /// there rather than once per type that inherits it.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor ClassLevelValidationAttribute = Descriptor(
+        "VM2010",
+        "Class-level ValidationAttribute runs after the property rules pass",
+        "'{0}' on '{1}' validates the whole object. {2}",
+        DiagnosticSeverity.Info
+    );
+
+    /// <summary>VM2010's tail when the attribute is constructed and invoked.</summary>
+    public const string ClassLevelInvokeTail =
+        "The generated validator constructs it once and calls it after every property rule on the "
+        + "type has passed, and before IValidatableObject, as Validator.TryValidateObject sequences "
+        + "it; the type keeps no boolean fast path";
+
+    /// <summary>VM2010's tail for a class-level <c>[CustomValidation]</c>, which is called directly.</summary>
+    public const string ClassLevelMethodTail =
+        "The generated validator calls its method directly after every property rule on the type "
+        + "has passed, and before IValidatableObject, as Validator.TryValidateObject sequences it; "
+        + "the type keeps no boolean fast path";
+
+    /// <summary>VM2010's tail when the attribute's arguments cannot be rendered.</summary>
+    public const string ClassLevelEnforceTail =
+        "It is not enforced, because its arguments cannot be written into generated code; move the "
+        + "rule into IValidatableObject.Validate, or into an Ensure in a rules class";
+
+    /// <summary>
     /// A Describe body is transcribed, and almost everything transcribes; what remains rejected is
     /// the short blacklist - exotica, mutation of the subject, misplaced islands. Never silently
     /// dropped: a statement the reader cannot carry has to break the build, because the generated

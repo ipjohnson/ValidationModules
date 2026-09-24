@@ -113,8 +113,8 @@ errors](./errors) covers these types.
 attributes, the generated `IsValid` repeats the checks and returns `false` at the first failure,
 without building paths, messages or error records. Some types run a full `Validate` pass instead and
 discard the errors: a type with a rules class, a type that implements `IValidatableObject`, a type
-with a `Polymorphism.Runtime` property, and a type that contains itself directly or through other
-types.
+with a `ValidationAttribute` on the class, a type with a `Polymorphism.Runtime` property, and a type
+that contains itself directly or through other types.
 
 ## Performance
 

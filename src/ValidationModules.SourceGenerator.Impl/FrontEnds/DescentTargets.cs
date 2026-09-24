@@ -137,10 +137,10 @@ public static class DescentTargets
     /// </summary>
     /// <remarks>
     /// Deliberately the same things <see cref="AttributeFrontEnd.Build"/> itself treats as asking:
-    /// a constraint on a member, <c>[GenerateValidator]</c>, or a rules class, plus
-    /// <c>[ValidateNested]</c>, which produces a validator that descends even with no constraints
-    /// of its own. Any narrower test would drop a descent into a type that does get a validator,
-    /// and any wider one would keep a descent into a type that does not.
+    /// a constraint on a member, a class-level <c>ValidationAttribute</c>, <c>[GenerateValidator]</c>,
+    /// or a rules class, plus <c>[ValidateNested]</c>, which produces a validator that descends
+    /// even with no constraints of its own. Any narrower test would drop a descent into a type that
+    /// does get a validator, and any wider one would keep a descent into a type that does not.
     /// </remarks>
     public static bool ProducesAValidator(
         INamedTypeSymbol type,
@@ -150,6 +150,25 @@ public static class DescentTargets
     )
     {
         if (HasGenerateValidator(type) || hasRulesClass?.Invoke(type) == true)
+        {
+            return true;
+        }
+
+        // A class-level ValidationAttribute is a rule of the type's own, found where
+        // ReadObjectRules looks for it, so Build gives the type a validator on its strength.
+        if (
+            compileDataAnnotations
+            && AttributeFrontEnd
+                .ObjectRuleSources(type)
+                .Any(declaring =>
+                    declaring
+                        .GetAttributes()
+                        .Any(attribute =>
+                            attribute.AttributeClass is { } attributeClass
+                            && AttributeFrontEnd.DerivesFromValidationAttribute(attributeClass)
+                        )
+                )
+        )
         {
             return true;
         }
