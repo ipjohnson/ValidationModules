@@ -223,7 +223,8 @@ parsed at run time, which adds the regular expression interpreter to a Native AO
 the expression with `[GeneratedRegex]` and point at it with `[Pattern(typeof(T), nameof(T.Member))]`,
 or set `ValidationModules_PatternPolicy` to `Allow`. For `[RegularExpression]`, the message prints
 the expression anchored and made optional, because that attribute matches the whole value and
-passes an empty string. See [Patterns](../guide/patterns).
+passes an empty string. It also prints the attribute's match timeout, which is 2000 milliseconds
+unless `MatchTimeoutInMilliseconds` sets another. See [Patterns](../guide/patterns).
 
 ### VM1302
 
@@ -243,6 +244,18 @@ referenced regex was built with its own options and timeout, so the setting has 
 it and declare it on the `[GeneratedRegex]` instead. The message prints that declaration, merged
 into the member's own `[GeneratedRegex]` when it has one. `RegexOptions.Compiled` is reported here
 rather than as `VM1302`, and only needs removing.
+
+### VM1304
+
+**Severity:** Warning
+
+An inline `[Pattern]` sets `MatchTimeoutMilliseconds`, or a DataAnnotations `[RegularExpression]`
+sets `MatchTimeoutInMilliseconds`, to a value the `Regex` constructor rejects. That is zero, a
+negative number other than `-1`, or `int.MaxValue`. The generator ignores the value, so the
+validator does not throw when it loads. The `[Pattern]` then has no timeout, and the
+`[RegularExpression]` keeps the DataAnnotations default of 2000 milliseconds. Set a value from 1 to
+2147483646 milliseconds. For no timeout, remove `MatchTimeoutMilliseconds` from `[Pattern]`, or set
+`MatchTimeoutInMilliseconds` to `-1` on `[RegularExpression]`.
 
 ### VM1401
 

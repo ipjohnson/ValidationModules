@@ -90,12 +90,13 @@ public sealed class PatternAttribute : ValidationConstraintAttribute
     public RegexOptions Options { get; init; }
 
     /// <summary>
-    /// Match timeout for the inline form, passed to the <see cref="Regex"/> constructor. Zero means
-    /// no timeout. Worth setting for patterns that can backtrack catastrophically on hostile input.
-    /// A match that runs past the timeout fails the pattern and reports code <c>pattern</c>,
-    /// rather than throwing <see cref="RegexMatchTimeoutException"/> out of <c>Validate</c>. The
-    /// reference form uses the timeout on the consumer's <c>[GeneratedRegex]</c> and does not read
-    /// this, so setting it there reports VM1303.
+    /// Match timeout for the inline form, in milliseconds, passed to the <see cref="Regex"/>
+    /// constructor. Unset means no timeout, and so does -1. A value the constructor rejects, such
+    /// as zero, is ignored and reported by VM1304. Worth setting for patterns that can backtrack
+    /// catastrophically on hostile input. A match that runs past the timeout fails the pattern and
+    /// reports code <c>pattern</c>, rather than throwing <see cref="RegexMatchTimeoutException"/>
+    /// out of <c>Validate</c>. The reference form uses the timeout on the consumer's
+    /// <c>[GeneratedRegex]</c> and does not read this, so setting it there reports VM1303.
     /// </summary>
     public int MatchTimeoutMilliseconds { get; init; }
 }

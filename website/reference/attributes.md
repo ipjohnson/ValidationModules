@@ -103,8 +103,9 @@ See [Patterns](../guide/patterns).
 
 Diagnostics: `VM1001` on a property that is not a `string`, `VM1106` when the expression does not
 parse, `VM1107` when the referenced member cannot be used, `VM1301` for an inline expression under
-the pattern policy, `VM1302` when the first form's `Options` includes `RegexOptions.Compiled`, and
-`VM1303` when the second form sets `Options` or `MatchTimeoutMilliseconds`.
+the pattern policy, `VM1302` when the first form's `Options` includes `RegexOptions.Compiled`,
+`VM1303` when the second form sets `Options` or `MatchTimeoutMilliseconds`, and `VM1304` when the
+first form's `MatchTimeoutMilliseconds` is a value the `Regex` constructor rejects.
 
 ### [EmailAddress]
 

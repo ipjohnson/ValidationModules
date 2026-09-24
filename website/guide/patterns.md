@@ -104,11 +104,17 @@ that does not match would. `Validate` and `IsValid` do not throw, so an ASP.NET 
 answers with a validation response rather than `500`. The same applies to a timeout declared on a
 `[GeneratedRegex]`, or set for the whole process with the `REGEX_DEFAULT_MATCH_TIMEOUT` setting.
 
+The timeout is from 1 to 2147483646 milliseconds. Leave it unset, or set it to `-1`, for no timeout.
+Any other value is one the `Regex` constructor rejects, so the generator ignores it and reports
+`VM1304`. The DataAnnotations `[RegularExpression]` compiles with its own
+`MatchTimeoutInMilliseconds`, which is 2000 milliseconds unless it is set. At `-1` it has no
+timeout, as in DataAnnotations.
+
 `RegexOptions.Compiled` is removed from an inline pattern and reported as `VM1302`. Compiling the
 expression would emit code at run time, so the inline form is always interpreted. Use the
 referenced form for a matcher compiled at build time. In a Native AOT binary, an inline pattern
 with `Options` or a timeout also keeps code that an inline pattern without them lets the trimmer
-remove.
+remove. A `[RegularExpression]` has a timeout unless `MatchTimeoutInMilliseconds` is `-1`.
 
 ## In a rules class
 

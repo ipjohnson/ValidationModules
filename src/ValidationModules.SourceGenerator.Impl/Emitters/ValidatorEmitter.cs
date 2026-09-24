@@ -399,8 +399,9 @@ public sealed class ValidatorEmitter
             // and passing the enum defeats that. Measured at 713 KB on a published AOT binary -
             // more than the regex engine itself costs.
             // A timeout is the attribute's only ReDoS mitigation, and it needs the three-argument
-            // constructor - so it has to pass options too, giving up the trim above. That is the
-            // trade the author asked for by setting it, and it is paid only where it was set.
+            // constructor - so it has to pass options too, giving up the trim above. It is paid
+            // only where a timeout applies: where [Pattern] sets one, and on a [RegularExpression]
+            // unless it sets -1, because DataAnnotations applies 2000 milliseconds by default.
             var arguments = new List<object> { QuoteString(expression) };
 
             if (constraint.MatchTimeoutMilliseconds > 0)

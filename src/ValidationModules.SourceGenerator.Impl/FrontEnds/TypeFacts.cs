@@ -283,4 +283,11 @@ public static class TypeFacts
             return false;
         }
     }
+
+    /// <summary>
+    /// Whether the <c>Regex</c> constructor accepts a match timeout of this many milliseconds: -1,
+    /// which is <c>Regex.InfiniteMatchTimeout</c>, or 1 to <c>int.MaxValue - 1</c>.
+    /// </summary>
+    public static bool IsValidMatchTimeout(int milliseconds) =>
+        milliseconds is -1 or (> 0 and < int.MaxValue);
 }

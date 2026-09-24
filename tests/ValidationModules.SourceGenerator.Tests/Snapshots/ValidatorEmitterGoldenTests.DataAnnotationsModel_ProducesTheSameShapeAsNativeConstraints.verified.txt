@@ -48,7 +48,7 @@ namespace Sample;
 
 public sealed partial class CustomerValidator : global::ValidationModules.IValidatorFor<global::Sample.Customer>
 {
-    private static readonly global::System.Text.RegularExpressions.Regex SkuPattern0 = new global::System.Text.RegularExpressions.Regex("\\A(?:^[A-Z]{3}$)\\z");
+    private static readonly global::System.Text.RegularExpressions.Regex SkuPattern0 = new global::System.Text.RegularExpressions.Regex("\\A(?:^[A-Z]{3}$)\\z", (global::System.Text.RegularExpressions.RegexOptions)0, global::System.TimeSpan.FromMilliseconds(2000));
     private static readonly global::ValidationModules.ValidationMessageInfo _message0 = new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.StringLengthBetween, 1, 100);
     private static readonly global::ValidationModules.ValidationMessageInfo _message1 = new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.RangeBetween, 0, 120);
     private static readonly global::ValidationModules.ValidationMessageInfo _message2 = new global::ValidationModules.ValidationMessageInfo(global::ValidationModules.ValidationMessageTemplates.ItemCountAtMost, 5);
