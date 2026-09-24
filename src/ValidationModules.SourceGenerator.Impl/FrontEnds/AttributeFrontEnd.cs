@@ -2056,15 +2056,14 @@ public sealed class AttributeFrontEnd
 
             if (problem is not null)
             {
-                _diagnostics.Add(
-                    Diagnostic.Create(
-                        ValidationDiagnostics.RegexMemberUnusable,
-                        Location(owner),
-                        provider.ToDisplayString(),
-                        memberName,
-                        problem,
-                        owner.Name
-                    )
+                ReportUnemittablePattern(
+                    ValidationDiagnostics.RegexMemberUnusable.DefaultSeverity,
+                    ValidationDiagnostics.RegexMemberUnusable,
+                    owner,
+                    provider.ToDisplayString(),
+                    memberName,
+                    problem,
+                    owner.Name
                 );
 
                 return null;
@@ -2123,19 +2122,43 @@ public sealed class AttributeFrontEnd
                 ? DiagnosticSeverity.Error
                 : DiagnosticSeverity.Warning;
 
-        _diagnostics.Add(
-            Diagnostic.Create(
-                ValidationDiagnostics.InlinePatternUnderAot,
-                Location(owner),
-                severity,
-                additionalLocations: null,
-                properties: null,
-                owner.Name,
-                fix
-            )
+        ReportUnemittablePattern(
+            severity,
+            ValidationDiagnostics.InlinePatternUnderAot,
+            owner,
+            owner.Name,
+            fix
         );
 
         return _patternPolicy == PatternPolicy.Error ? null : constraint;
+    }
+
+    /// <summary>
+    /// Reports VM1107 or VM1301, through the quiet gate for an inherited declaration from this
+    /// compilation, which is reported where it is declared.
+    /// </summary>
+    /// <remarks>
+    /// A declaration from a referenced assembly is reported here, because nothing else in this
+    /// compilation reports it. Its own assembly may have accepted it: its policy may allow the
+    /// inline form, and a member it declares internal is visible there and not here. VM1107
+    /// drops the check, and VM1301 drops it under Error, so a quiet read would drop it without a
+    /// word.
+    /// </remarks>
+    private void ReportUnemittablePattern(
+        DiagnosticSeverity severity,
+        DiagnosticDescriptor descriptor,
+        ISymbol owner,
+        params object?[] args
+    )
+    {
+        var wasQuiet = _quiet;
+
+        _quiet &= SymbolEqualityComparer.Default.Equals(
+            owner.ContainingAssembly,
+            _compilation.Assembly
+        );
+        ReportAs(severity, descriptor, owner, args);
+        _quiet = wasQuiet;
     }
 
     /// <summary>

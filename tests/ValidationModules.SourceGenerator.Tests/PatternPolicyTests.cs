@@ -486,6 +486,153 @@ public class PatternPolicyTests
         );
     }
 
+    // A pattern on a base property is reported where it is declared, not once per derived type.
+
+    private static string SpanText(Diagnostic diagnostic) =>
+        diagnostic
+            .Location.SourceTree!.GetText(TestContext.Current.CancellationToken)
+            .ToString(diagnostic.Location.SourceSpan);
+
+    [Fact]
+    public void InlinePattern_OnABaseProperty_IsReportedOnceWhereItIsDeclared()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public class Base { [Pattern("^[a-z]+$")] public string? Code { get; init; } }
+            public class A : Base { [Required] public string? X { get; init; } }
+            public class B : Base { [Required] public string? Y { get; init; } }
+            """,
+            ("ValidationModules_PatternPolicy", "Warn")
+        );
+
+        Assert.Equal("Code", SpanText(Assert.Single(result.Diagnostics, d => d.Id == "VM1301")));
+
+        // Warn keeps the constraint in the validators that read it quietly.
+        Assert.Contains(
+            "new global::System.Text.RegularExpressions.Regex(",
+            result.Sources["Sample.AValidator.g.cs"]
+        );
+        Assert.Contains(
+            "new global::System.Text.RegularExpressions.Regex(",
+            result.Sources["Sample.BValidator.g.cs"]
+        );
+    }
+
+    [Fact]
+    public void InlinePattern_OnAHiddenBaseProperty_IsReportedOnceWhereItIsDeclared()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public class Base { [Pattern("^[a-z]+$")] public string? Code { get; init; } }
+            public class A : Base { public new string? Code { get; init; } }
+            """,
+            ("ValidationModules_PatternPolicy", "Warn")
+        );
+
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1301");
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1009");
+    }
+
+    /// <summary>
+    /// A base from a referenced assembly is the exception. Its own build may have allowed the inline
+    /// form, and nothing else in this compilation reports it. Under Error its check is dropped, so
+    /// staying quiet would drop it without a word.
+    /// </summary>
+    [Fact]
+    public void InlinePattern_OnABaseFromAReferencedAssembly_IsStillReported()
+    {
+        var result = GeneratorHarness.RunWithReference(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Shared;
+
+            public class Base { [Pattern("^[a-z]+$")] public string? Code { get; init; } }
+            """,
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public class A : Shared.Base { [Required] public string? X { get; init; } }
+            """,
+            buildProperties: ("PublishAot", "true")
+        );
+
+        Assert.Equal(
+            DiagnosticSeverity.Error,
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1301").Severity
+        );
+    }
+
+    /// <summary>
+    /// The same exception for VM1107. An internal regex member is usable in its own assembly and is
+    /// not visible here, so the check is dropped, and a quiet read would drop it without a word.
+    /// </summary>
+    [Fact]
+    public void UnusableReferencedPattern_OnABaseFromAReferencedAssembly_IsStillReported()
+    {
+        var result = GeneratorHarness.RunWithReference(
+            """
+            using System.Text.RegularExpressions;
+            using ValidationModules.Constraints;
+
+            namespace Shared;
+
+            public static class Patterns { internal static Regex Code() => new Regex("^[a-z]+$"); }
+
+            public class Base { [Pattern(typeof(Patterns), nameof(Patterns.Code))] public string? Code { get; init; } }
+            """,
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public class A : Shared.Base { [Required] public string? X { get; init; } }
+            """
+        );
+
+        Assert.Equal(
+            DiagnosticSeverity.Error,
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1107").Severity
+        );
+    }
+
+    [Fact]
+    public void UnusableReferencedPattern_OnABaseProperty_IsReportedOnceWhereItIsDeclared()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using System.Text.RegularExpressions;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public static class Patterns { private static Regex Hidden() => null!; }
+
+            public class Base { [Pattern(typeof(Patterns), "Hidden")] public string? Code { get; init; } }
+            public class A : Base { [Required] public string? X { get; init; } }
+            public class B : Base { [Required] public string? Y { get; init; } }
+            """
+        );
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1107");
+
+        Assert.Equal(
+            "'Sample.Patterns.Hidden' is not accessible, so the pattern on 'Code' cannot be emitted",
+            diagnostic.GetMessage()
+        );
+        Assert.Equal("Code", SpanText(diagnostic));
+    }
+
     // MatchTimeoutMilliseconds - the attribute's only ReDoS mitigation.
 
     [Fact]
