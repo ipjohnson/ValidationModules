@@ -118,6 +118,8 @@ compiles every such file in the project, so a pack needs no project file entry:
 }
 ```
 
+`culture` is a culture name as `CultureInfo.Name` spells it, such as `fr` or `fr-CA`.
+
 A key in `templates` is one of three things:
 
 - a shape key from the table above, such as `range.between`
@@ -167,7 +169,7 @@ The generator checks each pack at build time:
 
 | Diagnostic | Meaning |
 | --- | --- |
-| `VM4001` | The file is not valid JSON, or it has no `culture`. The file is skipped. |
+| `VM4001` | The file is not valid JSON, or its `culture` is missing or is not a culture name. The file is skipped. |
 | `VM4002` | A key names a shape that does not exist. The entry is skipped. |
 | `VM4003` | A template uses more arguments than its shape has. The entry is skipped. |
 | `VM4004` | A key appears twice. The later entries are skipped. |

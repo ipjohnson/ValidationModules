@@ -33,33 +33,6 @@ public class GeneratorFailureTests
         }
         """;
 
-    [Fact]
-    public void AnEmitStageThatThrows_IsAVM5002Error()
-    {
-        // A language pack's culture is part of its file's hint name, and a ':' in it makes AddSource
-        // throw. That throw is a reachable trigger that no front end refuses, which makes it the
-        // honest way to drive the backstop.
-        var result = GeneratorHarness.RunWithFiles(
-            Pet,
-            [
-                (
-                    "messages.validation-messages.json",
-                    """{ "culture": "fr:CA", "templates": { "required": "{field} est obligatoire." } }"""
-                ),
-            ]
-        );
-
-        var failure = Assert.Single(Errors(result));
-
-        Assert.Equal("VM5002", failure.Id);
-        Assert.Contains("messages.validation-messages.json", failure.GetMessage());
-        Assert.Empty(result.CompilationErrors);
-        Assert.DoesNotContain(
-            "FrCALanguagePack0",
-            result.Sources["GeneratedValidatorRegistration.g.cs"]
-        );
-    }
-
     /// <summary>
     /// A nested fragment container <c>Order.Shared</c> and a top-level <c>Order_Shared</c> both get
     /// <c>Order_Shared_Fragments</c>, and <c>AddSource</c> refuses the second file. It used to

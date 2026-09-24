@@ -630,7 +630,9 @@ These diagnostics point at the JSON file.
 
 **Severity:** Error
 
-The language pack is not valid JSON, or it has no `culture`. The file is skipped.
+The language pack is not valid JSON, or its `culture` is missing or is not a culture name. A
+culture name is spelled as `CultureInfo.Name` spells it, in letters and digits joined by hyphens,
+such as `fr-CA`. The file is skipped.
 
 ### VM4002
 
@@ -686,9 +688,8 @@ without notice. The message names the stage and the exception. A generated file 
 one that failed is left out too, so VM5002 is the only error. For example, a rules class that failed
 takes its type's validator with it, and the registration leaves that validator out. Please
 [report it](https://github.com/ipjohnson/ValidationModules/issues). Until it is fixed, change the
-construct the message names. One known cause is a language pack whose `culture` holds a character
-that a generated file name cannot contain, such as `:`. Another is a nested `Order.Shared` and a
-top-level `Order_Shared` that both declare fragments, because both fragment containers are named
+construct the message names. One known cause is a nested `Order.Shared` and a top-level
+`Order_Shared` that both declare fragments, because both fragment containers are named
 `Order_Shared_Fragments`.
 
 ### VM5003
