@@ -248,4 +248,200 @@ public class FacetCompositionTests
         Assert.Empty(result.CompilationErrors);
         Assert.Contains("if (x.Version > 0) {", result.Sources["Sample.OrderRules_Rules.g.cs"]);
     }
+
+    /// <summary>
+    /// The model from #91: constraint attributes on the facet's properties, and a rules class that
+    /// validates the implementer through the facet.
+    /// </summary>
+    private const string AttributedFacet = """
+        using ValidationModules;
+        using ValidationModules.Constraints;
+
+        namespace Sample;
+
+        public interface IAudited {
+            [Required] string? CreatedBy { get; }
+        }
+
+        public sealed record Invoice : IAudited {
+            public string? CreatedBy { get; init; }
+
+            [Required] public string? Carrier { get; init; }
+        }
+
+        public sealed class InvoiceRules : IValidationRulesFor<Invoice> {
+            public static void Describe(ValidationRules<Invoice> rules, Invoice x) {
+                rules.As<IAudited>(x);
+            }
+        }
+
+        public sealed record Receipt : IAudited {
+            public string? CreatedBy { get; init; }
+        }
+        """;
+
+    /// <summary>
+    /// The facet's validator checks its attributes when the <c>As</c> runs it, so the implementer's
+    /// validator leaves them out. An implementer with no <c>As</c> still takes them.
+    /// </summary>
+    [Fact]
+    public void AnAttributedFacet_IsCheckedByTheFacetAlone()
+    {
+        var result = GeneratorHarness.Run(AttributedFacet);
+
+        Assert.Empty(result.CompilationErrors);
+
+        var invoice = result.Sources["Sample.InvoiceValidator.g.cs"];
+
+        Assert.DoesNotContain("value.CreatedBy", invoice);
+        Assert.Contains("value.Carrier", invoice);
+        Assert.Contains("value.CreatedBy", result.Sources["Sample.IAuditedValidator.g.cs"]);
+        Assert.Contains("value.CreatedBy", result.Sources["Sample.ReceiptValidator.g.cs"]);
+    }
+
+    /// <summary>
+    /// Only the facet's declarations are handed over. The implementer's own declaration of the same
+    /// property keeps its constraints.
+    /// </summary>
+    [Fact]
+    public void TheImplementersOwnDeclaration_KeepsItsConstraints()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public interface IAudited {
+                [Required] string? CreatedBy { get; }
+            }
+
+            public sealed record Invoice : IAudited {
+                [StringLength(Max = 3)] public string? CreatedBy { get; init; }
+            }
+
+            public sealed class InvoiceRules : IValidationRulesFor<Invoice> {
+                public static void Describe(ValidationRules<Invoice> rules, Invoice x) {
+                    rules.As<IAudited>(x);
+                }
+            }
+            """
+        );
+
+        Assert.Empty(result.CompilationErrors);
+
+        var invoice = result.Sources["Sample.InvoiceValidator.g.cs"];
+
+        Assert.Contains("value.CreatedBy.Length > 3", invoice);
+        Assert.DoesNotContain("string.IsNullOrWhiteSpace(value.CreatedBy)", invoice);
+    }
+
+    [Fact]
+    public void ABaseClassFacet_IsCheckedByTheFacetAlone()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public abstract record Audited {
+                [Required] public string? CreatedBy { get; init; }
+            }
+
+            public sealed record Invoice : Audited {
+                [Required] public string? Carrier { get; init; }
+            }
+
+            public sealed class InvoiceRules : IValidationRulesFor<Invoice> {
+                public static void Describe(ValidationRules<Invoice> rules, Invoice x) {
+                    rules.As<Audited>(x);
+                }
+            }
+            """
+        );
+
+        Assert.Empty(result.CompilationErrors);
+
+        var invoice = result.Sources["Sample.InvoiceValidator.g.cs"];
+
+        Assert.DoesNotContain("value.CreatedBy", invoice);
+        Assert.Contains("value.Carrier", invoice);
+    }
+
+    /// <summary>
+    /// A facet from a referenced assembly resolves a validator generated there from the same
+    /// declarations, so it is handed over the same way.
+    /// </summary>
+    [Fact]
+    public void ACrossAssemblyAttributedFacet_IsCheckedByTheFacetAlone()
+    {
+        var shared = GeneratorHarness.CompileToReference(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Shared;
+
+            public interface IAudited {
+                [Required] string? CreatedBy { get; }
+            }
+            """,
+            "Shared.Contracts"
+        );
+
+        var result = GeneratorHarness.Run(
+            """
+            using Shared;
+            using ValidationModules;
+            using ValidationModules.Constraints;
+
+            namespace App;
+
+            public sealed record Order : IAudited {
+                public string? CreatedBy { get; init; }
+
+                [Required] public string? Number { get; init; }
+            }
+
+            public sealed class OrderRules : IValidationRulesFor<Order> {
+                public static void Describe(ValidationRules<Order> rules, Order x) {
+                    rules.As<IAudited>(x);
+                }
+            }
+            """,
+            "App",
+            OutputKind.DynamicallyLinkedLibrary,
+            new[] { shared }
+        );
+
+        Assert.Empty(result.CompilationErrors);
+        Assert.DoesNotContain("value.CreatedBy", result.Sources["App.OrderValidator.g.cs"]);
+    }
+
+    /// <summary>An <c>As</c> inside a fragment hands the facet over for every caller.</summary>
+    [Fact]
+    public void AnAsInAFragment_HandsTheFacetOverToTheCaller()
+    {
+        var result = GeneratorHarness.Run(
+            AttributedFacet
+                .Replace("rules.As<IAudited>(x);", "Auditing.Standard(rules, x);")
+                .Replace(
+                    "public sealed record Receipt",
+                    """
+                    public static class Auditing {
+                        public static void Standard(ValidationRules<Invoice> rules, Invoice invoice) {
+                            rules.As<IAudited>(invoice);
+                        }
+                    }
+
+                    public sealed record Receipt
+                    """
+                )
+        );
+
+        Assert.Empty(result.CompilationErrors);
+        Assert.DoesNotContain("value.CreatedBy", result.Sources["Sample.InvoiceValidator.g.cs"]);
+    }
 }

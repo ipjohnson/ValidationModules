@@ -162,7 +162,8 @@ an entry point no longer does, because the entry point registers the validators.
 | `DependencyModules` | The DependencyModules form. |
 | `None` | No registration code at all. Construct the validators yourself. |
 
-The values are case-sensitive. Any other value selects the form automatically.
+The values are not case-sensitive. `Auto`, or no value, selects the form automatically. Any other
+value does the same, and the generator reports `VM5004`.
 
 ## Without a container
 

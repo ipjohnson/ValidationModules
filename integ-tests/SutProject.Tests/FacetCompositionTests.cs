@@ -65,4 +65,36 @@ public class FacetCompositionTests
         Assert.False(audited.IsValid(new Shipment { Version = 1 }));
         Assert.True(audited.IsValid(Valid()));
     }
+
+    /// <summary>
+    /// A facet's constraint attributes are checked once. The implementer's validator leaves them
+    /// to the facet's validator, which the <c>As</c> runs after the implementer's own rules.
+    /// </summary>
+    [Fact]
+    public void AnAttributedFacet_IsCheckedOnce()
+    {
+        var result = new ParcelValidator().Validate(new Parcel());
+
+        Assert.Equal(
+            [("recipient", ValidationCodes.Required), ("trackingNumber", ValidationCodes.Required)],
+            result.Errors.Select(error => (error.Field, error.Code))
+        );
+    }
+
+    /// <summary>The facet's attributes run where the <c>As</c> is, so an <c>if</c> guards them.</summary>
+    [Fact]
+    public void AnAttributedFacet_RunsOnlyWhereTheAsRuns()
+    {
+        var result = new ParcelValidator().Validate(new Parcel { Recipient = "ada", Draft = true });
+
+        Assert.True(result.IsValid);
+    }
+
+    [Fact]
+    public void WithoutAnAs_AFacetsAttributesStillMerge()
+    {
+        var result = new LetterValidator().Validate(new Letter());
+
+        Assert.Equal(["trackingNumber"], result.Errors.Select(error => error.Field));
+    }
 }

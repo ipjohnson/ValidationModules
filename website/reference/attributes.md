@@ -216,10 +216,11 @@ public bool ExclusiveMax { get; init; }
 their nullable forms.
 
 The bounds are converted to the property's type at build time. String bounds are parsed with the
-invariant culture, as in `[Range("2024-01-01", "2030-12-31")]` on a `DateOnly`. Write `DateTime` and
-`DateOnly` bounds without a time zone. Give `DateTimeOffset` bounds an explicit offset, as in
-`2024-01-01T00:00:00+00:00`. A `DateTimeOffset` bound without one takes the offset of the machine
-that builds the project.
+invariant culture, as in `[Range("2024-01-01", "2030-12-31")]` on a `DateOnly`. A `DateTime` or
+`DateOnly` bound written without a time zone is compared as written. A `DateTime` bound written
+with `Z` or an offset keeps its instant, converted to UTC and compared with `DateTimeKind.Utc`. A
+`DateTimeOffset` bound written without an offset is read as UTC. The parsed bounds do not depend on
+the machine that builds the project.
 
 | Code | Message |
 | --- | --- |
@@ -230,9 +231,10 @@ that builds the project.
 | `range` | `{field} must be at least {0}.` or `{field} must be greater than {0}.` with only `Min` |
 | `range` | `{field} must be at most {0}.` or `{field} must be less than {0}.` with only `Max` |
 
-Diagnostics: `VM1003` on a type with no ordering, `VM1102` when neither bound is set, and `VM1103`
-when a bound does not parse as the property's type. No diagnostic catches bounds in the wrong
-order, and such a constraint always fails.
+Diagnostics: `VM1003` on a type with no ordering, `VM1102` when neither bound is set, `VM1103`
+when a bound does not parse as the property's type, and `VM1101` when no value can satisfy the
+bounds: `Min` greater than `Max`, or equal bounds with `ExclusiveMin` or `ExclusiveMax` set. The
+bounds are compared as the property's type, so date bounds compare as instants.
 
 ### [MultipleOf]
 

@@ -370,10 +370,12 @@ public sealed class ShipmentRules : IValidationRulesFor<Shipment>
 }
 ```
 
-An empty `Shipment` reports `carrier`, `createdBy` and `version`, with no prefix. Use `As` for an
-interface whose rules come from a rules class, as here. Constraint attributes on an interface's
-properties already apply to every type that implements it, so `As` would run those checks a second
-time and report each error twice. An interface with no rules at all is reported as `VM3105`.
+An empty `Shipment` reports `carrier`, `createdBy` and `version`, with no prefix. Constraint
+attributes on an interface's properties apply to every type that implements it. When a rules class
+calls `As` for the interface, the type's own checks leave those attributes to the interface's
+validator, so each is checked once, where `As` runs. Under an `if`, they are checked only when the
+condition holds. A base type passed to `As` is handled the same way. An interface with no rules at
+all is reported as `VM3105`.
 
 When the interface is declared in another assembly, the validator resolves `IValidatorFor<IAudited>`
 from the container at run time. Validate such a type through `ValidationRunner<T>` resolved from a

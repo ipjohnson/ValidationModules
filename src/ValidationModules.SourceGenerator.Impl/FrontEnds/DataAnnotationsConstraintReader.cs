@@ -76,11 +76,25 @@ public static class DataAnnotationsConstraintReader
     public static bool Compiles(string attributeName) =>
         IsConstraint(attributeName) || attributeName == "CustomValidationAttribute";
 
+    /// <param name="attribute">The attribute to read.</param>
+    /// <param name="attributeName">Its class name, which picks the reader.</param>
+    /// <param name="memberType">The type of the member it is declared on.</param>
+    /// <param name="compilation">
+    /// The compilation the validator is generated into, which decides whether a resource property
+    /// can be read from the generated code.
+    /// </param>
     public static Outcome Read(
         AttributeData attribute,
         string attributeName,
-        ITypeSymbol memberType
-    ) => FinishMessage(ReadCore(attribute, attributeName, memberType), attribute, attributeName);
+        ITypeSymbol memberType,
+        Compilation compilation
+    ) =>
+        FinishMessage(
+            ReadCore(attribute, attributeName, memberType),
+            attribute,
+            attributeName,
+            compilation
+        );
 
     private static Outcome ReadCore(
         AttributeData attribute,
@@ -582,7 +596,8 @@ public static class DataAnnotationsConstraintReader
     private static Outcome FinishMessage(
         Outcome outcome,
         AttributeData attribute,
-        string attributeName
+        string attributeName,
+        Compilation compilation
     )
     {
         if (
@@ -614,6 +629,21 @@ public static class DataAnnotationsConstraintReader
                 is INamedTypeSymbol resourceType
         )
         {
+            // A type that does not bind is already a compile error at the attribute.
+            if (resourceType.TypeKind == TypeKind.Error)
+            {
+                return outcome;
+            }
+
+            if (UnreadableResource(resourceType, resourceName, compilation) is { } reason)
+            {
+                return outcome with
+                {
+                    Diagnostic = ValidationDiagnostics.ErrorMessageResourceUnreadable,
+                    Detail = reason,
+                };
+            }
+
             return outcome with
             {
                 Constraint = constraint with
@@ -629,6 +659,79 @@ public static class DataAnnotationsConstraintReader
         }
 
         return outcome;
+    }
+
+    /// <summary>
+    /// Why the generated validator cannot read <paramref name="name"/> on
+    /// <paramref name="resourceType"/> as a message, followed by the fix, or null when it can.
+    /// </summary>
+    /// <remarks>
+    /// DataAnnotations resolves the name to a public or internal static string property when it
+    /// formats the message. The generated code names the member directly instead, so the test is
+    /// whether that reference compiles to a string. An internal property in this assembly passes,
+    /// which is what a resx designer file declares.
+    /// </remarks>
+    private static string? UnreadableResource(
+        INamedTypeSymbol resourceType,
+        string name,
+        Compilation compilation
+    )
+    {
+        var type = resourceType.ToDisplayString();
+        ISymbol? member = null;
+
+        for (
+            INamedTypeSymbol? current = resourceType;
+            current is not null && member is null;
+            current = current.BaseType
+        )
+        {
+            member = current.GetMembers(name).FirstOrDefault();
+        }
+
+        // Another assembly's internal members are not imported from metadata, so a resx class
+        // with the default internal access modifier in a shared project lands here.
+        if (
+            member is null
+            && !SymbolEqualityComparer.Default.Equals(
+                resourceType.ContainingAssembly,
+                compilation.Assembly
+            )
+        )
+        {
+            return $"\"{name}\", but '{type}' has no public property named '{name}', and the "
+                + "generated validator cannot read an internal one in another assembly. Make it "
+                + "public, which for a resx file is its Public access modifier";
+        }
+
+        if (member is null)
+        {
+            return $"\"{name}\", but '{type}' has no property named '{name}'. Write the name with "
+                + $"nameof, as in ErrorMessageResourceName = nameof({type}.{name}), so the compiler "
+                + "checks it at the attribute";
+        }
+
+        var (valueType, reader) = member switch
+        {
+            IPropertySymbol { IsIndexer: false } property => (property.Type, property.GetMethod),
+            IFieldSymbol field => (field.Type, (ISymbol?)field),
+            _ => (null, null),
+        };
+
+        var problem =
+            valueType is null ? "is not a property"
+            : !member.IsStatic ? "is not static"
+            : valueType.SpecialType != SpecialType.System_String
+                ? $"is of type '{valueType.ToDisplayString()}', not string"
+            : reader is null ? "has no getter"
+            : !compilation.IsSymbolAccessibleWithin(reader, compilation.Assembly)
+                ? "cannot be read from the generated validator"
+            : null;
+
+        return problem is null
+            ? null
+            : $"\"{name}\", but '{type}.{name}' {problem}. Declare it as "
+                + $"public static string {name} {{ get; }}";
     }
 
     /// <summary>

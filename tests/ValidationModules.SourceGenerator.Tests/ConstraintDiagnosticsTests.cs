@@ -283,6 +283,89 @@ public class ConstraintDiagnosticsTests
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1101");
     }
 
+    /// <summary>
+    /// [Range] bounds are compared as the member's own type, whether they were written as constants
+    /// or as strings, and from either vocabulary.
+    /// </summary>
+    [Theory]
+    [InlineData("[Range(10, 1)] public int Guests { get; init; }")]
+    [InlineData("[Range(Min = 10L, Max = 1L)] public long Units { get; init; }")]
+    [InlineData("[Range(10.5, 1.5)] public double Ratio { get; init; }")]
+    [InlineData("[Range(\"10.50\", \"9.99\")] public decimal Price { get; init; }")]
+    [InlineData("[Range(\"2024-12-31\", \"2024-01-01\")] public DateOnly Day { get; init; }")]
+    [InlineData("[Range(\"2024-12-31\", \"2024-01-01\")] public DateTime At { get; init; }")]
+    [InlineData("[Range(\"12:00:00\", \"08:00:00\")] public TimeOnly Opens { get; init; }")]
+    [InlineData("[Range(\"2.00:00:00\", \"1.00:00:00\")] public TimeSpan Window { get; init; }")]
+    [InlineData(
+        "[Range(\"2024-01-02T00:00:00+00:00\", \"2024-01-01T00:00:00+00:00\")] public DateTimeOffset Stamp { get; init; }"
+    )]
+    [InlineData(
+        "[System.ComponentModel.DataAnnotations.Range(10, 1)] public int Seats { get; init; }"
+    )]
+    [InlineData(
+        "[System.ComponentModel.DataAnnotations.Range(typeof(DateTime), \"2024-12-31\", \"2024-01-01\")] public DateTime Due { get; init; }"
+    )]
+    [InlineData("[Range(5, 5, ExclusiveMin = true)] public int Exact { get; init; }")]
+    [InlineData("[Range(5, 5, ExclusiveMax = true)] public int Exact { get; init; }")]
+    public void RangeThatAdmitsNoValue_IsVM1101(string member)
+    {
+        var result = GeneratorHarness.Run(Model(member));
+
+        Assert.Equal(
+            DiagnosticSeverity.Error,
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1101").Severity
+        );
+    }
+
+    /// <summary>
+    /// The comparison is the member's, not the text's: "9.99" is below "10.5" as a decimal, and a
+    /// DateTimeOffset minimum written later in the day under a larger offset is the earlier instant.
+    /// </summary>
+    [Theory]
+    [InlineData("[Range(1, 10)] public int Guests { get; init; }")]
+    [InlineData("[Range(5, 5)] public int Exact { get; init; }")]
+    [InlineData("[Range(0, 100, ExclusiveMax = true)] public int Percent { get; init; }")]
+    [InlineData("[Range(Min = 18)] public int Age { get; init; }")]
+    [InlineData("[Range(\"9.99\", \"10.5\")] public decimal Price { get; init; }")]
+    [InlineData("[Range(1, double.PositiveInfinity)] public double Ratio { get; init; }")]
+    [InlineData(
+        "[Range(\"2024-01-01T00:00:00+05:00\", \"2023-12-31T20:00:00+00:00\")] public DateTimeOffset Stamp { get; init; }"
+    )]
+    public void RangeThatAdmitsAValue_IsSilent(string member)
+    {
+        var result = GeneratorHarness.Run(Model(member));
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1101");
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    [Fact]
+    public void VM1101_NamesTheBoundsAndSaysToSwapThem()
+    {
+        var result = GeneratorHarness.Run(Model("[Range(10, 1)] public int Guests { get; init; }"));
+
+        Assert.Equal(
+            "The bounds on 'Guests' are inverted, so the constraint can never be satisfied. The "
+                + "minimum 10 exceeds the maximum 1. Swap the two bounds",
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1101").GetMessage()
+        );
+    }
+
+    [Fact]
+    public void VM1101_OnEqualExclusiveBounds_SaysWhichBoundExcludesItself()
+    {
+        var result = GeneratorHarness.Run(
+            Model("[Range(5, 5, ExclusiveMin = true)] public int Exact { get; init; }")
+        );
+
+        Assert.Equal(
+            "The bounds on 'Exact' admit no value, so the constraint can never be satisfied. The "
+                + "minimum and the maximum are both 5, and ExclusiveMin is set. Make both bounds "
+                + "inclusive, or widen the range",
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1101").GetMessage()
+        );
+    }
+
     // VM1007 — a constrained property the validator cannot read.
 
     [Fact]
@@ -435,6 +518,179 @@ public class ConstraintDiagnosticsTests
         var result = GeneratorHarness.Run(source);
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1302");
+    }
+
+    // VM1011 — a constraint on a field or a static property, which the walk never reads.
+
+    [Fact]
+    public void ConstraintOnAFieldOrAStaticProperty_IsVM1011()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed class Form {
+                [Required]
+                public string? Field;
+
+                [Required]
+                public static string? Shared { get; set; }
+
+                [Required]
+                public string? Property { get; init; } = "set";
+            }
+            """
+        );
+
+        var reported = result
+            .Diagnostics.Where(d => d.Id == "VM1011")
+            .Select(d => d.GetMessage())
+            .OrderBy(message => message, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.Equal(
+            [
+                "'Required' on 'Field' is never evaluated, because 'Field' is a field. Constraints "
+                    + "apply to instance properties. Declare it as one: "
+                    + "public string? Field { get; set; }",
+                "'Required' on 'Shared' is never evaluated, because 'Shared' is a static property. "
+                    + "Constraints apply to instance properties. Declare it as one: "
+                    + "public string? Shared { get; set; }",
+            ],
+            reported
+        );
+        Assert.All(
+            result.Diagnostics.Where(d => d.Id == "VM1011"),
+            d => Assert.Equal(DiagnosticSeverity.Warning, d.Severity)
+        );
+
+        // The instance property beside them is still validated.
+        Assert.Contains(
+            "ReportRequired(ctx, \"property\", value: value.Property)",
+            result.Sources["Sample.FormValidator.g.cs"]
+        );
+    }
+
+    [Fact]
+    public void ConstraintOnAField_ReportsOncePerAttribute()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed class Form {
+                [Required, StringLength(10)]
+                public readonly string? Code;
+            }
+            """
+        );
+
+        Assert.Equal(2, result.Diagnostics.Count(d => d.Id == "VM1011"));
+        Assert.Contains(
+            "public string? Code { get; }",
+            result.Diagnostics.First(d => d.Id == "VM1011").GetMessage()
+        );
+    }
+
+    /// <summary>
+    /// A type whose only constraints sit on fields gets no validator. The warning is what tells the
+    /// author, because otherwise the type looks unconstrained and nothing is registered for it.
+    /// </summary>
+    [Fact]
+    public void ConstraintsOnlyOnFields_StillReportVM1011()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed class Form {
+                [Required]
+                public string? Field;
+            }
+            """
+        );
+
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1011");
+        Assert.DoesNotContain(result.Sources.Keys, key => key.Contains("FormValidator"));
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    /// <summary>
+    /// Every shape the generator would compile on a property counts: a DataAnnotations constraint,
+    /// while that front end is on, and a custom constraint attribute. An attribute that is not a
+    /// constraint does not.
+    /// </summary>
+    [Fact]
+    public void EveryCompiledShapeOnAField_IsVM1011_AndOtherAttributesAreNot()
+    {
+        var source = """
+            using System.Text.Json.Serialization;
+            using ValidationModules.Constraints;
+            using DA = System.ComponentModel.DataAnnotations;
+
+            namespace Sample;
+
+            public sealed class StartsWithAAttribute : CustomConstraintAttribute {
+                public static bool IsValid(string value) => value.StartsWith("A");
+            }
+
+            public sealed class Form {
+                [DA.Required]
+                public string? Annotated;
+
+                [StartsWithA]
+                public string? Custom;
+
+                [JsonPropertyName("plain"), DA.Display(Name = "Plain")]
+                public string? Plain;
+            }
+            """;
+
+        var compiled = GeneratorHarness.Run(source);
+        var ignored = GeneratorHarness.Run(source, ("ValidationModules_DataAnnotations", "Ignore"));
+
+        Assert.Equal(
+            ["'Required' on 'Annotated'", "'StartsWithA' on 'Custom'"],
+            compiled
+                .Diagnostics.Where(d => d.Id == "VM1011")
+                .Select(d => d.GetMessage().Substring(0, d.GetMessage().IndexOf(" is never")))
+                .OrderBy(prefix => prefix, StringComparer.Ordinal)
+        );
+        Assert.Single(ignored.Diagnostics, d => d.Id == "VM1011");
+    }
+
+    /// <summary>
+    /// A field declared on a base type is reported once, where it is declared, rather than once
+    /// per type that inherits it.
+    /// </summary>
+    [Fact]
+    public void ConstraintOnAnInheritedField_IsReportedOnceWhereItIsDeclared()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public class Base {
+                [Required]
+                public string? Field;
+            }
+
+            public sealed class Derived : Base {
+                [Required]
+                public string? Property { get; init; }
+            }
+            """
+        );
+
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1011");
     }
 
     // VM1008 — a constraint on a record parameter, which binds to the parameter and is never read.

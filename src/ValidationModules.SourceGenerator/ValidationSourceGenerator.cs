@@ -36,27 +36,21 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
             static (provider, _) =>
             {
                 provider.GlobalOptions.TryGetValue(
-                    "build_property.ValidationModules_Registration",
+                    BuildProperty.Registration.Key,
                     out var registration
                 );
+                provider.GlobalOptions.TryGetValue(BuildProperty.FieldNaming.Key, out var naming);
                 provider.GlobalOptions.TryGetValue(
-                    "build_property.ValidationModules_FieldNaming",
-                    out var naming
-                );
-                provider.GlobalOptions.TryGetValue(
-                    "build_property.ValidationModules_DataAnnotations",
+                    BuildProperty.DataAnnotations.Key,
                     out var dataAnnotations
                 );
                 provider.GlobalOptions.TryGetValue(
-                    "build_property.ValidationModules_PatternPolicy",
+                    BuildProperty.PatternPolicy.Key,
                     out var patternPolicy
                 );
+                provider.GlobalOptions.TryGetValue(BuildProperty.FailFast.Key, out var failFast);
                 provider.GlobalOptions.TryGetValue(
-                    "build_property.ValidationModules_FailFast",
-                    out var failFast
-                );
-                provider.GlobalOptions.TryGetValue(
-                    "build_property.ValidationModules_CaptureValues",
+                    BuildProperty.CaptureValues.Key,
                     out var captureValues
                 );
                 provider.GlobalOptions.TryGetValue(
@@ -84,6 +78,28 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                     captureValues,
                     codeNamespace
                 );
+            }
+        );
+
+        // Over the options alone, so a value the generator cannot read is reported whether or not
+        // anything in the compilation asks for a validator.
+        context.RegisterSourceOutput(
+            options,
+            static (production, option) =>
+            {
+                foreach (var (property, value) in option.UnrecognisedSettings)
+                {
+                    production.ReportDiagnostic(
+                        Diagnostic.Create(
+                            ValidationDiagnostics.UnrecognisedBuildPropertyValue,
+                            Location.None,
+                            property.Name,
+                            value,
+                            property.Default,
+                            property.AcceptedValues
+                        )
+                    );
+                }
             }
         );
 
@@ -801,7 +817,8 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                         )
                     )
                 ))
-                .ToArray()
+                .ToArray(),
+            declared?.SelectMany(static declaration => declaration.Facets).ToArray()
         );
 
         var diagnostics = frontEnd.Diagnostics.ToImmutableArray();
@@ -975,10 +992,15 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
     private static bool IsTrue(string? value) =>
         string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// The build properties as MSBuild handed them over. Kept as written, so VM5004 can quote a
+    /// value it could not read. The members below read each one through
+    /// <see cref="BuildProperty"/>, so no two of them can disagree about a spelling.
+    /// </summary>
     private sealed record GeneratorOptions(
-        string? Registration,
-        string? Naming,
-        string? DataAnnotations,
+        string? RegistrationSetting,
+        string? NamingSetting,
+        string? DataAnnotationsSetting,
         string? PatternPolicySetting,
         string? FailFastSetting,
         bool IsAotFacing,
@@ -988,6 +1010,45 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
     )
     {
         /// <summary>
+        /// <c>ValidationModules_Registration</c> in its documented spelling. Null when it is unset
+        /// or unrecognised, which reads the same as <c>Auto</c>.
+        /// </summary>
+        public string? Registration => BuildProperty.Registration.Canonical(RegistrationSetting);
+
+        /// <summary>
+        /// <c>ValidationModules_FieldNaming</c> in its documented spelling. Null when it is unset
+        /// or unrecognised, which reads the same as <c>CamelCase</c>. The emitters receive this
+        /// rather than the raw setting, so the namer they register is the policy the literals were
+        /// named with.
+        /// </summary>
+        public string? Naming => BuildProperty.FieldNaming.Canonical(NamingSetting);
+
+        /// <summary>Each setting that matches none of its property's values, for VM5004.</summary>
+        public IEnumerable<(BuildProperty Property, string Value)> UnrecognisedSettings
+        {
+            get
+            {
+                var settings = new (BuildProperty Property, string? Value)[]
+                {
+                    (BuildProperty.Registration, RegistrationSetting),
+                    (BuildProperty.FieldNaming, NamingSetting),
+                    (BuildProperty.PatternPolicy, PatternPolicySetting),
+                    (BuildProperty.DataAnnotations, DataAnnotationsSetting),
+                    (BuildProperty.FailFast, FailFastSetting),
+                    (BuildProperty.CaptureValues, CaptureValuesSetting),
+                };
+
+                foreach (var (property, value) in settings)
+                {
+                    if (property.IsUnrecognised(value))
+                    {
+                        yield return (property, value!.Trim());
+                    }
+                }
+            }
+        }
+
+        /// <summary>
         /// Whether report sites pass the failing member as <c>ValidationError.Value</c>. On by
         /// default - the value is a reference to data the application already holds, and no
         /// library surface renders it. <c>ValidationModules_CaptureValues=false</c> (or
@@ -996,8 +1057,8 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
         /// switch cannot give. Both spellings accepted for the same reason FailFast takes both.
         /// </summary>
         public bool CaptureValues =>
-            !string.Equals(CaptureValuesSetting, "Disabled", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(CaptureValuesSetting, "false", StringComparison.OrdinalIgnoreCase);
+            BuildProperty.CaptureValues.Canonical(CaptureValuesSetting)
+                is not ("Disabled" or "false");
 
         /// <summary>
         /// The brace style generated files are written in, from the shared
@@ -1013,7 +1074,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
         /// and landing on somebody else's publish.
         /// </summary>
         public PatternPolicy ResolvedPatternPolicy =>
-            PatternPolicySetting switch
+            BuildProperty.PatternPolicy.Canonical(PatternPolicySetting) switch
             {
                 "Error" => PatternPolicy.Error,
                 "Warn" => PatternPolicy.Warn,
@@ -1022,7 +1083,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
             };
 
         public bool CompileDataAnnotations =>
-            !string.Equals(DataAnnotations, "Ignore", StringComparison.OrdinalIgnoreCase);
+            BuildProperty.DataAnnotations.Canonical(DataAnnotationsSetting) != "Ignore";
 
         /// <summary>
         /// Whether generated validators return at the first blocking failure, which is what makes
@@ -1043,12 +1104,12 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
         /// <para>
         /// Both <c>Disabled</c> and <c>false</c> are accepted, case-insensitively. Taking only one
         /// spelling would let the other pass silently, and silently paying for a feature you asked
-        /// to drop is the failure this property exists to avoid.
+        /// to drop is the failure this property exists to avoid. A value that is none of
+        /// <c>Enabled</c>, <c>Disabled</c>, <c>true</c> or <c>false</c> leaves it on and is VM5004.
         /// </para>
         /// </remarks>
         public bool EmitFailFast =>
-            !string.Equals(FailFastSetting, "Disabled", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(FailFastSetting, "false", StringComparison.OrdinalIgnoreCase);
+            BuildProperty.FailFast.Canonical(FailFastSetting) is not ("Disabled" or "false");
 
         public Func<string, string> FieldNamer =>
             Naming switch

@@ -269,6 +269,72 @@ public class InheritedConstraintTests
     }
 
     /// <summary>
+    /// A bare <c>new</c> drops the base declaration's constraints just as surely as one that
+    /// carries constraints of its own, and it is the likelier accident, so it is reported too.
+    /// </summary>
+    [Fact]
+    public void BareNewProperty_DropsTheBaseConstraintsAndReportsVM1009()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public class Customer {
+                [Required]
+                public string? Name { get; init; }
+            }
+
+            public sealed class VipCustomer : Customer {
+                public new string? Name { get; init; }
+
+                [Required]
+                public string? Tier { get; init; } = "gold";
+            }
+            """
+        );
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1009");
+
+        Assert.Equal(
+            "'Name' hides 'Customer.Name', so the 1 constraint(s) declared there no longer apply. "
+                + "The most-derived declaration of a property supplies all of its constraints, never "
+                + "some of them - restate what is still wanted, or rename one of the two",
+            diagnostic.GetMessage()
+        );
+        Assert.DoesNotContain("\"name\"", Body(result, "VipCustomerValidator"));
+    }
+
+    /// <summary>
+    /// The case with nothing else on the type: the hidden declaration held its only rule, so no
+    /// validator is generated and the warning is the only sign of it.
+    /// </summary>
+    [Fact]
+    public void BareNewPropertyThatHidesTheOnlyRule_StillReportsVM1009()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public class Customer {
+                [Required]
+                public string? Name { get; init; }
+            }
+
+            public sealed class VipCustomer : Customer {
+                public new string? Name { get; init; }
+            }
+            """
+        );
+
+        Assert.Single(result.Diagnostics, d => d.Id == "VM1009");
+        Assert.DoesNotContain(result.Sources.Keys, key => key.Contains("VipCustomerValidator"));
+    }
+
+    /// <summary>
     /// An override is one declaration, not two, so nothing is hidden and nothing is dropped.
     /// </summary>
     [Fact]

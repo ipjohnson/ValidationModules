@@ -25,8 +25,8 @@ dotnet_diagnostic.VM1201.severity = none
 ```
 
 A `[*.cs]` section applies only to diagnostics reported in C# files. The language pack diagnostics
-are reported at the JSON file, and `VM5001`, `VM5002` and `VM6001` have no location, so set their
-severity in a `.globalconfig` file, or list them in `<NoWarn>`:
+are reported at the JSON file, and `VM5001`, `VM5002`, `VM5004` and `VM6001` have no location, so
+set their severity in a `.globalconfig` file, or list them in `<NoWarn>`:
 
 ```ini
 is_global = true
@@ -118,6 +118,13 @@ A generic type declares constraints. Its validator could not be registered witho
 `MakeGenericType`, so none is generated. Declare the constraints on a closed type, or validate the
 generic type's payload and leave the generic type without constraints.
 
+### VM1011
+
+**Severity:** Warning
+
+A constraint is on a field or a static property. The generator reads instance properties only, so
+the constraint is never evaluated. Declare the member as an instance property, as the message shows.
+
 ### VM1013
 
 **Severity:** Error
@@ -131,9 +138,13 @@ names, joined with underscores. A nested `Order.Item` and a top-level `Order_Ite
 
 **Severity:** Error
 
-A `[StringLength]` or `[ItemCount]` minimum is greater than its maximum, so the constraint can never
-pass. The DataAnnotations `[StringLength]` and `[Length]` are checked too. The positional argument
-of `[StringLength]` is the maximum, and the first argument of `[ItemCount]` is the minimum.
+No value can satisfy a constraint's bounds, so the constraint can never pass. That is a minimum
+greater than its maximum on `[StringLength]`, `[ItemCount]` or `[Range]`, or equal `[Range]` bounds
+with `ExclusiveMin` or `ExclusiveMax` set. The DataAnnotations `[StringLength]`, `[Length]` and
+`[Range]` are checked too, and so is `rules.Range` in a rules class when both bounds are constants.
+`[Range]` bounds are compared as the property's type, so date bounds compare as instants. The
+positional argument of `[StringLength]` is the maximum, and the first argument of `[ItemCount]` is
+the minimum.
 
 ### VM1102
 
@@ -405,6 +416,19 @@ It is a warning, and the attribute is not enforced, when the attribute's argumen
 written into generated code. Move the rule into `IValidatableObject.Validate`, or into an
 [`Ensure`](../guide/rule-classes#ensure) in a rules class.
 
+### VM2011
+
+**Severity:** Error
+
+A DataAnnotations attribute sets `ErrorMessageResourceType` and `ErrorMessageResourceName`, and the
+name is not a static string property that the generated validator can read. The generated code
+reads the property directly, without reflection. The message gives the reason: no member has the
+name, or the member is not static, not a string, or not accessible. An internal property is
+accessible only from its own assembly, so a resx file in a shared project needs the Public access
+modifier. Write the name with `nameof`, so the compiler checks it at the attribute:
+`ErrorMessageResourceName = nameof(Messages.NameRequired)`. The constraint still compiles, with its
+default message.
+
 ## Rules classes
 
 ### VM3001
@@ -614,6 +638,15 @@ built, which in a default application happens on its first request. Add rules or
 `[GenerateValidator]`. When `ValidationModules_DataAnnotations` is `Ignore`, DataAnnotations
 attributes do not count as rules. When the rules come from another assembly, the warning does not
 apply. This is the one diagnostic that an analyzer reports rather than the generator.
+
+### VM5004
+
+**Severity:** Warning
+
+A `ValidationModules_*` property in the project file has a value that the generator does not
+accept, so the generator uses the property's default. The message names the property, the value
+and the values it accepts. Case does not matter: `snakecase` is read as `SnakeCase`, but
+`snake_case` is not a value. See [MSBuild properties](./msbuild).
 
 ## Registration
 

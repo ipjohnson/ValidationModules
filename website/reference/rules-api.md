@@ -52,7 +52,8 @@ name derived from the value.
 | `MultipleOf(double? value, double divisor)` | The value divides by the divisor. | `multiple_of` |
 
 The range methods take any struct that implements `IComparable<TValue>` and `IFormattable`, and each
-has an overload for the nullable form.
+has an overload for the nullable form. `Range` with constant bounds in the wrong order is reported
+as `VM1101`.
 
 The `double` overload converts the value to `decimal` before it divides, as `[MultipleOf]` does on a
 `double` property, so `0.3` is a multiple of `0.1`. A constant divisor that is zero or negative is
@@ -108,7 +109,7 @@ text, with each member of `x` written as its field name.
 | Member | Effect |
 | --- | --- |
 | `For<TValue>(TValue value, string? field = null)` | Starts a chain for a value without a rule of its own. |
-| `As<TFacet>(TFacet value)` | Runs the rules declared for an interface or base type of `x`, at the current level. The argument must be `x`. |
+| `As<TFacet>(TFacet value)` | Runs the rules declared for an interface or base type of `x`, at the current level, including the constraint attributes on its properties. The type's own checks leave those attributes out. The argument must be `x`. |
 | `Apply(RuleAction<T> rule)` | Runs a hand-written rule after every other rule on the type. Top level of `Describe` only. |
 | `Context` | An `IValidationContextReporter` for reporting errors from code. See below. |
 

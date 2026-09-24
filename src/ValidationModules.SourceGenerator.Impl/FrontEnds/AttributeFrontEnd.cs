@@ -93,6 +93,11 @@ public sealed class AttributeFrontEnd
     /// all of them; without it, VM1501 would fire on a nested type whose rules are declared
     /// externally, which is a false accusation rather than a missed one.
     /// </param>
+    /// <param name="facets">
+    /// The facets a rules class for this type validates it through with <c>As</c>. Each one's own
+    /// validator checks the attribute declarations its walk reaches, so this type's validator
+    /// leaves those declarations out rather than checking them a second time at the same level.
+    /// </param>
     public ValidatedTypeModel? Build(
         INamedTypeSymbol type,
         Func<INamedTypeSymbol, string> validatorNameFor,
@@ -101,16 +106,18 @@ public sealed class AttributeFrontEnd
         Func<INamedTypeSymbol, bool>? hasRulesClass = null,
         Func<INamedTypeSymbol, IReadOnlyList<(INamedTypeSymbol Type, int Depth)>>? subtypesOf =
             null,
-        IReadOnlyList<RegionModel>? regions = null
+        IReadOnlyList<RegionModel>? regions = null,
+        IReadOnlyList<INamedTypeSymbol>? facets = null
     )
     {
         _hasRulesClass = hasRulesClass;
         _validatedType = type;
         _subtypesOf = subtypesOf;
 
-        // Before anything reads a property, because the situation this reports is precisely one
+        // Before anything reads a property, because the situations these report are precisely ones
         // where no property carries anything and the type would otherwise look unconstrained.
         ReportRecordParameterConstraints(type);
+        ReportConstraintsOnFieldsAndStaticProperties(type);
 
         var properties = ImmutableArray.CreateBuilder<ValidatedPropertyModel>();
         var order = new List<int>();
@@ -120,10 +127,15 @@ public sealed class AttributeFrontEnd
             || applied is { Count: > 0 }
             || regions is { Count: > 0 };
         var sawAttribute = false;
+        var takenByFacets = FacetDeclarations(type, facets);
 
         foreach (var member in MemberWalk.PropertiesOf(type, _compilation, CarriesConstraints))
         {
             var property = member.Property;
+            var sources =
+                takenByFacets.Count == 0
+                    ? member.Sources
+                    : member.Sources.RemoveAll(takenByFacets.Contains);
 
             // A property this type inherited rather than declared is validated where it is
             // declared. Everything reported about it from here - the constraint-versus-member-type
@@ -137,7 +149,7 @@ public sealed class AttributeFrontEnd
             // because the walk hands back the most-derived declaration of each name.
             var constraints = new List<ConstraintModel>();
 
-            foreach (var source in member.Sources)
+            foreach (var source in sources)
             {
                 var owned = SymbolEqualityComparer.Default.Equals(source.ContainingType, type);
                 var wasQuiet = _quiet;
@@ -147,7 +159,7 @@ public sealed class AttributeFrontEnd
                 _quiet = wasQuiet;
             }
 
-            var validateNested = member.Sources.Any(DescentTargets.HasValidateNested);
+            var validateNested = sources.Any(DescentTargets.HasValidateNested);
             string? overriddenField = null;
 
             // Inherited constraints count. Without this a derived type that adds nothing of its own
@@ -155,7 +167,9 @@ public sealed class AttributeFrontEnd
             // a narrower version of it.
             sawAttribute |= constraints.Count > 0 || validateNested;
 
-            if (member.Hidden is { } displaced && (constraints.Count > 0 || validateNested))
+            // Whatever the hiding declaration carries. A bare `new` is the likelier accident,
+            // because nothing on it says its author thought about validation.
+            if (member.Hidden is { } displaced)
             {
                 // Counted quietly: this is the displaced declaration's own text, and the point here
                 // is to say how much of it was dropped, not to re-report what is wrong with it.
@@ -278,7 +292,7 @@ public sealed class AttributeFrontEnd
             }
 
             var (polymorphism, stated) = validateNested
-                ? NestedPolymorphism(member.Sources)
+                ? NestedPolymorphism(sources)
                 : (PolymorphismMode.DeclaredOnly, false);
 
             if (validateNested && DescentTargetOf(property) is INamedTypeSymbol surviving)
@@ -314,7 +328,7 @@ public sealed class AttributeFrontEnd
                     validatorNameFor,
                     overriddenField,
                     validateNested
-                        ? NestedDescentCondition(member.Sources, declaredNestedCondition)
+                        ? NestedDescentCondition(sources, declaredNestedCondition)
                         : null,
                     polymorphism,
                     // The region's transcribed text owns a walk only the rules class declared; the
@@ -534,7 +548,8 @@ public sealed class AttributeFrontEnd
             var outcome = DataAnnotationsConstraintReader.Read(
                 attribute,
                 attributeClass.Name,
-                type
+                type,
+                _compilation
             );
 
             if (outcome.Constraint is not { } method)
@@ -686,6 +701,52 @@ public sealed class AttributeFrontEnd
         return TypeFacts.IsNullableValueType(property.Type)
             ? ((INamedTypeSymbol)property.Type).TypeArguments[0]
             : property.Type;
+    }
+
+    /// <summary>
+    /// The property declarations the validators of <paramref name="facets"/> read constraints from.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>As&lt;TFacet&gt;</c> runs the facet's validator, and that validator checks the attributes
+    /// on every declaration its own walk reaches: the facet's properties, a class facet's base
+    /// declarations, and the interface declarations those implement. The same declarations merge
+    /// into this type's walk, so without this each of their constraints was checked twice at the
+    /// same level. They are left to the facet instead, which also puts them where the author placed
+    /// the <c>As</c> call: under an <c>if</c>, they run only when it holds.
+    /// </para>
+    /// <para>
+    /// A facet from a referenced assembly counts the same way. Its validator was generated over
+    /// there from the same declarations, and <c>As</c> resolves it through the container.
+    /// </para>
+    /// </remarks>
+    private HashSet<IPropertySymbol> FacetDeclarations(
+        INamedTypeSymbol type,
+        IReadOnlyList<INamedTypeSymbol>? facets
+    )
+    {
+        var taken = new HashSet<IPropertySymbol>(SymbolEqualityComparer.Default);
+
+        if (facets is null)
+        {
+            return taken;
+        }
+
+        foreach (var facet in facets)
+        {
+            // As over the type itself runs this very validator, so there is nothing to hand over.
+            if (SymbolEqualityComparer.Default.Equals(facet, type))
+            {
+                continue;
+            }
+
+            foreach (var member in MemberWalk.PropertiesOf(facet, _compilation, CarriesConstraints))
+            {
+                taken.UnionWith(member.Sources);
+            }
+        }
+
+        return taken;
     }
 
     /// <summary>
@@ -1004,6 +1065,95 @@ public sealed class AttributeFrontEnd
     }
 
     /// <summary>
+    /// Reports a constraint written on a field or on a static property.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The attribute usage admits a field, so the compiler accepts one there, and the walk reads
+    /// instance properties only, so the constraint is dropped and the type can look unconstrained.
+    /// The usage keeps <c>Field</c>, because removing it would turn existing declarations into
+    /// compile errors, and it keeps <c>Parameter</c>, which a host reading method parameters relies
+    /// on. The gap is reported where it is instead, with the property to declare.
+    /// </para>
+    /// <para>
+    /// Only members the type declares itself, like VM1008: a base type reports its own, and one
+    /// from a package has no source to fix. A backing field the compiler declared is not a member
+    /// anyone wrote, so it is left alone.
+    /// </para>
+    /// </remarks>
+    private void ReportConstraintsOnFieldsAndStaticProperties(INamedTypeSymbol type)
+    {
+        foreach (var member in type.GetMembers())
+        {
+            string kind;
+            string declaration;
+
+            switch (member)
+            {
+                case IFieldSymbol { IsImplicitlyDeclared: false } field:
+                    kind =
+                        field.IsConst ? "a constant"
+                        : field.IsStatic ? "a static field"
+                        : "a field";
+                    declaration = InstanceProperty(
+                        field,
+                        field.Type,
+                        field.IsReadOnly || field.IsConst ? "{ get; }" : "{ get; set; }"
+                    );
+                    break;
+
+                case IPropertySymbol { IsStatic: true, IsIndexer: false } property:
+                    kind = "a static property";
+                    declaration = InstanceProperty(
+                        property,
+                        property.Type,
+                        property.SetMethod is null ? "{ get; }" : "{ get; set; }"
+                    );
+                    break;
+
+                default:
+                    continue;
+            }
+
+            foreach (var attribute in member.GetAttributes())
+            {
+                if (
+                    attribute.AttributeClass is not { } attributeClass
+                    || !IsConstraintAttribute(attributeClass)
+                    || attribute.ApplicationSyntaxReference is not { } reference
+                )
+                {
+                    continue;
+                }
+
+                // Qualified because this class has a Location(ISymbol) helper of its own, which
+                // otherwise shadows the type.
+                _diagnostics.Add(
+                    Diagnostic.Create(
+                        ValidationDiagnostics.ConstraintOnFieldOrStaticProperty,
+                        Microsoft.CodeAnalysis.Location.Create(
+                            reference.SyntaxTree,
+                            reference.Span
+                        ),
+                        Unsuffixed(attributeClass.Name),
+                        member.Name,
+                        kind,
+                        declaration
+                    )
+                );
+            }
+        }
+    }
+
+    /// <summary>
+    /// The instance property to declare in place of a field or a static property, as it would be
+    /// typed: the member's own accessibility, type and name.
+    /// </summary>
+    private static string InstanceProperty(ISymbol member, ITypeSymbol type, string accessors) =>
+        $"{Microsoft.CodeAnalysis.CSharp.SyntaxFacts.GetText(member.DeclaredAccessibility)} "
+        + $"{type.ToDisplayString()} {member.Name} {accessors}";
+
+    /// <summary>
     /// Whether this constructor is the one written in the type's own header.
     /// </summary>
     /// <remarks>
@@ -1102,17 +1252,19 @@ public sealed class AttributeFrontEnd
             // 400 body.
             var min = constraint.Min;
             var max = constraint.Max;
+            IComparable? low = null;
+            IComparable? high = null;
             var parsed = true;
 
             if (min is not null)
             {
-                parsed = RangeBoundReader.TryResolve(memberType, min, out var resolved);
+                parsed = RangeBoundReader.TryResolve(memberType, min, out var resolved, out low);
                 min = resolved;
             }
 
             if (parsed && max is not null)
             {
-                parsed = RangeBoundReader.TryResolve(memberType, max, out var resolved);
+                parsed = RangeBoundReader.TryResolve(memberType, max, out var resolved, out high);
                 max = resolved;
             }
 
@@ -1129,9 +1281,77 @@ public sealed class AttributeFrontEnd
                 continue;
             }
 
+            ReportUnsatisfiableRange(member, constraint, low, high);
+
             constraints[i] = constraint with { Min = min, Max = max };
         }
     }
+
+    /// <summary>
+    /// Reports a <c>[Range]</c> whose bounds admit no value: a minimum above the maximum, or equal
+    /// bounds with either of them exclusive.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The bounds are compared as the member's own type, as the check itself compares them. A date
+    /// range compares instants, so a <c>DateTimeOffset</c> minimum written later in the day under
+    /// a larger offset can still be the earlier bound.
+    /// </para>
+    /// <para>
+    /// Reported and kept, as VM1101 treats the length bounds: the check compiles, and the error
+    /// fails the build.
+    /// </para>
+    /// </remarks>
+    /// <param name="member">The member the constraint was written on.</param>
+    /// <param name="constraint">The constraint, its bounds still as they were written.</param>
+    /// <param name="low">The minimum's value, or null when it has none to compare.</param>
+    /// <param name="high">The maximum's value, or null when it has none to compare.</param>
+    private void ReportUnsatisfiableRange(
+        ISymbol member,
+        ConstraintModel constraint,
+        IComparable? low,
+        IComparable? high
+    )
+    {
+        if (low is null || high is null)
+        {
+            return;
+        }
+
+        var order = low.CompareTo(high);
+
+        if (order > 0)
+        {
+            Report(
+                ValidationDiagnostics.MinExceedsMax,
+                member,
+                member.Name,
+                ValidationDiagnostics.InvertedBounds,
+                ValidationDiagnostics.InvertedBoundsFix(
+                    WrittenBound(constraint.Min!),
+                    WrittenBound(constraint.Max!)
+                )
+            );
+        }
+        else if (order == 0 && (constraint.ExclusiveMin || constraint.ExclusiveMax))
+        {
+            Report(
+                ValidationDiagnostics.MinExceedsMax,
+                member,
+                member.Name,
+                ValidationDiagnostics.EmptyBounds,
+                ValidationDiagnostics.EmptyBoundsFix(
+                    WrittenBound(constraint.Min!),
+                    constraint.ExclusiveMin,
+                    constraint.ExclusiveMax
+                )
+            );
+        }
+    }
+
+    /// <summary>A bound as the author wrote it: a string bound without its quotes.</summary>
+    private static string WrittenBound(string literal) =>
+        RangeBoundReader.IsQuoted(literal) ? RangeBoundReader.Unquote(literal) : literal;
 
     /// <summary>
     /// Resolves a member's constraints against its type and reports the ones that do not fit.
@@ -1486,7 +1706,13 @@ public sealed class AttributeFrontEnd
                 && min > max
             )
             {
-                Report(ValidationDiagnostics.MinExceedsMax, member, member.Name);
+                Report(
+                    ValidationDiagnostics.MinExceedsMax,
+                    member,
+                    member.Name,
+                    ValidationDiagnostics.InvertedBounds,
+                    ValidationDiagnostics.InvertedBoundsFix(constraint.Min!, constraint.Max!)
+                );
             }
 
             if (
@@ -1718,7 +1944,8 @@ public sealed class AttributeFrontEnd
             var outcome = DataAnnotationsConstraintReader.Read(
                 attribute,
                 attributeClass.Name,
-                memberType
+                memberType,
+                _compilation
             );
 
             // [RegularExpression] compiles to the same Regex field an inline [Pattern] does, so it

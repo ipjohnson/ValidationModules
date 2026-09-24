@@ -94,9 +94,10 @@ text is authored, so language packs leave it unchanged.
 
 `ErrorMessageResourceType` with `ErrorMessageResourceName` on a built-in attribute reads the
 resource property each time the message is rendered, without reflection. `{0}` in the resource
-text is the display name, as it is in an `ErrorMessage`. On a custom
-`ValidationAttribute`, DataAnnotations resolves the resource with reflection, which trimming can
-break. The generator reports that case as `VM2009`.
+text is the display name, as it is in an `ErrorMessage`. The property must be static, return a
+string, and be public or in the same assembly. The generator reports `VM2011` when it is not. On a
+custom `ValidationAttribute`, DataAnnotations resolves the resource with reflection, which trimming
+can break. The generator reports that case as `VM2009`.
 
 ## Differences from Validator
 
@@ -104,13 +105,15 @@ The generated validator behaves like `Validator.TryValidateObject` with `validat
 true`, with these differences:
 
 - Every error has a code, and the default messages are this library's.
-- Attributes on fields are not read. Neither are `[MetadataType]` classes.
+- Attributes on fields are not read. Neither are `[MetadataType]` classes. A constraint on a field
+  is reported as `VM1011`.
 - Attributes declared on an interface's properties apply to the classes that implement it.
 - The attributes on the class, then `IValidatableObject.Validate`, run only when the type's own
   rules reported no error. Those rules include its rules classes and the objects it validates
   through `[ValidateNested]`, which `Validator.TryValidateObject` does not visit. A warning does not
   stop them, and neither does an error on the object that contains this one.
-- `[Range]` with its bounds in the wrong order is accepted at build time and always fails.
+- `[Range]` with its bounds in the wrong order fails the build with `VM1101`. DataAnnotations
+  throws when it validates.
 - A custom `ValidationAttribute` that calls `ValidationContext.GetService` gets the pass's services
   only when the pass has a service provider, as it does through `ValidationRunner<T>`.
 

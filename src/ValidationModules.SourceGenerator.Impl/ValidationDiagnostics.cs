@@ -150,6 +150,24 @@ public static class ValidationDiagnostics
     );
 
     /// <summary>
+    /// A constraint on a field or a static property. The attribute usage admits a field, so the
+    /// compiler accepts one, and the generator reads instance properties only, so the constraint
+    /// is never evaluated.
+    /// </summary>
+    /// <remarks>
+    /// Warning rather than error, for VM1008's reason: the rule does not run, but nothing is
+    /// rejected that should have been accepted. The tail prints the instance property to declare
+    /// instead.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor ConstraintOnFieldOrStaticProperty = Descriptor(
+        "VM1011",
+        "Constraint on a field or static property has no effect",
+        "'{0}' on '{1}' is never evaluated, because '{1}' is {2}. Constraints apply to instance "
+            + "properties. Declare it as one: {3}",
+        DiagnosticSeverity.Warning
+    );
+
+    /// <summary>
     /// Two types would get validators with one name in one namespace. A nested <c>Order.Item</c>
     /// and a top-level <c>Order_Item</c> both get <c>Order_ItemValidator</c>.
     /// </summary>
@@ -161,12 +179,45 @@ public static class ValidationDiagnostics
         DiagnosticSeverity.Error
     );
 
+    /// <summary>
+    /// Bounds that no value satisfies: a minimum above the maximum, or equal bounds that exclude
+    /// themselves.
+    /// </summary>
+    /// <remarks>
+    /// One descriptor for both, with the reason and the fix as arguments. The bounds are compared as
+    /// the member's own type, so a number compares by value rather than by its text, and a date
+    /// range compares instants.
+    /// </remarks>
     public static readonly DiagnosticDescriptor MinExceedsMax = Descriptor(
         "VM1101",
-        "Lower bound exceeds upper bound",
-        "The bounds on '{0}' are inverted, so the constraint can never be satisfied",
+        "Bounds admit no value",
+        "The bounds on '{0}' {1}, so the constraint can never be satisfied. {2}",
         DiagnosticSeverity.Error
     );
+
+    /// <summary>VM1101's reason when the minimum is above the maximum.</summary>
+    public const string InvertedBounds = "are inverted";
+
+    /// <summary>VM1101's reason when equal bounds exclude themselves.</summary>
+    public const string EmptyBounds = "admit no value";
+
+    /// <summary>VM1101's fix for inverted bounds.</summary>
+    public static string InvertedBoundsFix(string min, string max) =>
+        $"The minimum {min} exceeds the maximum {max}. Swap the two bounds";
+
+    /// <summary>VM1101's fix for equal bounds with either of them exclusive.</summary>
+    public static string EmptyBoundsFix(string bound, bool exclusiveMin, bool exclusiveMax)
+    {
+        var exclusive = (exclusiveMin, exclusiveMax) switch
+        {
+            (true, true) => "ExclusiveMin and ExclusiveMax are",
+            (true, false) => "ExclusiveMin is",
+            _ => "ExclusiveMax is",
+        };
+
+        return $"The minimum and the maximum are both {bound}, and {exclusive} set. Make both "
+            + "bounds inclusive, or widen the range";
+    }
 
     public static readonly DiagnosticDescriptor RangeHasNoBounds = Descriptor(
         "VM1102",
@@ -811,6 +862,24 @@ public static class ValidationDiagnostics
         + "rule into IValidatableObject.Validate, or into an Ensure in a rules class";
 
     /// <summary>
+    /// A compiled DataAnnotations attribute sets <c>ErrorMessageResourceType</c> and
+    /// <c>ErrorMessageResourceName</c>, and the name is not a static string property the generated
+    /// validator can read.
+    /// </summary>
+    /// <remarks>
+    /// The generated code reads the resource property directly. Without this check a typo fails
+    /// with CS0117 at a column of a generated file, naming neither the attribute nor the property
+    /// that carries it. DataAnnotations throws for the same attribute when it formats the message.
+    /// The constraint is still compiled, with its default message, so nothing else reports.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor ErrorMessageResourceUnreadable = Descriptor(
+        "VM2011",
+        "ErrorMessageResourceName does not resolve",
+        "'{0}' on '{1}' sets ErrorMessageResourceName to {2}",
+        DiagnosticSeverity.Error
+    );
+
+    /// <summary>
     /// A Describe body is transcribed, and almost everything transcribes; what remains rejected is
     /// the short blacklist - exotica, mutation of the subject, misplaced islands. Never silently
     /// dropped: a statement the reader cannot carry has to break the build, because the generated
@@ -1153,6 +1222,23 @@ public static class ValidationDiagnostics
             + "built, which in a default application happens on its first request. Add constraints "
             + "or [GenerateValidator] to '{0}'. If its rules come from another assembly, call that "
             + "assembly's Add<Assembly>Validators() and ignore this warning",
+        DiagnosticSeverity.Warning
+    );
+
+    /// <summary>
+    /// A <c>ValidationModules_*</c> MSBuild property holds a value that matches none of the values
+    /// it accepts, compared without regard to case.
+    /// </summary>
+    /// <remarks>
+    /// Warning rather than error, because the generator still has a well-defined answer: the
+    /// property's default. Reported once per compilation. It has no location, because the
+    /// generator is handed the value from the project file but not where it was set.
+    /// </remarks>
+    public static readonly DiagnosticDescriptor UnrecognisedBuildPropertyValue = Descriptor(
+        "VM5004",
+        "Unrecognised MSBuild property value",
+        "{0} is '{1}', which is not a value it accepts, so the generator uses the default, {2}. "
+            + "Set it to {3}",
         DiagnosticSeverity.Warning
     );
 
