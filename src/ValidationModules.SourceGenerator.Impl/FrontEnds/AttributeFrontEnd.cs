@@ -1324,11 +1324,24 @@ public sealed class AttributeFrontEnd
                 unemittable = true;
             }
 
-            // RegexOptions.Compiled is 8. Meaningless against a source-generated regex, and asking
-            // for it usually means someone is carrying over a habit this library exists to remove.
-            if (constraint.Kind == ConstraintKind.Pattern && (constraint.RegexOptions & 8) != 0)
+            // RegexOptions.Compiled is 8. Removed as well as reported, because the inline form is a
+            // Regex the validator constructs, and passing the flag on would compile it through
+            // Reflection.Emit. Asking for it usually means someone is carrying over a habit this
+            // library exists to remove.
+            if (
+                constraint.Kind == ConstraintKind.Pattern
+                && constraint.RegexAccessor is null
+                && (constraint.RegexOptions & 8) != 0
+            )
             {
-                Report(ValidationDiagnostics.CompiledRegexRequested, member, member.Name);
+                Report(
+                    ValidationDiagnostics.CompiledRegexRequested,
+                    member,
+                    member.Name,
+                    member.ContainingType?.Name
+                );
+
+                constraints[i] = constraint with { RegexOptions = constraint.RegexOptions & ~8 };
             }
 
             if (unemittable)
@@ -1375,7 +1388,7 @@ public sealed class AttributeFrontEnd
 
                 if (native is not null)
                 {
-                    constraints.Add(ResolveCondition(native, member));
+                    constraints.Add(ResolveCondition(native, member, attributeClass));
                 }
 
                 continue;
@@ -1515,9 +1528,24 @@ public sealed class AttributeFrontEnd
                 attributeClass.Name,
                 memberType
             );
-            if (outcome.Constraint is not null)
+
+            // [RegularExpression] compiles to the same Regex field an inline [Pattern] does, so it
+            // answers to the same policy.
+            var read = outcome.Constraint is { Kind: ConstraintKind.Pattern, Pattern: { } pattern }
+                ? ApplyPatternPolicy(
+                    outcome.Constraint,
+                    member,
+                    ValidationDiagnostics.RegularExpressionFix(
+                        member.Name,
+                        member.ContainingType?.Name,
+                        pattern
+                    )
+                )
+                : outcome.Constraint;
+
+            if (read is not null)
             {
-                constraints.Add(outcome.Constraint);
+                constraints.Add(read);
             }
 
             // Through Report's _quiet gate like every other diagnostic: a constraint read off a
@@ -1561,7 +1589,8 @@ public sealed class AttributeFrontEnd
     }
 
     /// <summary>
-    /// Resolves the reference form's member, or applies the policy to the inline form.
+    /// Resolves the reference form's member and reports the settings it ignores, or applies the
+    /// policy to the inline form.
     /// </summary>
     private ConstraintModel? ResolvePattern(
         ConstraintModel constraint,
@@ -1620,6 +1649,13 @@ public sealed class AttributeFrontEnd
                 return null;
             }
 
+            ReportIgnoredSettings(
+                attribute,
+                owner,
+                member!,
+                $"{provider.ToDisplayString()}.{memberName}"
+            );
+
             var qualified = provider.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
             var accessor =
                 member is IMethodSymbol
@@ -1632,34 +1668,191 @@ public sealed class AttributeFrontEnd
             };
         }
 
-        // Inline form. Correct and AOT-clean, but it roots the regex parser and interpreter, which
-        // is +448 KB on a published AOT binary. The policy decides whether that is acceptable here.
-        if (_patternPolicy is PatternPolicy.Error or PatternPolicy.Warn)
+        return ApplyPatternPolicy(
+            constraint,
+            owner,
+            ValidationDiagnostics.InlinePatternFix(owner.Name, owner.ContainingType?.Name)
+        );
+    }
+
+    /// <summary>
+    /// Applies the pattern policy to an expression the validator builds from a string, returning
+    /// the constraint to keep, or null when the policy rejects it.
+    /// </summary>
+    /// <remarks>
+    /// The inline form is correct and AOT-clean, but it roots the regex parser and interpreter,
+    /// which is +448 KB on a published AOT binary. The policy decides whether that is acceptable
+    /// here. One implementation for both vocabularies: an inline <c>[Pattern]</c> and a
+    /// DataAnnotations <c>[RegularExpression]</c> compile to the same field and cost the same, so
+    /// only the fix the diagnostic prints differs between them.
+    /// </remarks>
+    private ConstraintModel? ApplyPatternPolicy(
+        ConstraintModel constraint,
+        ISymbol owner,
+        string fix
+    )
+    {
+        if (_patternPolicy is not (PatternPolicy.Error or PatternPolicy.Warn))
         {
-            var severity =
-                _patternPolicy == PatternPolicy.Error
-                    ? DiagnosticSeverity.Error
-                    : DiagnosticSeverity.Warning;
-
-            _diagnostics.Add(
-                Diagnostic.Create(
-                    ValidationDiagnostics.InlinePatternUnderAot,
-                    Location(owner),
-                    severity,
-                    additionalLocations: null,
-                    properties: null,
-                    owner.Name,
-                    owner.ContainingType?.Name
-                )
-            );
-
-            if (_patternPolicy == PatternPolicy.Error)
-            {
-                return null;
-            }
+            return constraint;
         }
 
-        return constraint;
+        var severity =
+            _patternPolicy == PatternPolicy.Error
+                ? DiagnosticSeverity.Error
+                : DiagnosticSeverity.Warning;
+
+        _diagnostics.Add(
+            Diagnostic.Create(
+                ValidationDiagnostics.InlinePatternUnderAot,
+                Location(owner),
+                severity,
+                additionalLocations: null,
+                properties: null,
+                owner.Name,
+                fix
+            )
+        );
+
+        return _patternPolicy == PatternPolicy.Error ? null : constraint;
+    }
+
+    /// <summary>
+    /// Reports <c>Options</c> or <c>MatchTimeoutMilliseconds</c> set on the reference form, which
+    /// calls a regex built with its own options and timeout and reads neither.
+    /// </summary>
+    /// <remarks>
+    /// Only a non-zero value counts, because zero is each property's default and asks for nothing.
+    /// The tail prints the declaration that would do what was asked, merged into the referenced
+    /// member's own <c>[GeneratedRegex]</c> when it has one. <c>RegexOptions.Compiled</c> never
+    /// merges: the regex source generator writes the matcher as C#, so there is nothing left to
+    /// compile.
+    /// </remarks>
+    private void ReportIgnoredSettings(
+        AttributeData attribute,
+        ISymbol owner,
+        ISymbol regexMember,
+        string regexDisplay
+    )
+    {
+        var options = NativeConstraintReader.Named(attribute, "Options") is int o ? o : 0;
+        var timeout = NativeConstraintReader.Named(attribute, "MatchTimeoutMilliseconds") is int t
+            ? t
+            : 0;
+
+        if (options == 0 && timeout == 0)
+        {
+            return;
+        }
+
+        var settings = new List<string>();
+
+        if (options != 0)
+        {
+            settings.Add($"Options = {ValidationDiagnostics.RegexOptionsText(options)}");
+        }
+
+        if (timeout != 0)
+        {
+            settings.Add($"MatchTimeoutMilliseconds = {timeout}");
+        }
+
+        var declared = DeclaredGeneratedRegex(regexMember);
+        var wanted = options & ~8;
+        var merged = (declared?.Options ?? 0) | wanted;
+        var mergedTimeout = timeout != 0 ? timeout : declared?.Timeout;
+
+        string tail;
+
+        if (wanted == 0 && timeout == 0)
+        {
+            tail = ValidationDiagnostics.ReferencedPatternCompiledTail;
+        }
+        else if (
+            declared is { } existing
+            && merged == existing.Options
+            && mergedTimeout == existing.Timeout
+        )
+        {
+            tail = ValidationDiagnostics.ReferencedPatternRedundantTail;
+        }
+        else
+        {
+            tail = ValidationDiagnostics.ReferencedPatternMoveTail(
+                ValidationDiagnostics.GeneratedRegexDeclaration(
+                    declared?.Pattern,
+                    merged,
+                    mergedTimeout,
+                    declared?.Culture
+                )
+            );
+        }
+
+        Report(
+            ValidationDiagnostics.ReferencedPatternSettingIgnored,
+            owner,
+            owner.Name,
+            regexDisplay,
+            string.Join(", ", settings),
+            tail
+        );
+    }
+
+    /// <summary>
+    /// The arguments of the <c>[GeneratedRegex]</c> on a referenced member, or null when it
+    /// carries none, as a field holding a regex built elsewhere does.
+    /// </summary>
+    private static (
+        string Pattern,
+        int Options,
+        int? Timeout,
+        string? Culture
+    )? DeclaredGeneratedRegex(ISymbol regexMember)
+    {
+        foreach (var attribute in regexMember.GetAttributes())
+        {
+            if (
+                attribute.AttributeClass?.ToDisplayString() != KnownTypes.GeneratedRegexAttribute
+                || attribute.AttributeConstructor is not { } constructor
+            )
+            {
+                continue;
+            }
+
+            string? pattern = null;
+            var options = 0;
+            int? timeout = null;
+            string? culture = null;
+
+            for (
+                var i = 0;
+                i < constructor.Parameters.Length && i < attribute.ConstructorArguments.Length;
+                i++
+            )
+            {
+                var value = attribute.ConstructorArguments[i].Value;
+
+                switch (constructor.Parameters[i].Name)
+                {
+                    case "pattern":
+                        pattern = value as string;
+                        break;
+                    case "options":
+                        options = value is int flags ? flags : 0;
+                        break;
+                    case "matchTimeoutMilliseconds":
+                        timeout = value is int milliseconds ? milliseconds : null;
+                        break;
+                    case "cultureName":
+                        culture = value as string;
+                        break;
+                }
+            }
+
+            return pattern is null ? null : (pattern, options, timeout, culture);
+        }
+
+        return null;
     }
 
     private static bool IsRegex(ITypeSymbol type) =>
@@ -1717,7 +1910,16 @@ public sealed class AttributeFrontEnd
     /// Turns a <c>When</c>/<c>Unless</c> member name into the boolean expression the emitter tests,
     /// with the negation baked in so that the emitter cannot tell the two apart.
     /// </summary>
-    private ConstraintModel ResolveCondition(ConstraintModel constraint, ISymbol member)
+    /// <remarks>
+    /// VM1403 names <paramref name="attributeClass"/> rather than the constraint's kind, which is
+    /// not always the attribute that was written: <c>[DeniedValues]</c> reads as a negated
+    /// <c>AllowedValues</c>.
+    /// </remarks>
+    private ConstraintModel ResolveCondition(
+        ConstraintModel constraint,
+        ISymbol member,
+        INamedTypeSymbol attributeClass
+    )
     {
         var when = constraint.WhenMember;
         var unless = constraint.UnlessMember;
@@ -1732,7 +1934,7 @@ public sealed class AttributeFrontEnd
             Report(
                 ValidationDiagnostics.ConditionSetBothWays,
                 member,
-                constraint.Kind,
+                Unsuffixed(attributeClass.Name),
                 member.Name
             );
             return constraint;
@@ -1857,7 +2059,10 @@ public sealed class AttributeFrontEnd
                     UnlessMember: NamedArgument(attribute, "Unless")
                 );
 
-                if (ResolveCondition(probe, source).Condition is { } condition)
+                if (
+                    ResolveCondition(probe, source, attribute.AttributeClass).Condition is
+                    { } condition
+                )
                 {
                     return condition;
                 }
@@ -2132,7 +2337,7 @@ public sealed class AttributeFrontEnd
             Values: new EquatableArray<string>(arguments.ToImmutableArray())
         );
 
-        constraints.Add(ResolveCondition(constraint, member));
+        constraints.Add(ResolveCondition(constraint, member, attributeClass));
     }
 
     /// <summary>
@@ -2296,7 +2501,7 @@ public sealed class AttributeFrontEnd
             PerPassInstance: perPass
         );
 
-        constraints.Add(ResolveCondition(constraint, member));
+        constraints.Add(ResolveCondition(constraint, member, attributeClass));
     }
 
     /// <summary>The implemented instantiations as the diagnostic should name them.</summary>

@@ -118,10 +118,15 @@ public static class RuntimeContract
     // registers CollectionValidatorFor<T>/CollectionAsyncValidatorFor<T> for List<T> and T[].
     // None of it exists in a contract-10 runtime. Additive, as the rule below requires.
 
+    // 11 -> 12: pattern checks. Every emitted pattern test calls ConstraintChecks.IsMatch, which
+    // counts a match that runs out of time as a failed match instead of letting
+    // RegexMatchTimeoutException out of Validate. A contract-11 runtime has no such method.
+    // Additive, as the rule below requires.
+
     /// <summary>
     /// The contract this runtime implements. Compared against
     /// <c>EmitterContract.RequiredRuntimeContract</c> by the generator, and against
     /// <c>$(ValidationModulesRuntimeContract)</c> by build tasks driving the emitter.
     /// </summary>
-    public const int Version = 11;
+    public const int Version = 12;
 }
