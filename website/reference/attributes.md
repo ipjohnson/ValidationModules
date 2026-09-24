@@ -20,9 +20,9 @@ Every constraint attribute derives from `ValidationConstraintAttribute`, which h
 `When` and `Unless` accept a `bool` property, a parameterless method that returns `bool`, or a
 static method that takes the model and returns `bool`. A constraint cannot set both.
 
-`ValidationModules_CodeNamespace` adds a prefix to a code set with `Code` on a built-in attribute or
-a `CustomConstraintAttribute`, as in `myapp.weight_out_of_range`. It does not change the `Code` of
-an attribute that implements `IConstraintFor<T>`, and built-in codes are never prefixed.
+`ValidationModules_CodeNamespace` adds a prefix to a code set with `Code` on a built-in attribute, a
+`CustomConstraintAttribute` or an attribute that implements `IConstraintFor<T>`, as in
+`myapp.weight_out_of_range`. Built-in codes are never prefixed.
 
 Every constraint except `[Required]` passes a `null` value. When `[Required]` fails, the other
 constraints on the property are skipped.

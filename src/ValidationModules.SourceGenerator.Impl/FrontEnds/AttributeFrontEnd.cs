@@ -1540,9 +1540,11 @@ public sealed class AttributeFrontEnd
             }
         }
 
-        // The one place every authored code this front end reads leaves by, whichever attribute
-        // shape supplied it. The built-in vocabulary is not here: an unset Code means the emitter
-        // writes a ValidationCodes constant, which is never namespaced.
+        // Where every authored code the emitter writes into a report call leaves by, whichever
+        // attribute shape supplied it. An IConstraintFor<T> attribute reports its own Code, so
+        // ReadInstanceConstraint applies the namespace inside the construction instead. The
+        // built-in vocabulary is not here: an unset Code means the emitter writes a ValidationCodes
+        // constant, which is never namespaced.
         if (!string.IsNullOrWhiteSpace(_codeNamespace))
         {
             for (var index = 0; index < constraints.Count; index++)
@@ -2251,7 +2253,21 @@ public sealed class AttributeFrontEnd
             matched = fits[0];
         }
 
-        if (AttributeConstructionRenderer.Render(attribute) is not { } construction)
+        // The base's knobs are read only off the base that declares them; on a plain Attribute
+        // implementer, a property that happens to be called When or Code is the author's and rides
+        // into the construction like any other.
+        var conditional = DerivesFromValidationConstraint(attributeClass);
+
+        // The instance reads its own Code when it reports, so the assembly's code namespace goes
+        // into the construction, where the other attribute shapes take it into the report call.
+        var code = conditional
+            ? CodeNaming.Apply(
+                _codeNamespace,
+                NativeConstraintReader.Named(attribute, "Code") as string
+            )
+            : null;
+
+        if (AttributeConstructionRenderer.Render(attribute, code) is not { } construction)
         {
             Report(
                 ValidationDiagnostics.ConstraintInterfaceUnusable,
@@ -2274,11 +2290,6 @@ public sealed class AttributeFrontEnd
                 member.Name
             );
         }
-
-        // The base's condition knobs are read only off the base that declares them; on a plain
-        // Attribute implementer, a property that happens to be called When is the author's and
-        // rides into the construction like any other.
-        var conditional = DerivesFromValidationConstraint(attributeClass);
 
         var constraint = new ConstraintModel(
             ConstraintKind.CustomInstance,

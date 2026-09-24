@@ -115,9 +115,9 @@ public sealed class Batch
 }
 ```
 
-The default `Validate` reports the `Message` with `Report`, so the text is not authored, and a
-language pack with an entry for the code replaces it. To keep the text, implement `Validate` and
-report with `ReportAuthored`.
+The default `Validate` reports the `Message` with `ReportAuthored`, so a language pack does not
+replace it. `ValidationModules_CodeNamespace` prefixes the `Code`, as it does on the other attribute
+shapes. A `Validate` you implement yourself reports the code and text it chooses.
 
 When a class implements `IConstraintFor<T>` for several types, the one for the property's exact type
 is used. A class that cannot be used this way is reported as `VM1602`, for example when two of its
