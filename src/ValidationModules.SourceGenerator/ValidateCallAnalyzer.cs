@@ -170,8 +170,8 @@ public sealed class ValidateCallAnalyzer : DiagnosticAnalyzer
 
     /// <summary>
     /// The analyzer's reading of the front end's ProducesAValidator: <c>[GenerateValidator]</c>, a
-    /// rules class in this compilation, or any constraint either front end reads on the type's
-    /// own or inherited properties.
+    /// rules class in this compilation, a class-level <c>ValidationAttribute</c>, or any constraint
+    /// either front end reads on the type's own or inherited properties.
     /// </summary>
     private static bool ProducesAValidator(
         INamedTypeSymbol type,
@@ -193,11 +193,49 @@ public sealed class ValidateCallAnalyzer : DiagnosticAnalyzer
             }
         }
 
+        // A class-level ValidationAttribute is a rule of the type's own. The generator reads it
+        // from the base types and the public interfaces too, the way DataAnnotations does.
         for (INamedTypeSymbol? current = type; current is not null; current = current.BaseType)
         {
+            if (HasValidationAttribute(current))
+            {
+                return true;
+            }
+
             foreach (var member in current.GetMembers())
             {
                 if (member is IPropertySymbol property && CarriesConstraints(property))
+                {
+                    return true;
+                }
+            }
+        }
+
+        foreach (var contract in type.AllInterfaces)
+        {
+            if (
+                contract.DeclaredAccessibility == Accessibility.Public
+                && HasValidationAttribute(contract)
+            )
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasValidationAttribute(INamedTypeSymbol declaring)
+    {
+        foreach (var attribute in declaring.GetAttributes())
+        {
+            for (
+                var baseType = attribute.AttributeClass?.BaseType;
+                baseType is not null;
+                baseType = baseType.BaseType
+            )
+            {
+                if (baseType.ToDisplayString() == KnownTypes.ValidationAttribute)
                 {
                     return true;
                 }

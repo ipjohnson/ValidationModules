@@ -118,10 +118,16 @@ public static class RuntimeContract
     // registers CollectionValidatorFor<T>/CollectionAsyncValidatorFor<T> for List<T> and T[].
     // None of it exists in a contract-10 runtime. Additive, as the rule below requires.
 
-    // 11 -> 12: pattern checks, field names and display names. Every emitted pattern test calls
-    // ConstraintChecks.IsMatch, which counts a match that runs out of time as a failed match
-    // instead of letting RegexMatchTimeoutException out of Validate. A contract-11 runtime has no
-    // such method.
+    // 11 -> 12: pattern checks, object-level gates, field names and display names. Every emitted
+    // pattern test calls ConstraintChecks.IsMatch, which counts a match that runs out of time as a
+    // failed match instead of letting RegexMatchTimeoutException out of Validate. A contract-11
+    // runtime has no such method.
+    //
+    // Object-level rules are gated on what their own validator found. A generated validator for a
+    // type with class-level ValidationAttributes or IValidatableObject takes ctx.Mark() before its
+    // first rule and asks ctx.HasBlockingErrorsSince(mark) at the gate, where it used to ask
+    // ctx.HasErrors - which counted warnings and every other object's errors too. ValidationMark
+    // and both members are new, so a contract-11 runtime cannot supply them either.
     //
     // Every generated Validate reports through ValidationContext.WithResolvedFieldNames(), so a
     // name the generator resolved from [JsonPropertyName] is not run through the pass's field namer

@@ -347,8 +347,37 @@ public readonly struct ValidationContext : IValidationContextReporter
     /// </summary>
     public bool HasErrors => _collector.HasErrors;
 
-    /// <summary>O(1) token for "has anything been recorded since"; see the collector.</summary>
-    internal object? ChangeToken => _collector.ChangeToken;
+    /// <summary>
+    /// Marks this point in the pass, so <see cref="HasBlockingErrorsSince"/> can later ask about
+    /// only what was recorded after it.
+    /// </summary>
+    /// <remarks>
+    /// A generated validator for a type with object-level rules - class-level
+    /// <c>ValidationAttribute</c>s or <c>IValidatableObject</c> - takes one before its first rule.
+    /// Taking it reads one field and allocates nothing.
+    /// </remarks>
+    public ValidationMark Mark() => new(_collector.ChangeToken);
+
+    /// <summary>
+    /// Whether an Error-severity failure was recorded after <paramref name="mark"/> was taken.
+    /// Warnings and Info do not count, and neither does anything recorded before the mark.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the gate on a generated validator's object-level rules, and the reason it is scoped
+    /// rather than pass-wide. <see cref="HasErrors"/> counts every severity and every object, so
+    /// gating on it lets a warning in the validator's own rules, or an error on the parent that
+    /// holds the object, stop <c>IValidatableObject.Validate</c> on an object whose own rules
+    /// passed.
+    /// </para>
+    /// <para>
+    /// Walks back from the newest failure to the mark, so it costs one step per failure recorded
+    /// since, which is none on a clean pass. It allocates nothing.
+    /// </para>
+    /// </remarks>
+    /// <param name="mark">A mark taken earlier in this pass. <c>default</c> is the start of it.</param>
+    public bool HasBlockingErrorsSince(ValidationMark mark) =>
+        _collector.HasBlockingErrorsSince(mark.Token);
 
     /// <summary>
     /// Whether this pass stops at its first blocking failure. Forwarded from the collector, which

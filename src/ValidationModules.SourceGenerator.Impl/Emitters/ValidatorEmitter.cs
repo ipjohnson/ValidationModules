@@ -65,6 +65,13 @@ public sealed class ValidatorEmitter
     private const string MessageProviderType = "global::ValidationModules.DelegateMessageProvider";
 
     /// <summary>
+    /// The local holding the mark a type with object-level rules takes before its first rule. No
+    /// other local this emitter writes can be spelled this way: those are a fixed prefix and a
+    /// property name, a numbered condition, or a loop variable.
+    /// </summary>
+    private const string ObjectMark = "mark";
+
+    /// <summary>
     /// The <c>static readonly ValidationMessageInfo</c> fields one validator hoists, deduplicated
     /// by initializer text so ten properties sharing <c>[StringLength(1, 100)]</c> share one field.
     /// The parameterless constraints never land here - they use the runtime's shared singletons -
@@ -323,20 +330,47 @@ public sealed class ValidatorEmitter
             }
         }
 
-        // IValidatableObject runs last and only when nothing else failed, which is
-        // Validator.TryValidateObject's sequencing: object-level validation is the rule the type
-        // wrote for "everything else is fine".
+        // The object-level rules run last, in Validator.TryValidateObject's order: the class-level
+        // attributes once every rule above has passed, then IValidatableObject once those have
+        // too. Object-level validation is the rule the type wrote for "everything else is fine".
+        // "Passed" is asked of the mark taken before the first rule, so it covers this validator's
+        // own rules, regions and descents and nothing else: a warning does not fail it, and
+        // neither does an error the parent or a sibling recorded before this validator began.
+        var gatesObjectRules = model.ObjectRules.Count > 0 || model.ImplementsValidatableObject;
+
+        if (model.ObjectRules.Count > 0)
+        {
+            // One gate for the lot, evaluated once. Every class-level attribute runs when the
+            // properties passed, whatever the others find, as DataAnnotations runs them.
+            var objectRules = body.If($"!ctx.HasBlockingErrorsSince({ObjectMark})");
+
+            foreach (var rule in model.ObjectRules)
+            {
+                var call = ObjectRuleCall(rule, customAttributes, memberNamer);
+
+                if (failFast)
+                {
+                    objectRules.If($"{call}.ShouldStop").Return($"{Flow}.Stop");
+                }
+                else
+                {
+                    objectRules.AddIndentedStatement(call);
+                }
+            }
+        }
+
         if (model.ImplementsValidatableObject)
         {
             var call = $"{DataAnnotations}.ValidateObject(ref ctx, value, {memberNamer})";
 
             if (failFast)
             {
-                body.If($"!ctx.HasErrors && {call}.ShouldStop").Return($"{Flow}.Stop");
+                body.If($"!ctx.HasBlockingErrorsSince({ObjectMark}) && {call}.ShouldStop")
+                    .Return($"{Flow}.Stop");
             }
             else
             {
-                body.If("!ctx.HasErrors").AddIndentedStatement(call);
+                body.If($"!ctx.HasBlockingErrorsSince({ObjectMark})").AddIndentedStatement(call);
             }
         }
 
@@ -472,6 +506,11 @@ public sealed class ValidatorEmitter
         // may hand its own context to a hand-written validator next.
         validate.Assign("context.WithResolvedFieldNames()").ToVar("ctx");
 
+        if (gatesObjectRules)
+        {
+            validate.Assign("ctx.Mark()").ToVar(ObjectMark);
+        }
+
         foreach (var (name, expression) in bodyConditions.Declarations)
         {
             validate.Assign(expression).ToVar(name);
@@ -504,9 +543,10 @@ public sealed class ValidatorEmitter
             || graph.ParticipatesInACycle(model);
 
         // An IValidatableObject type falls back for the applied-rules reason: its object-level
-        // rule is gated on the whole pass being clean, which a boolean path with no collector
-        // cannot know. The interface default walks Validate into a throwaway collector and keeps
-        // the sequencing.
+        // rule is user code that reports through the context, behind a gate that asks what the
+        // collector recorded since the mark, and a boolean path has neither. A class-level
+        // ValidationAttribute falls back for the same reason. The interface default walks Validate
+        // into a throwaway collector and keeps the sequencing.
         //
         // A type with rules-class regions falls back too: a region carries free-form computation
         // and reporter calls whose severity is a runtime value, which a boolean path with no
@@ -516,6 +556,7 @@ public sealed class ValidatorEmitter
             && !dispatchesDynamically
             && !nestsItself
             && !model.ImplementsValidatableObject
+            && model.ObjectRules.Count == 0
             && model.Regions.Count == 0
         )
         {
@@ -1615,6 +1656,44 @@ public sealed class ValidatorEmitter
             $"{DataAnnotations}.Apply(ref ctx, {accessor}({access}), {fieldLiteral}, {memberNamer})",
             $"{accessor}({access}) is not null"
         );
+    }
+
+    /// <summary>
+    /// The call one class-level rule makes: the object itself is the value, the DataAnnotations
+    /// context names no member, and the result maps through <c>Apply</c> with no field, so a result
+    /// naming no members reports against the object.
+    /// </summary>
+    /// <remarks>
+    /// The display name is the runtime type's name, which is what a type-level DataAnnotations
+    /// context resolves it to, so an attribute formatting <c>{0}</c> reads the same here as under
+    /// <c>Validator.TryValidateObject</c>.
+    /// </remarks>
+    private static string ObjectRuleCall(
+        ConstraintModel rule,
+        List<(string, ConstraintModel)> customAttributes,
+        string memberNamer
+    )
+    {
+        var context =
+            $"{DataAnnotations}.CreateContext(ctx.Services, value, null, value.GetType().Name)";
+
+        string result;
+
+        if (rule.Kind == ConstraintKind.CustomAttribute)
+        {
+            var instance = $"ObjectAttribute{customAttributes.Count}";
+
+            customAttributes.Add((instance, rule));
+            result = $"{instance}.GetValidationResult(value, {context})";
+        }
+        else
+        {
+            result = rule.CustomTakesContext
+                ? $"{rule.CustomAccessor}(value, {context})"
+                : $"{rule.CustomAccessor}(value)";
+        }
+
+        return $"{DataAnnotations}.Apply(ref ctx, {result}, null, {memberNamer})";
     }
 
     /// <summary>

@@ -252,6 +252,60 @@ public class ValidationContextTests
     }
 
     [Fact]
+    public void HasBlockingErrorsSince_CountsOnlyErrorsRecordedAfterTheMark()
+    {
+        var context = new ValidationContext(new ValidationErrorCollector());
+
+        context.Report("parent", "required", "x");
+
+        var mark = context.Mark();
+
+        Assert.False(context.HasBlockingErrorsSince(mark));
+
+        context.Report("note", "advisory", "x", ValidationSeverity.Warning);
+        context.Report("note", "fyi", "x", ValidationSeverity.Info);
+
+        Assert.False(context.HasBlockingErrorsSince(mark));
+
+        context.Push("home").Report("postalCode", "required", "x");
+
+        Assert.True(context.HasBlockingErrorsSince(mark));
+    }
+
+    [Fact]
+    public void HasBlockingErrorsSince_TheDefaultMark_IsTheStartOfThePass()
+    {
+        var context = new ValidationContext(new ValidationErrorCollector());
+
+        Assert.False(context.HasBlockingErrorsSince(default));
+
+        context.Report("name", "required", "x");
+
+        Assert.True(context.HasBlockingErrorsSince(default));
+    }
+
+    [Fact]
+    public void MarkAndHasBlockingErrorsSince_AllocateNothing()
+    {
+        // Generated validators with object-level rules take a mark on every pass, clean ones
+        // included, so neither half may cost an allocation.
+        var context = new ValidationContext(new ValidationErrorCollector());
+
+        context.Report("parent", "required", "x");
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var blocked = false;
+
+        for (var i = 0; i < 100; i++)
+        {
+            blocked |= context.HasBlockingErrorsSince(context.Mark());
+        }
+
+        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.False(blocked);
+    }
+
+    [Fact]
     public void Constructor_NullCollector_Throws()
     {
         Assert.Throws<ArgumentNullException>(() => new ValidationContext(null!));
