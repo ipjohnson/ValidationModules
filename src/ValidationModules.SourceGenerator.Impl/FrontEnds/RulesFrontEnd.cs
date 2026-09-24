@@ -2869,11 +2869,7 @@ public sealed class RulesFrontEnd
                         Min: Bound(arguments, "min", "0"),
                         Max: Bound(arguments, "max", int.MaxValue.ToString())
                     ),
-                    "Range" => new ConstraintModel(
-                        ConstraintKind.Range,
-                        Min: OptionalBound(arguments, "min"),
-                        Max: OptionalBound(arguments, "max")
-                    ),
+                    "Range" => RangeConstraint(arguments, call),
                     "RangeAtLeast" => new ConstraintModel(
                         ConstraintKind.Range,
                         Min: OptionalBound(arguments, "min")
@@ -2982,6 +2978,81 @@ public sealed class RulesFrontEnd
                 );
 
                 return true;
+            }
+
+            /// <summary>
+            /// <c>Range</c>, with the check <c>[Range]</c> gets for inverted bounds. Only constant
+            /// bounds are compared, because a bound computed at run time has no value here.
+            /// </summary>
+            private ConstraintModel RangeConstraint(
+                IReadOnlyDictionary<string, ExpressionSyntax> arguments,
+                InvocationExpressionSyntax call
+            )
+            {
+                if (
+                    arguments.TryGetValue("min", out var min)
+                    && arguments.TryGetValue("max", out var max)
+                    && ConstantBound(min) is { } low
+                    && ConstantBound(max) is { } high
+                    && low > high
+                )
+                {
+                    _writer._owner.Report(
+                        ValidationDiagnostics.MinExceedsMax,
+                        call,
+                        _facts?.PropertyName ?? _access ?? "the value",
+                        ValidationDiagnostics.InvertedBounds,
+                        ValidationDiagnostics.InvertedBoundsFix(min.ToString(), max.ToString())
+                    );
+                }
+
+                return new ConstraintModel(
+                    ConstraintKind.Range,
+                    Min: OptionalBound(arguments, "min"),
+                    Max: OptionalBound(arguments, "max")
+                );
+            }
+
+            /// <summary>
+            /// A numeric constant as a <c>decimal</c>, or null when the bound is not a constant or
+            /// has no <c>decimal</c> form, as <c>double.NaN</c> has none.
+            /// </summary>
+            private decimal? ConstantBound(ExpressionSyntax bound)
+            {
+                var constant = _writer._model.GetConstantValue(bound);
+
+                if (
+                    !constant.HasValue
+                    || constant.Value
+                        is not (
+                            sbyte
+                            or byte
+                            or short
+                            or ushort
+                            or int
+                            or uint
+                            or long
+                            or ulong
+                            or float
+                            or double
+                            or decimal
+                        )
+                )
+                {
+                    return null;
+                }
+
+                try
+                {
+                    return Convert.ToDecimal(
+                        constant.Value,
+                        System.Globalization.CultureInfo.InvariantCulture
+                    );
+                }
+                catch (OverflowException)
+                {
+                    return null;
+                }
             }
 
             private ConstraintModel? PatternConstraint(

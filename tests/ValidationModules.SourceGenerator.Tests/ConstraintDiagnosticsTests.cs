@@ -283,6 +283,89 @@ public class ConstraintDiagnosticsTests
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1101");
     }
 
+    /// <summary>
+    /// [Range] bounds are compared as the member's own type, whether they were written as constants
+    /// or as strings, and from either vocabulary.
+    /// </summary>
+    [Theory]
+    [InlineData("[Range(10, 1)] public int Guests { get; init; }")]
+    [InlineData("[Range(Min = 10L, Max = 1L)] public long Units { get; init; }")]
+    [InlineData("[Range(10.5, 1.5)] public double Ratio { get; init; }")]
+    [InlineData("[Range(\"10.50\", \"9.99\")] public decimal Price { get; init; }")]
+    [InlineData("[Range(\"2024-12-31\", \"2024-01-01\")] public DateOnly Day { get; init; }")]
+    [InlineData("[Range(\"2024-12-31\", \"2024-01-01\")] public DateTime At { get; init; }")]
+    [InlineData("[Range(\"12:00:00\", \"08:00:00\")] public TimeOnly Opens { get; init; }")]
+    [InlineData("[Range(\"2.00:00:00\", \"1.00:00:00\")] public TimeSpan Window { get; init; }")]
+    [InlineData(
+        "[Range(\"2024-01-02T00:00:00+00:00\", \"2024-01-01T00:00:00+00:00\")] public DateTimeOffset Stamp { get; init; }"
+    )]
+    [InlineData(
+        "[System.ComponentModel.DataAnnotations.Range(10, 1)] public int Seats { get; init; }"
+    )]
+    [InlineData(
+        "[System.ComponentModel.DataAnnotations.Range(typeof(DateTime), \"2024-12-31\", \"2024-01-01\")] public DateTime Due { get; init; }"
+    )]
+    [InlineData("[Range(5, 5, ExclusiveMin = true)] public int Exact { get; init; }")]
+    [InlineData("[Range(5, 5, ExclusiveMax = true)] public int Exact { get; init; }")]
+    public void RangeThatAdmitsNoValue_IsVM1101(string member)
+    {
+        var result = GeneratorHarness.Run(Model(member));
+
+        Assert.Equal(
+            DiagnosticSeverity.Error,
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1101").Severity
+        );
+    }
+
+    /// <summary>
+    /// The comparison is the member's, not the text's: "9.99" is below "10.5" as a decimal, and a
+    /// DateTimeOffset minimum written later in the day under a larger offset is the earlier instant.
+    /// </summary>
+    [Theory]
+    [InlineData("[Range(1, 10)] public int Guests { get; init; }")]
+    [InlineData("[Range(5, 5)] public int Exact { get; init; }")]
+    [InlineData("[Range(0, 100, ExclusiveMax = true)] public int Percent { get; init; }")]
+    [InlineData("[Range(Min = 18)] public int Age { get; init; }")]
+    [InlineData("[Range(\"9.99\", \"10.5\")] public decimal Price { get; init; }")]
+    [InlineData("[Range(1, double.PositiveInfinity)] public double Ratio { get; init; }")]
+    [InlineData(
+        "[Range(\"2024-01-01T00:00:00+05:00\", \"2023-12-31T20:00:00+00:00\")] public DateTimeOffset Stamp { get; init; }"
+    )]
+    public void RangeThatAdmitsAValue_IsSilent(string member)
+    {
+        var result = GeneratorHarness.Run(Model(member));
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1101");
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    [Fact]
+    public void VM1101_NamesTheBoundsAndSaysToSwapThem()
+    {
+        var result = GeneratorHarness.Run(Model("[Range(10, 1)] public int Guests { get; init; }"));
+
+        Assert.Equal(
+            "The bounds on 'Guests' are inverted, so the constraint can never be satisfied. The "
+                + "minimum 10 exceeds the maximum 1. Swap the two bounds",
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1101").GetMessage()
+        );
+    }
+
+    [Fact]
+    public void VM1101_OnEqualExclusiveBounds_SaysWhichBoundExcludesItself()
+    {
+        var result = GeneratorHarness.Run(
+            Model("[Range(5, 5, ExclusiveMin = true)] public int Exact { get; init; }")
+        );
+
+        Assert.Equal(
+            "The bounds on 'Exact' admit no value, so the constraint can never be satisfied. The "
+                + "minimum and the maximum are both 5, and ExclusiveMin is set. Make both bounds "
+                + "inclusive, or widen the range",
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1101").GetMessage()
+        );
+    }
+
     // VM1007 — a constrained property the validator cannot read.
 
     [Fact]

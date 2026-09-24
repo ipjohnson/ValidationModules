@@ -52,7 +52,8 @@ name derived from the value.
 | `MultipleOf(double? value, double divisor)` | The value divides by the divisor. | `multiple_of` |
 
 The range methods take any struct that implements `IComparable<TValue>` and `IFormattable`, and each
-has an overload for the nullable form.
+has an overload for the nullable form. `Range` with constant bounds in the wrong order is reported
+as `VM1101`.
 
 The `double` overload converts the value to `decimal` before it divides, as `[MultipleOf]` does on a
 `double` property, so `0.3` is a multiple of `0.1`. A constant divisor that is zero or negative is

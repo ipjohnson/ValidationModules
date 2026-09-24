@@ -161,12 +161,45 @@ public static class ValidationDiagnostics
         DiagnosticSeverity.Error
     );
 
+    /// <summary>
+    /// Bounds that no value satisfies: a minimum above the maximum, or equal bounds that exclude
+    /// themselves.
+    /// </summary>
+    /// <remarks>
+    /// One descriptor for both, with the reason and the fix as arguments. The bounds are compared as
+    /// the member's own type, so a number compares by value rather than by its text, and a date
+    /// range compares instants.
+    /// </remarks>
     public static readonly DiagnosticDescriptor MinExceedsMax = Descriptor(
         "VM1101",
-        "Lower bound exceeds upper bound",
-        "The bounds on '{0}' are inverted, so the constraint can never be satisfied",
+        "Bounds admit no value",
+        "The bounds on '{0}' {1}, so the constraint can never be satisfied. {2}",
         DiagnosticSeverity.Error
     );
+
+    /// <summary>VM1101's reason when the minimum is above the maximum.</summary>
+    public const string InvertedBounds = "are inverted";
+
+    /// <summary>VM1101's reason when equal bounds exclude themselves.</summary>
+    public const string EmptyBounds = "admit no value";
+
+    /// <summary>VM1101's fix for inverted bounds.</summary>
+    public static string InvertedBoundsFix(string min, string max) =>
+        $"The minimum {min} exceeds the maximum {max}. Swap the two bounds";
+
+    /// <summary>VM1101's fix for equal bounds with either of them exclusive.</summary>
+    public static string EmptyBoundsFix(string bound, bool exclusiveMin, bool exclusiveMax)
+    {
+        var exclusive = (exclusiveMin, exclusiveMax) switch
+        {
+            (true, true) => "ExclusiveMin and ExclusiveMax are",
+            (true, false) => "ExclusiveMin is",
+            _ => "ExclusiveMax is",
+        };
+
+        return $"The minimum and the maximum are both {bound}, and {exclusive} set. Make both "
+            + "bounds inclusive, or widen the range";
+    }
 
     public static readonly DiagnosticDescriptor RangeHasNoBounds = Descriptor(
         "VM1102",

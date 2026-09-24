@@ -41,9 +41,34 @@ public static class RangeBoundReader
     /// </param>
     /// <param name="expression">The C# expression to emit in the comparison and the message.</param>
     /// <returns>False when the bound was written as a string and does not parse as the type.</returns>
-    public static bool TryResolve(ITypeSymbol type, string literal, out string expression)
+    public static bool TryResolve(ITypeSymbol type, string literal, out string expression) =>
+        TryResolve(type, literal, out expression, out _);
+
+    /// <summary>
+    /// Rewrites a bound against <paramref name="type"/>, and hands back the value it parsed.
+    /// </summary>
+    /// <param name="type">The member's type. Nullable wrappers are unwrapped.</param>
+    /// <param name="literal">
+    /// The bound as <see cref="NativeConstraintReader.Literal"/> rendered it.
+    /// </param>
+    /// <param name="expression">The C# expression to emit in the comparison and the message.</param>
+    /// <param name="value">
+    /// The bound's value, comparable with the other bound of the same member: a <c>decimal</c> for
+    /// every numeric type, a <c>DateTime</c> for <c>DateTime</c> and <c>DateOnly</c>, a
+    /// <c>TimeSpan</c> for <c>TimeSpan</c> and <c>TimeOnly</c>, and a <c>DateTimeOffset</c>. Null
+    /// when the bound is an expression with no value here, such as <c>double.PositiveInfinity</c>
+    /// or a number outside <c>decimal</c>'s range.
+    /// </param>
+    /// <returns>False when the bound was written as a string and does not parse as the type.</returns>
+    public static bool TryResolve(
+        ITypeSymbol type,
+        string literal,
+        out string expression,
+        out IComparable? value
+    )
     {
         expression = literal;
+        value = null;
 
         var underlying = TypeFacts.IsNullableValueType(type)
             ? ((INamedTypeSymbol)type).TypeArguments[0]
@@ -66,7 +91,7 @@ public static class RangeBoundReader
         // and for the same reason.
         if (!IsQuoted(literal))
         {
-            return Retype(underlying, suffix, literal, out expression);
+            return Retype(underlying, suffix, literal, out expression, out value);
         }
 
         var text = Unquote(literal);
@@ -74,29 +99,29 @@ public static class RangeBoundReader
         if (suffix is not null)
         {
             return IsIntegral(underlying)
-                ? Integral(text, suffix, out expression)
-                : Numeric(text, suffix, out expression);
+                ? Integral(text, suffix, out expression, out value)
+                : Numeric(text, suffix, out expression, out value);
         }
 
         switch (underlying.SpecialType)
         {
             case SpecialType.System_DateTime:
-                return DateTimeBound(text, out expression);
+                return DateTimeBound(text, out expression, out value);
         }
 
         switch (underlying.ToDisplayString())
         {
             case "System.DateOnly":
-                return DateOnly(text, out expression);
+                return DateOnly(text, out expression, out value);
 
             case "System.TimeOnly":
-                return TimeOnly(text, out expression);
+                return TimeOnly(text, out expression, out value);
 
             case "System.TimeSpan":
-                return TimeSpanBound(text, out expression);
+                return TimeSpanBound(text, out expression, out value);
 
             case "System.DateTimeOffset":
-                return DateTimeOffsetBound(text, out expression);
+                return DateTimeOffsetBound(text, out expression, out value);
         }
 
         return false;
@@ -193,10 +218,12 @@ public static class RangeBoundReader
         ITypeSymbol underlying,
         string? suffix,
         string literal,
-        out string expression
+        out string expression,
+        out IComparable? value
     )
     {
         expression = literal;
+        value = null;
 
         if (suffix is null)
         {
@@ -204,6 +231,13 @@ public static class RangeBoundReader
         }
 
         var text = literal.TrimEnd('d', 'D', 'f', 'F', 'm', 'M', 'l', 'L', 'u', 'U');
+
+        if (
+            decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+        )
+        {
+            value = parsed;
+        }
 
         if (IsIntegral(underlying))
         {
@@ -222,14 +256,12 @@ public static class RangeBoundReader
             return true;
         }
 
-        if (
-            !decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
-        )
+        if (value is null)
         {
             return underlying.SpecialType != SpecialType.System_Decimal;
         }
 
-        expression = value.ToString(CultureInfo.InvariantCulture) + suffix;
+        expression = parsed.ToString(CultureInfo.InvariantCulture) + suffix;
         return true;
     }
 
@@ -239,114 +271,172 @@ public static class RangeBoundReader
     internal static string Unquote(string literal) =>
         literal.Substring(1, literal.Length - 2).Replace("\\\\", "\\").Replace("\\\"", "\"");
 
-    private static bool Numeric(string text, string suffix, out string expression)
+    private static bool Numeric(
+        string text,
+        string suffix,
+        out string expression,
+        out IComparable? value
+    )
     {
         expression = string.Empty;
+        value = null;
 
         if (
-            !decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
+            !decimal.TryParse(
+                text,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var parsed
+            )
         )
         {
             return false;
         }
 
-        expression = value.ToString(CultureInfo.InvariantCulture) + suffix;
+        expression = parsed.ToString(CultureInfo.InvariantCulture) + suffix;
+        value = parsed;
         return true;
     }
 
-    private static bool Integral(string text, string suffix, out string expression)
+    private static bool Integral(
+        string text,
+        string suffix,
+        out string expression,
+        out IComparable? value
+    )
     {
         expression = string.Empty;
+        value = null;
 
-        if (!long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
+        if (
+            !long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+        )
         {
             return false;
         }
 
-        expression = value.ToString(CultureInfo.InvariantCulture) + suffix;
+        expression = parsed.ToString(CultureInfo.InvariantCulture) + suffix;
+        value = (decimal)parsed;
         return true;
     }
 
+    /// <summary>
+    /// Parses a date without reference to the build machine's zone.
+    /// </summary>
+    /// <remarks>
+    /// <c>AdjustToUniversal</c>, because <c>None</c> converts a bound written with <c>Z</c> or an
+    /// offset to the machine's local clock, and one commit would then build different validators on
+    /// machines in different zones. With it, such a bound keeps its instant and comes back in UTC
+    /// with <see cref="DateTimeKind.Utc"/>, and a bound written without a zone is left as written,
+    /// with <see cref="DateTimeKind.Unspecified"/>.
+    /// </remarks>
     private static bool TryDate(string text, out DateTime value) =>
-        DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out value);
+        DateTime.TryParse(
+            text,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AdjustToUniversal,
+            out value
+        );
 
-    private static bool DateTimeBound(string text, out string expression)
+    private static bool DateTimeBound(string text, out string expression, out IComparable? value)
     {
         expression = string.Empty;
+        value = null;
 
-        if (!TryDate(text, out var value))
+        if (!TryDate(text, out var parsed))
         {
             return false;
         }
 
-        // Unspecified rather than the parsed Kind: a bound written "2000-01-01" carries no zone, and
-        // silently anchoring it to the build machine's would make the same source mean two things.
+        // A bound written "2000-01-01" carries no zone and stays Unspecified, where anchoring it to
+        // any zone would make the same source mean two things. One written with a zone is an
+        // instant, which TryDate has already put in UTC.
+        var kind = parsed.Kind == DateTimeKind.Utc ? "Utc" : "Unspecified";
+
         expression =
-            $"new global::System.DateTime({value.Year}, {value.Month}, {value.Day}, "
-            + $"{value.Hour}, {value.Minute}, {value.Second}, {value.Millisecond}, "
-            + "global::System.DateTimeKind.Unspecified)";
+            $"new global::System.DateTime({parsed.Year}, {parsed.Month}, {parsed.Day}, "
+            + $"{parsed.Hour}, {parsed.Minute}, {parsed.Second}, {parsed.Millisecond}, "
+            + $"global::System.DateTimeKind.{kind})";
+        value = parsed;
 
         return true;
     }
 
-    private static bool DateOnly(string text, out string expression)
+    private static bool DateOnly(string text, out string expression, out IComparable? value)
     {
         expression = string.Empty;
+        value = null;
 
-        if (!TryDate(text, out var value))
+        if (!TryDate(text, out var parsed))
         {
             return false;
         }
 
-        expression = $"new global::System.DateOnly({value.Year}, {value.Month}, {value.Day})";
+        expression = $"new global::System.DateOnly({parsed.Year}, {parsed.Month}, {parsed.Day})";
+        value = parsed.Date;
         return true;
     }
 
-    private static bool TimeOnly(string text, out string expression)
+    private static bool TimeOnly(string text, out string expression, out IComparable? value)
     {
         expression = string.Empty;
+        value = null;
 
         if (
-            !TimeSpan.TryParse(text, CultureInfo.InvariantCulture, out var value)
-            || value < TimeSpan.Zero
-            || value.Days > 0
+            !TimeSpan.TryParse(text, CultureInfo.InvariantCulture, out var parsed)
+            || parsed < TimeSpan.Zero
+            || parsed.Days > 0
         )
         {
             return false;
         }
 
         expression =
-            $"new global::System.TimeOnly({value.Hours}, {value.Minutes}, {value.Seconds}, {value.Milliseconds})";
+            $"new global::System.TimeOnly({parsed.Hours}, {parsed.Minutes}, {parsed.Seconds}, {parsed.Milliseconds})";
+        value = parsed;
 
         return true;
     }
 
-    private static bool TimeSpanBound(string text, out string expression)
+    private static bool TimeSpanBound(string text, out string expression, out IComparable? value)
     {
         expression = string.Empty;
+        value = null;
 
-        if (!TimeSpan.TryParse(text, CultureInfo.InvariantCulture, out var value))
+        if (!TimeSpan.TryParse(text, CultureInfo.InvariantCulture, out var parsed))
         {
             return false;
         }
 
         expression =
-            $"new global::System.TimeSpan({value.Days}, {value.Hours}, {value.Minutes}, "
-            + $"{value.Seconds}, {value.Milliseconds})";
+            $"new global::System.TimeSpan({parsed.Days}, {parsed.Hours}, {parsed.Minutes}, "
+            + $"{parsed.Seconds}, {parsed.Milliseconds})";
+        value = parsed;
 
         return true;
     }
 
-    private static bool DateTimeOffsetBound(string text, out string expression)
+    /// <summary>A <c>DateTimeOffset</c> bound, read as UTC when it is written without an offset.</summary>
+    /// <remarks>
+    /// <c>AssumeUniversal</c>, because <c>None</c> gives a bound written without an offset the
+    /// build machine's offset for that date, and one commit would then build different validators
+    /// on machines in different zones. A bound written with an offset keeps it.
+    /// </remarks>
+    private static bool DateTimeOffsetBound(
+        string text,
+        out string expression,
+        out IComparable? value
+    )
     {
         expression = string.Empty;
+        value = null;
 
         if (
             !DateTimeOffset.TryParse(
                 text,
                 CultureInfo.InvariantCulture,
-                DateTimeStyles.None,
-                out var value
+                DateTimeStyles.AssumeUniversal,
+                out var parsed
             )
         )
         {
@@ -354,9 +444,10 @@ public static class RangeBoundReader
         }
 
         expression =
-            $"new global::System.DateTimeOffset({value.Year}, {value.Month}, {value.Day}, "
-            + $"{value.Hour}, {value.Minute}, {value.Second}, {value.Millisecond}, "
-            + $"new global::System.TimeSpan({value.Offset.Hours}, {value.Offset.Minutes}, 0))";
+            $"new global::System.DateTimeOffset({parsed.Year}, {parsed.Month}, {parsed.Day}, "
+            + $"{parsed.Hour}, {parsed.Minute}, {parsed.Second}, {parsed.Millisecond}, "
+            + $"new global::System.TimeSpan({parsed.Offset.Hours}, {parsed.Offset.Minutes}, 0))";
+        value = parsed;
 
         return true;
     }

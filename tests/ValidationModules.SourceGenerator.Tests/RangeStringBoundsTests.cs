@@ -102,6 +102,80 @@ public class RangeStringBoundsTests
         );
     }
 
+    /// <summary>
+    /// A bound written with a zone is an instant, and keeps it in UTC. The expected text is the
+    /// instant worked out by hand rather than by anything that reads the machine's zone, so a build
+    /// that converted to local time fails here in any zone but UTC.
+    /// </summary>
+    [Theory]
+    [InlineData(
+        "2024-01-01T00:00:00Z",
+        "new global::System.DateTime(2024, 1, 1, 0, 0, 0, 0, global::System.DateTimeKind.Utc)"
+    )]
+    [InlineData(
+        "2024-01-01T02:00:00+05:00",
+        "new global::System.DateTime(2023, 12, 31, 21, 0, 0, 0, global::System.DateTimeKind.Utc)"
+    )]
+    [InlineData(
+        "2024-01-01T00:00:00-08:00",
+        "new global::System.DateTime(2024, 1, 1, 8, 0, 0, 0, global::System.DateTimeKind.Utc)"
+    )]
+    public void DateTimeBoundWithAZone_KeepsItsInstantInUtc(string bound, string expected)
+    {
+        var result = GeneratorHarness.Run(
+            Model(
+                $"[Range(\"{bound}\", \"2100-01-01\")] public DateTime Effective {{ get; init; }}"
+            )
+        );
+
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains(expected, result.Sources["Sample.PetValidator.g.cs"]);
+    }
+
+    /// <summary>
+    /// A DateTimeOffset bound without an offset is read as UTC rather than taking the build
+    /// machine's offset for that date. One written with an offset keeps it.
+    /// </summary>
+    [Theory]
+    [InlineData(
+        "2024-01-01",
+        "new global::System.DateTimeOffset(2024, 1, 1, 0, 0, 0, 0, new global::System.TimeSpan(0, 0, 0))"
+    )]
+    [InlineData(
+        "2024-07-01T12:30:00",
+        "new global::System.DateTimeOffset(2024, 7, 1, 12, 30, 0, 0, new global::System.TimeSpan(0, 0, 0))"
+    )]
+    [InlineData(
+        "2024-01-01T00:00:00+05:30",
+        "new global::System.DateTimeOffset(2024, 1, 1, 0, 0, 0, 0, new global::System.TimeSpan(5, 30, 0))"
+    )]
+    public void DateTimeOffsetBoundWithoutAnOffset_IsUtc(string bound, string expected)
+    {
+        var result = GeneratorHarness.Run(
+            Model(
+                $"[Range(\"{bound}\", \"2100-01-01T00:00:00+00:00\")] public DateTimeOffset At {{ get; init; }}"
+            )
+        );
+
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains(expected, result.Sources["Sample.PetValidator.g.cs"]);
+    }
+
+    [Fact]
+    public void DateOnlyBoundWithAZone_TakesTheDateOfTheInstantInUtc()
+    {
+        var result = GeneratorHarness.Run(
+            Model(
+                "[Range(\"2024-01-01T00:00:00Z\", \"2100-01-01\")] public DateOnly Born { get; init; }"
+            )
+        );
+
+        Assert.Contains(
+            "new global::System.DateOnly(2024, 1, 1)",
+            result.Sources["Sample.PetValidator.g.cs"]
+        );
+    }
+
     [Fact]
     public void StringBounds_AppearInTheMessageAsWellAsTheComparison()
     {
