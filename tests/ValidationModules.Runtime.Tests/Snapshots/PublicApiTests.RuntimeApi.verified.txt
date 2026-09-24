@@ -111,12 +111,22 @@ namespace ValidationModules
         public static ValidationModules.PropertyRules<T, decimal?> MultipleOf<T>(this ValidationModules.PropertyRules<T, decimal?> rules, decimal divisor) { }
         public static ValidationModules.PropertyRules<T, double?> MultipleOf<T>(this ValidationModules.PropertyRules<T, double?> rules, double divisor) { }
         public static ValidationModules.PropertyRules<T, long?> MultipleOf<T>(this ValidationModules.PropertyRules<T, long?> rules, long divisor) { }
+        public static ValidationModules.PropertyRules<T, TValue> MultipleOf<T, TValue>(this ValidationModules.PropertyRules<T, TValue> rules, TValue divisor)
+            where TValue :  struct, System.Numerics.INumber<TValue> { }
+        public static ValidationModules.PropertyRules<T, TValue?> MultipleOf<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules, TValue divisor)
+            where TValue :  struct, System.Numerics.INumber<TValue> { }
         public static ValidationModules.PropertyRules<T, TValue?> Nested<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules)
             where TValue :  class { }
         public static ValidationModules.PropertyRules<T, string?> Pattern<T>(this ValidationModules.PropertyRules<T, string?> rules, System.Func<System.Text.RegularExpressions.Regex> pattern) { }
+        public static ValidationModules.PropertyRules<T, TValue> Range<T, TValue>(this ValidationModules.PropertyRules<T, TValue> rules, TValue min, TValue max)
+            where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
         public static ValidationModules.PropertyRules<T, TValue?> Range<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules, TValue min, TValue max)
             where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
+        public static ValidationModules.PropertyRules<T, TValue> RangeAtLeast<T, TValue>(this ValidationModules.PropertyRules<T, TValue> rules, TValue min)
+            where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
         public static ValidationModules.PropertyRules<T, TValue?> RangeAtLeast<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules, TValue min)
+            where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
+        public static ValidationModules.PropertyRules<T, TValue> RangeAtMost<T, TValue>(this ValidationModules.PropertyRules<T, TValue> rules, TValue max)
             where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
         public static ValidationModules.PropertyRules<T, TValue?> RangeAtMost<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules, TValue max)
             where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }

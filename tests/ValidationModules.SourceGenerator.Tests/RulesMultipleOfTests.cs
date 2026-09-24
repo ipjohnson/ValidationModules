@@ -5,7 +5,7 @@ namespace ValidationModules.SourceGenerator.Tests;
 
 /// <summary>
 /// <c>rules.MultipleOf</c> emits the check <c>[MultipleOf]</c> emits for the same member, whichever
-/// of its three overloads the call bound to.
+/// overload the call bound to.
 /// </summary>
 /// <remarks>
 /// The long and decimal overloads divide with <c>%</c>, so their divisor can be transcribed as
@@ -31,6 +31,8 @@ public class RulesMultipleOfTests
                 public int Quantity { get; init; }
                 public long? Units { get; init; }
                 public decimal Price { get; init; }
+                public ushort Crates { get; init; }
+                public nint Handle { get; init; }
             }
 
             public sealed class MixRules : IValidationRulesFor<Mix> {
@@ -55,6 +57,45 @@ public class RulesMultipleOfTests
 
         Assert.Empty(result.CompilationErrors);
         Assert.DoesNotContain(result.Diagnostics, d => d.Severity >= DiagnosticSeverity.Warning);
+    }
+
+    /// <summary>
+    /// <c>For</c> anchors a chain on the member's own type, so the chain takes a non-nullable
+    /// receiver as well as the nullable one a <c>Range</c> returns, for every numeric type rather
+    /// than only the three the entry overloads name.
+    /// </summary>
+    [Theory]
+    [InlineData("rules.For(x.Ratio).MultipleOf(0.5);", "IsMultipleOf(x.Ratio, 0.5m)")]
+    [InlineData("rules.For(x.Scale).MultipleOf(0.5f);", "IsMultipleOf(x.Scale, 0.5m)")]
+    [InlineData("rules.For(x.Quantity).MultipleOf(5);", "x.Quantity % 5 != 0")]
+    [InlineData("rules.For(x.Price).MultipleOf(0.05m);", "x.Price % 0.05m != 0")]
+    [InlineData("rules.For(x.Crates).MultipleOf((ushort)6);", "x.Crates % 6 != 0")]
+    [InlineData("rules.Range(x.Quantity, 1, 100).MultipleOf(5);", "x.Quantity % 5 != 0")]
+    [InlineData("rules.For(x.Units).MultipleOf(5);", "x.Units.Value % 5L != 0")]
+    [InlineData("rules.For(x.Share).MultipleOf(0.25);", "IsMultipleOf(x.Share.Value, 0.25m)")]
+    public void AChainOnAnyNumericType_TakesMultipleOf(string statement, string expected)
+    {
+        var result = GeneratorHarness.Run(Rules($"        {statement}"));
+
+        Assert.Empty(result.CompilationErrors);
+        Assert.DoesNotContain(result.Diagnostics, d => d.Severity >= DiagnosticSeverity.Warning);
+        Assert.Contains(expected, result.Sources["Sample.MixRules_Rules.g.cs"]);
+    }
+
+    /// <summary>
+    /// The chain accepts any <c>INumber&lt;T&gt;</c>, which admits types the check has no divisor
+    /// form for, such as <c>nint</c>.
+    /// </summary>
+    [Fact]
+    public void AChainOnANumberTheCheckCannotDivide_IsVM1004()
+    {
+        var result = GeneratorHarness.Run(Rules("        rules.For(x.Handle).MultipleOf(4);"));
+
+        Assert.Contains(
+            "'Handle' is 'nint'",
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1004").GetMessage()
+        );
+        Assert.Empty(result.CompilationErrors);
     }
 
     [Fact]

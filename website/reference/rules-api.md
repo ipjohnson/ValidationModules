@@ -128,17 +128,24 @@ chain:
 | `RequireAllowingEmpty()` | a string |
 | `Length(min, max)` | a string |
 | `Pattern(regex)` | a string |
-| `Range(min, max)`, `RangeAtLeast(min)`, `RangeAtMost(max)` | a nullable value type |
-| `MultipleOf(divisor)` | a `long?`, `decimal?` or `double?` |
+| `Range(min, max)`, `RangeAtLeast(min)`, `RangeAtMost(max)` | a value type, nullable or not |
+| `MultipleOf(divisor)` | an integral, decimal or floating-point number, nullable or not |
 | `AllowedValues(params allowed)` | any value |
 | `Count(min, max)` | an `IReadOnlyList<T>` |
 | `Unique()` | an `IEnumerable<T>` |
 | `Each()` | an `IReadOnlyList<T>` |
 | `Nested()` | a reference type |
 
-A chain is typed by the method that starts it, so a chain method must accept that type. For example,
-`rules.Range(x.Quantity, 1, 100)` on an `int` starts a chain on `int?`, which `MultipleOf(long)`
-does not accept. Write such rules as separate statements.
+A chain is typed by the method that starts it. On an `int` property,
+`rules.Range(x.Quantity, 1, 100)` starts a chain on `int?`, and `rules.For(x.Quantity)` starts one
+on `int`. The range methods and `MultipleOf` accept both forms:
+
+```csharp
+rules.For(x.Weight).Range(0.5, 30).MultipleOf(0.5);
+```
+
+The chain's type also types the arguments. On a `float` chain, write `0.5f`. On a `byte`, `sbyte`,
+`short` or `ushort` chain, cast an integer literal, as in `.MultipleOf((short)5)`.
 
 When `Require` or `RequireAllowingEmpty` fails, the rest of its chain is skipped.
 
