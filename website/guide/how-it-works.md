@@ -19,6 +19,10 @@ The validator for `SignUp` is named `SignUpValidator`. It is declared in the nam
 with the same accessibility, and it implements `IValidatorFor<SignUp>`. The generator also writes
 one registration method for the whole assembly, described in [Registration](./registration).
 
+The validator for a type declared inside another type carries the containing types' names, joined
+with underscores. The validator for `Order.Item` is named `Order_ItemValidator`, and the validator
+for an `Item` declared inside `Invoice` is named `Invoice_ItemValidator`.
+
 Here is a model:
 
 ```csharp

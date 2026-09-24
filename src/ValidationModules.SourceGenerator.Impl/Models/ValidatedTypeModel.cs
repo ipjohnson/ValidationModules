@@ -10,7 +10,11 @@ namespace ValidationModules.SourceGenerator.Impl.Models;
 /// keeping one alive across an incremental-generator boundary roots an entire compilation.
 /// </remarks>
 /// <param name="Namespace">Where the validator is emitted.</param>
-/// <param name="TypeName">The validated type's simple name.</param>
+/// <param name="TypeName">
+/// The validated type's name after its containing types' names, joined with underscores:
+/// <c>Order_Item</c> for a nested <c>Order.Item</c>. The <c>IDynamicValidator</c> adapter is
+/// named from it.
+/// </param>
 /// <param name="QualifiedTypeName">Its fully qualified name, for the interface and parameter.</param>
 /// <param name="ValidatorName">The generated class name.</param>
 /// <param name="Properties">In source order.</param>

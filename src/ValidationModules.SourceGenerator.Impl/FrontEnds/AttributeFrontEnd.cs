@@ -398,7 +398,7 @@ public sealed class AttributeFrontEnd
 
         return new ValidatedTypeModel(
             ns,
-            type.Name,
+            GeneratedNames.Flattened(type),
             type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             validatorNameFor(type),
             new EquatableArray<ValidatedPropertyModel>(

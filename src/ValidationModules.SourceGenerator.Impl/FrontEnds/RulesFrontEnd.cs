@@ -390,7 +390,11 @@ public sealed class RulesFrontEnd
             ? string.Empty
             : declaringType.ContainingNamespace.ToDisplayString();
 
-        var created = new FragmentContainer(ns, $"{declaringType.Name}_Fragments", declaringType);
+        var created = new FragmentContainer(
+            ns,
+            GeneratedNames.FragmentContainer(declaringType),
+            declaringType
+        );
 
         _containers.Add(created);
 
@@ -1088,7 +1092,7 @@ public sealed class RulesFrontEnd
 
             Line(
                 depth,
-                $"if (global::{ns}{fragment.Definition.ContainingType.Name}_Fragments.{fragment.Name}({string.Join(", ", rendered)}).ShouldStop) {{"
+                $"if (global::{ns}{GeneratedNames.FragmentContainer(fragment.Definition.ContainingType)}.{fragment.Name}({string.Join(", ", rendered)}).ShouldStop) {{"
             );
             Line(depth + 1, $"return {Flow}.Stop;");
             Line(depth, "}");
@@ -1965,7 +1969,7 @@ public sealed class RulesFrontEnd
                     var ns = facet.ContainingNamespace.IsGlobalNamespace
                         ? string.Empty
                         : facet.ContainingNamespace.ToDisplayString() + ".";
-                    var validator = $"global::{ns}{facet.Name}Validator";
+                    var validator = $"global::{ns}{GeneratedNames.Validator(facet)}";
                     var field = _writer.CompanionField(validator);
 
                     _writer.Line(
