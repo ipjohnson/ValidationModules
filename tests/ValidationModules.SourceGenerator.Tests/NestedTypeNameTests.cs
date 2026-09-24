@@ -436,4 +436,63 @@ public class NestedTypeNameTests
         Assert.Contains("Sample.PetValidator.g.cs", result.Sources.Keys);
         Assert.Contains("GeneratedValidatorRegistration.g.cs", result.Sources.Keys);
     }
+
+    /// <summary>
+    /// The same holds for a fragment container: a nested <c>Order.Shared</c> and a top-level
+    /// <c>Order_Shared</c> that both declare fragments both get <c>Order_Shared_Fragments</c>.
+    /// <c>AddSource</c> refused the second file, which failed the build as VM5002, and a companion
+    /// that called it failed with CS0117.
+    /// </summary>
+    [Fact]
+    public void ATopLevelFragmentClassSpelledLikeANestedOne_IsVM1013NamingBoth()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed class Item { public string? Sku { get; init; } }
+            public sealed class Other { public string? Code { get; init; } }
+            public record Pet { [Required] public string? Name { get; init; } }
+
+            public static class Order {
+                public static class Shared {
+                    public static void Skus(ValidationRules<Item> rules, Item x) => rules.Require(x.Sku);
+                }
+            }
+
+            public static class Order_Shared {
+                public static void Codes(ValidationRules<Other> rules, Other x) => rules.Require(x.Code);
+            }
+
+            public sealed class ItemRules : IValidationRulesFor<Item> {
+                public static void Describe(ValidationRules<Item> rules, Item x) => Order.Shared.Skus(rules, x);
+            }
+
+            public sealed class OtherRules : IValidationRulesFor<Other> {
+                public static void Describe(ValidationRules<Other> rules, Other x) => Order_Shared.Codes(rules, x);
+            }
+            """
+        );
+
+        var diagnostic = Assert.Single(
+            result.Diagnostics,
+            d => d.Severity == DiagnosticSeverity.Error
+        );
+
+        Assert.Equal("VM1013", diagnostic.Id);
+        Assert.Contains("Sample.Order.Shared", diagnostic.GetMessage());
+        Assert.Contains("Sample.Order_Shared", diagnostic.GetMessage());
+        Assert.Contains("Order_Shared_Fragments", diagnostic.GetMessage());
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id is "VM5002" or "CS8785");
+
+        // Neither container is emitted, so neither companion that calls one is either.
+        Assert.Empty(result.CompilationErrors);
+        Assert.DoesNotContain("Sample.Order_Shared_Fragments.g.cs", result.Sources.Keys);
+        Assert.DoesNotContain("Sample.OtherRules_Rules.g.cs", result.Sources.Keys);
+        Assert.Contains("Sample.PetValidator.g.cs", result.Sources.Keys);
+        Assert.Contains("GeneratedValidatorRegistration.g.cs", result.Sources.Keys);
+    }
 }

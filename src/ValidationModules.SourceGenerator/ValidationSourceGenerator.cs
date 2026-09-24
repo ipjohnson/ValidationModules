@@ -885,8 +885,18 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
 
         // Fragment containers are shared across every rules class that called into them, so they
         // are emitted once per pass, after every candidate has been read.
+        var collidingContainers = DropCollidingContainers(
+            rulesFrontEnd.FragmentContainers,
+            results
+        );
+
         foreach (var container in rulesFrontEnd.FragmentContainers)
         {
+            if (collidingContainers.Contains(container))
+            {
+                continue;
+            }
+
             try
             {
                 if (
@@ -1106,6 +1116,62 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                 ValidationDiagnostics.NeitherRulesClassCompiled
             );
         }
+    }
+
+    /// <summary>
+    /// Reports VM1013 for two types whose fragment containers would have one name in one
+    /// namespace, and emits neither container.
+    /// </summary>
+    /// <remarks>
+    /// Adding both containers made the second <c>AddSource</c> refuse its hint name, which VM5002
+    /// reported as a generator failure. The container's name is recorded as a class that is not
+    /// emitted, so the plan leaves out every file that names it: each companion that calls a
+    /// fragment in either type, and the validator that calls that companion.
+    /// </remarks>
+    private static HashSet<FragmentContainer> DropCollidingContainers(
+        IReadOnlyList<FragmentContainer> containers,
+        ImmutableArray<ModelResult>.Builder results
+    )
+    {
+        var dropped = new HashSet<FragmentContainer>();
+
+        foreach (
+            var group in containers.GroupBy(static container =>
+                (container.Namespace, container.Name)
+            )
+        )
+        {
+            var types = group
+                .Select(static container => container.DeclaringType)
+                .Distinct<INamedTypeSymbol>(SymbolEqualityComparer.Default)
+                .OrderBy(static type => type.ToDisplayString(), StringComparer.Ordinal)
+                .ToList();
+
+            if (types.Count < 2)
+            {
+                continue;
+            }
+
+            dropped.UnionWith(group);
+            results.Add(
+                new ModelResult(
+                    null,
+                    ImmutableArray<Diagnostic>.Empty,
+                    null,
+                    null,
+                    GlobalName(group.Key.Namespace, group.Key.Name)
+                )
+            );
+
+            ReportNameCollision(
+                results,
+                types,
+                group.Key.Name,
+                ValidationDiagnostics.NeitherFragmentContainerGenerated
+            );
+        }
+
+        return dropped;
     }
 
     /// <summary>VM1013 at each type after the first, naming it and the first.</summary>

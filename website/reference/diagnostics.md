@@ -137,8 +137,11 @@ nested `Order.Item` and a top-level `Order_Item` therefore both get the validato
 `Order_ItemValidator`, and neither validator is generated. A validator that nests either type is not
 generated either. The body of a rules class is generated into a class named after the rules class
 with `_Rules` appended. A nested rules class `Order.ItemRules` and a top-level `Order_ItemRules`
-therefore both get `Order_ItemRules_Rules`, and neither rules class is compiled. Rename one of the
-two types, or move it to another namespace.
+therefore both get `Order_ItemRules_Rules`, and neither rules class is compiled. The fragments a
+type declares are generated into a class named after the type with `_Fragments` appended. A nested
+`Order.Shared` and a top-level `Order_Shared` that both declare fragments therefore both get
+`Order_Shared_Fragments`. Neither is generated, and a rules class that calls a fragment in either is
+left out with its validator. Rename one of the two types, or move it to another namespace.
 
 ### VM1014
 
@@ -688,9 +691,7 @@ without notice. The message names the stage and the exception. A generated file 
 one that failed is left out too, so VM5002 is the only error. For example, a rules class that failed
 takes its type's validator with it, and the registration leaves that validator out. Please
 [report it](https://github.com/ipjohnson/ValidationModules/issues). Until it is fixed, change the
-construct the message names. One known cause is a nested `Order.Shared` and a top-level
-`Order_Shared` that both declare fragments, because both fragment containers are named
-`Order_Shared_Fragments`.
+construct the message names.
 
 ### VM5003
 

@@ -171,7 +171,9 @@ public static class ValidationDiagnostics
     /// Two types would get generated classes with one name in one namespace. A nested
     /// <c>Order.Item</c> and a top-level <c>Order_Item</c> both get <c>Order_ItemValidator</c>. A
     /// nested rules class <c>Order.ItemRules</c> and a top-level <c>Order_ItemRules</c> both get
-    /// the companion <c>Order_ItemRules_Rules</c>.
+    /// the companion <c>Order_ItemRules_Rules</c>. A nested <c>Order.Shared</c> and a top-level
+    /// <c>Order_Shared</c> that both declare fragments both get the fragment container
+    /// <c>Order_Shared_Fragments</c>.
     /// </summary>
     public static readonly DiagnosticDescriptor GeneratedNameCollision = Descriptor(
         "VM1013",
@@ -186,6 +188,11 @@ public static class ValidationDiagnostics
 
     /// <summary>VM1013's consequence when the two classes are rules-class companions.</summary>
     public const string NeitherRulesClassCompiled = "neither rules class is compiled";
+
+    /// <summary>VM1013's consequence when the two classes are fragment containers.</summary>
+    public const string NeitherFragmentContainerGenerated =
+        "neither type's fragments are generated, and a rules class that calls one is left out "
+        + "with its validator";
 
     /// <summary>
     /// A constraint on an indexer. The attribute usage admits a property, and an indexer is one,

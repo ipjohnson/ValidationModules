@@ -17,8 +17,8 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// </para>
 /// <para>
 /// A file that is not added must not be named by a file that is, or the build also fails with a
-/// C# error inside generated code that points away from the cause. The tests that make an emit
-/// throw run through <see cref="GeneratorHarness.RunWithFailingEmit"/>.
+/// C# error inside generated code that points away from the cause. No input is known to reach
+/// VM5002, so the tests make an emit throw through <see cref="GeneratorHarness.RunWithFailingEmit"/>.
 /// </para>
 /// </remarks>
 public class GeneratorFailureTests
@@ -32,59 +32,6 @@ public class GeneratorFailureTests
             [Required] public string? Name { get; init; }
         }
         """;
-
-    /// <summary>
-    /// A nested fragment container <c>Order.Shared</c> and a top-level <c>Order_Shared</c> both get
-    /// <c>Order_Shared_Fragments</c>, and <c>AddSource</c> refuses the second file. It used to
-    /// throw outside the handler, so Roslyn reported CS8785 and dropped every generated file.
-    /// </summary>
-    [Fact]
-    public void AGeneratedFileThatCannotBeAdded_IsAVM5002Error_AndTheRestIsStillGenerated()
-    {
-        var result = GeneratorHarness.Run(
-            """
-            using ValidationModules;
-            using ValidationModules.Constraints;
-
-            namespace Sample;
-
-            public sealed class Item { public string? Sku { get; init; } }
-            public sealed class Other { public string? Code { get; init; } }
-            public record Pet { [Required] public string? Name { get; init; } }
-
-            public static class Order {
-                public static class Shared {
-                    public static void Skus(ValidationRules<Item> rules, Item x) => rules.Require(x.Sku);
-                }
-            }
-
-            public static class Order_Shared {
-                public static void Codes(ValidationRules<Other> rules, Other x) => rules.Require(x.Code);
-            }
-
-            public sealed class ItemRules : IValidationRulesFor<Item> {
-                public static void Describe(ValidationRules<Item> rules, Item x) => Order.Shared.Skus(rules, x);
-            }
-
-            public sealed class OtherRules : IValidationRulesFor<Other> {
-                public static void Describe(ValidationRules<Other> rules, Other x) => Order_Shared.Codes(rules, x);
-            }
-            """
-        );
-
-        var failure = Assert.Single(Errors(result));
-
-        Assert.Equal("VM5002", failure.Id);
-        Assert.Contains("Sample.Order_Shared_Fragments.g.cs", failure.GetMessage());
-        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "CS8785");
-        Assert.Empty(result.CompilationErrors);
-        Assert.Contains("Sample.PetValidator.g.cs", result.Sources.Keys);
-        Assert.DoesNotContain("Sample.OtherValidator.g.cs", result.Sources.Keys);
-        Assert.DoesNotContain(
-            "OtherValidator",
-            result.Sources["GeneratedValidatorRegistration.g.cs"]
-        );
-    }
 
     [Fact]
     public void AValidatorWhoseEmitThrows_IsNotRegistered()
