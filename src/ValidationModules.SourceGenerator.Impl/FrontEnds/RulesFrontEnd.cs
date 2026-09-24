@@ -831,6 +831,41 @@ public sealed class RulesFrontEnd
 
         // ---- islands ---------------------------------------------------------------------------
 
+        /// <summary>
+        /// The target's property called <paramref name="name"/>: declared on the target, on a base
+        /// type, or on an interface the target extends.
+        /// </summary>
+        /// <remarks>
+        /// <c>GetMembers</c> answers for declared members only, and a condition may read a property
+        /// the subject inherits. The base chain comes first, so a class's own declaration wins over
+        /// an interface's.
+        /// </remarks>
+        private IPropertySymbol? PropertyNamed(string name)
+        {
+            for (INamedTypeSymbol? type = _target; type is not null; type = type.BaseType)
+            {
+                if (
+                    type.GetMembers(name).OfType<IPropertySymbol>().FirstOrDefault() is { } declared
+                )
+                {
+                    return declared;
+                }
+            }
+
+            foreach (var contract in _target.AllInterfaces)
+            {
+                if (
+                    contract.GetMembers(name).OfType<IPropertySymbol>().FirstOrDefault() is
+                    { } declared
+                )
+                {
+                    return declared;
+                }
+            }
+
+            return null;
+        }
+
         /// <summary>Whether the expression is an invocation chain hanging off the builder parameter.</summary>
         private bool RootsAtBuilder(ExpressionSyntax expression)
         {
@@ -2122,12 +2157,7 @@ public sealed class RulesFrontEnd
                 var anchorName = RuleText.AnchorOfPredicate($"{subject} => {text}");
                 var explicitField = FieldLiteral(arguments);
 
-                var anchor = anchorName is null
-                    ? null
-                    : _writer
-                        ._target.GetMembers(anchorName)
-                        .OfType<IPropertySymbol>()
-                        .FirstOrDefault();
+                var anchor = anchorName is null ? null : _writer.PropertyNamed(anchorName);
 
                 if (anchor is null && explicitField is null)
                 {
