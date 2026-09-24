@@ -666,6 +666,54 @@ public class ConstraintDiagnosticsTests
     }
 
     /// <summary>
+    /// <c>[CustomValidation]</c> compiles to a call on a property, so it counts too. Under Ignore
+    /// nothing is compiled from it, as with the other DataAnnotations attributes.
+    /// </summary>
+    [Fact]
+    public void CustomValidationOnAFieldOrAStaticProperty_IsVM1011()
+    {
+        var source = """
+            using System.ComponentModel.DataAnnotations;
+
+            namespace Sample;
+
+            public static class Checks {
+                public static ValidationResult? Check(string? value) => ValidationResult.Success;
+            }
+
+            public class M {
+                [CustomValidation(typeof(Checks), nameof(Checks.Check))]
+                public string? Field;
+
+                [CustomValidation(typeof(Checks), nameof(Checks.Check))]
+                public static string? Shared { get; set; }
+
+                [Required]
+                public string? Name { get; set; }
+            }
+            """;
+
+        var compiled = GeneratorHarness.Run(source);
+        var ignored = GeneratorHarness.Run(source, ("ValidationModules_DataAnnotations", "Ignore"));
+
+        Assert.Equal(
+            [
+                "'CustomValidation' on 'Field' is never evaluated, because 'Field' is a field. "
+                    + "Constraints apply to instance properties. Declare it as one: "
+                    + "public string? Field { get; set; }",
+                "'CustomValidation' on 'Shared' is never evaluated, because 'Shared' is a static "
+                    + "property. Constraints apply to instance properties. Declare it as one: "
+                    + "public string? Shared { get; set; }",
+            ],
+            compiled
+                .Diagnostics.Where(d => d.Id == "VM1011")
+                .Select(d => d.GetMessage())
+                .OrderBy(message => message, StringComparer.Ordinal)
+        );
+        Assert.DoesNotContain(ignored.Diagnostics, d => d.Id == "VM1011");
+    }
+
+    /// <summary>
     /// A field declared on a base type is reported once, where it is declared, rather than once
     /// per type that inherits it.
     /// </summary>

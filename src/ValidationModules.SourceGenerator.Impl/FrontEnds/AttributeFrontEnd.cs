@@ -1119,7 +1119,10 @@ public sealed class AttributeFrontEnd
             {
                 if (
                     attribute.AttributeClass is not { } attributeClass
-                    || !IsConstraintAttribute(attributeClass)
+                    || !(
+                        IsConstraintAttribute(attributeClass)
+                        || IsCompiledCustomValidation(attributeClass)
+                    )
                     || attribute.ApplicationSyntaxReference is not { } reference
                 )
                 {
@@ -1202,6 +1205,15 @@ public sealed class AttributeFrontEnd
             ? DataAnnotationsConstraintReader.IsConstraint(attributeClass.Name)
             : DerivesFromValidationAttribute(attributeClass);
     }
+
+    /// <summary>
+    /// Whether the attribute is a <c>[CustomValidation]</c> that the DataAnnotations front end
+    /// compiles into a call on an instance property. <see cref="IsConstraintAttribute"/> does not
+    /// count it.
+    /// </summary>
+    private bool IsCompiledCustomValidation(INamedTypeSymbol attributeClass) =>
+        _compileDataAnnotations
+        && attributeClass.ToDisplayString() == KnownTypes.CustomValidationAttribute;
 
     /// <summary>"RequiredAttribute" to "Required", so the suggested fix reads as it would be typed.</summary>
     private static string Unsuffixed(string attributeName) =>
