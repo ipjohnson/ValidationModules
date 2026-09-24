@@ -104,14 +104,17 @@ public class ValidateCallAnalyzerTests
         }
         """;
 
-    [Fact]
-    public void ADataAnnotationsOnlyType_UnderIgnore_IsVM5003()
+    [Theory]
+    [InlineData("Ignore")]
+    [InlineData("ignore")]
+    [InlineData(" Ignore ")]
+    public void ADataAnnotationsOnlyType_UnderIgnore_IsVM5003(string setting)
     {
         // Under Ignore the generator emits no validator for Product, so the endpoint fails on its
-        // first request. The analyzer has to read the same setting to say so.
+        // first request. The analyzer has to read the same setting the same way to say so.
         var diagnostics = Analyze(
             Usings + DataAnnotationsOnlyProduct,
-            ("ValidationModules_DataAnnotations", "Ignore")
+            ("ValidationModules_DataAnnotations", setting)
         );
 
         Assert.Contains("Product", Assert.Single(diagnostics, d => d.Id == "VM5003").GetMessage());
