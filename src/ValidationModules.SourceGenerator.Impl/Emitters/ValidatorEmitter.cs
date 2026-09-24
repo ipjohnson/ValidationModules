@@ -73,9 +73,9 @@ public sealed class ValidatorEmitter
 
     /// <summary>
     /// The <c>static readonly ValidationMessageInfo</c> fields one validator hoists, deduplicated
-    /// by initializer text so ten properties sharing <c>[StringLength(1, 100)]</c> share one field.
-    /// The parameterless constraints never land here - they use the runtime's shared singletons -
-    /// so a field only exists where the arguments made the info site-specific.
+    /// by initializer text so ten properties sharing <c>[StringLength(100, Min = 1)]</c> share one
+    /// field. The parameterless constraints never land here - they use the runtime's shared
+    /// singletons - so a field only exists where the arguments made the info site-specific.
     /// </summary>
     internal sealed class MessageInfoPool
     {

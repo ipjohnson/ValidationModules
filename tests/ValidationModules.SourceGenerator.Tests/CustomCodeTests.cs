@@ -50,7 +50,7 @@ public class CustomCodeTests
 
     [Theory]
     [InlineData("""[Required(Code = "c")]""")]
-    [InlineData("""[StringLength(2, 40, Code = "c")]""")]
+    [InlineData("""[StringLength(40, Min = 2, Code = "c")]""")]
     [InlineData("""[Pattern("^[a-z]+$", Code = "c")]""")]
     public void CodeWithoutMessage_AcrossKinds_StillEmitsTheCode(string constraint)
     {
@@ -66,7 +66,9 @@ public class CustomCodeTests
     {
         // The reason this is not a one-line fix: the default text is composed by the runtime helper
         // from the constraint's own bounds. Overriding the code must not cost the message.
-        var source = GeneratorHarness.Run(Model("""[StringLength(2, 40, Code = "too_long")]"""));
+        var source = GeneratorHarness.Run(
+            Model("""[StringLength(40, Min = 2, Code = "too_long")]""")
+        );
 
         var emitted = source.Sources["Sample.PetValidator.g.cs"];
 

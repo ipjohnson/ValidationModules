@@ -27,7 +27,7 @@ using ValidationModules.Constraints;
 
 public sealed class Account
 {
-    [Required, StringLength(3, 20)]
+    [Required, StringLength(20, Min = 3)]
     public string? Handle { get; init; }
 }
 

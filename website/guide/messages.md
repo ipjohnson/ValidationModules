@@ -54,7 +54,7 @@ An `Ensure` in a rules class has no template. Its default message is the text of
 one rule:
 
 ```csharp
-[StringLength(3, 3, Message = "The code has three letters.")]
+[StringLength(3, Min = 3, Message = "The code has three letters.")]
 public string? Code { get; init; }
 ```
 

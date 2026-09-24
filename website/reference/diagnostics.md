@@ -123,8 +123,8 @@ generic type's payload and leave the generic type without constraints.
 **Severity:** Error
 
 A `[StringLength]` or `[ItemCount]` minimum is greater than its maximum, so the constraint can never
-pass. The DataAnnotations `[StringLength]` and `[Length]` are checked too. The first argument of
-`[StringLength]` and `[ItemCount]` is the minimum.
+pass. The DataAnnotations `[StringLength]` and `[Length]` are checked too. The positional argument
+of `[StringLength]` is the maximum, and the first argument of `[ItemCount]` is the minimum.
 
 ### VM1102
 

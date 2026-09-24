@@ -25,12 +25,25 @@ namespace ValidationModules.Runtime.Tests;
 public class ConstraintAttributeTests
 {
     [Fact]
-    public void StringLength_PositionalConstructor_TakesMinThenMax()
+    public void StringLength_PositionalArgument_IsTheMaximum()
     {
-        var attribute = new StringLengthAttribute(1, 100);
+        // DataAnnotations' reading, so [StringLength(50)] means the same under either using.
+        var attribute = new StringLengthAttribute(50);
 
-        Assert.Equal(1, attribute.Min);
-        Assert.Equal(100, attribute.Max);
+        Assert.Equal(0, attribute.Min);
+        Assert.Equal(50, attribute.Max);
+        Assert.Equal(1, new StringLengthAttribute(50) { Min = 1 }.Min);
+    }
+
+    [Fact]
+    public void StringLength_HasNoTwoArgumentConstructor()
+    {
+        // The (min, max) order is what used to make [StringLength(50)] a minimum. Kept, it would
+        // go on compiling with that order beside a one-argument form that now means the maximum.
+        Assert.DoesNotContain(
+            typeof(StringLengthAttribute).GetConstructors(),
+            constructor => constructor.GetParameters().Length > 1
+        );
     }
 
     [Fact]
@@ -53,8 +66,9 @@ public class ConstraintAttributeTests
     [Fact]
     public void ItemCount_HasTheSameBoundDefaultsAsStringLength()
     {
-        // Deliberately identical: the two constraints differ in what they count, not in how bounds
-        // are written, and a reader who has learnt one should not have to re-learn the other.
+        // The defaults and the named Min/Max are deliberately identical. Only the positional form
+        // differs, and each follows its DataAnnotations counterpart: StringLength(max) and
+        // Length(min, max).
         var attribute = new ItemCountAttribute();
 
         Assert.Equal(0, attribute.Min);

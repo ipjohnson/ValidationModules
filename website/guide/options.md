@@ -17,7 +17,7 @@ using ValidationModules.Constraints;
 
 public sealed class HubOptions
 {
-    [Required, StringLength(3, 40)]
+    [Required, StringLength(40, Min = 3)]
     public string? HubName { get; set; }
 
     [Range(1, 500)]

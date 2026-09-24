@@ -54,7 +54,7 @@ generator reports `VM1201` and drops it.
 ```csharp
 public StringLengthAttribute();
 
-public StringLengthAttribute(int min = 0, int max = int.MaxValue);
+public StringLengthAttribute(int max);
 
 public int Min { get; init; }
 public int Max { get; init; }
@@ -64,10 +64,9 @@ public int Max { get; init; }
 to `string` only. The length is `string.Length`, which counts UTF-16 code units, so a character
 outside the Basic Multilingual Plane, such as most emoji, counts as two.
 
-::: warning
-The first constructor argument is the minimum. `[StringLength(50)]` means at least 50 characters.
-Write `[StringLength(max: 50)]` for a maximum.
-:::
+The constructor argument is the maximum, as it is for the DataAnnotations `[StringLength]`, so
+`[StringLength(50)]` means at most 50 characters. Set a minimum by name, as in
+`[StringLength(50, Min = 2)]`, or `[StringLength(Min = 2)]` for a minimum with no maximum.
 
 | Code | Message |
 | --- | --- |
