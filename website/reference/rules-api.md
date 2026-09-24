@@ -1,316 +1,188 @@
-# Rule builder API
+# Rules API
 
-The surface of `ValidationRules<T>`, passed to `IValidationRulesFor<T>.Describe`. See
-[Rule classes](/guide/rule-classes) for the model. The body is **read at build time and never
-run**. This page covers what that body may contain.
+This page lists the members a rules class uses. For how they fit together, see
+[Rules classes](../guide/rule-classes).
 
-## Two classes to copy
+## IValidationRulesFor&lt;T&gt;
 
-The everyday shape is anchored chains, one rule per line, the whole class:
-
-```csharp
-using ValidationModules;
-
-public sealed class PetRules : IValidationRulesFor<Pet>
-{
-    public static void Describe(ValidationRules<Pet> rules, Pet x)
-    {
-        rules.Require(x.Name).Length(1, 100);
-        rules.Range(x.Age, 0, 30);
-        rules.AllowedValues(x.Status, ["available", "pending", "sold"]);
-        rules.Count(x.Toys, 1, 10).Each();
-        rules.Nested(x.Home);
-    }
-}
-```
-
-And the shape attributes cannot reach: cross-field facts, conditions, computation, your own codes
-and messages:
-
-```csharp
-using ValidationModules;
-
-public sealed class BookingRules : IValidationRulesFor<Booking>
-{
-    public static void Describe(ValidationRules<Booking> rules, Booking x)
-    {
-        rules.Require(x.Reference).Length(8, 8);
-
-        if (x.IsRecurring)
-        {
-            rules.RangeAtLeast(x.Occurrences, 2);
-        }
-
-        rules.Ensure(
-            x.Start < x.End,
-            code: "window_inverted",
-            message: "the booking must start before it ends"
-        );
-
-        var half = x.Total * 0.5m;
-        rules.Ensure(x.Deposit <= half, code: "deposit_too_large");
-    }
-}
-```
-
-Both expand into the same straight-line checks the attributes produce, with the same codes and
-messages,
-emitted into a companion region the validator calls. The rest of this page is the full surface, for
-when you need the exact signature.
-
-## The surface
-
-<!-- format:skip -->
 ```csharp
 public interface IValidationRulesFor<T>
 {
     static abstract void Describe(ValidationRules<T> rules, T x);
 }
-
-public sealed class ValidationRules<T>
-{
-    public IValidationContextReporter Context { get; }
-
-    public PropertyRules<T, TValue> For<TValue>(TValue value, string? field = null);
-
-    public PropertyRules<T, string?> Require(string? value, string? field = null);
-    public PropertyRules<T, TValue?> Require<TValue>(TValue? value, string? field = null);
-    public PropertyRules<T, string?> RequireAllowingEmpty(string? value, string? field = null);
-
-    public PropertyRules<T, string?> Length(string? value, int min = 0, int max = int.MaxValue, string? field = null);
-    public PropertyRules<T, TValue?> Range<TValue>(TValue? value, TValue min, TValue max, string? field = null);
-    public PropertyRules<T, TValue?> RangeAtLeast<TValue>(TValue? value, TValue min, string? field = null);
-    public PropertyRules<T, TValue?> RangeAtMost<TValue>(TValue? value, TValue max, string? field = null);
-    public PropertyRules<T, string?> Pattern(string? value, Func<Regex> pattern, string? field = null);
-    public PropertyRules<T, TValue>  AllowedValues<TValue>(TValue value, TValue[] allowed, string? field = null);
-    public PropertyRules<T, IReadOnlyList<TElement>?> Count<TElement>(IReadOnlyList<TElement>? value, int min = 0, int max = int.MaxValue, string? field = null);
-    public PropertyRules<T, IEnumerable<TElement>?>   Unique<TElement>(IEnumerable<TElement>? value, string? field = null);
-
-    public PropertyRules<T, long?>    MultipleOf(long? value, long divisor, string? field = null);
-    public PropertyRules<T, decimal?> MultipleOf(decimal? value, decimal divisor, string? field = null);
-    public PropertyRules<T, double?>  MultipleOf(double? value, double divisor, string? field = null);
-
-    public PropertyRules<T, TValue?> Nested<TValue>(TValue? value, string? field = null);
-    public PropertyRules<T, IReadOnlyList<TElement>?> Each<TElement>(IReadOnlyList<TElement>? value, string? field = null);
-
-    public ValidationRules<T> Ensure(bool condition, string? field = null, string? code = null,
-        string? message = null, ValidationSeverity severity = ValidationSeverity.Error);
-
-    public ValidationRules<T> As<TFacet>(TFacet value);
-
-    public ValidationRules<T> Apply(RuleAction<T> rule);
-}
 ```
 
-Arguments are **values** rather than selectors, as in `rules.Require(x.Name)`. The generator
-resolves the
-argument as a symbol; nothing here executes. The builder is inert by construction: its constructor
-is internal, its members throw, and nothing ever calls `Describe`.
+A rules class implements it with `public static void Describe(ValidationRules<T> rules, T x)`. The
+generator reads the body and never calls it. A class can implement the interface for several types.
 
-A class may implement the interface once per type it describes, with one `Describe` overload each,
-implicit or explicit. Every target gets its own validator. See
-[One class, several targets](/guide/rule-classes#one-class-several-targets).
+## ValidationRules&lt;T&gt;
 
-## Values and field names
+`ValidationRules<T>` is the type of the `rules` parameter. Every method except `Ensure`, `As` and
+`Apply` returns a `PropertyRules<T, TValue>`, which later rules in the same chain apply to. Every
+method that takes a value also takes an optional `field:`, which replaces the field name derived
+from the value.
 
-An island's value must be a member path on the subject parameter. Nested paths and `?.` are the
-same spelling:
+### Presence
 
-```csharp
-rules.Require(x.Name); // field "name"
-rules.Require(x.Home?.PostalCode); // field "home.postalCode"
-rules.Require(x.Name, field: "petName");
-```
+| Method | Passes when | Code |
+| --- | --- | --- |
+| `Require(string? value)` | The string is not `null`, empty or whitespace. | `required` |
+| `RequireAllowingEmpty(string? value)` | The string is not `null`. | `required` |
+| `Require<TValue>(TValue? value)` | The reference or nullable value is not `null`. | `required` |
 
-`[JsonPropertyName]` on the property wins, then the naming policy. An explicit `field:` is a raw
-wire name, not put through the namer - with one exception: `field: nameof(x.AccountNumber)`,
-through the subject, names a *member*, so it takes that member's wire name (`accountNumber`),
-exactly as `nameof` does everywhere else in a rules class. Anything that is not a member path is
-[VM3007](/reference/diagnostics#vm3007) unless `field:` is given.
+`Require` on a property of a non-nullable value type can never fail, and the generator reports
+`VM3101`.
 
-A nullable member is passed as itself - every rule takes the nullable directly:
+### Strings
 
-```csharp
-public decimal? BatteryKwh { get; init; }
+| Method | Passes when | Code |
+| --- | --- | --- |
+| `Length(string? value, int min = 0, int max = int.MaxValue)` | The length is within the bounds. | `string_length` |
+| `Pattern(string? value, Func<Regex> pattern)` | The regular expression matches. Pass a method group, such as a `[GeneratedRegex]` method. | `pattern` |
 
-rules.Range(x.BatteryKwh, 10, 300); // field "batteryKwh"; null passes, [Required] is
+### Numbers, dates and times
 
-// the presence check
-rules.Range(x.BatteryKwh.Value, 10, 300); // VM3104: drop .Value
-```
+| Method | Passes when | Code |
+| --- | --- | --- |
+| `Range<TValue>(TValue value, TValue min, TValue max)` | The value is within the bounds, inclusive. | `range` |
+| `RangeAtLeast<TValue>(TValue value, TValue min)` | The value is at least `min`. | `range` |
+| `RangeAtMost<TValue>(TValue value, TValue max)` | The value is at most `max`. | `range` |
+| `MultipleOf(long? value, long divisor)` | The value divides by the divisor. | `multiple_of` |
+| `MultipleOf(decimal? value, decimal divisor)` | The value divides by the divisor. | `multiple_of` |
 
-Writing `.Value` is never needed and is [VM3104](/reference/diagnostics#vm3104): the reader
-corrects the rule to the member itself, so the source should say what is meant.
+The range methods take any struct that implements `IComparable<TValue>` and `IFormattable`, and each
+has an overload for the nullable form.
 
-## Anchored chaining
-
-The first call carries the value; the rest inherit its anchor via `PropertyRules<T, TValue>`,
-which repeats the same vocabulary without the value:
-
-```csharp
-rules.Require(x.Name).Length(1, 100);
-rules.For(x.Name).Require().Length(1, 100); // same thing, anchor stated
-```
-
-A chain is one statement, and one `if`/`else if` ladder in the region: **a failed `Require`
-suppresses the rest of its own chain**. Separate statements against one field report
-independently, so rules for one field belong in one chain.
-
-Members that only make sense for particular value types are **extension methods constrained on the
-chain's type argument**, which is how `Length` is offered on a string anchor and not on an `int`.
-
-## The vocabulary
-
-| Method | Attribute equivalent | Code |
-|---|---|---|
-| `Require(x.Name)` | `[Required]` | `required` |
-| `RequireAllowingEmpty(x.Note)` | `[Required(AllowEmptyStrings = true)]` | `required` |
-| `Length(x.Name, 1, 100)` | `[StringLength(1, 100)]` | `string_length` |
-| `Range(x.Age, 0, 30)` | `[Range(0, 30)]` | `range` |
-| `Pattern(x.Sku, Patterns.Sku)` | `[Pattern(typeof(Patterns), "Sku")]` | `pattern` |
-| `AllowedValues(x.Status, ["a", "b"])` | `[AllowedValues("a", "b")]` | `enum` |
-| `RangeAtLeast(x.Qty, 1)` | `[Range(Min = 1)]` | `range` |
-| `RangeAtMost(x.Qty, 99)` | `[Range(Max = 99)]` | `range` |
-| `Count(x.Toys, 1, 10)` | `[ItemCount(1, 10)]` | `array_bounds` |
-| `MultipleOf(x.Qty, 5)` | `[MultipleOf(5)]` | `multiple_of` |
-| `Unique(x.Codes)` | `[UniqueItems]` | `unique_items` |
-| `Nested(x.Home)` | `[ValidateNested]` | — |
-| `Each(x.Toys)` | `[ValidateNested]` on a collection | — |
-
-A rule declared here and the same rule declared as an attribute expand through one check writer,
-so codes, messages and check shapes match exactly.
-
-`Range<TValue>` is constrained `where TValue : struct, IComparable<TValue>, IFormattable`, which
-is what makes it work for `DateOnly` and `decimal` where the
-[`[Range]` string overload does not](/reference/diagnostics#vm1103). Each range method is an
-overload pair, `TValue value` beside `TValue? value`, so inference reads the member's own type
-whether or not it is nullable: `rules.Range(x.Latitude, -90, 90)` on a `double` infers `double`
-and the int literals convert. The compiler picks the right overload per call site; you never
-name `TValue`.
-
-One literal rule remains, and it is C#'s rather than this API's: a `decimal` member needs
-`decimal` fractional bounds (`0.5m`, not `0.5`), because C# has no implicit conversion from
-`double` to `decimal`. Integer literals convert everywhere and need no suffix.
-
-`RangeAtLeast` and `RangeAtMost` are separate methods rather than an optional bound on `Range`. A
-nullable bound parameter costs the type inference that lets `Range(x.Age, 0, 120)` be written
-without naming `TValue`, and naming it at every call site is worse than one extra method.
-
-`MultipleOf` resolves on the divisor's own type: `5` picks the integral overload, `0.05m` the
-decimal one and `0.01` the double one. The double overload checks in the decimal domain, the same
-as the attribute path. See [the guide](/guide/constraints#multipleof).
-
-`Unique` takes an `IEnumerable<TElement>` where `Count` takes an `IReadOnlyList<TElement>`, because
-uniqueness enumerates rather than reading a count.
-
-`Require` on a non-nullable value type cannot be written bare, because inference will not unwrap
-`Nullable`. With an explicit type argument it is [VM3101](/reference/diagnostics#vm3101).
-
-## Conditions are C#
-
-There is no `When`/`Unless`. Write `if`/`else`; conditions evaluate where written, at validation
-time, inside the region:
-
-```csharp
-if (x.IsExpedited)
-{
-    rules.Require(x.Reason).Length(2, 500);
-}
-
-if (x.IsAuto)
-{
-    rules.Require(x.PlateNumber);
-}
-else
-{
-    rules.Require(x.Notes);
-}
-```
-
-A guarded `Require` that does not run records nothing, so it suppresses nothing.
-
-::: tip Porting from FluentValidation
-`.When()` becomes the `if` you would have written anyway. `ApplyConditionTo` has no counterpart
-because there is no retroactive default to opt out of. The brace says exactly what is guarded.
-`WhenAsync`/`UnlessAsync` and `DependentRules` still have no counterpart; async checks are
-`IAsyncValidatorFor<T>`.
+::: warning
+In a rules class, `MultipleOf` with a `double` divisor produces generated code that does not compile
+in this version. Use a `decimal` property, or `[MultipleOf]` on the property.
 :::
 
-## `Ensure`
+### Values
+
+| Method | Passes when | Code |
+| --- | --- | --- |
+| `AllowedValues<TValue>(TValue value, TValue[] allowed)` | The value is one of `allowed`. | `enum` |
+
+Write `allowed` as an array or a collection expression of constants, such as
+`["active", "pending"]`.
+
+### Collections
+
+| Method | Effect | Code |
+| --- | --- | --- |
+| `Count<TElement>(IReadOnlyList<TElement>? value, int min = 0, int max = int.MaxValue)` | Passes when the number of items is within the bounds. | `array_bounds` |
+| `Unique<TElement>(IEnumerable<TElement>? value)` | Passes when no item appears twice. | `unique_items` |
+| `Each(IReadOnlyList<string>? value)` | Applies the rules chained after it to every element. | from those rules |
+| `Each<TElement>(IReadOnlyList<TElement>? value)` | Runs the validators for `TElement` on every element. | from those validators |
+| `Nested<TValue>(TValue? value)` | Runs the validators for `TValue` on the value. | from those validators |
+
+`Nested` is for a single object. Use `Each` for a collection of objects.
+
+### Conditions
 
 ```csharp
-rules.Ensure(x.Start < x.End);
-rules.Ensure(x.Discount <= x.Price * 0.5m, code: "discount_too_large");
+public ValidationRules<T> Ensure(
+    bool condition,
+    string? field = null,
+    string? code = null,
+    string? message = null,
+    ValidationSeverity severity = ValidationSeverity.Error
+);
 ```
 
-One assertion with no vocabulary name. **The message is the condition, rendered**: the subject
-parameter stripped, member accesses wire-named, a period appended: `start < end.` Locals appear
-under their own names, so `var total = …; rules.Ensure(total <= x.CreditLimit);` reads
-`total <= creditLimit.`
+Reports an error when `condition` is `false`. The expression is copied into the validator as
+written and is not guarded against `null`. Without `field:`, the field is the first member of `x`
+that the condition reads. Without `code:`, the code is derived from the condition, as described in
+[Validation codes](./codes#codes-from-ensure). Without `message:`, the message is the condition's
+text.
 
-The rule anchors to the first property the condition reads. A condition that reads none needs
-`field:`, or it is [VM3102](/reference/diagnostics#vm3102). The code derives from the same render,
-so `x.Start < x.End` reports `start_less_than_end`, and `code:` pins it. See
-[Error codes](/reference/codes#why-ensure-derives-its-code).
+### Other members
 
-## `rules.Context`: the reporter tier
+| Member | Effect |
+| --- | --- |
+| `For<TValue>(TValue value, string? field = null)` | Starts a chain for a value without a rule of its own. |
+| `As<TFacet>(TFacet value)` | Runs the rules declared for an interface or base type of `x`, at the current level. The argument must be `x`. |
+| `Apply(RuleAction<T> rule)` | Runs a hand-written rule after every other rule on the type. Top level of `Describe` only. |
+| `Context` | An `IValidationContextReporter` for reporting errors from code. See below. |
 
-Free-form logic reports through a narrow view of the pass, typed `IValidationContextReporter`:
+`RuleAction<T>` is a delegate: `ValidationFlow RuleAction<in T>(ref ValidationContext context, T
+value)`. Pass a static method group.
+
+## PropertyRules&lt;T, TValue&gt;
+
+`PropertyRules<T, TValue>` is the type a rule method returns. These extension methods continue a
+chain:
+
+| Method | Applies to a chain on |
+| --- | --- |
+| `Require()` | a string, a reference type, or a nullable value type |
+| `RequireAllowingEmpty()` | a string |
+| `Length(min, max)` | a string |
+| `Pattern(regex)` | a string |
+| `Range(min, max)`, `RangeAtLeast(min)`, `RangeAtMost(max)` | a nullable value type |
+| `MultipleOf(divisor)` | a `long?`, `decimal?` or `double?` |
+| `Count(min, max)` | an `IReadOnlyList<T>` |
+| `Unique()` | an `IEnumerable<T>` |
+| `Each()` | an `IReadOnlyList<T>` |
+| `Nested()` | a reference type |
+
+A chain is typed by the method that starts it, so a chain method must accept that type. For example,
+`rules.Range(x.Quantity, 1, 100)` on an `int` starts a chain on `int?`, which `MultipleOf(long)`
+does not accept. Write such rules as separate statements.
+
+When `Require` or `RequireAllowingEmpty` fails, the rest of its chain is skipped.
+
+After `Each` on a list of strings, chain `Length` or `Pattern` to check each element.
+`Require` after `Each` is reported as `VM3001`. Use `Length(1, ...)` to reject empty elements.
+
+::: warning
+The chained form `.AllowedValues("a", "b")` emits no check in this version. Use the method on
+`rules` with an array: `rules.AllowedValues(x.Status, ["a", "b"])`.
+:::
+
+## Context
+
+`rules.Context` is an `IValidationContextReporter`:
+
+| Method | Effect |
+| --- | --- |
+| `Report(field, code, message, severity)` | Reports an error against `field`, below the current path. |
+| `Report(field, code, value, messageInfo, severity)` | Reports an error with a structured message. |
+| `ReportHere(code, message, severity)` | Reports an error against the current path itself. |
+
+`severity` defaults to `ValidationSeverity.Error`. A `field` built with `nameof(x.Member)` becomes
+the member's field name at build time.
+
+### Report helpers
+
+These extension methods report a built-in code with its default message. They work on
+`rules.Context` in a rules class and on `ValidationContext` in a hand-written validator. Each takes
+the field first, then its own arguments, then optional `severity`, `code` and `value` arguments.
+`code` replaces the code and keeps the message. `value` records the failed value in
+`ValidationError.Value`.
+
+| Helper | Arguments | Code |
+| --- | --- | --- |
+| `ReportRequired` | | `required` |
+| `ReportStringLength` | `min`, `max` | `string_length` |
+| `ReportItemCount` | `min`, `max` | `array_bounds` |
+| `ReportRange` | `min`, `max`, `exclusiveMin`, `exclusiveMax` | `range` |
+| `ReportRangeAtLeast` | `min`, `exclusive` | `range` |
+| `ReportRangeAtMost` | `max`, `exclusive` | `range` |
+| `ReportMultipleOf` | `divisor` | `multiple_of` |
+| `ReportPattern` | | `pattern` |
+| `ReportAllowedValues` | `allowedValues`, the list as text | `enum` |
+| `ReportDeniedValues` | `deniedValues`, the list as text | `enum` |
+| `ReportEmail` | | `email` |
+| `ReportPhone` | | `phone` |
+| `ReportUrl` | | `url` |
+| `ReportCreditCard` | | `credit_card` |
+| `ReportBase64` | | `base64` |
+| `ReportFileExtension` | `extensions`, the list as text | `file_extension` |
+| `ReportUniqueItems` | | `unique_items` |
+| `ReportCustom` | | `custom` |
 
 ```csharp
-if (!Luhn.Validates(x.AccountNumber))
-{
-    rules.Context.Report(nameof(x.AccountNumber), "checksum", "account number failed its checksum");
-}
+rules.Context.ReportStringLength(nameof(x.Guest), 0, 10, code: "guest_too_long");
 ```
-
-`Report`, `ReportHere`, and every `Report*` extension. Legal anywhere in the body, loops included;
-any expression-statement whose type is `ValidationFlow` is checked and propagated automatically.
-`nameof` through the subject parameter rewrites to the wire path. See
-[the guide](/guide/rule-classes#reporter).
-
-## Fragments
-
-Any `static`, `void`, same-compilation method receiving the builder is followed and expanded,
-decomposition and reuse as method extraction, generics included:
-
-```csharp
-public static void Standard<T>(ValidationRules<T> rules, T audited)
-    where T : IAudited
-{
-    rules.Require(audited.CreatedBy);
-    rules.RangeAtLeast(audited.Version, 1);
-}
-```
-
-See [the guide](/guide/rule-classes#fragments) for the rules: same compilation
-([VM3005](/reference/diagnostics#vm3005)), subject argument, cycles
-([VM3006](/reference/diagnostics#vm3006)).
-
-## `As<TFacet>`
-
-```csharp
-rules.As<IAudited>(x); // validate x as its IAudited facet
-```
-
-Validates the subject as one of its facets. This is the route when shared rules ship as compiled
-IL. A
-facet generated in this compilation binds statically (no rules for it is
-[VM3105](/reference/diagnostics#vm3105)); a facet from a referenced assembly resolves the closed
-`IValidatorFor<TFacet>` through the pass's services, and a missing registration throws naming the
-module to compose. The path does not push. Declare facet rules in a rules class targeting the
-facet, rather than as attributes on it. See [the guide](/guide/rule-classes#facets).
-
-## `Apply`
-
-```csharp
-public delegate ValidationFlow RuleAction<in T>(ref ValidationContext context, T value);
-```
-
-```csharp
-rules.Apply(PetChecks.SkuChecksum);
-```
-
-Taken as a method group rather than a `(Type, string)` pair, and emitted as a direct call. Applied
-rules run after everything else, unconditionally, in declaration order, so an `Apply` under an `if`
-is [VM3001](/reference/diagnostics#vm3001).

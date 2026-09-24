@@ -1,250 +1,103 @@
 # MSBuild properties
 
-These properties govern the generator. All go in a `<PropertyGroup>` in the project that holds your
-models, rather than in the application, unless those are the same project.
+These properties change what the generator writes. Set them in the project file of the project that
+declares the validated types:
 
 ```xml
 <PropertyGroup>
-    <ValidationModules_Registration>ServiceCollection</ValidationModules_Registration>
-    <ValidationModules_FieldNaming>SnakeCase</ValidationModules_FieldNaming>
-    <ValidationModules_DataAnnotations>Ignore</ValidationModules_DataAnnotations>
-    <ValidationModules_PatternPolicy>Error</ValidationModules_PatternPolicy>
-    <ValidationModules_FailFast>Disabled</ValidationModules_FailFast>
-    <GeneratedCodeStyle>KAndR</GeneratedCodeStyle>
+  <ValidationModules_FieldNaming>SnakeCase</ValidationModules_FieldNaming>
+  <ValidationModules_CodeNamespace>shop</ValidationModules_CodeNamespace>
 </PropertyGroup>
 ```
 
-## `ValidationModules_Registration`
+The `ValidationModules.SourceGenerator` package declares each property as a
+`CompilerVisibleProperty`, which is what makes it visible to the generator. A project that
+references the generator with a `ProjectReference` instead of the package must declare them itself.
 
-What registration code to emit alongside the validators.
+## `ValidationModules_FieldNaming`
 
-| Value | Effect |
-|---|---|
-| *(unset)* | auto: DependencyModules if `IDependencyModule` resolves, otherwise the extension |
-| `DependencyModules` | always register into every module entry point in the compilation, or emit an `IDependencyModule` where there is none |
-| `ServiceCollection` | always emit the `Add…Validators()` extension |
-| `None` | emit no registration at all |
-
-Auto-detection probes the compilation for
-`DependencyModules.Runtime.Interfaces.IDependencyModule`. An entry point is a class carrying
-`[DependencyModule]` or `[HardenedModule]`. Set the property when DependencyModules arrives
-transitively and you do not want your validators registered. `None` emits the validators and leaves
-the wiring to you.
-
-See [Registration and DI](/guide/registration).
-
-## `ValidationModules_FieldNaming` {#validationmodules-fieldnaming}
-
-How a CLR property name becomes the field name in `ValidationError.Field`.
+This property sets how member names become field names in errors.
 
 | Value | `PostalCode` becomes |
-|---|---|
-| *(unset)* / `CamelCase` | `postalCode` |
-| `PascalCase` | `PostalCode` |
-| `AsDeclared` | `PostalCode` |
+| --- | --- |
+| not set | `postalCode` |
 | `SnakeCase` | `postal_code` |
+| `PascalCase` or `AsDeclared` | `PostalCode` |
 
-`[JsonPropertyName]` and `[Display(Name = …)]` on the property both take precedence over this.
+`[JsonPropertyName]` and `[Display(Name)]` on a property take precedence. The value is
+case-sensitive, and an unrecognised value means camelCase. The registration method also registers
+the matching `IValidationFieldNamer`: `CamelCaseFieldNamer`, `SnakeCaseFieldNamer` or
+`PascalCaseFieldNamer`. A namer you register first takes precedence. Custom namers derive from
+`FieldNamer`.
 
-::: warning This is a build-time decision
-Field names are baked into generated validators as string literals, so nothing computes them per
-validation. Registering a different `IValidationFieldNamer` in DI does **not** rename a generated
-validator's errors. It affects only names computed at run time, from `IValidatableObject` results
-and DataAnnotations member names.
+## `ValidationModules_CodeNamespace`
 
-If you use both, set this property and the registered namer to the same policy. The built-in
-policies are `CamelCaseFieldNamer`, `PascalCaseFieldNamer` and `SnakeCaseFieldNamer` in
-`ValidationModules.Naming`, each a `FieldNamer` - the base that also owns how path segments and
-indices join. The generated registration TryAdds the namer matching this property, so a namer you
-register first wins.
-:::
-
-`SnakeCase` handles acronyms: `HTTPStatusLine` becomes `http_status_line`.
-
-## `ValidationModules_FailFast` {#validationmodules-failfast}
-
-Whether a generated validator returns at its first blocking failure.
-
-| Value | Effect |
-|---|---|
-| *(unset)* / anything else | on: a failing rule returns, and the rules after it never run |
-| `Disabled` / `false` | off: every rule is evaluated and the answer discarded |
-
-On by default, because a validator that cannot stop makes
-[`ValidationStopMode.StopOnFirstError`](/guide/errors#stopping) a filter rather than an
-optimisation, and the person who would have to notice is the one who never asked for the mode.
-
-**Turning it off does not change any result.** The collector closes the pass at its first blocking
-failure regardless, so `ValidateFirst` returns the same single error either way; what you lose is
-the skipping. That also means an assembly built with it off still composes correctly with one built
-with it on.
-
-What it costs to leave on, measured on an `osx-arm64` Native AOT publish: **54 bytes per report
-site**, which is 27 KB across 500 sites, 1.1% of that binary and 2.2% of its `__managedcode`
-section. Nothing
-on the clean path: the return sits inside the failure branch, so a passing validation executes what
-it always did.
-
-The reason it needs a build-time switch at all is that it cannot be trimmed.
-`ValidationErrorCollector.StopMode` is a runtime field with a public setter, so ILC can never prove
-a consumer will not set it, and the branches stay in the binary whether or not anything uses them.
-
-Both spellings are accepted, case-insensitively. Taking only one would let the other pass silently,
-which is the failure this property exists to avoid.
-
-## `ValidationModules_CaptureValues` {#validationmodules-capturevalues}
-
-Whether generated report sites pass the failing member as
-[`ValidationError.Value`](/guide/messages#the-attempted-value-and-who-may-show-it).
-
-| Value | Effect |
-|---|---|
-| *(unset)* / anything else | on: the failing value rides on the error, for readers that opt in |
-| `Disabled` / `false` | off: the emitter passes nothing, and the capture is absent from the binary |
-
-On by default, and safe by default: the value is a reference to data the application already
-holds, and no library surface renders it. Not the default message, not `ToString`, and not
-`ValidationException`, not a problem-details body. Only an installed
-[formatter](/guide/messages) can choose to show it, which makes that an explicit decision at a
-named place.
-
-Turning it off is for builds that must not carry values at all. Because the switch governs
-*emission*. Off means the capture argument was never compiled, which is a property of the binary
-that can
-be audited, which is a stronger guarantee than any runtime flag. The cost of leaving it on is one
-boxing allocation per failing value-type member, inside the failure branch; a clean pass executes
-what it always did.
-
-Both spellings are accepted, case-insensitively, for the same reason `FailFast` takes both.
-
-## `ValidationModules_DataAnnotations`
-
-Whether `System.ComponentModel.DataAnnotations` attributes are compiled.
-
-| Value | Effect |
-|---|---|
-| *(unset)* | compiled |
-| `Ignore` | skipped, and each skipped constraint reports [VM2001](/reference/diagnostics#vm2001) |
-
-The comparison is case-insensitive, and any value other than `Ignore` means "compile". Turning it
-off cannot silently unvalidate a model. A type whose only rules were DataAnnotations gets no
-validator, and every constraint reports.
-
-Governs one vocabulary; native constraints are unaffected.
-
-See [DataAnnotations](/guide/data-annotations).
-
-## `ValidationModules_CodeNamespace` {#validationmodules-codenamespace}
-
-Prefixes the error codes this assembly invents. Unset by default.
-
-```xml
-<PropertyGroup>
-    <ValidationModules_CodeNamespace>myapp</ValidationModules_CodeNamespace>
-</PropertyGroup>
-```
-
-An `Ensure` then reports `myapp.start_less_than_end`, and a `[Required(Code = "guest_missing")]`
-reports `myapp.guest_missing`. The separator is a dot, which survives being a JSON key and a URL
-fragment untouched.
-
-::: warning The built-in vocabulary is never prefixed
-`required` stays `required`, and so does every other code in
-[the fixed vocabulary](/reference/codes). That vocabulary is what lets a client switch on a code
-without knowing which engine produced the error, and namespacing it would defeat the point of
-having one. What collides when two assemblies merge is the codes people invent, which is exactly
-what this covers.
-:::
-
-Opt-in because switching it on changes every code the assembly emits, which is a wire-contract
-change for anything reading them. It is a once-per-assembly decision, cheapest before you have
-consumers.
+This property sets a prefix for the codes you set with `Code` or `code:`, and for the codes derived
+from `Ensure`. With `shop`, the code `stay_order` becomes `shop.stay_order`. Built-in codes are
+never prefixed. It is not set by default.
 
 ## `ValidationModules_PatternPolicy`
 
-Whether an inline `[Pattern("…")]` is acceptable.
+This property sets what the generator does with an inline `[Pattern("...")]`.
 
 | Value | Effect |
-|---|---|
-| *(unset)* | `Error` if the project is AOT-facing, `Allow` otherwise |
-| `Allow` | inline patterns accepted silently |
-| `Warn` | [VM1301](/reference/diagnostics#vm1301) as a warning, constraint still emitted |
-| `Error` | VM1301 as an error, constraint dropped |
+| --- | --- |
+| not set, or `Auto` | `VM1301` error when `PublishAot` or `IsAotCompatible` is `true`. Allowed otherwise. |
+| `Error` | `VM1301` error. |
+| `Warn` | `VM1301` warning, and the pattern is compiled. |
+| `Allow` | Allowed. |
 
-"AOT-facing" means `PublishAot` **or** `IsAotCompatible` is `true`. Both, deliberately:
-`PublishAot` is only ever true in the executable, so a class library holding your models would never
-see it, and the diagnostic would land on somebody else's publish instead of on the library's own
-build.
+The value is case-sensitive. See [Patterns](../guide/patterns).
 
-Set `Error` explicitly in a library that ships to AOT consumers.
+## `ValidationModules_DataAnnotations`
 
-See [Patterns and regex](/guide/patterns).
+Set to `Ignore` to stop the generator compiling `System.ComponentModel.DataAnnotations` attributes.
+It then reports `VM2001` for each one. Any other value, or none, compiles them. The value is not
+case-sensitive. See [DataAnnotations](../guide/data-annotations).
 
-## `GeneratedCodeStyle` {#generatedcodestyle}
+## `ValidationModules_FailFast`
 
-Which brace style generated files are written in.
+Set to `false` or `Disabled` to leave out the early return after each check. The validators get
+smaller. A fail-fast pass still records only one error but runs every check. It is on by default.
+The value is not case-sensitive.
+
+## `ValidationModules_CaptureValues`
+
+Set to `false` or `Disabled` to stop recording the failed value in `ValidationError.Value`. It is
+on by default. The value is not case-sensitive.
+
+## `ValidationModules_Registration`
+
+This property selects the registration code the generator writes.
 
 | Value | Effect |
-|---|---|
-| *(unset)* / anything unrecognised | Allman: braces on their own lines |
-| `KAndR` / `K&R` (case-insensitive) | the opening brace joins the declaration line |
+| --- | --- |
+| not set | `DependencyModules` when the project references DependencyModules, `ServiceCollection` otherwise. |
+| `ServiceCollection` | The `Add<Assembly>Validators()` extension method only. |
+| `DependencyModules` | The extension method, registration into each module entry point, and a `ValidationModule` class when there is no entry point. |
+| `None` | No registration code. |
 
-The name carries no `ValidationModules_` prefix on purpose: the property is shared across source
-generators, and DependencyModules reads the same one, so one csproj line styles all of your
-generated code. It only moves braces; the code the generator emits is otherwise identical, which
-is also why an unrecognised value falls back to Allman silently instead of raising a diagnostic.
+The value is case-sensitive. See [Registration](../guide/registration).
 
-## Properties read but not owned
+## Other properties
 
-### `PublishAot` / `IsAotCompatible`
+| Property | Package | Effect |
+| --- | --- | --- |
+| `ValidationModulesLanguages` | `ValidationModules.Messages` | Which built-in languages to compile: a list such as `fr;de`, `all` (the default), or `none`. |
+| `GeneratedCodeStyle` | `ValidationModules.SourceGenerator` | `KAndR` for K&R braces in the generated code. Allman braces otherwise. |
+| `PublishAot`, `IsAotCompatible` | .NET SDK | When either is `true`, the default pattern policy rejects inline patterns. |
+| `EmitCompilerGeneratedFiles` | .NET SDK | Writes the generated files under `obj/` so that you can read them. |
+| `PackageValidationModulesIncludeSource` | `ValidationModules.SourceGenerator.Impl` | See below. |
 
-Read as AOT signals for the pattern policy above. Setting `IsAotCompatible` on the project that
-holds your models is worth doing regardless, because it turns on the trim analyzers for that
-project.
+## Building your own generator
 
-### `EmitCompilerGeneratedFiles`
+`ValidationModules.SourceGenerator.Impl` contains the generator's source code, for authors who want
+to drive the same front ends and emitters from a generator of their own. Setting
+`PackageValidationModulesIncludeSource` to `true` compiles that source into the project that
+references the package.
 
-Not read by the generator, but the fastest way to see what it produced:
-
-```xml
-<PropertyGroup>
-    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
-</PropertyGroup>
-```
-
-Files land under `obj/<Configuration>/<tfm>/generated/ValidationModules.SourceGenerator/…`. Add an
-explicit `CompilerGeneratedFilesOutputPath` if you would rather they went somewhere else.
-
-Worth enabling in a repository where the emitted code is part of what you review.
-
-## The assembly name
-
-Not a property you set, but it names the registration method: `AddMyAppValidators()` is derived from
-`AssemblyName`, because an assembly name is not necessarily a valid identifier. The name splits on
-dots and on any character that is not a letter or digit, each segment is PascalCased, and the
-segments join with nothing between them.
-
-| `AssemblyName` | Registration method |
-|---|---|
-| `MyApp` | `AddMyAppValidators()` |
-| `My.App` | `AddMyAppValidators()` |
-| `My-App` | `AddMyAppValidators()` |
-| `app2-signupapi` | `AddApp2SignupapiValidators()` |
-| `7Eleven` | `Add_7ElevenValidators()` |
-| *(empty)* | `Generated` |
-
-## Diagnostic severity
-
-Not MSBuild, but `.editorconfig`. Silence one by id:
-
-```ini
-[*.cs]
-dotnet_diagnostic.VM1201.severity = none
-```
-
-`<NoWarn>$(NoWarn);VM1201</NoWarn>` and `#pragma warning disable VM1201` work as well.
-
-The category-wide `dotnet_analyzer_diagnostic.category-ValidationModules.Usage.severity` does
-**not** reach these, even though they all carry that category:
-[the reference explains why](/reference/diagnostics#diagnostics). Several diagnostics are errors
-because the alternative is generated code that does not compile.
+The package contains no `[Generator]` class, so it never runs by itself. Your generator provides the
+entry point, reads its own options, and reports its own errors. Do not run
+`ValidationModules.SourceGenerator` over the same types as well, or each type gets two validators.
+The runtime package publishes the version of its contract as the MSBuild property
+`ValidationModulesRuntimeContract`, for hosts that check compatibility without a compilation.

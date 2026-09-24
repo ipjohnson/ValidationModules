@@ -1,21 +1,20 @@
 import { defineConfig } from 'vitepress';
 
-// Published to https://ipjohnson.github.io/ValidationModules/, so every absolute path needs the
-// repository name as a base. Getting this wrong is the classic Pages failure: the site builds, the
-// landing page loads, and every asset and internal link 404s.
+// Published to https://ipjohnson.github.io/ValidationModules/. Every absolute path needs the
+// repository name as its base, or the assets and internal links 404 on GitHub Pages.
 const base = '/ValidationModules/';
+
+const description =
+  'Compile-time validation for .NET. A source generator writes the validators, and they run under Native AOT.';
 
 export default defineConfig({
   title: 'ValidationModules',
-  description:
-    'Compile-time validation for .NET. Constraints become straight-line C# at build time — no ' +
-    'reflection, no expression trees, no regex compiled at runtime, Native AOT safe.',
+  description,
   base,
   lang: 'en-GB',
   cleanUrls: true,
 
-  // A broken internal link should fail the build rather than ship. The pages cross-reference
-  // heavily and a rename would otherwise rot links silently.
+  // A broken internal link fails the build.
   ignoreDeadLinks: false,
 
   head: [
@@ -23,74 +22,77 @@ export default defineConfig({
     ['meta', { name: 'theme-color', content: '#0f9d76' }],
     ['meta', { property: 'og:type', content: 'website' }],
     ['meta', { property: 'og:title', content: 'ValidationModules' }],
-    [
-      'meta',
-      {
-        property: 'og:description',
-        content: 'Compile-time validation for .NET. No reflection, no expression trees, AOT safe.',
-      },
-    ],
+    ['meta', { property: 'og:description', content: description }],
   ],
 
   themeConfig: {
-    // The bare mark; the navbar supplies the ground, so each theme gets its own ink.
     logo: { light: '/logo.svg', dark: '/logo-dark.svg' },
-    siteTitle: 'ValidationModules',
 
     nav: [
       { text: 'Guide', link: '/guide/getting-started', activeMatch: '/guide/' },
-      { text: 'Reference', link: '/reference/diagnostics', activeMatch: '/reference/' },
+      { text: 'Reference', link: '/reference/attributes', activeMatch: '/reference/' },
       {
-        text: 'NuGet',
+        text: 'Packages',
         items: [
-          { text: 'Runtime', link: 'https://www.nuget.org/packages/ValidationModules.Runtime/' },
+          { text: 'ValidationModules.Runtime', link: 'https://www.nuget.org/packages/ValidationModules.Runtime/' },
           {
-            text: 'SourceGenerator',
+            text: 'ValidationModules.SourceGenerator',
             link: 'https://www.nuget.org/packages/ValidationModules.SourceGenerator/',
           },
+          { text: 'ValidationModules.AspNetCore', link: 'https://www.nuget.org/packages/ValidationModules.AspNetCore/' },
+          { text: 'ValidationModules.Options', link: 'https://www.nuget.org/packages/ValidationModules.Options/' },
+          { text: 'ValidationModules.Messages', link: 'https://www.nuget.org/packages/ValidationModules.Messages/' },
           {
-            text: 'SourceGenerator.Impl',
+            text: 'ValidationModules.SourceGenerator.Impl',
             link: 'https://www.nuget.org/packages/ValidationModules.SourceGenerator.Impl/',
           },
         ],
       },
+      { text: 'Releases', link: 'https://github.com/ipjohnson/ValidationModules/releases' },
     ],
 
     sidebar: {
       '/guide/': [
         {
-          text: 'Getting started',
+          text: 'Start',
           items: [
-            { text: 'Installation', link: '/guide/getting-started' },
-            { text: 'Constraints', link: '/guide/constraints' },
-            { text: 'Nesting and collections', link: '/guide/nesting' },
+            { text: 'Getting started', link: '/guide/getting-started' },
+            { text: 'How it works', link: '/guide/how-it-works' },
           ],
         },
         {
           text: 'Declaring rules',
           items: [
-            { text: 'Rule classes', link: '/guide/rule-classes' },
+            { text: 'Constraint attributes', link: '/guide/constraints' },
+            { text: 'Rules classes', link: '/guide/rule-classes' },
+            { text: 'Nested objects and collections', link: '/guide/nesting' },
+            { text: 'Patterns', link: '/guide/patterns' },
             { text: 'Custom constraints', link: '/guide/custom-constraints' },
-            { text: 'DataAnnotations', link: '/guide/data-annotations' },
-            { text: 'Patterns and regex', link: '/guide/patterns' },
           ],
         },
         {
           text: 'Running validation',
           items: [
-            { text: 'The error model', link: '/guide/errors' },
-            { text: 'Messages and translation', link: '/guide/messages' },
-            { text: 'Registration and DI', link: '/guide/registration' },
-            { text: 'ASP.NET Core', link: '/guide/aspnetcore' },
-            { text: 'Options validation', link: '/guide/options' },
-            { text: 'Async and business rules', link: '/guide/async' },
+            { text: 'Results and errors', link: '/guide/errors' },
+            { text: 'Messages and languages', link: '/guide/messages' },
+            { text: 'Registration', link: '/guide/registration' },
+            { text: 'Async validation', link: '/guide/async' },
+            { text: 'Testing', link: '/guide/testing' },
           ],
         },
         {
-          text: 'Everything else',
+          text: 'Integrations',
           items: [
-            { text: 'Trimming and AOT', link: '/guide/aot' },
-            { text: 'Testing', link: '/guide/testing' },
+            { text: 'ASP.NET Core', link: '/guide/aspnetcore' },
+            { text: 'Options', link: '/guide/options' },
+            { text: 'DataAnnotations', link: '/guide/data-annotations' },
+            { text: 'Native AOT', link: '/guide/aot' },
+          ],
+        },
+        {
+          text: 'More',
+          items: [
+            { text: 'Coming from FluentValidation', link: '/guide/fluentvalidation' },
             { text: 'Troubleshooting', link: '/guide/troubleshooting' },
           ],
         },
@@ -99,10 +101,10 @@ export default defineConfig({
         {
           text: 'Reference',
           items: [
-            { text: 'Diagnostics', link: '/reference/diagnostics' },
             { text: 'Attributes', link: '/reference/attributes' },
-            { text: 'Rule builder API', link: '/reference/rules-api' },
-            { text: 'Error codes', link: '/reference/codes' },
+            { text: 'Rules API', link: '/reference/rules-api' },
+            { text: 'Validation codes', link: '/reference/codes' },
+            { text: 'Diagnostics', link: '/reference/diagnostics' },
             { text: 'MSBuild properties', link: '/reference/msbuild' },
           ],
         },

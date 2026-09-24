@@ -1,249 +1,206 @@
-# Messages and translation
+# Messages and languages
 
-An error carries data: the field, the [code](/reference/codes), the attempted value, and the
-constraint's own template and arguments. The message is rendered when something reads it, rather
-than when the failure happened:
+Every error has a default English message. You can set the text for one rule, replace the text for
+a code with a formatter, or translate every message with a language pack. The error's `Code` stays
+the same in every case.
 
-<!-- verify:models -->
+## Default messages
+
+The default messages come from templates in `ValidationMessageTemplates`. `{field}` is the last
+segment of the error's field path, and `{0}` and `{1}` are the rule's arguments, formatted with the
+invariant culture.
+
+| Shape key | Template |
+| --- | --- |
+| `required` | `{field} is required.` |
+| `string_length.between` | `{field} must be between {0} and {1} characters.` |
+| `string_length.at_least` | `{field} must be at least {0} characters.` |
+| `string_length.at_most` | `{field} must be at most {0} characters.` |
+| `array_bounds.between` | `{field} must be between {0} and {1} items.` |
+| `array_bounds.at_least` | `{field} must be at least {0} items.` |
+| `array_bounds.at_most` | `{field} must be at most {0} items.` |
+| `range.between` | `{field} must be between {0} and {1}.` |
+| `range.greater_and_at_most` | `{field} must be greater than {0} and at most {1}.` |
+| `range.at_least_and_less` | `{field} must be at least {0} and less than {1}.` |
+| `range.greater_and_less` | `{field} must be greater than {0} and less than {1}.` |
+| `range.at_least` | `{field} must be at least {0}.` |
+| `range.greater_than` | `{field} must be greater than {0}.` |
+| `range.at_most` | `{field} must be at most {0}.` |
+| `range.less_than` | `{field} must be less than {0}.` |
+| `multiple_of` | `{field} must be a multiple of {0}.` |
+| `unique_items` | `{field} must not contain duplicate items.` |
+| `pattern` | `{field} is not in the required format.` |
+| `enum` | `{field} must be one of: {0}.` |
+| `enum.denied` | `{field} must not be one of: {0}.` |
+| `enum.flags` | `{field} must be a combination of: {0}.` |
+| `email` | `{field} is not a valid email address.` |
+| `phone` | `{field} is not a valid phone number.` |
+| `url` | `{field} is not a valid http, https or ftp URL.` |
+| `credit_card` | `{field} is not a valid credit card number.` |
+| `base64` | `{field} is not a valid Base64 string.` |
+| `file_extension` | `{field} must have one of these file extensions: {0}.` |
+| `custom` | `{field} is invalid.` |
+
+The length and count shapes also have a `_singular` form, such as `string_length.at_most_singular`,
+used when the deciding bound is 1: `code must be at most 1 character.` That makes 34 shape keys in
+all. `ValidationMessageTemplates.KnownKeys` lists them, and `ValidationMessageTemplates.KeyOf`
+returns the shape key of a template.
+
+An `Ensure` in a rules class has no template. Its default message is the text of its condition.
+
+## Set the text for one rule
+
+`Message` on a constraint attribute, and `message:` on `Ensure`, replace the default text for that
+one rule:
+
 ```csharp
-var result = new PetValidator().Validate(new Pet());
-var error = result.Errors[0];
-
-Console.WriteLine(error.Field); // name
-Console.WriteLine(error.Code); // required
-Console.WriteLine(error.Message); // name is required. (rendered by this read)
+[StringLength(3, 3, Message = "The code has three letters.")]
+public string? Code { get; init; }
 ```
 
-That ordering is the feature. A `ValidationResult` is in no language until a reader picks one, so
-the same result can render the default English into a log line, a translation into a 400 body,
-and the code and arguments verbatim to a client that renders its own text. None of that
-revalidates, and the pass never knew those readers existed.
+This is authored text. `MessageIsAuthored` is `true` on the error, and language packs leave it
+unchanged. See [Authored messages](#authored-messages).
 
-Nothing about this costs the paths that matter: a clean pass allocates nothing, as ever, and a
-failing pass stores references instead of composing prose, so it got cheaper. Only a reader that
-wants prose pays for rendering it.
+## Formatters
 
-## Start in one language
+`error.Message` always returns the default English text. To show other text, pass the error to a
+`ValidationMessageFormatter`:
 
-Do nothing. Every constraint renders the same default text it always has, such as
-`name is required.` and `age must be between 0 and 30.`, from templates that live once in
-`ValidationMessageTemplates`. The defaults compose from the *leaf* of the field path (an error at
-`toys[3].name` reads "name is required.", because the path is already in `Field` and prose is not
-an address label), format their arguments invariantly, and never include the attempted value.
+```csharp
+string text = error.ToMessage(formatter);
+```
 
-## Add languages
+`ValidationMessageMap` is a formatter that maps codes to text. A code with no mapping keeps its
+default message:
 
-Reference `ValidationModules.Messages`. The package carries five languages - `de`, `es`, `fr`,
-`ja` and `zh` - as `*.validation-messages.json` files that compile into your assembly at your
-build. If you call your assembly's `Add…Validators()` and validate through the endpoint filter,
-you are already done: the registration registers each compiled pack as an
-`IValidationLanguagePack` and TryAdds a `LanguagePackFormatter` over all of them, and the
-formatter reads `CultureInfo.CurrentUICulture` per render - which localization middleware sets
-per request.
+```csharp
+var messages = new ValidationMessageMap()
+    .Map(ValidationCodes.Required, static (in ValidationError e) => $"Please enter the {e.Field}.")
+    .Map(ValidationCodes.Range, static (in ValidationError e) => $"{e.Value} is out of range.");
+```
 
-`<ValidationModulesLanguages>` in the csproj filters the bundle:
+Each mapping is a `ValidationMessageMap.MessageRenderer`, which takes the error by `in` reference,
+so a lambda needs the `in` modifier. A formatter is the only way for the captured `Value` to reach a
+message. The map replaces authored text as well, for the codes it maps.
 
-| Value | Compiles |
-|---|---|
-| unset, or `all` | every language the package carries |
-| `fr;de` (a semicolon list) | exactly those |
-| `none` | nothing - the package is off without being removed |
+For full control, derive from `ValidationMessageFormatter` and override `Format`. The error's
+`MessageInfo` holds the template and its arguments. `MessageInfo.Render(in error, template,
+culture)` fills another template with the same arguments, and it can format them for a culture:
 
-The filter runs before the generator ever sees a file, so an excluded language is absent from the
-binary rather than carried and ignored.
+```csharp
+public sealed class LocalFormatter : ValidationMessageFormatter
+{
+    public override string Format(in ValidationError error) =>
+        error.MessageInfo is { } info
+            ? info.Render(in error, info.Template, CultureInfo.CurrentCulture)
+            : error.Message;
+}
+```
 
-## Write a pack
+## Language packs
 
-Drop a `*.validation-messages.json` anywhere in the project. No `<AdditionalFiles>` entry is
-needed - the build reads every file with that suffix - and the file compiles into the same
-`IValidationLanguagePack` shape the package's own languages use, validated at build time
-([VM4001–VM4006](/reference/diagnostics#language-packs)) rather than parsed at startup.
+A language pack is a JSON file whose name ends in `.validation-messages.json`. The generator
+compiles every such file in the project, so a pack needs no project file entry:
 
 ```json
 {
-    "culture": "fr",
-    "templates": {
-        "required": "{field} est obligatoire.",
-        "string_length.at_most": "{field} doit contenir au plus {0} caractères.",
-        "string_length.at_most_singular": "{field} doit contenir au plus {0} caractère.",
-        "date_order": "la date de fin doit suivre la date de début."
-    }
+  "culture": "fr",
+  "templates": {
+    "required": "{field} est obligatoire.",
+    "range.between": "{field} doit être compris entre {0} et {1}.",
+    "stay_order": "Le séjour doit se terminer après son début."
+  }
 }
 ```
 
-The parts, precisely:
+A key in `templates` is one of three things:
 
-- **`culture` decides the culture.** The file name is convention (`fr.validation-messages.json`,
-  or `overrides.fr.validation-messages.json` for a partial override); when name and member
-  disagree, the member wins and the build warns ([VM4005](/reference/diagnostics#vm4005)).
-- **`templates` is keyed by the stable vocabulary.** A key is a wire code - built-in like
-  `required`, or your own like `date_order` from an `Ensure(code: …)` - or a *shape key* beneath
-  the codes whose sentence varies with their arguments: `string_length.between`,
-  `string_length.at_most_singular`, `range.greater_than`, `enum.denied`, and so on. The singular
-  variants exist because "at most 1 characters" is wrong in most languages; the renderer picks
-  the shape, your pack words it. A key the shape inventory does not know warns at build
-  ([VM4002](/reference/diagnostics#vm4002)).
-- **Holes are `{field}` and the positional `{0}`, `{1}`.** `{field}` is the error's field-path
-  leaf; the positions are the constraint's own arguments, in the same order the default English
-  uses them. A hole past the shape's argument count is a build error
-  ([VM4003](/reference/diagnostics#vm4003)), not a format exception in one culture at runtime.
-- **Cover as much or as little as you like.** A pack with one entry rewords one message;
-  everything unmatched keeps its default render. [VM4006](/reference/diagnostics#vm4006) reports
-  coverage as an Info if you want the inventory.
+- a shape key from the table above, such as `range.between`
+- a bare code, such as `range`, which covers every shape of that code
+- one of your own codes, such as `stay_order`
 
-## What wins over what
+Each pack becomes a class that implements `IValidationLanguagePack`. The generated registration
+method registers the packs, and registers a `LanguagePackFormatter` as the
+`ValidationMessageFormatter` service. To show translated messages, resolve the formatter and set
+the UI culture:
 
-Every registered pack feeds one merged table per requested culture, and the rules are:
-
-1. **The requested culture beats its parents.** An `fr-CA` request layers `fr-CA` packs over
-   `fr` packs; a culture with no pack at all falls through to the default English render.
-2. **Later registration beats earlier, per key.** The package's props register its languages
-   before your project items, so an app-local file always lands later and wins the keys it
-   declares - the person closest to the user has the last word, with no configuration. Across
-   assemblies, registration order is the order the composition root called the `Add…Validators()`
-   methods, exactly as it is for validators.
-3. **The shape key beats the code within a layer.** A `string_length.at_most` entry outranks a
-   `string_length` entry from the same pack; a later pack that rewrites the whole code takes all
-   of its shapes.
-4. **A custom `Message` beats every pack entry.** An attribute's `Message = "…"` and an
-   `Ensure`'s explicit `message:` are the application's own words, and no pack replaces them -
-   whatever keys the pack carries for that code. Give the rule its own `Code` and word that code
-   per culture if the custom text should translate; a hand-written validator's
-   `Report(field, code, message)` works exactly that way, since its finished string is still
-   replaceable by a bare code-level entry. To pin a hand-written message the way an attribute's
-   `Message` is pinned, report it through `ReportAuthored`.
-
-## Outside ASP.NET Core
-
-Nothing above is tied to HTTP. In a plain class library or worker, resolve the formatter and hand
-it to the read:
-
-<!-- verify:models -->
 ```csharp
-var services = new ServiceCollection()
-    .AddSampleValidators() // your assembly's generated registration
-    .BuildServiceProvider();
+var formatter = provider.GetRequiredService<ValidationMessageFormatter>();
 
-var validator = services.GetRequiredService<IValidatorFor<Pet>>();
-var formatter = services.GetRequiredService<ValidationMessageFormatter>();
-
-var result = validator.Validate(new Pet());
+CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("fr-CA");
 
 foreach (var error in result.Errors)
 {
-    Console.WriteLine(error.ToMessage(formatter)); // rendered in CurrentUICulture
+    Console.WriteLine($"{error.Field}: {error.ToMessage(formatter)}");
 }
 ```
 
-`ValidationError.ToMessage(formatter)` is the single-error read; `error.Message` stays the
-default render. Without a container, construct the formatter directly:
-`new LanguagePackFormatter(packs)` over the `IValidationLanguagePack` instances you choose.
-
-## Branch when you need to
-
-`ValidationMessageMap` is a formatter dispatched by code: map exactly the codes you care about,
-and everything else keeps its default. Each entry is a `ValidationMessageMap.MessageRenderer` -
-plain C# over the error:
-
-```csharp
-public static class FrenchMessages
-{
-    public static readonly ValidationMessageFormatter Instance = new ValidationMessageMap()
-        .Map(
-            ValidationCodes.Required,
-            static (in ValidationError e) => $"{e.Field} est obligatoire."
-        )
-        .Map(
-            ValidationCodes.StringLength,
-            static (in ValidationError e) =>
-                $"{e.Field} doit contenir entre {e.MessageInfo!.Args[0]} et {e.MessageInfo.Args[1]} caractères."
-        )
-        .Map(
-            "date_order",
-            static (in ValidationError _) => "la date de fin doit suivre la date de début."
-        );
-}
+```text
+name: name est obligatoire.
+nights: nights doit être compris entre 1 et 30.
+code: The code has three letters.
 ```
 
-Three things worth noticing. The translations are C#, so a hole that references nothing is a
-compile error rather than a runtime format exception in one culture, and pluralization or
-grammatical agreement is an ordinary conditional. Those are the places template dialects break
-down - and the reason to prefer the map over a pack when the wording needs logic. User-defined
-codes dispatch exactly like built-ins, whether from an `Ensure(code: "date_order")` or a custom
-constraint, because the map is keyed by the wire code and nothing else. The map holds no culture.
-Read `CultureInfo.CurrentUICulture` inside a delegate, or build one map per culture and pick at
-the boundary. Both work, which is why neither is imposed.
+The formatter reads `CultureInfo.CurrentUICulture` for every message. It tries the culture, then
+its parents, so `fr-CA` uses a `fr` pack. A culture with no pack keeps the default English. The
+last message above is authored, so the pack does not change it.
 
-Apply a formatter where reading happens:
+A formatter you register before calling the registration method takes the place of the
+`LanguagePackFormatter`. The ASP.NET Core integration uses the registered formatter for problem
+details responses.
 
-```csharp
-// One error:
-error.ToMessage(FrenchMessages.Instance);
+When several packs cover the same culture, a pack registered later wins for each key it defines.
+Packs in your project are registered after the packs from `ValidationModules.Messages`, so your own
+file can reword a few messages and inherit the rest.
 
-// The HTTP boundary: the errors object localises per request, the codes stay put:
-builder.Services.AddValidationProblemDetails(options =>
-    options.MessageFormatter = FrenchMessages.Instance
-);
+The generator checks each pack at build time:
+
+| Diagnostic | Meaning |
+| --- | --- |
+| `VM4001` | The file is not valid JSON, or it has no `culture`. The file is skipped. |
+| `VM4002` | A key names a shape that does not exist. The entry is skipped. |
+| `VM4003` | A template uses more arguments than its shape has. The entry is skipped. |
+| `VM4004` | A key appears twice. The later entries are skipped. |
+| `VM4005` | The culture in the file name differs from the `culture` in the file. |
+| `VM4006` | Information: how many of the 34 shapes the pack covers. |
+
+## Built-in languages
+
+`ValidationModules.Messages` contains packs for German (`de`), Spanish (`es`), French (`fr`),
+Japanese (`ja`) and Chinese (`zh`). The package holds JSON files, not an assembly. Your project's
+generator compiles them, so it still needs the generator package:
+
+```shell
+dotnet add package ValidationModules.Messages
 ```
 
-Setting `ValidationProblemOptions.MessageFormatter` is optional when a language pack is
-registered: the endpoint filter fills in the container's `ValidationMessageFormatter` when the
-options carry none, which is what "reference the package and you are done" means. An explicit
-formatter always wins. The `validationCodes` extension is deliberately untouched by any
-formatter. It is the stable vocabulary, and rendering is what it must not depend on.
+All five languages are compiled by default. `ValidationModulesLanguages` selects some of them, or
+none:
 
-For a team with a translation pipeline, a resx- or `IStringLocalizer`-backed formatter is a small
-`ValidationMessageFormatter` subclass; the map is the direct form, not the only one. One naming
-note: `ValidationMessageFormatter` is an abstract class, and the only abstraction here you
-implement against that is not `I`-prefixed - there is no `IValidationMessageFormatter` to find,
-unlike `IValidatorFor`, `IValidationRulesFor` and `IValidationLanguagePack`.
-
-## Or let the client translate
-
-`error.Code` and `error.MessageInfo?.Args` are the machine-readable failure. A `string_length`
-with `[3, 50]` is everything a front end needs to render its own text in its own language. Teams
-that already localise in the client can ignore server-side rendering entirely; the
-[codes](/reference/codes) were always the contract, and now the arguments travel beside them.
-
-## The attempted value, and who may show it
-
-Every generated constraint site captures the failing member into `ValidationError.Value`. What it
-does **not** do is render it: not in `Message`, not in `ToString()`, not in
-`ValidationException.Message`, not in a problem-details body. A formatter is the one surface that
-may, which makes echoing a value an explicit decision at a named place:
-
-```csharp
-// Development only: messages that name the offending value.
-if (builder.Environment.IsDevelopment())
-{
-    builder.Services.AddValidationProblemDetails(options =>
-        options.MessageFormatter = new ValidationMessageMap().Map(
-            ValidationCodes.Pattern,
-            static (in ValidationError e) => $"'{e.Value}' is not in the required format."
-        )
-    );
-}
+```xml
+<PropertyGroup>
+  <ValidationModulesLanguages>fr;de</ValidationModulesLanguages>
+</PropertyGroup>
 ```
 
-Production keeps the redacted defaults; Development names the value; the validators are identical.
-For builds that must not carry values at all, set
-[`ValidationModules_CaptureValues=false`](/reference/msbuild#validationmodules-capturevalues). The
-generator then emits no capture, so the value's absence is a property of the compiled binary rather
-than a runtime promise.
+A language that is not selected is not compiled into the assembly.
 
-## What stays untranslatable
+## Authored messages
 
-An error whose `MessageInfo` is null carries only its finished text: failures mapped from another
-engine, DataAnnotations' invoked user code (`IValidatableObject`, custom attributes,
-`[CustomValidation]`), and hand-written `Report(field, code, message)` calls. A pack or a map can
-still rewrite them by code - the template then renders with `{field}` only, argument holes
-verbatim - but there are no arguments to build from. `Ensure`'s rendered conditions are
-compile-time source and stay literal; give one a `code:` and the map takes it from there, which
-is the [documented route](/guide/rule-classes#ensure) anyway.
+The text of these errors is authored, and `MessageIsAuthored` is `true`:
 
-Two DataAnnotations notes, because migrating models bring their messages with them: an
-`ErrorMessage` template has everything but its display name baked in at build time, and a
-resource-backed message (`ErrorMessageResourceType`/`Name`) compiles to a property read performed
-per render - an `IValidationMessageProvider` wrapping the resx accessor in a
-`DelegateMessageProvider` - so culture fallback and satellite assemblies work and nothing
-resolves reflectively. See [DataAnnotations](/guide/data-annotations#messages).
+- a constraint attribute's `Message`, and a custom constraint's `DefaultMessage`
+- an `Ensure` with `message:`
+- a hand-written `ReportAuthored` call
+- a DataAnnotations attribute's `ErrorMessage`
+
+`LanguagePackFormatter` returns authored text unchanged. `ValidationMessageMap` does not check the
+flag, and replaces the text of any code it maps.
+
+## Messages for DataAnnotations resources
+
+A DataAnnotations attribute that takes its message from a resource, with `ErrorMessageResourceType`,
+is compiled to a `ValidationMessageInfo` whose `Provider` reads the resource property each time the
+message is rendered. The provider is a `DelegateMessageProvider`, which implements
+`IValidationMessageProvider`. This keeps resource messages working without reflection. You do not
+create these types yourself unless you build a `ValidationMessageInfo` by hand.

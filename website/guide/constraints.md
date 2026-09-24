@@ -1,510 +1,216 @@
-# Constraints
+# Constraint attributes
 
-The constraint attributes, all in `ValidationModules.Constraints`. Each one is read at build time
-and becomes a branch. None of them is ever constructed at run time. The
-[attributes reference](/reference/attributes) lists every member of every one; this page is the
-tour. When the vocabulary is missing a constraint your domain repeats, such as a SKU, a slug, or
-an IBAN, you can [add your own attribute](/guide/custom-constraints) and it compiles the same
-way.
+Constraint attributes declare rules on the properties of a model. They are in the
+`ValidationModules.Constraints` namespace, and the generator reads them at build time.
 
 <!-- verify -->
 ```csharp
 using ValidationModules.Constraints;
 
-public sealed record Pet
+public sealed class Product
 {
-    [Required]
+    [Required, StringLength(3, 40)]
     public string? Name { get; init; }
 
-    [StringLength(min: 1, max: 100)]
-    public string? Name2 { get; init; }
+    [Range(0.01, 10_000)]
+    public decimal Price { get; init; }
 
-    [Range(0, 30)]
-    public int Age { get; init; }
-
-    [Pattern(typeof(PetPatterns), nameof(PetPatterns.Sku))]
+    [Pattern("^[A-Z]{3}-[0-9]{4}$")]
     public string? Sku { get; init; }
 
-    [AllowedValues("available", "pending", "sold")]
+    [AllowedValues("draft", "active", "retired")]
     public string? Status { get; init; }
 
-    [ItemCount(min: 1, max: 10)]
+    [ItemCount(max: 10), UniqueItems]
     public List<string> Tags { get; init; } = [];
 
-    [MultipleOf(5)]
-    public int Quantity { get; init; }
-
-    [UniqueItems]
-    public List<string> Codes { get; init; } = [];
-
     [ValidateNested]
-    public Address? Home { get; init; }
+    public Dimensions? Size { get; init; }
 }
 
-public sealed record Address
+public sealed class Dimensions
 {
-    [Required]
-    public string? PostalCode { get; init; }
+    [Range(1, 500)]
+    public int WidthCm { get; init; }
 }
 ```
 
-`PetPatterns` is yours to declare, and the reference is what keeps the regex parser out of an AOT
-binary:
+## The attributes
 
-```csharp
-public static partial class PetPatterns
-{
-    [GeneratedRegex("^[A-Z]{3}$")]
-    public static partial Regex Sku();
-}
-```
+| Attribute | Applies to | Passes when | Code |
+| --- | --- | --- | --- |
+| `[Required]` | any property | the value is present | `required` |
+| `[StringLength]` | `string` | the length is within the bounds | `string_length` |
+| `[Range]` | numbers, dates and times | the value is within the bounds | `range` |
+| `[MultipleOf]` | numbers | the value divides by the divisor | `multiple_of` |
+| `[Pattern]` | `string` | the value matches a regular expression | `pattern` |
+| `[EmailAddress]` | `string` | the value has one `@`, not first or last | `email` |
+| `[Phone]` | `string` | the value contains only phone number characters | `phone` |
+| `[Url]` | `string`, `Uri` | the value is an http, https or ftp URL | `url` |
+| `[CreditCard]` | `string` | the digits pass the Luhn checksum | `credit_card` |
+| `[Base64String]` | `string` | the value is valid Base64 | `base64` |
+| `[FileExtensions]` | `string` | the file extension is in a list | `file_extension` |
+| `[AllowedValues]` | any property | the value is in a list | `enum` |
+| `[DeniedValues]` | any property | the value is not in a list | `enum` |
+| `[EnumDefined]` | enums | the value is a declared member | `enum` |
+| `[ItemCount]` | collections | the number of items is within the bounds | `array_bounds` |
+| `[UniqueItems]` | collections | no item appears twice | `unique_items` |
+| `[ValidateNested]` | objects, collections, dictionaries | the nested validators pass | from those validators |
 
-`[Pattern]` takes an inline string too. [Patterns and regex](/guide/patterns) covers what that
-costs, and [`[Pattern]`](#pattern) below has the short version.
+`[GenerateValidator]` goes on a type rather than a property. It makes the generator write a
+validator for a type that has no constraints of its own. The [attributes
+reference](../reference/attributes) gives the details of each attribute, including its messages.
 
-A type is picked up because it carries at least one constraint. Nothing needs to be registered, and
-there is no marker interface. If you want a validator for a type that has no constraints of its
-own, mark it `[GenerateValidator]`. That covers the case where a [rule class](/guide/rule-classes)
-supplies the rules, and the case where you only want the nested walk.
+An attribute on a property of the wrong type is a build error. `[StringLength]` on an `int` reports
+`VM1001`, and `[Range]` on a `string` reports `VM1003`.
 
-## `[Required]`
+## Null values
 
-Emits code `required`.
-
-```csharp
-[Required]
-public string? Name { get; init; }
-```
-
-```csharp
-if (string.IsNullOrWhiteSpace(value.Name))
-    ctx.ReportRequired("name");
-```
-
-What counts as missing depends on the type:
-
-| Property type | Fails when |
-|---|---|
-| `string` | null, empty, or **whitespace only** |
-| any reference type | null |
-| `Nullable<T>` | null |
-| non-nullable value type | never, which is [VM1201](/reference/diagnostics#vm1201) |
-
-::: warning Whitespace-only strings are treated as missing
-`"   "` fails `[Required]`. This matches `System.ComponentModel.DataAnnotations`, which trims before
-testing, so a model moved from DataAnnotations behaves the same way. Set
-`[Required(AllowEmptyStrings = true)]` to check for null alone.
-:::
-
-A failed `[Required]` **suppresses every other error on the same field** for the rest of the pass, so
-a null `Name` reports `required` and not also `string_length`. That rule lives in the collector
-rather than in the emitted `else if`. See [the error model](/guide/errors#suppression) for why.
-
-## `[StringLength]`
-
-Emits code `string_length`. Strings only; anything else is
-[VM1001](/reference/diagnostics#vm1001).
-
-```csharp
-[StringLength(min: 1, max: 100)]
-public string? Name { get; init; }
-
-[StringLength(Max = 500)]
-public string? Notes { get; init; }
-
-[StringLength(Min = 8)]
-public string? Token { get; init; }
-```
-
-The named form exists so declaring one bound reads as declaring one bound. `Min` defaults to `0` and
-`Max` to `int.MaxValue`, so the omitted side imposes nothing. Inverted bounds are
-[VM1101](/reference/diagnostics#vm1101).
-
-The two spellings do not mix: lowercase `min:`/`max:` are the two-parameter constructor's
-parameters, and the capitalized `Min`/`Max` are properties on the parameterless form. Writing
-`[StringLength(min: 12)]` is CS7036 - the constructor requires both - so a single bound is always
-the property spelling, `[StringLength(Min = 12)]`.
-
-Length is measured in UTF-16 code units, which is `string.Length` rather than grapheme clusters. An
-emoji outside the BMP counts as two.
-
-## `[Range]`
-
-Emits code `range`. Numeric and date-like types only; anything else is
-[VM1003](/reference/diagnostics#vm1003).
-
-```csharp
-[Range(0, 30)]
-public int Age { get; init; }
-
-[Range(0.0, 1.0, ExclusiveMax = true)]
-public double Ratio { get; init; }
-```
-
-Bounds are inclusive unless you say otherwise:
-
-```csharp
-if ((value.Age < 0 || value.Age > 30))
-    ctx.ReportRange("age", 0, 30);
-```
-
-`ExclusiveMin` and `ExclusiveMax` turn the corresponding comparison into `<=` / `>=`. Applying
-`[Range]` to a `Nullable<T>` checks the value only when it has one; combine it with `[Required]` if
-null should also fail.
-
-Either bound may stand alone, through the named form:
-
-```csharp
-[Range(Min = 1)]
-public int Quantity { get; init; }
-```
-
-An absent bound emits no comparison and is not named in the message. It reads
-`quantity must be at least 1.` rather than naming a second bound nobody wrote. A `[Range]` with neither bound can never fail, and is
-[VM1102](/reference/diagnostics#vm1102).
-
-::: tip String bounds, for the types with no constant form
-`decimal`, `DateTime`, `DateOnly`, `TimeOnly`, `TimeSpan` and `DateTimeOffset` have no constant form
-in metadata, so their bounds are written as strings and parsed against the member's own type at
-build time:
-
-```csharp
-[Range("2000-01-01", "2100-12-31")]
-public DateOnly Born { get; init; }
-
-[Range("0.00", "9.99")]
-public decimal Price { get; init; }
-
-[Range("00:00:00", "23:59:59")]
-public TimeSpan Window { get; init; }
-```
-
-The bound is emitted as a constructor call, `new global::System.DateOnly(2000, 1, 1)`, in both the
-comparison and the message, so the two cannot disagree. A bound that does not parse is
-[VM1103](/reference/diagnostics#vm1103) at the declaration, not an error inside a generated file.
-
-A `DateTime` bound is `DateTimeKind.Unspecified`. `"2000-01-01"` carries no zone, and anchoring it
-to the build machine's zone would make the same source mean two things on two machines.
-:::
-
-## `[Pattern]`
-
-Emits code `pattern`. Strings only; anything else is [VM1001](/reference/diagnostics#vm1001).
-
-Two forms, and for an AOT build the choice between them is the most consequential one on this
-page:
-
-```csharp
-// Inline. Convenient, and roots the regex parser and interpreter, about 450 KB, once.
-[Pattern("^[A-Z]{3}$")]
-public string? Sku { get; init; }
-
-// Referenced. Resolves to a [GeneratedRegex] you declared, so nothing is interpreted.
-[Pattern(typeof(PetPatterns), nameof(PetPatterns.Sku))]
-public string? Sku { get; init; }
-```
-
-[Patterns and regex](/guide/patterns) covers the size difference, the policy that governs it, and
-what to do about it. The short version: in an AOT-facing project the inline form is
-[VM1301](/reference/diagnostics#vm1301) by default.
-
-A pattern that will not parse is [VM1106](/reference/diagnostics#vm1106), reported with the regex
-engine's own message. Patterns are unanchored by default, following JSON Schema, so
-`[Pattern("abc")]` matches `"xabcx"`. Write `^…$` if you mean the whole value.
-
-::: tip `RegexOptions.Compiled` is ignored
-Setting it is [VM1302](/reference/diagnostics#vm1302). It emits IL through `Reflection.Emit`, which
-is what this library exists to avoid. Patterns go through `[GeneratedRegex]` instead.
-:::
-
-## The format validators
-
-`[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]` and `[FileExtensions]`
-check well-known string formats, under `System.ComponentModel.DataAnnotations`' exact names and
-semantics:
+Every constraint except `[Required]` passes a `null` value. Add `[Required]` when the value must be
+present:
 
 ```csharp
 [Required, EmailAddress]
 public string? Email { get; init; }
-
-[Url]
-public Uri? Homepage { get; init; } // [Url] also reads a System.Uri member
-
-[FileExtensions(Extensions = "pdf,docx")]
-public string? Attachment { get; init; }
 ```
 
-Each compiles to a call into `ConstraintChecks`, the runtime's reproduction of the BCL's own
-check - the same call the [DataAnnotations bridge](/guide/data-annotations#the-format-validators)
-emits for the BCL attribute of the same name, so which namespace an attribute came from changes
-nothing. The semantics are deliberately the BCL's, looseness included: `[EmailAddress]` accepts
-`a@b`, because RFC 5322 permits a dotless domain. A stricter rule is a `[Pattern]` whose grammar
-is in your own source. Codes: `email`, `phone`, `url`, `credit_card`, `base64`,
-`file_extension` - the [reference](/reference/attributes#emailaddress) has each check spelled
-out.
+`[Required]` on a string also rejects the empty string and whitespace. Set `AllowEmptyStrings =
+true` to reject only `null`. On a collection, `[Required]` rejects only `null`, so an empty list
+passes. Use `[ItemCount(min: 1)]` to require at least one item.
 
-## `[AllowedValues]`
+When `[Required]` fails, the other constraints on the same property are skipped. The property then
+reports one error.
 
-Emits code `enum`, named for OpenAPI's `enum` keyword.
+`[Required]` on a property whose type is a non-nullable value type, such as `int` or `Guid`, can
+never fail. The generator reports `VM1201` and drops it. Make the property nullable, or constrain
+its value with `[Range]`.
+
+## Bounds
+
+`[StringLength]` and `[ItemCount]` take the minimum first and the maximum second:
 
 ```csharp
-[AllowedValues("available", "pending", "sold")]
-public string? Status { get; init; }
+[StringLength(3, 40)]       // 3 to 40 characters
+[StringLength(max: 40)]     // at most 40 characters
+[StringLength(min: 3)]      // at least 3 characters
+[ItemCount(1, 10)]          // 1 to 10 items
 ```
 
-```csharp
-if (
-    value.Status is not null
-    && (value.Status != "available" && value.Status != "pending" && value.Status != "sold")
-)
-    ctx.ReportAllowedValues("status", "available, pending, sold");
-```
-
-Comparison is `StringComparison.Ordinal` by default, and `Comparison` changes it. The permitted set
-is echoed in the message on purpose. An enum's members are a *schema* fact, published in your
-OpenAPI document anyway, so repeating them discloses nothing the caller could not already read.
-
-`[DeniedValues]` is the same check negated - the value must be *none* of the set - under the
-BCL's own name and the same `enum` code:
-
-```csharp
-[DeniedValues("admin", "root", "system")]
-public string? Username { get; init; }
-```
-
-## `[ItemCount]`
-
-Emits code `array_bounds`. Collections only; anything else is
-[VM1002](/reference/diagnostics#vm1002).
-
-```csharp
-[ItemCount(min: 1, max: 10)]
-public List<string> Tags { get; init; } = [];
-```
-
-`Min`/`Max` behave exactly as `[StringLength]`'s do, including the named form and the defaults.
-
-A `string` is **not** a collection here, even though it implements `IEnumerable<char>`. Taking that
-reading would turn a length constraint into a per-character walk, so `[ItemCount]` on a string is
-VM1002 and `[StringLength]` is what you wanted.
-
-The count is read without enumerating wherever a `Count` or `Length` exists. For a bare
-`IEnumerable<T>` the emitter walks it once instead, so the constraint still applies rather than
-being silently skipped.
-
-## `[MultipleOf]`
-
-Emits code `multiple_of`. OpenAPI's `multipleOf`. Numeric types only; anything else is
-[VM1004](/reference/diagnostics#vm1004).
-
-```csharp
-[MultipleOf(5)]
-public int Quantity { get; init; }
-
-[MultipleOf("0.05")]
-public decimal Price { get; init; }
-
-[MultipleOf(0.01)]
-public double Ratio { get; init; }
-```
-
-A divisor of zero or less is [VM1104](/reference/diagnostics#vm1104). It is an error rather than a
-dropped rule because `value % 0` is a compile error for an integral member and a
-`DivideByZeroException` for a decimal one, and both would land inside a generated file. A divisor
-with no form the member's type can be checked against is
-[VM1105](/reference/diagnostics#vm1105): a fractional divisor on an `int`, or a string that does
-not parse.
-
-`decimal` takes its divisor as a string for the same reason `[Range]` does. It has no constant form
-in metadata.
-
-::: warning `double` and `float` are not checked with `%`
-In binary floating point `0.3 % 0.01` is `0.00999999999999998`. A naive check against
-`multipleOf: 0.01` rejects 0.3, 1.05, 99.99, and 1234.56, all of which a specification author would
-call valid.
-
-So a `double` or `float` member converts to `decimal` first, which rounds to 15 significant digits
-and cancels exactly that error:
-
-```csharp
-if (!ConstraintChecks.IsMultipleOf(value.Ratio, 0.01m))
-    ctx.ReportMultipleOf("ratio", 0.01m);
-```
-
-Integral and `decimal` members are already exact, and compile to a plain comparison:
-
-```csharp
-if ((value.Quantity % 5 != 0))
-    ctx.ReportMultipleOf("quantity", 5);
-```
-
-The one case with no answer is a floating-point value past `decimal`'s range, around 7.9e28. Its
-spacing there is wider than any realistic divisor, so it is reported as a failure rather than
-passed as a value that could not be evaluated.
+::: warning The first argument is the minimum
+`[StringLength(50)]` means at least 50 characters. The DataAnnotations attribute of the same name
+reads `StringLength(50)` as a maximum. Name the argument, as in `[StringLength(max: 50)]`, to make
+the intent clear.
 :::
 
-## `[UniqueItems]`
-
-Emits code `unique_items`. OpenAPI's `uniqueItems`. Collections only; anything else is
-[VM1005](/reference/diagnostics#vm1005). It takes no arguments, so presence is the constraint.
+`[Range]` takes both bounds, inclusive by default. `ExclusiveMin` and `ExclusiveMax` make either
+bound exclusive, and the named `Min` and `Max` properties set one bound alone:
 
 ```csharp
-[UniqueItems]
-public List<string> Codes { get; init; } = [];
+[Range(0, 100)]                         // 0 to 100
+[Range(0, 100, ExclusiveMax = true)]    // at least 0 and less than 100
+[Range(Min = 18)]                       // at least 18
+[Range("2024-01-01", "2030-12-31")]     // a DateOnly or DateTime between two dates
 ```
 
-This is the one constraint here that is not a comparison, so it is the one that calls into the
-runtime rather than being written inline:
+String bounds are parsed at build time as the property's own type, so they work for `DateTime`,
+`DateOnly`, `TimeOnly`, `TimeSpan`, `DateTimeOffset` and `decimal`. A bound that does not parse is
+reported as `VM1103`.
 
+## Codes and messages
+
+Every constraint reports a built-in code and a default message. `Code` and `Message` replace them:
+
+<!-- verify -->
 ```csharp
-if (value.Codes is not null && !ConstraintChecks.AllUnique(value.Codes))
-    ctx.ReportUniqueItems("codes");
-```
+using ValidationModules.Constraints;
 
-`AllUnique` compares pairwise below sixteen elements and allocates a `HashSet<T>` above them, so a
-request body's worth of elements still costs nothing on the heap. It takes an `IEnumerable<T>`, so
-a property with no `Count` is checked like any other.
-
-::: warning Elements need equality of their own
-Comparison is `EqualityComparer<T>.Default`. That is value equality for records, primitives, and
-anything implementing `IEquatable<T>`, and **reference equality** for a class that overrides none of
-it. Two
-elements with identical contents would then both pass, which is a rule succeeding for the wrong
-reason. The generator reports [VM1202](/reference/diagnostics#vm1202) rather than letting it
-through quietly.
-
-A `HashSet<T>` or a dictionary cannot fail this constraint, since its own type already guarantees
-what the rule asks for.
-:::
-
-## `[ValidateNested]`
-
-Carries no check of its own. It tells the emitter to descend, and what descending means depends on
-the property's shape. See [Nesting and collections](/guide/nesting).
-
-```csharp
-[ValidateNested]
-public Address? Home { get; init; }
-
-[ValidateNested]
-public List<Toy> Toys { get; init; } = [];
-
-[ValidateNested]
-public Dictionary<string, Toy> ToysByName { get; init; } = new();
-```
-
-`[ValidateNested]` does not recurse into a value that failed `[Required]`. There is nothing to walk,
-and reporting `home.postalCode` on an absent `home` would be noise.
-
-## Overriding the code and the message
-
-Every constraint carries `Code` and `Message`:
-
-```csharp
-[Required(Code = "pet_name_missing", Message = "A pet needs a name.")]
-public string? Name { get; init; }
-```
-
-`Code` is a wire contract that a client switches on, so change it only when you mean to. `Message`
-is human-facing and safe to reword. Both are baked in as literals at build time.
-
-## Field names
-
-The name in `ValidationError.Field` is derived from the property name, camelCase by default:
-
-```csharp
-public string? PostalCode { get; init; } // → "postalCode"
-```
-
-Precedence, highest first:
-
-1. `[JsonPropertyName("…")]` on the property
-2. `[Display(Name = "…")]`
-3. the `ValidationModules_FieldNaming` MSBuild property — `CamelCase` (default), `PascalCase`,
-   `SnakeCase`, `AsDeclared`
-
-Because the name is baked in at generation time, nothing computes it per validation.
-[MSBuild properties](/reference/msbuild#validationmodules-fieldnaming) has the details.
-
-## Constraints on records
-
-A positional record parameter needs the `property:` target, or the attribute lands on the parameter
-and is never read:
-
-```csharp
-public sealed record Pet([property: Required] string Name); // correct
-
-public sealed record Pet([Required] string Name); // silently validates nothing
-```
-
-::: warning Why the wrong form needs a diagnostic
-The second form is [VM1008](/reference/diagnostics#vm1008). Without that diagnostic it is silent in
-every direction: the attribute binds to the constructor parameter, so the property carries no
-metadata, **no validator is emitted at all**, `IValidatorFor<Pet>` does not resolve, and a runner
-merging zero validators reports every value as valid.
-
-A record with an explicit body avoids the question:
-
-```csharp
-public sealed record Pet
+public sealed class Parcel
 {
-    [Required]
-    public string? Name { get; init; }
+    [Range(
+        1,
+        1000,
+        Code = "weight_out_of_range",
+        Message = "Weight must be between 1 and 1000 grams."
+    )]
+    public int WeightGrams { get; init; }
+
+    [EmailAddress(Message = "{field} must be a work address.")]
+    public string? ContactEmail { get; init; }
 }
 ```
-:::
 
-## `[EnumDefined]`
+`Message` is literal text. The one placeholder is `{field}`, which becomes the property's field
+name, here `contactEmail`. Other placeholders, such as `{0}`, are printed as written. A language
+pack never replaces a `Message` you set. The default messages are listed in
+[Messages and languages](./messages#default-messages).
 
-Emits code `enum`. Enum types only; anything else is
-[VM1006](/reference/diagnostics#vm1006). It takes no arguments, so presence is the constraint.
+Constraint attributes always report `Error` severity. For a warning, use `Ensure` with `severity:`
+in a [rules class](./rule-classes#ensure).
 
+## Conditions
+
+`When` applies a constraint only when a condition is true. `Unless` applies it only when the
+condition is false. The condition is the name of a member of the model:
+
+<!-- verify -->
 ```csharp
-[EnumDefined]
-public PaymentMethod Method { get; init; }
+using ValidationModules.Constraints;
+
+public sealed class Shipment
+{
+    public bool IsPickup { get; init; }
+
+    public string? Country { get; init; }
+
+    [Required(Unless = nameof(IsPickup))]
+    public string? Address { get; init; }
+
+    [Required(When = nameof(NeedsCustoms))]
+    public string? CustomsCode { get; init; }
+
+    public bool NeedsCustoms() => Country is not null && Country != "GB";
+}
 ```
 
-An enum is an integer with names on some of its values. Nothing stops `(PaymentMethod)99` existing,
-and a deserialiser handed `99` from the wire produces exactly that. A handler switching on the value
-then falls through every case it was written for. This constraint says the value came from the set
-the type describes.
+The member can be a `bool` property, a parameterless method that returns `bool`, or a static method
+that takes the model and returns `bool`. A name that does not exist is reported as `VM1401`, a
+member of another shape as `VM1402`, and a constraint that sets both `When` and `Unless` as
+`VM1403`. Conditions that involve more than one member are easier to write in a rules class.
 
-The members are known while the validator is being written, so the emitted test is a comparison
-against them:
+## Where attributes go
 
+The generator reads attributes on instance properties that have a readable getter. It does not read
+fields or static properties. A constrained property without an accessible getter is reported as
+`VM1007`.
+
+On a positional record, an attribute on a parameter applies to the constructor parameter, not to
+the property. Add the `property:` target:
+
+<!-- verify -->
 ```csharp
-if (
-    (
-        value.Method != PaymentMethod.Card
-        && value.Method != PaymentMethod.Cash
-        && value.Method != PaymentMethod.Transfer
-    )
-)
-    ctx.ReportAllowedValues("method", "Card, Cash, Transfer");
+using ValidationModules.Constraints;
+
+public sealed record Customer(
+    [property: Required] string? Name,
+    [property: EmailAddress] string? Email
+);
 ```
 
-Never `Enum.IsDefined`, which boxes, searches, and needs the enum's metadata kept alive under
-trimming.
+Without `property:`, the generator reports `VM1008` and the attribute has no effect.
 
-### `[Flags]` enums are a mask, not a membership test
+A type inherits the constraints on the properties of its base classes and on the interfaces it
+implements. The base class's properties are checked first. A property that hides a base property
+with `new` replaces the base property's constraints. The generator reports `VM1009` when the new
+property declares constraints of its own.
 
-On a `[Flags]` enum a combination of declared members is a legitimate value that equals no single
-member, so membership would reject exactly what the type exists to express. The question there is
-whether any bit outside the declared ones is set:
+A generic type cannot carry constraints, because its validator could not be registered without
+`MakeGenericType`. The generator reports `VM1010`. Put the constraints on a closed type instead.
 
-```csharp
-if (((value.Rights & ~(Access.None | Access.Read | Access.Write | Access.Delete)) != 0))
-    ctx.Report(
-        "rights",
-        ValidationCodes.Enum,
-        "rights must be a combination of: None, Read, Write, Delete."
-    );
-```
+## Names shared with DataAnnotations
 
-`Read | Delete` passes. `(Access)64` does not.
-
-::: tip Absent is not undefined
-`[EnumDefined]` on a nullable enum accepts `null`. It says nothing about whether a value is
-required. Pair it with `[Required]` when you need both.
-:::
-
+`Required`, `StringLength`, `Range`, `AllowedValues`, `DeniedValues`, `EmailAddress`, `Phone`,
+`Url`, `CreditCard`, `Base64String` and `FileExtensions` exist in both
+`ValidationModules.Constraints` and `System.ComponentModel.DataAnnotations`. A file that imports
+both namespaces gets error `CS0104` for those names. Import one namespace per file, or alias one of
+them. [DataAnnotations](./data-annotations) explains how the generator treats the DataAnnotations
+attributes.
