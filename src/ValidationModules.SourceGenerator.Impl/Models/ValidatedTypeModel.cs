@@ -28,8 +28,9 @@ namespace ValidationModules.SourceGenerator.Impl.Models;
 /// <param name="ImplementsValidatableObject">
 /// Whether the emitted validator calls <c>IValidatableObject.Validate</c> - true only when the
 /// type implements it <i>and</i> the DataAnnotations front end is on. Emitted last and gated on
-/// nothing else having failed, which is <c>Validator.TryValidateObject</c>'s sequencing. A type
-/// carrying it also loses the straight-line <c>IsValid</c>, for the reason applied rules do.
+/// nothing blocking having been recorded since the validator began, the class-level rules
+/// included, which is <c>Validator.TryValidateObject</c>'s sequencing. A type carrying it also
+/// loses the straight-line <c>IsValid</c>, for the reason applied rules do.
 /// </param>
 /// <param name="Regions">
 /// The rules-class regions this validator calls, ordered by rules-class name (ordinal). Each is a
@@ -37,6 +38,15 @@ namespace ValidationModules.SourceGenerator.Impl.Models;
 /// it after the attribute-declared checks, passing the injected validator arrays its descents
 /// need. A type with any region loses the straight-line <c>IsValid</c> - regions carry free-form
 /// computation and reporter calls a boolean path with no collector cannot always project.
+/// </param>
+/// <param name="ObjectRules">
+/// The class-level DataAnnotations rules, in the order <c>Validator.TryValidateObject</c> reads
+/// them: <see cref="ConstraintKind.CustomAttribute"/> for a <c>ValidationAttribute</c> subclass,
+/// <see cref="ConstraintKind.CustomValidationMethod"/> for a class-level <c>[CustomValidation]</c>.
+/// Each is called with the object itself as the value. They run after the property rules, the
+/// regions and the applied rules, only when none of those recorded anything blocking, and before
+/// <c>IValidatableObject</c>. A type carrying any loses the straight-line <c>IsValid</c>, for the
+/// reason <paramref name="ImplementsValidatableObject"/> does.
 /// </param>
 /// <param name="IsValueType">
 /// Whether the validated type is a struct. The straight-line <c>IsValid</c> rejects a null value
@@ -53,6 +63,7 @@ public sealed record ValidatedTypeModel(
     bool IsPublic = true,
     bool ImplementsValidatableObject = false,
     EquatableArray<RegionModel> Regions = default,
+    EquatableArray<ConstraintModel> ObjectRules = default,
     bool IsValueType = false
 ) : IEquatable<ValidatedTypeModel>;
 

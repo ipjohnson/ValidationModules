@@ -26,6 +26,8 @@ public static class KnownTypes
         "System.ComponentModel.DataAnnotations.ValidationAttribute";
     public const string ValidatableObject =
         "System.ComponentModel.DataAnnotations.IValidatableObject";
+    public const string CustomValidationAttribute =
+        "System.ComponentModel.DataAnnotations.CustomValidationAttribute";
 
     public const string JsonPropertyName =
         "System.Text.Json.Serialization.JsonPropertyNameAttribute";
