@@ -100,7 +100,7 @@ diagnostic with an id of the form `VM####`, in the IDE and in the build:
 | Declaration | Diagnostic |
 | --- | --- |
 | `[StringLength]` on an `int` property | `VM1001`, error |
-| `[StringLength(10, 1)]` | `VM1101`, error |
+| `[StringLength(1, Min = 10)]` | `VM1101`, error |
 | `[Pattern("(")]` | `VM1106`, error |
 | `[Required]` on an `int` property | `VM1201`, warning |
 

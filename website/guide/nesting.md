@@ -34,7 +34,12 @@ nested type can also be a struct, and a property of a nullable struct type is sk
 value.
 
 The nested type needs rules of its own: constraint attributes, a rules class, or
-`[GenerateValidator]`. When it has none, the generator reports `VM1501` and drops the descent.
+`[GenerateValidator]`. When it has none, the generator reports `VM1501` and drops the descent. A
+DataAnnotations attribute that produces no check, such as `[Display]` or `[Key]`, is not a rule.
+
+A nested type declared in another assembly needs a validator this project can reach: the
+`<Type>Validator` the generator made in that assembly, or a rules class for the type in this
+project. When there is neither, the generator reports `VM1505` and drops the descent.
 
 ## Collections
 
@@ -112,7 +117,7 @@ public abstract class Payment
 
 public sealed class Card : Payment
 {
-    [StringLength(16, 16)]
+    [StringLength(16, Min = 16)]
     public string? Number { get; init; }
 }
 

@@ -48,8 +48,11 @@ namespace ValidationModules;
 /// <c>Unless</c> enforced by the generator, outside the call. <c>Code</c> and <c>Message</c> ride
 /// into the instance like any other property and are honoured by the default
 /// <see cref="Validate"/> - <c>{field}</c> in a message is substituted when the failure is
-/// reported, since the instance is shared across fields. An override that means to support them
-/// reads its own properties.
+/// reported, since the instance is shared across fields. A declared <c>Message</c> reports as
+/// authored, so a language pack does not replace it. The generator writes a declared <c>Code</c>
+/// into the construction with the assembly's <c>ValidationModules_CodeNamespace</c> already
+/// applied. Both match what every other attribute shape gets. An override that means to support
+/// them reads its own properties.
 /// </para>
 /// </remarks>
 /// <example>
@@ -89,8 +92,8 @@ public interface IConstraintFor<in T>
     /// <summary>
     /// The reporting form of the check. The default asks <see cref="IsValid"/> and reports
     /// <see cref="ValidationCodes.Custom"/>, honouring a <c>Code</c> or <c>Message</c> declared
-    /// through <c>ValidationConstraintAttribute</c>; override it to report your own code, message,
-    /// severity, or more than one error.
+    /// through <c>ValidationConstraintAttribute</c>, the message as authored text; override it to
+    /// report your own code, message, severity, or more than one error.
     /// </summary>
     /// <param name="context">The pass to report into.</param>
     /// <param name="value">The member's value. Never null.</param>
@@ -104,12 +107,14 @@ public interface IConstraintFor<in T>
 
         // The declaration's Code and Message arrive as ordinary properties on this instance when
         // the attribute derives from the constraint base; honouring them here is what makes the
-        // knobs behave identically across every custom shape. The substitution happens now rather
-        // than at generation time because the instance is shared across every field it is declared
-        // on - and only a failing value pays for it.
+        // knobs behave identically across every custom shape. A declared Message is the author's
+        // text, so it reports as authored and a language pack leaves it alone, as it does every
+        // other shape's. The substitution happens now rather than at generation time because the
+        // instance is shared across every field it is declared on - and only a failing value pays
+        // for it.
         return this is Constraints.ValidationConstraintAttribute declared
             ? declared.Message is { } message
-                ? context.Report(
+                ? context.ReportAuthored(
                     field,
                     declared.Code ?? ValidationCodes.Custom,
                     message.Replace("{field}", field)

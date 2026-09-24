@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 using ValidationModules.SourceGenerator.Impl;
+using ValidationModules.SourceGenerator.Impl.FrontEnds;
 
 namespace ValidationModules.SourceGenerator;
 
@@ -18,10 +19,17 @@ namespace ValidationModules.SourceGenerator;
 /// guarantee a build earlier, where the mistake was made.
 /// </para>
 /// <para>
-/// The same cross-assembly caution as VM1501: only a type this compilation declares is judged,
-/// because a referenced assembly may carry its own generated validator, and a rules class in
-/// another assembly may target even a local type - which is why this is a warning naming the
-/// startup check as the backstop, not an error.
+/// Only a type this compilation declares is judged, because a referenced assembly may carry its
+/// own generated validator, and a rules class in another assembly may target even a local type.
+/// That is also why this is a warning rather than an error: the check the filter factory makes
+/// stays the authority.
+/// </para>
+/// <para>
+/// Judged exactly as a descent into the type would be, through
+/// <see cref="DescentTargets.ProducesAValidator"/>, with the project's
+/// <c>ValidationModules_DataAnnotations</c> setting. A type whose only rules are DataAnnotations
+/// attributes gets no validator under <c>Ignore</c>, and a <c>[Display]</c> is not a rule under
+/// any setting.
 /// </para>
 /// <para>
 /// Matched by the extension type's name and namespace rather than by assembly identity, which is
@@ -42,6 +50,19 @@ public sealed class ValidateCallAnalyzer : DiagnosticAnalyzer
 
         context.RegisterCompilationStartAction(static start =>
         {
+            // The generator's own reading of the switch: anything but Ignore compiles the
+            // DataAnnotations vocabulary.
+            start.Options.AnalyzerConfigOptionsProvider.GlobalOptions.TryGetValue(
+                "build_property.ValidationModules_DataAnnotations",
+                out var dataAnnotations
+            );
+
+            var compileDataAnnotations = !string.Equals(
+                dataAnnotations,
+                "Ignore",
+                StringComparison.OrdinalIgnoreCase
+            );
+
             // Whether a type is the target of a rules class is a compilation-wide question, so the
             // judging waits for the end action - the same reason the generator collects its
             // candidates before building any model.
@@ -64,7 +85,7 @@ public sealed class ValidateCallAnalyzer : DiagnosticAnalyzer
                             definition
                             is not (
                                 KnownTypes.ValidationRulesForInterface
-                                or "ValidationModules.IValidatorFor<T>"
+                                or KnownTypes.ValidatorForInterface
                                 or "ValidationModules.IAsyncValidatorFor<T>"
                             )
                         )
@@ -115,7 +136,7 @@ public sealed class ValidateCallAnalyzer : DiagnosticAnalyzer
             {
                 foreach (var (type, location) in calls)
                 {
-                    Judge(end, type, location, ruleTargets);
+                    Judge(end, type, location, ruleTargets, compileDataAnnotations);
                 }
             });
         });
@@ -125,7 +146,8 @@ public sealed class ValidateCallAnalyzer : DiagnosticAnalyzer
         CompilationAnalysisContext context,
         ITypeSymbol type,
         Location location,
-        ConcurrentDictionary<INamedTypeSymbol, byte> ruleTargets
+        ConcurrentDictionary<INamedTypeSymbol, byte> ruleTargets,
+        bool compileDataAnnotations
     )
     {
         // A List<T> or T[] body validates element-wise through the generated registration, so the
@@ -143,7 +165,14 @@ public sealed class ValidateCallAnalyzer : DiagnosticAnalyzer
             return;
         }
 
-        if (ProducesAValidator(named, ruleTargets))
+        if (
+            DescentTargets.ProducesAValidator(
+                named,
+                context.Compilation,
+                compileDataAnnotations,
+                ruleTargets.ContainsKey
+            )
+        )
         {
             return;
         }
@@ -167,129 +196,4 @@ public sealed class ValidateCallAnalyzer : DiagnosticAnalyzer
                     == "System.Collections.Generic.List<T>" => named.TypeArguments[0],
             _ => null,
         };
-
-    /// <summary>
-    /// The analyzer's reading of the front end's ProducesAValidator: <c>[GenerateValidator]</c>, a
-    /// rules class in this compilation, a class-level <c>ValidationAttribute</c>, or any constraint
-    /// either front end reads on the type's own or inherited properties.
-    /// </summary>
-    private static bool ProducesAValidator(
-        INamedTypeSymbol type,
-        ConcurrentDictionary<INamedTypeSymbol, byte> ruleTargets
-    )
-    {
-        if (ruleTargets.ContainsKey(type))
-        {
-            return true;
-        }
-
-        foreach (var attribute in type.GetAttributes())
-        {
-            if (
-                attribute.AttributeClass?.ToDisplayString() == KnownTypes.GenerateValidatorAttribute
-            )
-            {
-                return true;
-            }
-        }
-
-        // A class-level ValidationAttribute is a rule of the type's own. The generator reads it
-        // from the base types and the public interfaces too, the way DataAnnotations does.
-        for (INamedTypeSymbol? current = type; current is not null; current = current.BaseType)
-        {
-            if (HasValidationAttribute(current))
-            {
-                return true;
-            }
-
-            foreach (var member in current.GetMembers())
-            {
-                if (member is IPropertySymbol property && CarriesConstraints(property))
-                {
-                    return true;
-                }
-            }
-        }
-
-        foreach (var contract in type.AllInterfaces)
-        {
-            if (
-                contract.DeclaredAccessibility == Accessibility.Public
-                && HasValidationAttribute(contract)
-            )
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool HasValidationAttribute(INamedTypeSymbol declaring)
-    {
-        foreach (var attribute in declaring.GetAttributes())
-        {
-            for (
-                var baseType = attribute.AttributeClass?.BaseType;
-                baseType is not null;
-                baseType = baseType.BaseType
-            )
-            {
-                if (baseType.ToDisplayString() == KnownTypes.ValidationAttribute)
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    private static bool CarriesConstraints(IPropertySymbol property)
-    {
-        foreach (var attribute in property.GetAttributes())
-        {
-            if (attribute.AttributeClass is not { } attributeClass)
-            {
-                continue;
-            }
-
-            var ns = attributeClass.ContainingNamespace?.ToDisplayString();
-
-            if (ns == KnownTypes.ConstraintsNamespace || ns == KnownTypes.DataAnnotationsNamespace)
-            {
-                return true;
-            }
-
-            for (
-                var baseType = attributeClass.BaseType;
-                baseType is not null;
-                baseType = baseType.BaseType
-            )
-            {
-                var name = baseType.ToDisplayString();
-
-                if (
-                    name == KnownTypes.CustomConstraintAttribute
-                    || name == KnownTypes.ValidationAttribute
-                )
-                {
-                    return true;
-                }
-            }
-
-            foreach (var contract in attributeClass.AllInterfaces)
-            {
-                if (
-                    contract.OriginalDefinition.ToDisplayString()
-                    == KnownTypes.ConstraintForInterface
-                )
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
 }

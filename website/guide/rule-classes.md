@@ -239,6 +239,10 @@ if (x.Requests is { } requests)
 }
 ```
 
+It does not work inside a lambda, an anonymous method, a local function or a query expression,
+because the generated code passes the context by reference and none of those can capture it. The
+generator reports `VM3003` there. Write the loop as a `foreach` instead.
+
 `Report(field, code, message)` reports against a field. `ReportHere(code, message)` reports
 against the object itself, with an empty field at the top level. The helpers such as
 `ReportStringLength(field, min, max)` and `ReportRange(field, min, max)` produce the built-in
@@ -387,9 +391,9 @@ rules.Each(x.Requests).Length(1, 200);
 
 `Each` takes an `IReadOnlyList<T>` of strings or of a reference type, which `List<T>` and arrays
 convert to. A `null` list and `null` elements are skipped. Use `Each`, not `Nested`, for a
-collection. `Nested` on a collection, `Nested` after `Each`, and `Each` after `Each` do not work in
-this version. For a list of numbers or other value types, check the elements in a loop and report
-through `rules.Context`. [Nested objects and
+collection. `Nested` on a collection, and a second `Nested` or `Each` in the chain after a descent,
+are reported as `VM3001`. For a list of numbers or other value types, check the elements in a loop
+and report through `rules.Context`. [Nested objects and
 collections](./nesting) describes how paths are built.
 
 ## Rules classes and attributes together
@@ -401,6 +405,10 @@ then the `Apply` rules. A type can also have more than one rules class, and one 
 
 A `[Required]` attribute does not suppress a rule in the rules class for the same member. The two
 are independent.
+
+A property with `[ValidateNested]` is already validated. `Nested` or `Each` on the same property in
+a rules class would validate it again and report each nested error twice, so the generator reports
+`VM3106` and drops the rules-class descent.
 
 ## Codes, messages and severity
 

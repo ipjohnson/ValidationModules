@@ -67,6 +67,7 @@ public sealed partial class PetValidator : global::ValidationModules.IValidatorF
     /// </summary>
     public bool IsValid(global::Pet value)
     {
+        global::System.ArgumentNullException.ThrowIfNull(value);
         if (string.IsNullOrWhiteSpace(value.Name))
         {
             return false;

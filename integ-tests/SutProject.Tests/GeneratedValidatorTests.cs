@@ -30,6 +30,25 @@ public class GeneratedValidatorTests
         Assert.True(new PetValidator().IsValid(ValidPet()));
     }
 
+    /// <summary>
+    /// A null value is rejected where it enters. <c>IsValid</c> reached through the interface binds
+    /// straight to the generated method, which is why that method carries a guard of its own.
+    /// </summary>
+    [Fact]
+    public void ANullValue_IsRejectedRatherThanDereferenced()
+    {
+        IValidatorFor<Pet> validator = new PetValidator();
+
+        Assert.Equal(
+            "value",
+            Assert.Throws<ArgumentNullException>(() => validator.IsValid(null!)).ParamName
+        );
+        Assert.Equal(
+            "value",
+            Assert.Throws<ArgumentNullException>(() => validator.Validate(null!)).ParamName
+        );
+    }
+
     [Fact]
     public void Validate_CleanValue_AllocatesNothing()
     {

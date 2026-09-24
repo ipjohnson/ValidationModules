@@ -52,6 +52,11 @@ namespace ValidationModules.SourceGenerator.Impl.Models;
 /// <c>IValidatableObject</c>. A type carrying any loses the straight-line <c>IsValid</c>, for the
 /// reason <paramref name="ImplementsValidatableObject"/> does.
 /// </param>
+/// <param name="IsValueType">
+/// Whether the validated type is a struct. The straight-line <c>IsValid</c> rejects a null value
+/// only for a class, because <c>value is null</c> does not compile against a struct and
+/// <c>ArgumentNullException.ThrowIfNull</c> would box one on every call.
+/// </param>
 public sealed record ValidatedTypeModel(
     string Namespace,
     string TypeName,
@@ -62,7 +67,8 @@ public sealed record ValidatedTypeModel(
     bool IsPublic = true,
     bool ImplementsValidatableObject = false,
     EquatableArray<RegionModel> Regions = default,
-    EquatableArray<ConstraintModel> ObjectRules = default
+    EquatableArray<ConstraintModel> ObjectRules = default,
+    bool IsValueType = false
 ) : IEquatable<ValidatedTypeModel>;
 
 /// <summary>

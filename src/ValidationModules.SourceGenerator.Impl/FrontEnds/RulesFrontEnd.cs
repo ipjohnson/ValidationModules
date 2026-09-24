@@ -55,16 +55,24 @@ public sealed class RulesFrontEnd
     public RulesFrontEnd(
         Func<string, string> fieldNamer,
         Func<INamedTypeSymbol, bool>? rulesTarget = null,
-        string? codeNamespace = null
+        string? codeNamespace = null,
+        bool compileDataAnnotations = true
     )
     {
         _fieldNamer = fieldNamer;
         _rulesTarget = rulesTarget;
         _codeNamespace = codeNamespace;
+        _compileDataAnnotations = compileDataAnnotations;
     }
 
     /// <summary>The assembly's code namespace, applied to what an Ensure authors or derives.</summary>
     private readonly string? _codeNamespace;
+
+    /// <summary>
+    /// Whether the DataAnnotations vocabulary produces rules, which decides whether a type carrying
+    /// only DataAnnotations attributes has a validator a descent can call.
+    /// </summary>
+    private readonly bool _compileDataAnnotations;
 
     public IReadOnlyList<Diagnostic> Diagnostics => _diagnostics;
 
@@ -543,6 +551,34 @@ public sealed class RulesFrontEnd
             return false;
         }
 
+        /// <summary>
+        /// Whether a declaration of <paramref name="property"/> that the attribute front end reads
+        /// carries <c>[ValidateNested]</c>: the target's own, or one the member walk merges in from
+        /// an interface or an overridden base. The attribute region then already descends into it.
+        /// </summary>
+        private bool CarriesValidateNested(IPropertySymbol property)
+        {
+            foreach (
+                var member in MemberWalk.PropertiesOf(
+                    _target,
+                    _compilation,
+                    declaration =>
+                        DescentTargets.CarriesConstraints(
+                            declaration,
+                            _owner._compileDataAnnotations
+                        )
+                )
+            )
+            {
+                if (member.Property.Name == property.Name)
+                {
+                    return member.Sources.Any(DescentTargets.HasValidateNested);
+                }
+            }
+
+            return false;
+        }
+
         public void ReadBlock(
             IEnumerable<StatementSyntax> statements,
             int depth,
@@ -706,7 +742,8 @@ public sealed class RulesFrontEnd
                     _owner.Report(
                         ValidationDiagnostics.IslandInUnreadableScope,
                         report,
-                        _declaringClass.Name
+                        _declaringClass.Name,
+                        ValidationDiagnostics.IslandScopeTail
                     );
                     return;
                 }
@@ -722,7 +759,8 @@ public sealed class RulesFrontEnd
                     _owner.Report(
                         ValidationDiagnostics.IslandInUnreadableScope,
                         report,
-                        _declaringClass.Name
+                        _declaringClass.Name,
+                        ValidationDiagnostics.IslandScopeTail
                     );
                     return;
                 }
@@ -834,6 +872,41 @@ public sealed class RulesFrontEnd
         }
 
         // ---- islands ---------------------------------------------------------------------------
+
+        /// <summary>
+        /// The target's property called <paramref name="name"/>: declared on the target, on a base
+        /// type, or on an interface the target extends.
+        /// </summary>
+        /// <remarks>
+        /// <c>GetMembers</c> answers for declared members only, and a condition may read a property
+        /// the subject inherits. The base chain comes first, so a class's own declaration wins over
+        /// an interface's.
+        /// </remarks>
+        private IPropertySymbol? PropertyNamed(string name)
+        {
+            for (INamedTypeSymbol? type = _target; type is not null; type = type.BaseType)
+            {
+                if (
+                    type.GetMembers(name).OfType<IPropertySymbol>().FirstOrDefault() is { } declared
+                )
+                {
+                    return declared;
+                }
+            }
+
+            foreach (var contract in _target.AllInterfaces)
+            {
+                if (
+                    contract.GetMembers(name).OfType<IPropertySymbol>().FirstOrDefault() is
+                    { } declared
+                )
+                {
+                    return declared;
+                }
+            }
+
+            return null;
+        }
 
         /// <summary>Whether the expression is an invocation chain hanging off the builder parameter.</summary>
         private bool RootsAtBuilder(ExpressionSyntax expression)
@@ -1162,13 +1235,14 @@ public sealed class RulesFrontEnd
                     _owner.Report(
                         ValidationDiagnostics.IslandInUnreadableScope,
                         identifier,
-                        _declaringClass.Name
+                        _declaringClass.Name,
+                        IsContextAccess(identifier)
+                            ? ValidationDiagnostics.ContextCaptureTail(what)
+                            : ValidationDiagnostics.IslandScopeTail
                     );
                     return;
                 }
             }
-
-            _ = what;
         }
 
         private void Transcribe(StatementSyntax statement, int depth)
@@ -1215,12 +1289,18 @@ public sealed class RulesFrontEnd
                     continue;
                 }
 
-                if (
-                    identifier.Parent
-                        is MemberAccessExpressionSyntax { Name.Identifier.Text: "Context" } access
-                    && access.Expression == identifier
-                )
+                if (IsContextAccess(identifier))
                 {
+                    if (CapturingScope(identifier, node) is { } scope)
+                    {
+                        _owner.Report(
+                            ValidationDiagnostics.IslandInUnreadableScope,
+                            identifier.Parent!,
+                            _declaringClass.Name,
+                            ValidationDiagnostics.ContextCaptureTail(scope)
+                        );
+                    }
+
                     continue;
                 }
 
@@ -1230,6 +1310,46 @@ public sealed class RulesFrontEnd
                     "store it, capture it, return it, or pass it to anything the generator cannot read"
                 );
             }
+        }
+
+        /// <summary>Whether the builder identifier is the receiver of <c>rules.Context</c>.</summary>
+        private static bool IsContextAccess(IdentifierNameSyntax identifier) =>
+            identifier.Parent
+                is MemberAccessExpressionSyntax { Name.Identifier.Text: "Context" } access
+            && access.Expression == identifier;
+
+        /// <summary>
+        /// The scope between <paramref name="node"/> and the transcribed <paramref name="root"/>
+        /// that would capture the context, as VM3003 names it, or null when there is none.
+        /// </summary>
+        /// <remarks>
+        /// <c>rules.Context</c> becomes the region method's <c>ref</c> parameter, and C# does not
+        /// let a lambda, an anonymous method, a local function or a query clause capture one. A
+        /// local function statement that is itself the root has already been refused as a whole.
+        /// </remarks>
+        private static string? CapturingScope(SyntaxNode node, SyntaxNode root)
+        {
+            foreach (var ancestor in node.Ancestors())
+            {
+                if (ancestor == root)
+                {
+                    return null;
+                }
+
+                switch (ancestor)
+                {
+                    case AnonymousMethodExpressionSyntax:
+                        return "an anonymous method";
+                    case LambdaExpressionSyntax:
+                        return "a lambda";
+                    case LocalFunctionStatementSyntax:
+                        return "a local function";
+                    case QueryBodySyntax:
+                        return "a query expression";
+                }
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -1646,7 +1766,8 @@ public sealed class RulesFrontEnd
             private readonly List<(
                 bool Elements,
                 ExpressionSyntax Value,
-                string? Field
+                string? Field,
+                SyntaxNode Site
             )> _descents = new();
 
             /// <summary>
@@ -1835,8 +1956,11 @@ public sealed class RulesFrontEnd
                     case "MultipleOf":
                         return ReadMultipleOf(call, method, arguments);
 
+                    // One descent per chain. An Each over objects leaves the collection as the
+                    // chain's anchor, so a descent chained after it would walk the elements a second
+                    // time, or walk the collection as if it were one object.
                     case "Nested":
-                        if (_perElement)
+                        if (_perElement || DescendedIntoElements)
                         {
                             _writer._owner.Report(
                                 ValidationDiagnostics.NotTranscribable,
@@ -1847,16 +1971,38 @@ public sealed class RulesFrontEnd
                             return false;
                         }
 
+                        if (_descents.Count > 0)
+                        {
+                            _writer._owner.Report(
+                                ValidationDiagnostics.NotTranscribable,
+                                call,
+                                _writer._declaringClass.Name,
+                                "a descent chained after another descent"
+                            );
+                            return false;
+                        }
+
                         return ReadDescent(call, arguments, elements: false);
 
                     case "Each":
-                        if (_perElement)
+                        if (_perElement || DescendedIntoElements)
                         {
                             _writer._owner.Report(
                                 ValidationDiagnostics.NotTranscribable,
                                 call,
                                 _writer._declaringClass.Name,
                                 "a second Each chained after element rules"
+                            );
+                            return false;
+                        }
+
+                        if (_descents.Count > 0)
+                        {
+                            _writer._owner.Report(
+                                ValidationDiagnostics.NotTranscribable,
+                                call,
+                                _writer._declaringClass.Name,
+                                "a descent chained after another descent"
                             );
                             return false;
                         }
@@ -2069,10 +2215,36 @@ public sealed class RulesFrontEnd
                     return false;
                 }
 
-                _descents.Add((elements, value, FieldLiteral(arguments)));
+                // Nested reaches one object. A collection's elements are Each's descent, and a
+                // dictionary's values are reached only by [ValidateNested], which walks them by key.
+                if (!elements && _writer._model.GetTypeInfo(value).Type is { } type)
+                {
+                    var misuse =
+                        TypeFacts.DictionaryTypesOf(type) is not null
+                            ? $"Nested over the dictionary '{value}' ([ValidateNested] on the property validates each value)"
+                        : TypeFacts.ElementTypeOf(type) is not null
+                            ? $"Nested over the collection '{value}' (rules.Each({value}) validates each element)"
+                        : null;
+
+                    if (misuse is not null)
+                    {
+                        _writer._owner.Report(
+                            ValidationDiagnostics.NotTranscribable,
+                            call,
+                            _writer._declaringClass.Name,
+                            misuse
+                        );
+                        return false;
+                    }
+                }
+
+                _descents.Add((elements, value, FieldLiteral(arguments), call));
 
                 return true;
             }
+
+            /// <summary>Whether an Each over objects already descended in this chain.</summary>
+            private bool DescendedIntoElements => _descents.Any(descent => descent.Elements);
 
             private bool ReadApply(
                 InvocationExpressionSyntax call,
@@ -2126,12 +2298,7 @@ public sealed class RulesFrontEnd
                 var anchorName = RuleText.AnchorOfPredicate($"{subject} => {text}");
                 var explicitField = FieldLiteral(arguments);
 
-                var anchor = anchorName is null
-                    ? null
-                    : _writer
-                        ._target.GetMembers(anchorName)
-                        .OfType<IPropertySymbol>()
-                        .FirstOrDefault();
+                var anchor = anchorName is null ? null : _writer.PropertyNamed(anchorName);
 
                 if (anchor is null && explicitField is null)
                 {
@@ -2257,9 +2424,9 @@ public sealed class RulesFrontEnd
                     EmitElementRules(collection, collectionFacts, missing);
                 }
 
-                foreach (var (elements, value, field) in _descents)
+                foreach (var (elements, value, field, site) in _descents)
                 {
-                    EmitDescent(elements, value, field, missing);
+                    EmitDescent(elements, value, field, missing, site);
                 }
             }
 
@@ -2344,7 +2511,8 @@ public sealed class RulesFrontEnd
                 bool elements,
                 ExpressionSyntax value,
                 string? explicitField,
-                string? missing
+                string? missing,
+                SyntaxNode site
             )
             {
                 var path = _writer.PathOf(value);
@@ -2362,8 +2530,21 @@ public sealed class RulesFrontEnd
                 }
 
                 var property = path[0];
+                var construct = elements ? "rules.Each" : "rules.Nested";
+
+                if (_writer.CarriesValidateNested(property))
+                {
+                    _writer._owner.Report(
+                        ValidationDiagnostics.RulesDescentRepeatsValidateNested,
+                        site,
+                        property.Name,
+                        construct
+                    );
+                    return;
+                }
+
                 var field = explicitField ?? _writer._owner.WireNameOf(property);
-                var dependency = _writer.DependencyFor(property, elements, value);
+                var dependency = _writer.DependencyFor(property, elements, value, site, construct);
 
                 if (dependency is null)
                 {
@@ -2743,10 +2924,20 @@ public sealed class RulesFrontEnd
                 SymbolDisplay.FormatLiteral(text, quote: true);
         }
 
+        /// <summary>
+        /// The validator array a descent walks, or null when the descent is dropped.
+        /// </summary>
+        /// <remarks>
+        /// The target is judged here, before the walk is written, because a dropped descent must not
+        /// reach the region's text: the walk names this array, and the array names the target's
+        /// validator.
+        /// </remarks>
         private RegionDependency? DependencyFor(
             IPropertySymbol property,
             bool elements,
-            ExpressionSyntax site
+            ExpressionSyntax value,
+            SyntaxNode call,
+            string construct
         )
         {
             foreach (var existing in _dependencies)
@@ -2760,15 +2951,34 @@ public sealed class RulesFrontEnd
                 }
             }
 
-            var elementType = elements
-                ? TypeFacts.ElementTypeOf(property.Type)
-                : Unwrap(property.Type);
+            var target = elements ? TypeFacts.ElementTypeOf(property.Type) : Unwrap(property.Type);
 
-            if (elementType is not INamedTypeSymbol named)
+            if (target is null)
             {
-                _owner.Report(ValidationDiagnostics.SelectorNotAPath, site, _declaringClass.Name);
+                _owner.Report(ValidationDiagnostics.SelectorNotAPath, value, _declaringClass.Name);
                 return null;
             }
+
+            var verdict = DescentTargets.Judge(
+                target,
+                _compilation,
+                _owner._compileDataAnnotations,
+                _owner._rulesTarget
+            );
+
+            if (verdict != DescentTargets.Verdict.Callable)
+            {
+                if (
+                    DescentTargets.Problem(verdict, target, property.Name, construct) is { } problem
+                )
+                {
+                    _owner.Report(problem.Descriptor, call, problem.Arguments);
+                }
+
+                return null;
+            }
+
+            var named = (INamedTypeSymbol)target;
 
             var camel =
                 property.Name.Length == 0 || char.IsLower(property.Name[0])
