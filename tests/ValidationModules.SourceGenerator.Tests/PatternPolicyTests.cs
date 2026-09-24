@@ -153,8 +153,287 @@ public class PatternPolicyTests
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1301");
 
         var emitted = result.Sources["Sample.PetValidator.g.cs"];
-        Assert.Contains("global::Sample.PetPatterns.Sku().IsMatch", emitted);
+        Assert.Contains(
+            "global::ValidationModules.ConstraintChecks.IsMatch(global::Sample.PetPatterns.Sku(), value.Sku)",
+            emitted
+        );
         Assert.DoesNotContain("new global::System.Text.RegularExpressions.Regex(", emitted);
+    }
+
+    // [RegularExpression] - the same inline Regex field, so the same policy.
+
+    private const string RegularExpressionModel = """
+        namespace Sample;
+
+        public record Form {
+            [System.ComponentModel.DataAnnotations.Required]
+            public string? Name { get; init; }
+
+            [System.ComponentModel.DataAnnotations.RegularExpression("[A-Z]{3}")]
+            public string? Code { get; init; }
+        }
+        """;
+
+    [Fact]
+    public void RegularExpression_PublishAot_IsAnErrorAndIsDropped()
+    {
+        // It compiles to the inline form's field and roots the same parser and interpreter, so an
+        // AOT-facing project pays the same 448 KB for it. Dropped like the inline [Pattern], with
+        // the rest of the type still emitted.
+        var result = GeneratorHarness.Run(RegularExpressionModel, ("PublishAot", "true"));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1301");
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+
+        var emitted = result.Sources["Sample.FormValidator.g.cs"];
+        Assert.DoesNotContain("new global::System.Text.RegularExpressions.Regex(", emitted);
+        Assert.Contains("ReportRequired(ctx, \"name\"", emitted);
+    }
+
+    [Fact]
+    public void RegularExpression_PolicyWarn_ReportsButStillEmits()
+    {
+        var result = GeneratorHarness.Run(
+            RegularExpressionModel,
+            ("PublishAot", "true"),
+            ("ValidationModules_PatternPolicy", "Warn")
+        );
+
+        Assert.Equal(
+            DiagnosticSeverity.Warning,
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1301").Severity
+        );
+        Assert.Contains(
+            "new global::System.Text.RegularExpressions.Regex(",
+            result.Sources["Sample.FormValidator.g.cs"]
+        );
+    }
+
+    [Fact]
+    public void RegularExpression_NotAotFacing_IsAccepted()
+    {
+        var result = GeneratorHarness.Run(RegularExpressionModel);
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1301");
+    }
+
+    [Fact]
+    public void RegularExpression_VM1301_PrintsTheReplacementWithTheSameMeaning()
+    {
+        // Replacing the attribute is the fix, and the expression changes on the way: anchored,
+        // because [RegularExpression] matches the whole value, and optional, because it passes an
+        // empty one. Printing it is what saves the reader from working that out.
+        var result = GeneratorHarness.Run(RegularExpressionModel, ("PublishAot", "true"));
+
+        var message = Assert.Single(result.Diagnostics, d => d.Id == "VM1301").GetMessage();
+
+        Assert.Contains("""[GeneratedRegex(@"\A(?:[A-Z]{3})?\z")]""", message);
+        Assert.Contains(
+            "replace [RegularExpression] with [Pattern(typeof(FormPatterns), nameof(FormPatterns.Code))]",
+            message
+        );
+    }
+
+    [Fact]
+    public void InlinePattern_VM1301_PointsAtTheReferencedForm()
+    {
+        var result = GeneratorHarness.Run(InlinePattern, ("PublishAot", "true"));
+
+        Assert.Contains(
+            "point at it: [Pattern(typeof(PetPatterns), nameof(PetPatterns.Sku))]",
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1301").GetMessage()
+        );
+    }
+
+    [Fact]
+    public void RegularExpression_UnderIgnore_IsNotReported()
+    {
+        // Nothing is compiled from it, so there is no inline field to object to. VM2001 is the
+        // news there.
+        var result = GeneratorHarness.Run(
+            RegularExpressionModel,
+            ("PublishAot", "true"),
+            ("ValidationModules_DataAnnotations", "Ignore")
+        );
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1301");
+    }
+
+    // Options and MatchTimeoutMilliseconds on the reference form - VM1303.
+
+    [Theory]
+    [InlineData("Options = RegexOptions.IgnoreCase")]
+    [InlineData("MatchTimeoutMilliseconds = 50")]
+    public void ReferencedPattern_SettingItCannotRead_IsVM1303(string setting)
+    {
+        // The referenced regex was built with its own options and timeout, so the setting does
+        // nothing. IgnoreCase in particular reads as a case-insensitive rule over a case-sensitive
+        // check.
+        var result = GeneratorHarness.Run(ReferencedPatternWith(setting));
+
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1303");
+        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Contains($"'{setting}'", diagnostic.GetMessage());
+        Assert.Contains("'Sample.PetPatterns.Sku'", diagnostic.GetMessage());
+    }
+
+    [Fact]
+    public void ReferencedPattern_VM1303_PrintsTheGeneratedRegexToWrite()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using System.Text.RegularExpressions;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public static class VoucherPatterns {
+                [GeneratedRegex("^[A-Z]+$", RegexOptions.CultureInvariant)]
+                public static Regex Code() => new("^[A-Z]+$");
+            }
+
+            public record Voucher {
+                [Pattern(typeof(VoucherPatterns), nameof(VoucherPatterns.Code), Options = RegexOptions.IgnoreCase, MatchTimeoutMilliseconds = 50)]
+                public string? Code { get; init; }
+            }
+            """
+        );
+
+        // Read off the member's own declaration and merged with what [Pattern] asked for.
+        Assert.Contains(
+            """Declare it on the regex instead: [GeneratedRegex(@"^[A-Z]+$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 50)]""",
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1303").GetMessage()
+        );
+    }
+
+    [Fact]
+    public void ReferencedPattern_VM1303_WithNoDeclarationToRead_PrintsAPlaceholder()
+    {
+        // A field holding a regex built elsewhere has no [GeneratedRegex] to merge into.
+        var result = GeneratorHarness.Run(
+            ReferencedPatternWith("Options = RegexOptions.IgnoreCase")
+        );
+
+        Assert.Contains(
+            """[GeneratedRegex("...", RegexOptions.IgnoreCase)]""",
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1303").GetMessage()
+        );
+    }
+
+    [Fact]
+    public void ReferencedPattern_Compiled_IsVM1303AndNotVM1302()
+    {
+        // There is no Regex constructor on this form to take the flag, so VM1302's news does not
+        // apply, and a [GeneratedRegex] is compiled at build time already.
+        var result = GeneratorHarness.Run(ReferencedPatternWith("Options = RegexOptions.Compiled"));
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1302");
+        Assert.Contains(
+            "Remove it",
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1303").GetMessage()
+        );
+    }
+
+    [Fact]
+    public void ReferencedPattern_WithoutSettings_IsSilent()
+    {
+        var result = GeneratorHarness.Run(ReferencedPattern);
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1303");
+    }
+
+    private static string ReferencedPatternWith(string setting) =>
+        $$"""
+            using System.Text.RegularExpressions;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public static class PetPatterns {
+                private static readonly Regex SkuValue = new Regex("^[A-Z]{3}$");
+                public static Regex Sku() => SkuValue;
+            }
+
+            public record Pet {
+                [Pattern(typeof(PetPatterns), nameof(PetPatterns.Sku), {{setting}})]
+                public string? Sku { get; init; }
+            }
+            """;
+
+    // A match timeout fails the pattern rather than throwing out of Validate.
+
+    [Fact]
+    public void EveryPatternForm_MatchesThroughTheTimeoutSafeCheck()
+    {
+        // The input that exhausts a timeout is the hostile input the timeout exists for, so it has
+        // to become a validation failure. The regex's own IsMatch throws instead, and an endpoint
+        // answers 500. Both paths of both forms go through the check: Validate and IsValid.
+        foreach (var source in new[] { InlinePattern, ReferencedPattern })
+        {
+            var emitted = GeneratorHarness.Run(source).Sources["Sample.PetValidator.g.cs"];
+            var calls =
+                emitted.Split("global::ValidationModules.ConstraintChecks.IsMatch(").Length - 1;
+
+            Assert.Equal(2, calls);
+            Assert.DoesNotContain(".IsMatch(value.Sku)", emitted);
+        }
+    }
+
+    [Fact]
+    public void RulesClassPattern_MatchesThroughTheTimeoutSafeCheck()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using System.Text.RegularExpressions;
+            using ValidationModules;
+
+            namespace Sample;
+
+            public sealed class Product {
+                public string? Sku { get; init; }
+            }
+
+            public static class ProductPatterns {
+                private static readonly Regex SkuValue = new("^[A-Z]{3}$");
+                public static Regex Sku() => SkuValue;
+            }
+
+            public sealed class ProductRules : IValidationRulesFor<Product> {
+                public static void Describe(ValidationRules<Product> rules, Product x) {
+                    rules.Pattern(x.Sku, ProductPatterns.Sku);
+                }
+            }
+            """
+        );
+
+        Assert.Contains(
+            "global::ValidationModules.ConstraintChecks.IsMatch(global::Sample.ProductPatterns.Sku(), x.Sku)",
+            result.Sources["Sample.ProductRules_Rules.g.cs"]
+        );
+    }
+
+    // An empty string passes [RegularExpression] untested, as it does in DataAnnotations.
+
+    [Fact]
+    public void RegularExpression_PassesAnEmptyStringWithoutMatching()
+    {
+        // RegularExpressionAttribute.IsValid returns true for null and "", and leaves emptiness to
+        // [Required]. An HTML form posts an optional field left blank as "".
+        var emitted = GeneratorHarness.Run(RegularExpressionModel).Sources[
+            "Sample.FormValidator.g.cs"
+        ];
+
+        Assert.Contains("!string.IsNullOrEmpty(value.Code) && !global::ValidationModules", emitted);
+    }
+
+    [Fact]
+    public void NativePattern_StillMatchesAnEmptyString()
+    {
+        // The native attribute follows JSON Schema, where "" is a string like any other.
+        var emitted = GeneratorHarness.Run(InlinePattern).Sources["Sample.PetValidator.g.cs"];
+
+        Assert.DoesNotContain("IsNullOrEmpty", emitted);
+        Assert.Contains("value.Sku is not null && !global::ValidationModules", emitted);
     }
 
     [Theory]
