@@ -32,9 +32,10 @@ the matching `IValidationFieldNamer`: `CamelCaseFieldNamer`, `SnakeCaseFieldName
 
 ## `ValidationModules_CodeNamespace`
 
-This property sets a prefix for the codes you set with `Code` or `code:`, and for the codes derived
-from `Ensure`. With `shop`, the code `stay_order` becomes `shop.stay_order`. Built-in codes are
-never prefixed. It is not set by default.
+This property sets a prefix for the codes you set with `Code` on a built-in attribute or a
+`CustomConstraintAttribute`, and for the codes of `Ensure`, set with `code:` or derived. With
+`shop`, the code `stay_order` becomes `shop.stay_order`. Codes passed to `Report` calls and helpers
+are not prefixed, and built-in codes are never prefixed. It is not set by default.
 
 ## `ValidationModules_PatternPolicy`
 
@@ -58,8 +59,8 @@ case-sensitive. See [DataAnnotations](../guide/data-annotations).
 ## `ValidationModules_FailFast`
 
 Set to `false` or `Disabled` to leave out the early return after each check. The validators get
-smaller. A fail-fast pass still records only one error but runs every check. It is on by default.
-The value is not case-sensitive.
+smaller. A `StopOnFirstError` pass still records only one error but runs every check. It is on by
+default. The value is not case-sensitive.
 
 ## `ValidationModules_CaptureValues`
 
@@ -84,7 +85,7 @@ The value is case-sensitive. See [Registration](../guide/registration).
 | Property | Package | Effect |
 | --- | --- | --- |
 | `ValidationModulesLanguages` | `ValidationModules.Messages` | Which built-in languages to compile: a list such as `fr;de`, `all` (the default), or `none`. |
-| `GeneratedCodeStyle` | `ValidationModules.SourceGenerator` | `KAndR` for K&R braces in the generated code. Allman braces otherwise. |
+| `GeneratedCodeStyle` | `ValidationModules.SourceGenerator` | `KAndR` or `K&R`, in any case, for K&R braces in the generated code. Allman braces otherwise. DependencyModules reads the same property. |
 | `PublishAot`, `IsAotCompatible` | .NET SDK | When either is `true`, the default pattern policy rejects inline patterns. |
 | `EmitCompilerGeneratedFiles` | .NET SDK | Writes the generated files under `obj/` so that you can read them. |
 | `PackageValidationModulesIncludeSource` | `ValidationModules.SourceGenerator.Impl` | See below. |
@@ -97,7 +98,13 @@ to drive the same front ends and emitters from a generator of their own. Setting
 references the package.
 
 The package contains no `[Generator]` class, so it never runs by itself. Your generator provides the
-entry point, reads its own options, and reports its own errors. Do not run
+entry point, reads its own options, and reports its own errors. The main types are
+`AttributeFrontEnd` and `RulesFrontEnd`, which read declarations, and `ValidatorEmitter`,
+`RegistrationEmitter` and `LanguagePackEmitter`, which write code. Do not run
 `ValidationModules.SourceGenerator` over the same types as well, or each type gets two validators.
-The runtime package publishes the version of its contract as the MSBuild property
-`ValidationModulesRuntimeContract`, for hosts that check compatibility without a compilation.
+
+`EmitterContract.Probe(compilation)` checks that the referenced runtime is new enough and returns
+the diagnostic to report when it is not. The runtime package also publishes the version of its
+contract as the MSBuild property `ValidationModulesRuntimeContract`, for hosts that check
+compatibility without a compilation. A generator that builds its own table of registrations can pass
+it to `services.AddValidationModules(registrations)`.

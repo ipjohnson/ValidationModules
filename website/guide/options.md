@@ -52,15 +52,18 @@ Each error is written as field, code and message. The field is the generator's f
 ## Details
 
 - Only errors with `Error` severity fail the options. Warnings pass.
-- The bridge runs the `IValidatorFor<T>` validators registered for the type, without a service
-  provider. It does not run async validators, runtime polymorphism, or rules classes that use an
-  interface from another assembly.
-- When no validator is registered for the options type, validation fails with a message that names
-  the missing registration method. This catches a forgotten `Add...Validators()` call.
+- The options validator that `AddValidatedOptions` registers runs the `IValidatorFor<T>` validators
+  registered for the type, without a service provider. It does not run async validators. An options
+  class that uses `Polymorphism.Runtime`, or a rules class over an interface from another assembly,
+  makes startup fail with an `InvalidOperationException`, because those need a service provider.
+- When no validator is registered for the options type, validation fails with a message that
+  begins `No IValidatorFor<HubOptions> is registered.` and tells you to call the generated
+  `Add<Assembly>Validators()` method. This catches a forgotten registration call.
 - `AddValidatedOptions<T>(name)` registers and validates named options. Each call validates only the
-  name it registered.
+  name it registered. Calling it twice for the same name validates twice, and each failure is listed
+  twice.
 - The options class needs a public parameterless constructor, as the options system requires.
 
-The package depends on `Microsoft.Extensions.Options` only. `BindConfiguration` comes from
-`Microsoft.Extensions.Options.ConfigurationExtensions`, which `Microsoft.Extensions.Hosting` brings
-in, so a hosted application already has it.
+The package depends on `ValidationModules.Runtime` and `Microsoft.Extensions.Options`.
+`BindConfiguration` comes from `Microsoft.Extensions.Options.ConfigurationExtensions`, which
+`Microsoft.Extensions.Hosting` brings in, so a hosted application already has it.

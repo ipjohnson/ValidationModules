@@ -58,6 +58,8 @@ A rules class implements `IValidationRulesFor<T>` and declares a `public static 
 method. The generator reads the body of `Describe` when the project builds and writes its rules into
 `BookingValidator`, the same kind of validator it writes for attributes. Nothing calls `Describe`
 at run time, and the rules class needs no registration.
+`Describe` can also have an expression body, or implement the interface explicitly as
+`static void IValidationRulesFor<Booking>.Describe(...)`.
 
 Validating a booking with an empty guest name, 12 guests, an end date before the start date, no
 company name, an empty request and a room with no beds returns:
@@ -130,9 +132,10 @@ name reports `required` and not also `string_length`. Nothing else is skipped. T
 statements about the same member are checked independently.
 
 The chained methods are `Require`, `RequireAllowingEmpty`, `Length`, `Pattern`, `Range`,
-`RangeAtLeast`, `RangeAtMost`, `MultipleOf`, `AllowedValues`, `Count`, `Unique`, `Each` and
-`Nested`. Each one applies only to a value of the right type. `For(value)` starts a chain without a
-rule of its own:
+`RangeAtLeast`, `RangeAtMost`, `MultipleOf`, `Count`, `Unique`, `Each` and `Nested`. Each one
+applies only to a value of the right type. `AllowedValues` can also be chained, but in this version
+the chained form checks nothing. Call `rules.AllowedValues(value, allowed)` instead. `For(value)`
+starts a chain without a rule of its own:
 
 ```csharp
 rules.For(x.Code, field: "code").Length(3, 10).Pattern(Patterns.Code);
@@ -207,8 +210,12 @@ public static void Describe(ValidationRules<Booking> rules, Booking x)
 Every statement that is not a rule is copied into the validator as written, and it runs each time
 the validator runs. Build anything expensive once, in a static field, rather than in `Describe`.
 
-The generator cannot expand a rule inside a loop, a lambda or a local function, and reports
-`VM3003`. Use `Each` for per-element rules, or report from the loop through `rules.Context`.
+The generator cannot expand a rule inside a loop or a local function, and reports `VM3003`. A rule
+inside a lambda is reported as `VM3002`, because the lambda captures `rules`. Use `Each` for
+per-element rules, or report from a loop through `rules.Context`.
+
+A bare `return;` ends the rules of that class early. The attribute checks and other rules classes
+still run.
 
 ## Report from code
 
@@ -237,8 +244,13 @@ against the object itself, with an empty field at the top level. The helpers suc
 `ReportStringLength(field, min, max)` and `ReportRange(field, min, max)` produce the built-in
 message for a built-in code, and each takes an optional `code:` and `severity:`.
 
-`nameof(x.CompanyName)` in a field argument becomes the member's field name, `companyName`, at
-build time.
+`nameof(x.CompanyName)` becomes the member's field name, `companyName`, at build time, anywhere in
+`Describe`, including inside messages and interpolated strings. `nameof(Booking.CompanyName)`
+keeps the property name.
+
+The generator also checks the result of every statement that returns a `ValidationFlow`, such as a
+`rules.Context` report or a helper method that takes an `IValidationContextReporter`, and stops the
+pass when the flow says to. A flow stored in a local variable is not checked.
 
 ## Apply a hand-written rule
 
@@ -259,9 +271,10 @@ public static class BookingChecks
 rules.Apply(BookingChecks.RoomsHoldGuests);
 ```
 
-Pass a method group. `Apply` must be a top-level statement in `Describe`, and applied rules run
-after every other rule on the type. Return the `ValidationFlow` that `Report` returned, so that
-[fail-fast validation](./errors#stop-at-the-first-error) can stop the pass.
+Pass a method group. A lambda passed to `Apply` produces generated code that does not compile in
+this version. `Apply` must be a top-level statement in `Describe`, and applied rules run after every
+other rule on the type. Return the `ValidationFlow` that `Report` returned, so that a pass that
+[stops at the first error](./errors#stop-at-the-first-error) can end there.
 
 ## Share rules between types
 
@@ -306,9 +319,10 @@ public sealed class InvoiceRules : IValidationRulesFor<Invoice>
 ```
 
 The generator expands the fragment for each type that calls it, so `audited.CreatedBy` reports at
-`createdBy` for an `Invoice`. A fragment can take extra parameters and can call other fragments. It
-must be source in the same project. A fragment in a referenced assembly is reported as `VM3005`.
-`Nested`, `Each` and `Apply` belong in `Describe` itself, not in a fragment.
+`createdBy` for an `Invoice`. A fragment can take extra parameters. A non-generic fragment can call
+other fragments, but a generic fragment that calls another generic fragment does not compile in this
+version. A fragment must be source in the same project. A fragment in a referenced assembly is
+reported as `VM3005`. `Nested`, `Each` and `Apply` belong in `Describe` itself, not in a fragment.
 
 ## Validate through an interface
 
@@ -351,9 +365,10 @@ public sealed class ShipmentRules : IValidationRulesFor<Shipment>
 }
 ```
 
-An empty `Shipment` reports `carrier`, `createdBy` and `version`, with no prefix. The interface
-needs rules of its own, from a rules class or from attributes on its members. Otherwise the call is
-reported as `VM3105`.
+An empty `Shipment` reports `carrier`, `createdBy` and `version`, with no prefix. Use `As` for an
+interface whose rules come from a rules class, as here. Constraint attributes on an interface's
+properties already apply to every type that implements it, so `As` would run those checks a second
+time and report each error twice. An interface with no rules at all is reported as `VM3105`.
 
 When the interface is declared in another assembly, the validator resolves `IValidatorFor<IAudited>`
 from the container at run time. Validate such a type through `ValidationRunner<T>` resolved from a
@@ -370,8 +385,11 @@ scope, and call the other assembly's registration method.
 rules.Each(x.Requests).Length(1, 200);
 ```
 
-`Each` takes an `IReadOnlyList<T>`, which `List<T>` and arrays convert to. A `null` list and `null`
-elements are skipped. Use `Each`, not `Nested`, for a collection. [Nested objects and
+`Each` takes an `IReadOnlyList<T>` of strings or of a reference type, which `List<T>` and arrays
+convert to. A `null` list and `null` elements are skipped. Use `Each`, not `Nested`, for a
+collection. `Nested` on a collection, `Nested` after `Each`, and `Each` after `Each` do not work in
+this version. For a list of numbers or other value types, check the elements in a loop and report
+through `rules.Context`. [Nested objects and
 collections](./nesting) describes how paths are built.
 
 ## Rules classes and attributes together

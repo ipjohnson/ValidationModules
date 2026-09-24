@@ -46,7 +46,7 @@ public sealed class HandleIsFree(IHandleDirectory directory) : IAsyncValidatorFo
     {
         if (value.Handle is { } handle && await directory.IsTakenAsync(handle, cancellationToken))
         {
-            context.Report(nameof(Account.Handle), "handle_taken", "That handle is already taken.");
+            context.Report("handle", "handle_taken", "That handle is already taken.");
         }
     }
 }
@@ -96,10 +96,19 @@ itself.
 
 ## Field names
 
-`nameof(Account.Handle)` gives `Handle`. When the pass carries a service provider, as it does
-through a runner resolved from the container, a field name without a dot or a bracket is converted
-to the project's field naming, so the error reports `handle`, the same field as the generated
-checks. Use the final field name yourself when validating without a container.
+The example reports the field as `handle`, the name the generated checks use. It could also pass
+`nameof(Account.Handle)`, which gives `Handle`. When the pass carries a service provider, as it
+does through a runner resolved from the container, a field name without a dot or a bracket is
+converted to the project's field naming, so `Handle` becomes `handle`. Without a service provider,
+as in a unit test, the name stays as written.
+
+## Contexts and concurrency
+
+The context an async validator receives belongs to one validation pass, and it is not safe to use
+from several tasks at once. Run lookups concurrently if you need to, then report their failures one
+after another once they have finished. To validate a child object, push a context for it and finish
+with it before pushing the next. Reporting through a context after a sibling was pushed throws an
+`InvalidOperationException`.
 
 ## Collections
 

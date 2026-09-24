@@ -21,6 +21,16 @@ an id of the form `VM####` are covered in the [diagnostics reference](../referen
   own method.
 - `T` has no rules, so no validator was generated. Add constraints, a rules class, or
   `[GenerateValidator]`.
+- `ValidationModules_DataAnnotations` is set to `Ignore`, and `T` has only DataAnnotations
+  attributes, so no validator was generated for it.
+
+## Error CS7036 on Validate
+
+`new SignUpValidator().Validate(signUp)` fails with error `CS7036`, which says no argument was given
+for the parameter `value` of `SignUpValidator.Validate(ref ValidationContext, SignUp)`. The file
+does not import the `ValidationModules` namespace. `Validate(value)` is an extension method in that
+namespace. Without it, the compiler finds only the validator's own `Validate` method, which takes a
+context. Add `using ValidationModules;`.
 
 ## A rule is not checked
 
@@ -67,10 +77,19 @@ validators. Call it once.
 
 ## The validation pass carries no services
 
-An `InvalidOperationException` that says the pass carries no services comes from a property with
-`[ValidateNested(Polymorphism.Runtime)]`, or from a rules class that validates an interface declared
-in another assembly. Both look up validators in the container during validation. Validate through
-`ValidationRunner<T>` resolved from a scope, or pass the provider to a `ValidationErrorCollector`.
+An `InvalidOperationException` that says the validation pass carries no services comes from a
+property with `[ValidateNested(Polymorphism.Runtime)]`. The validators for the value's actual type
+are looked up in the container during validation, and `validator.Validate(value)` has no container.
+Validate through `ValidationRunner<T>` resolved from a scope, or pass the provider to a
+`ValidationErrorCollector`.
+
+## No IValidatorFor is registered, compose the validators from another assembly
+
+A rules class that calls `rules.As<TFacet>(x)` with an interface from another assembly throws an
+`InvalidOperationException` that names that assembly and its registration method. It has two causes.
+Either that registration method was not called, or the pass has no service provider, as with
+`validator.Validate(value)`, even though the method was called. Call the method, and validate
+through `ValidationRunner<T>` resolved from a scope.
 
 ## Validation nested more than 64 levels deep
 
@@ -96,6 +115,23 @@ does not use invariant globalization. See [Messages and languages](./messages).
 Field names are camelCase by default and ignore the application's JSON options. Put
 `[JsonPropertyName]` on the property, or set `ValidationModules_FieldNaming`. See
 [Field names](./errors#field-names).
+
+## A language pack has no effect
+
+- The file name must end in `.validation-messages.json`.
+- `CultureInfo.CurrentUICulture` must be the pack's culture or one of its child cultures, and the
+  application must not use invariant globalization.
+- The message must come through a formatter, with `error.ToMessage(formatter)`, or through the
+  ASP.NET Core problem details response. `error.Message` stays in English.
+- Authored messages are not replaced. See [Authored messages](./messages#authored-messages).
+- The generator is referenced as a project rather than a package, so the package's build targets
+  that pick up pack files are not imported. List the files yourself:
+
+  ```xml
+  <ItemGroup>
+    <AdditionalFiles Include="Messages/*.validation-messages.json" />
+  </ItemGroup>
+  ```
 
 ## An MSBuild property has no effect
 

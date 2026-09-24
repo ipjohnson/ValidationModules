@@ -48,7 +48,7 @@ show messages in another language, use a formatter as described in
 
 ## Severity
 
-| Severity | `IsValid` | Stops a fail-fast pass | Blocks async rules |
+| Severity | `IsValid` | Stops a `StopOnFirstError` pass | Blocks async rules |
 | --- | --- | --- | --- |
 | `Error` | `false` | Yes | Yes |
 | `Warning` | unchanged | No | No |
@@ -62,8 +62,8 @@ from hand-written code such as a validator or an `IConstraintFor<T>` attribute.
 
 Field names are fixed when the generator runs. By default each member name is written in camelCase,
 so `PostalCode` becomes `postalCode`. A member with `[JsonPropertyName("postal_code")]` or
-`[Display(Name = "postal_code")]` uses that name instead. The `ValidationModules_FieldNaming`
-property changes the default for the whole project:
+`[Display(Name = "postal_code")]` uses that name instead. When a property has both, the one declared
+first wins. The `ValidationModules_FieldNaming` property changes the default for the whole project:
 
 | Value | `PostalCode` becomes |
 | --- | --- |
@@ -78,6 +78,27 @@ property changes the default for the whole project:
 ```
 
 The value is case-sensitive. An unrecognised value means camelCase.
+
+The registration method also registers an `IValidationFieldNamer` for the same policy:
+`CamelCaseFieldNamer`, `SnakeCaseFieldNamer` or `PascalCaseFieldNamer`, each with a shared
+`Instance`. When a validation pass has a service provider, as it does through `ValidationRunner<T>`
+and in ASP.NET Core, every field name without a `.` or `[` goes through that namer. A hand-written
+report such as `context.Report(nameof(Order.Reference), ...)` then uses the same spelling as the
+generated checks. A pass without a service provider, such as `validator.Validate(value)`, keeps
+field names as written.
+
+::: warning
+In this version the namer also changes the names that `[JsonPropertyName]` and `[Display(Name)]`
+supply. With the default camelCase policy, `[JsonPropertyName("GivenName")]` reports `GivenName`
+from `validator.Validate(value)` and `givenName` through a runner. Use names that start with a
+lowercase letter, or set `ValidationModules_FieldNaming` to `PascalCase`, to get the same name from
+both.
+:::
+
+A policy of your own derives from `FieldNamer` and implements `ToFieldName`. Register it before the
+registration method, which keeps a namer that is already registered. Because the pass also sends the
+generated names through it, it must leave a name that is already converted unchanged. `FieldNamer`
+also provides `Combine` and `CombineIndex`, which join a parent path and a field name.
 
 ## Paths
 
@@ -124,8 +145,9 @@ Rules declared in a rules class do not capture values.
 
 ## Stop at the first error
 
-`ValidateFirst` stops at the first failure with `Error` severity and returns it, along with any
-warnings recorded before it:
+By default a pass runs every check. This is `ValidationStopMode.CollectAll`. `ValidateFirst` runs
+in `ValidationStopMode.StopOnFirstError` instead. It stops at the first failure with `Error`
+severity and returns it, along with any warnings recorded before it:
 
 ```csharp
 ValidationResult first = validator.ValidateFirst(order);
@@ -135,9 +157,9 @@ A collector with `StopMode = ValidationStopMode.StopOnFirstError` does the same 
 `ValidateInto`, described below. Nested objects and later list elements are not visited after the
 first error.
 
-The generator writes an early return after every check so that a fail-fast pass stops quickly. Set
-`ValidationModules_FailFast` to `false` to leave the returns out. The validators are then smaller,
-and a fail-fast pass still records only one error, but it runs every check.
+The generator writes an early return after every check so that a `StopOnFirstError` pass ends
+quickly. Set `ValidationModules_FailFast` to `false` to leave the returns out. The validators are
+then smaller. A `StopOnFirstError` pass still records only one error, but it runs every check.
 
 ## Throw instead of returning
 
@@ -169,6 +191,12 @@ The collector's constructor takes a `ValidationPathMode`, an `IServiceProvider`,
 has a `StopMode` property. `Reset()` clears the errors and keeps the settings. A collector is for
 one pass at a time. For work that runs concurrently, give each branch its own collector and combine
 the results with `Merge`.
+
+`collector.Add(error)` records a `ValidationError` created elsewhere, for example one converted from
+another validation library, and takes its `Field` as given. Once `Add` has recorded a `required`
+error with `Error` severity for a field, it drops later errors for the same field. Create the error
+with `new ValidationError(field, code, message)`, or with the constructor that takes a value and a
+`ValidationMessageInfo`.
 
 Some validation reads services during the pass: [runtime polymorphism](./nesting#subtypes)
 and rules classes that use an interface from another assembly. `validator.Validate(value)` has no

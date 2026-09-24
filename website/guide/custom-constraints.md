@@ -115,8 +115,19 @@ public sealed class Batch
 }
 ```
 
-A class that cannot be used this way is reported as `VM1602`, for example when it implements
-`IConstraintFor<T>` for two types that both accept the property.
+The default `Validate` reports the `Message` with `Report`, so the text is not authored, and a
+language pack with an entry for the code replaces it. To keep the text, implement `Validate` and
+report with `ReportAuthored`.
+
+When a class implements `IConstraintFor<T>` for several types, the one for the property's exact type
+is used. A class that cannot be used this way is reported as `VM1602`, for example when two of its
+`IConstraintFor<T>` interfaces accept the property and neither is for its exact type.
+
+One attribute class can serve DataAnnotations and this library at once. Derive it from the
+DataAnnotations `ValidationAttribute` and override `IsValid(object?)` for DataAnnotations, then
+implement `IConstraintFor<T>` for the generator. The generator calls the `IConstraintFor<T>` members
+directly and does not treat the class as a DataAnnotations attribute. `ValidationContext` exists in
+both namespaces, so qualify it or use an alias in that file.
 
 `[PerValidationInstance]` on the attribute class makes the generator create a new instance for every
 check instead of sharing one. Use it only for an attribute that cannot be made immutable. Each use
@@ -186,9 +197,28 @@ The `ValidationContext` records errors and tracks the current path:
 | `Services` | The pass's `IServiceProvider`, when it has one. |
 | `HasErrors`, `ErrorCount`, `StopMode` | The state of the pass so far. |
 
+To validate a child object with another validator, push a context for it and pass that context by
+reference. The child's errors then carry the prefix:
+
+```csharp
+if (value.Home is { } home)
+{
+    var child = context.Push("home");
+    if (AddressValidator.Validate(ref child, home).ShouldStop)
+    {
+        return ValidationFlow.Stop;
+    }
+}
+```
+
+The contexts of one pass share one path buffer, so use them depth first. Finish with one child
+before pushing the next from the same parent. Reporting through a context after a sibling was pushed
+throws an `InvalidOperationException`. For work that runs concurrently, give each branch its own
+`ValidationErrorCollector` and merge the results.
+
 Every `Report` method takes an optional `severity`. Each returns a `ValidationFlow`. Return it when
-it is `ValidationFlow.Stop`, as the example does, so that a [fail-fast
-pass](./errors#stop-at-the-first-error) ends at the first error.
+it is `ValidationFlow.Stop`, as the example does, so that a pass that [stops at the first
+error](./errors#stop-at-the-first-error) can end there.
 
 `ConstraintChecks` exposes the checks the generated code uses: `IsEmail`, `IsPhone`, `IsUrl`,
 `IsCreditCard`, `IsBase64`, `HasFileExtension`, `IsMultipleOf` and `AllUnique`. The `Report`

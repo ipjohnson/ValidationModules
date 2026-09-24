@@ -47,17 +47,23 @@ are written in snake_case and the operators as words:
 | `x.Status == "active"` | `status_equal_active` |
 | `x.Total - x.Paid > 0` | `total_minus_paid_greater_than_0` |
 
-Changing the condition changes the code. The generator reports each derived code as `VM3103`, an
-informational diagnostic. Pass `code:` to fix the code when clients depend on it. When nothing can
-be derived, the code is `predicate`.
+Changing the condition changes the code. A local variable in the condition appears in the code
+under its own name, so renaming the variable changes the code too. The generator reports each
+derived code as `VM3103`, an informational diagnostic. Pass `code:` to fix the code when clients
+depend on it. When nothing can be derived, the code is `predicate`.
+
+The rules for deriving codes are versioned in the runtime, and they change only in a major release.
+An update to the library does not change the code of a condition you have not edited.
 
 ## Your own codes
 
-`Code` on a constraint attribute, `code:` on `Ensure`, and the `code` argument of a hand-written
-`Report` call set your own codes. Language packs can translate them like built-in codes.
+`Code` on a constraint attribute, `code:` on `Ensure`, and the `code` argument of a `Report` call or
+helper set your own codes. Language packs can translate them like built-in codes.
 
-`ValidationModules_CodeNamespace` adds a prefix to every code you set and every code derived from an
-`Ensure`:
+`ValidationModules_CodeNamespace` adds a prefix to the codes the generator sees: `Code` on a
+built-in attribute or a `CustomConstraintAttribute`, its `DefaultCode`, and the code of an `Ensure`,
+set or derived. Codes passed to `Report` calls, in a hand-written validator or through
+`rules.Context`, and the `Code` of an `IConstraintFor<T>` attribute, are not prefixed.
 
 ```xml
 <PropertyGroup>

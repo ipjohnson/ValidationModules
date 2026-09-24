@@ -13,15 +13,16 @@ Every constraint attribute derives from `ValidationConstraintAttribute`, which h
 | Property | Effect |
 | --- | --- |
 | `Code` | Replaces the error code. The default message is kept. |
-| `Message` | Replaces the message with literal text. `{field}` is the only placeholder. The text is authored, so language packs do not replace it. |
+| `Message` | Replaces the message with literal text. `{field}` is the only placeholder. On a built-in attribute or a `CustomConstraintAttribute`, the text is authored, so language packs do not replace it. |
 | `When` | The name of a member of the model. The constraint applies only when it is `true`. |
 | `Unless` | The name of a member of the model. The constraint applies only when it is `false`. |
 
 `When` and `Unless` accept a `bool` property, a parameterless method that returns `bool`, or a
 static method that takes the model and returns `bool`. A constraint cannot set both.
 
-`ValidationModules_CodeNamespace` adds a prefix to every code set with `Code`, as in
-`myapp.weight_out_of_range`. Built-in codes are never prefixed.
+`ValidationModules_CodeNamespace` adds a prefix to a code set with `Code` on a built-in attribute or
+a `CustomConstraintAttribute`, as in `myapp.weight_out_of_range`. It does not change the `Code` of
+an attribute that implements `IConstraintFor<T>`, and built-in codes are never prefixed.
 
 Every constraint except `[Required]` passes a `null` value. When `[Required]` fails, the other
 constraints on the property are skipped.
@@ -60,7 +61,8 @@ public int Max { get; init; }
 ```
 
 `[StringLength]` passes when the length of the string is between `Min` and `Max`, inclusive. Applies
-to `string` only.
+to `string` only. The length is `string.Length`, which counts UTF-16 code units, so a character
+outside the Basic Multilingual Plane, such as most emoji, counts as two.
 
 ::: warning
 The first constructor argument is the minimum. `[StringLength(50)]` means at least 50 characters.
@@ -212,8 +214,10 @@ public bool ExclusiveMax { get; init; }
 their nullable forms.
 
 The bounds are converted to the property's type at build time. String bounds are parsed with the
-invariant culture, as in `[Range("2024-01-01", "2030-12-31")]` on a `DateOnly`. Write dates without
-a time zone.
+invariant culture, as in `[Range("2024-01-01", "2030-12-31")]` on a `DateOnly`. Write `DateTime` and
+`DateOnly` bounds without a time zone. Give `DateTimeOffset` bounds an explicit offset, as in
+`2024-01-01T00:00:00+00:00`. A `DateTimeOffset` bound without one takes the offset of the machine
+that builds the project.
 
 | Code | Message |
 | --- | --- |
@@ -244,8 +248,9 @@ public object Divisor { get; }
 
 `[MultipleOf]` passes when the value divides by the divisor with no remainder. Applies to the
 integral types, `decimal`, `double` and `float`. For `double` and `float`, the check converts the
-value to `decimal` first, so `0.3` is a multiple of `0.1`. On an integral property the divisor must
-be a whole number.
+value to `decimal` first, so `0.3` is a multiple of `0.1`, and a value too large for `decimal`
+fails. On an integral property the divisor must be a whole number. Use the `string` constructor for
+an exact decimal divisor on a `decimal` property, as in `[MultipleOf("0.05")]`.
 
 | Code | Message |
 | --- | --- |

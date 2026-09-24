@@ -102,6 +102,69 @@ public sealed class SignUp
 }
 ```
 
+## Test an async validator
+
+An async validator takes a `ValidationContext`. Build one over a `ValidationErrorCollector`, call
+the validator, and read the result from the collector:
+
+```csharp
+using ValidationModules;
+using Xunit;
+
+public sealed class HandleIsFreeTests
+{
+    [Fact]
+    public async Task A_taken_handle_is_reported()
+    {
+        var collector = new ValidationErrorCollector();
+        var validator = new HandleIsFree(new FixedDirectory("taken"));
+
+        await validator.ValidateAsync(
+            new ValidationContext(collector),
+            new Account { Handle = "taken" }
+        );
+
+        var error = Assert.Single(collector.ToResult().Errors);
+        Assert.Equal("handle", error.Field);
+        Assert.Equal("handle_taken", error.Code);
+    }
+}
+
+public sealed class FixedDirectory(string taken) : IHandleDirectory
+{
+    public ValueTask<bool> IsTakenAsync(string handle, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(handle == taken);
+}
+```
+
+`Account`, `IHandleDirectory` and `HandleIsFree` are the types from [Async validation](./async).
+A collector created this way has no service provider, so field names are reported exactly as the
+validator writes them.
+
+## Test validators together without a container
+
+`ValidationRunner<T>` has a public constructor that takes the synchronous and asynchronous
+validators to run. It checks the same ordering as a runner from the container:
+
+```csharp
+[Fact]
+public async Task The_lookup_is_skipped_when_the_handle_is_missing()
+{
+    var runner = new ValidationRunner<Account>(
+        [new AccountValidator()],
+        [new HandleIsFree(new FixedDirectory("taken"))]
+    );
+
+    var result = await runner.ValidateAsync(new Account { Handle = "" });
+
+    Assert.Equal("required", Assert.Single(result.Errors).Code);
+}
+```
+
+A runner built this way has no service provider unless you pass one as the third argument. Its
+validators run as they were created, so a generated validator made with `new` uses only generated
+validators for its nested members.
+
 ## Debug a rule
 
 The generator reads a rules class and never calls it, so a breakpoint in `Describe` does not hit.

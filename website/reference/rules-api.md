@@ -19,8 +19,8 @@ generator reads the body and never calls it. A class can implement the interface
 
 `ValidationRules<T>` is the type of the `rules` parameter. Every method except `Ensure`, `As` and
 `Apply` returns a `PropertyRules<T, TValue>`, which later rules in the same chain apply to. Every
-method that takes a value also takes an optional `field:`, which replaces the field name derived
-from the value.
+method that takes a value, except `As`, also takes an optional `field:`, which replaces the field
+name derived from the value.
 
 ### Presence
 
@@ -77,7 +77,10 @@ Write `allowed` as an array or a collection expression of constants, such as
 | `Each<TElement>(IReadOnlyList<TElement>? value)` | Runs the validators for `TElement` on every element. | from those validators |
 | `Nested<TValue>(TValue? value)` | Runs the validators for `TValue` on the value. | from those validators |
 
-`Nested` is for a single object. Use `Each` for a collection of objects.
+`Nested` is for a single object. Use `Each` for a collection of objects. `Each` accepts a list of
+strings or of a reference type. For a list of numbers or other value types, check the elements in a
+loop and report through `Context`. `Nested` on a collection, `Nested` after `Each`, and `Each` after
+`Each` do not work in this version.
 
 ### Conditions
 
@@ -159,8 +162,9 @@ the member's field name at build time.
 These extension methods report a built-in code with its default message. They work on
 `rules.Context` in a rules class and on `ValidationContext` in a hand-written validator. Each takes
 the field first, then its own arguments, then optional `severity`, `code` and `value` arguments.
-`code` replaces the code and keeps the message. `value` records the failed value in
-`ValidationError.Value`.
+In `ReportRange`, `ReportRangeAtLeast` and `ReportRangeAtMost`, the exclusivity flags come last,
+after `value`, so pass them by name. `code` replaces the code and keeps the message. `value` records
+the failed value in `ValidationError.Value`.
 
 | Helper | Arguments | Code |
 | --- | --- | --- |

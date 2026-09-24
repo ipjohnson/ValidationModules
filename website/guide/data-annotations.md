@@ -53,7 +53,7 @@ writes the same checks it writes for the attributes in `ValidationModules.Constr
 | `[EmailAddress]`, `[Phone]`, `[Url]`, `[CreditCard]`, `[Base64String]`, `[FileExtensions]` | The same rules as the DataAnnotations attributes. | `email`, `phone`, `url`, `credit_card`, `base64`, `file_extension` |
 | `[CustomValidation]` on a property | Calls the named static method directly. | `custom` |
 | A class derived from `ValidationAttribute` | Creates the attribute once and calls it. | `custom` |
-| `IValidatableObject` on the model | Calls `Validate` after every other rule, when none has failed. | `custom` |
+| `IValidatableObject` on the model | Calls `Validate` after every other rule, when nothing has been reported. | `custom` |
 
 The generator reports what it does with some of these as informational diagnostics. `VM2004` states
 the exact rule a format attribute applies, `VM2002` notes that a custom `ValidationAttribute` runs
@@ -68,14 +68,16 @@ These attributes are not compiled, and the generator reports a warning:
 
 `[Display(Name = ...)]` is not a check. It supplies `{0}` in an `ErrorMessage`, and it also
 replaces the error's field name, so `[Display(Name = "Postal code")]` reports the field
-`Postal code`.
+`Postal code`. Through a runner, the name can be re-cased. See the warning under
+[Field names](./errors#field-names).
 
 ## Messages
 
-An attribute without `ErrorMessage` reports this library's code and default message, not the
+A built-in attribute without `ErrorMessage` reports this library's code and default message, not the
 DataAnnotations default text.
 
-An `ErrorMessage` is filled in at build time. `{0}` is the display name, which is the
+On a built-in attribute, an `ErrorMessage` is filled in at build time. `{0}` is the display name,
+which is the
 `[Display(Name)]` value or the property name. `{1}` and `{2}` are the attribute's arguments, in the
 order DataAnnotations uses:
 
@@ -101,9 +103,13 @@ true`, with these differences:
 - Every error has a code, and the default messages are this library's.
 - Attributes on fields and on the class itself are not read. Neither are `[MetadataType]` classes.
 - Attributes declared on an interface's properties apply to the classes that implement it.
-- `IValidatableObject.Validate` runs only when the whole validation pass so far has no errors,
-  including errors in other objects of the same graph.
+- `IValidatableObject.Validate` runs only when the whole validation pass has reported nothing so
+  far, warnings included, and including other objects of the same graph.
+- `[RegularExpression]` rejects an empty string unless the expression matches it. DataAnnotations
+  accepts an empty string for this attribute.
 - `[Range]` with its bounds in the wrong order is accepted at build time and always fails.
+- A custom `ValidationAttribute` that calls `ValidationContext.GetService` gets the pass's services
+  only when the pass has a service provider, as it does through `ValidationRunner<T>`.
 
 ## Names shared by both namespaces
 
@@ -147,7 +153,7 @@ you do change a file's `using` from `System.ComponentModel.DataAnnotations` to
 | `ErrorMessage = "The {0} field is invalid."` | `Message = "The {field} field is invalid."` |
 | `[EnumDataType(typeof(Tier))]` | `[EnumDefined]` on a property of type `Tier` |
 | `[Compare]`, `IValidatableObject` | A rules class |
-| A custom `ValidationAttribute` | A `CustomConstraintAttribute` or an `IConstraintFor<T>` attribute. See [Custom constraints](./custom-constraints). |
+| A custom `ValidationAttribute` | A `CustomConstraintAttribute` or an `IConstraintFor<T>` attribute. One class can also serve both. See [Custom constraints](./custom-constraints#a-check-with-state). |
 
 ## Turn the DataAnnotations support off
 
@@ -161,7 +167,9 @@ tell the generator to ignore them:
 ```
 
 The generator then reports `VM2001`, an informational diagnostic, for each attribute it ignores. The
-`ValidationModules.Constraints` attributes are compiled as usual.
+`ValidationModules.Constraints` attributes are compiled as usual. A type whose only rules are
+DataAnnotations attributes gets no validator at all, so `IValidatorFor<T>` no longer resolves for
+it.
 
 ## Native AOT
 

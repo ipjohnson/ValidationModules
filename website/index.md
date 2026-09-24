@@ -51,13 +51,14 @@ The generator writes `SignUpValidator` from these attributes. Validating
 ## What it does
 
 - The generator checks your declarations as it reads them. An attribute on the wrong kind of
-  member, a regular expression that does not parse, or a range with its bounds reversed is a build
-  error.
+  member, a regular expression that does not parse, or a length whose minimum is above its maximum
+  is a build error.
 - Each error has a field path, a stable code, a message and a severity. Code that reacts to
   errors can key on the code, and translations can replace the message.
 - The validators contain no reflection, so they work in trimmed and Native AOT applications.
-- The attribute names match `System.ComponentModel.DataAnnotations`. Models that already use
-  DataAnnotations attributes compile as they are.
+- Most attributes share their names with `System.ComponentModel.DataAnnotations`, such as
+  `[Required]`, `[StringLength]` and `[Range]`. Models that already use DataAnnotations attributes
+  compile as they are.
 - Companion packages validate ASP.NET Core minimal API arguments, check options when the host
   starts, and supply translated messages.
 

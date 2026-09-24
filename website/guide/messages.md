@@ -81,7 +81,9 @@ var messages = new ValidationMessageMap()
 
 Each mapping is a `ValidationMessageMap.MessageRenderer`, which takes the error by `in` reference,
 so a lambda needs the `in` modifier. A formatter is the only way for the captured `Value` to reach a
-message. The map replaces authored text as well, for the codes it maps.
+message. The map replaces authored text as well, for the codes it maps. A map has no notion of
+culture. To translate with one, read `CultureInfo.CurrentUICulture` in each renderer, or keep one
+map per culture.
 
 For full control, derive from `ValidationMessageFormatter` and override `Format`. The error's
 `MessageInfo` holds the template and its arguments. `MessageInfo.Render(in error, template,
@@ -151,7 +153,12 @@ details responses.
 
 When several packs cover the same culture, a pack registered later wins for each key it defines.
 Packs in your project are registered after the packs from `ValidationModules.Messages`, so your own
-file can reword a few messages and inherit the rest.
+file can reword a few messages and inherit the rest. Within one pack, a shape key such as
+`range.between` takes precedence over the bare code `range`.
+
+`IValidationLanguagePack` has two members, `Culture` and `Templates`, so a pack can also be a class
+of your own, for example one that loads its templates from a database. `new
+LanguagePackFormatter(packs)` builds a formatter from any set of packs, without a container.
 
 The generator checks each pack at build time:
 
@@ -162,7 +169,7 @@ The generator checks each pack at build time:
 | `VM4003` | A template uses more arguments than its shape has. The entry is skipped. |
 | `VM4004` | A key appears twice. The later entries are skipped. |
 | `VM4005` | The culture in the file name differs from the `culture` in the file. |
-| `VM4006` | Information: how many of the 34 shapes the pack covers. |
+| `VM4006` | Information: the pack leaves out some of the 34 shapes, whose messages stay in English. |
 
 ## Built-in languages
 
@@ -189,13 +196,45 @@ A language that is not selected is not compiled into the assembly.
 
 The text of these errors is authored, and `MessageIsAuthored` is `true`:
 
-- a constraint attribute's `Message`, and a custom constraint's `DefaultMessage`
+- `Message` on a built-in attribute, and `Message` or `DefaultMessage` on a
+  `CustomConstraintAttribute`
 - an `Ensure` with `message:`
 - a hand-written `ReportAuthored` call
-- a DataAnnotations attribute's `ErrorMessage`
+- `ErrorMessage` on a built-in DataAnnotations attribute
 
 `LanguagePackFormatter` returns authored text unchanged. `ValidationMessageMap` does not check the
 flag, and replaces the text of any code it maps.
+
+Other text you write is not authored, and a language pack with an entry for its code replaces it.
+That covers a `Report` call in a hand-written validator or through `rules.Context`, the `Message` of
+an `IConstraintFor<T>` attribute that uses the default `Validate`, and the messages of custom
+DataAnnotations attributes, `[CustomValidation]` methods and `IValidatableObject`, which all report
+the code `custom`. Every pack in `ValidationModules.Messages` has an entry for `custom`, so with
+that package installed those messages become its general sentence, such as `{field} n'est pas
+valide.` in French. A pack entry that replaces a message without template arguments can use only
+`{field}`.
+
+## Messages with arguments from code
+
+A hand-written validator can report a message built from a template and its arguments, so that
+formatters and language packs treat it like a built-in message. `ValidationMessageTemplates` has a
+field for each built-in template, and `ValidationMessageTemplates.TemplatesByKey` maps each shape
+key to its template:
+
+```csharp
+private static readonly ValidationMessageInfo TooHeavy = new(
+    ValidationMessageTemplates.RangeAtMost,
+    25
+);
+
+public ValidationFlow Validate(ref ValidationContext context, Pallet value) =>
+    value.WeightKg > 25
+        ? context.Report("weightKg", ValidationCodes.Range, value.WeightKg, TooHeavy)
+        : ValidationFlow.Continue;
+```
+
+This reports `weightKg must be at most 25.`, and a pack's `range.at_most` entry translates it. The
+`Report` helpers, such as `ReportRangeAtMost`, build the same kind of message for you.
 
 ## Messages for DataAnnotations resources
 
@@ -203,4 +242,5 @@ A DataAnnotations attribute that takes its message from a resource, with `ErrorM
 is compiled to a `ValidationMessageInfo` whose `Provider` reads the resource property each time the
 message is rendered. The provider is a `DelegateMessageProvider`, which implements
 `IValidationMessageProvider`. This keeps resource messages working without reflection. You do not
-create these types yourself unless you build a `ValidationMessageInfo` by hand.
+create these types yourself unless you build a `ValidationMessageInfo` by hand. A resource message
+is not authored, so a language pack entry for its shape replaces it.

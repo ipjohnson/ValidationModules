@@ -69,8 +69,14 @@ app.Run();
 
 `.Validate<CreateOrder>()` adds an endpoint filter. For each request it finds the handler's
 `CreateOrder` argument, validates it, and runs the handler only when the result is valid.
-`AddValidationProblemDetails()` configures the response. `UseExceptionHandler()` and
+`AddValidationProblemDetails()` configures the response. The filter works without it, with the
+default options, but the call is needed to change the options and to turn a thrown
+`ValidationException` into a response. It also calls `AddProblemDetails()`, which
+`UseExceptionHandler()` needs when it is given no arguments. `UseExceptionHandler()` and
 `UseStatusCodePages()` turn other failed requests into problem details too, as described below.
+
+The repository's `integ-tests/ApiDemo` project runs this setup, and its tests check the responses
+shown on this page.
 
 ## The response
 
@@ -135,7 +141,8 @@ app.MapPost("/orders/strict", (CreateOrder order) => Results.Ok(order))
 ```
 
 The `type` member follows the status: `422` gives
-`https://tools.ietf.org/html/rfc9110#section-15.5.21`.
+`https://tools.ietf.org/html/rfc9110#section-15.5.21`. A status with no section in RFC 9110 gives
+`about:blank`. A `Type` set in the options is kept for every status.
 
 ## Options
 
@@ -211,7 +218,9 @@ app.MapPost("/orders/batch", (List<CreateOrder> orders) => Results.Ok(orders.Cou
 ```
 
 The error keys start with the element's index, as in `[1].reference`. Other collection types, such
-as `IReadOnlyList<T>`, need a hand-written validator.
+as `IReadOnlyList<T>`, need a hand-written validator. A rule about the list as a whole, such as a
+maximum batch size, goes in a hand-written `IValidatorFor<List<CreateOrder>>`. Registered after the
+generated validators, it runs alongside the per-element checks.
 
 ## Build a response yourself
 
@@ -228,7 +237,8 @@ These methods use the `options` you pass, or the defaults when you pass none. Th
 options configured with `AddValidationProblemDetails`.
 
 There is no filter for MVC controllers. In a controller action, validate with `ValidationRunner<T>`
-and return the problem details from `ToProblemDetails`.
+and return the problem details from `ToProblemDetails`. The package also adds nothing to OpenAPI
+documents. The rules do not appear in a generated schema.
 
 ## Native AOT
 

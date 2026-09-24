@@ -85,7 +85,9 @@ services.AddCollectionValidatorsFor<Invoice>();
 ```
 
 `AddCollectionValidatorsFor<T>` is needed only when lists or arrays of the type are validated, for
-example as an ASP.NET Core request body.
+example as an ASP.NET Core request body. It registers the synchronous and asynchronous collection
+validators and their runners. Calling it twice registers them twice. `AddValidationRunner<T>` can be
+called more than once, because it adds nothing when a runner is already registered.
 
 ## Validators from other assemblies
 
@@ -127,11 +129,18 @@ public partial class ApplicationModule;
 ```
 
 The entry point class must be `partial` and must not be nested in another type. Do not also call
-`AddShopValidators()`, or every validator is registered twice.
+`AddShopValidators()`, or every validator is registered twice. Hand-written validators can be
+registered with DependencyModules' own service attributes, and they combine with the generated ones
+in the same way.
+
+An application built on Hardened works the same way. A class marked `[HardenedModule]` is an entry
+point, and the generator registers the project's validators into it.
 
 A project with no entry point, such as a library of models, gets a generated class named
-`ValidationModule` in the assembly's root namespace. It implements `IDependencyModule`, so an
-application can add it with `services.AddModule<ValidationModule>()`.
+`ValidationModule`. Its namespace is the assembly name, with any character that cannot appear in a
+namespace replaced by `_`, so an assembly named `my-models` gets `my_models.ValidationModule`. It
+implements `IDependencyModule`, so an application can add it with
+`services.AddModule<ValidationModule>()`.
 
 A project that declares more than one entry point registers its validators into each of them, and
 the generator reports `VM6001`. Remove the attribute from the classes that are not applications, or
@@ -164,4 +173,13 @@ var validator = new SignUpValidator();
 ```
 
 A validator created this way uses the generated validators for its nested types, and never runs a
-hand-written validator for them.
+hand-written validator for them. A validator with nested members also has a constructor that takes
+the validators for each nested member, named after the member. An empty sequence falls back to the
+generated validator:
+
+```csharp
+var validator = new OrderValidator(
+    shipTo: [new AddressValidator(), new UkPostcodeValidator()],
+    lines: []
+);
+```

@@ -24,6 +24,18 @@ Set the severity of one id in `.editorconfig`:
 dotnet_diagnostic.VM1201.severity = none
 ```
 
+A `[*.cs]` section applies only to diagnostics reported in C# files. The language pack diagnostics
+are reported at the JSON file, and `VM5001`, `VM5002` and `VM6001` have no location, so set their
+severity in a `.globalconfig` file, or list them in `<NoWarn>`:
+
+```ini
+is_global = true
+dotnet_diagnostic.VM4006.severity = warning
+```
+
+To silence one declaration, put `#pragma warning disable VM1201` before it and
+`#pragma warning restore VM1201` after it.
+
 Every id is in the category `ValidationModules.Usage`, but a category-wide rule such as
 `dotnet_analyzer_diagnostic.category-ValidationModules.Usage.severity` reaches only `VM5003`. The
 source generator reports every other id, and category rules apply only to analyzers. Set the
@@ -309,7 +321,7 @@ collection.
 **Severity:** Info
 
 The model implements `IValidatableObject`. Its `Validate` method runs after every other rule,
-and only when none of them failed.
+and only when nothing has been reported in the pass so far, warnings included.
 
 ### VM2007
 
@@ -341,9 +353,12 @@ from being trimmed.
 
 `Describe` contains something the generator cannot copy into the validator. The message names it.
 The cases are a `try`, `lock`, `using` or `goto` statement, a `return` with a value, an assignment
-to a member of `x`, `Apply` anywhere but the top level of `Describe`, an `Apply` whose argument is
-not a method group, `Require`, `Nested` or `Each` chained after `Each`, `Nested` or `Each` inside a
-fragment, and a rule call that does not compile.
+to a member of `x`, `Apply` anywhere but the top level of `Describe`, `Require` chained after
+`Each`, `Nested`, `Each` or `Apply` inside a fragment, and a rule call that does not compile.
+
+Pass `Apply` a method group. A lambda passed to `Apply` produces generated code that does not
+compile in this version, and no diagnostic reports it. `Nested` or `Each` chained after `Each` is
+not supported either. See [the rules API reference](./rules-api#collections).
 
 ### VM3002
 
@@ -357,8 +372,9 @@ a fragment or `As` given something other than `x`.
 
 **Severity:** Error
 
-A rule is declared inside a loop, a lambda or a local function. Use `Each` for per-element
-rules, or report from the loop through `rules.Context`.
+A rule is declared inside a loop or a local function. A local function also gives `VM3002`, and a
+rule inside a lambda gives `VM3002` alone. Use `Each` for per-element rules, or report from the loop
+through `rules.Context`.
 
 ### VM3004
 
@@ -463,7 +479,8 @@ is used.
 **Severity:** Info
 
 The pack does not cover every shape. The message lists the missing keys. Messages for those
-shapes stay in English.
+shapes stay in English. To require complete packs, raise it to a warning or an error in a
+`.globalconfig` file, as shown under [Changing a severity](#changing-a-severity).
 
 ## Generator and runtime
 
@@ -506,3 +523,44 @@ The project declares more than one module entry point, marked `[DependencyModule
 `[HardenedModule]`, and the validators are registered into each of them. Remove the attribute from
 the classes that are not applications. When the project contains two applications on purpose, add
 `VM6001` to `<NoWarn>`.
+
+## Ids before 1.0.0
+
+Before 1.0.0 the ids were numbered `VM0001` to `VM0108`. A `.editorconfig` or `<NoWarn>` entry that
+uses an old id has no effect now. Replace it with the new id:
+
+| Before 1.0.0 | Now | Before 1.0.0 | Now |
+| --- | --- | --- | --- |
+| `VM0001` | `VM1001` | `VM0065` | `VM1103` |
+| `VM0002` | `VM1002` | `VM0067` | `VM2006` |
+| `VM0003` | `VM1003` | `VM0068` | `VM2007` |
+| `VM0004` | `VM1201` | `VM0070` | `VM3001` |
+| `VM0006` | `VM1106` | `VM0071` | `VM3007` |
+| `VM0007` | `VM1501` | `VM0075` | `VM3102` |
+| `VM0008` | `VM1101` | `VM0079` | `VM1010` |
+| `VM0009` | `VM1007` | `VM0080` | `VM2008` |
+| `VM0010` | `VM2001` | `VM0081` | `VM2009` |
+| `VM0016` | `VM1302` | `VM0082` | `VM1601` |
+| `VM0017` | `VM1301` | `VM0083` | `VM1602` |
+| `VM0018` | `VM1107` | `VM0084` | `VM1603` |
+| `VM0021` | `VM1004` | `VM0085` | `VM3005` |
+| `VM0022` | `VM1104` | `VM0086` | `VM3006` |
+| `VM0023` | `VM1105` | `VM0087` | `VM3002` |
+| `VM0024` | `VM1005` | `VM0088` | `VM3004` |
+| `VM0025` | `VM1202` | `VM0089` | `VM3003` |
+| `VM0026` | `VM1102` | `VM0090` | `VM3101` |
+| `VM0027` | `VM1006` | `VM0091` | `VM3105` |
+| `VM0028` | `VM1401` | `VM0092` | `VM3103` |
+| `VM0029` | `VM1402` | `VM0093` | `VM3104` |
+| `VM0030` | `VM1009` | `VM0100` | `VM4001` |
+| `VM0031` | `VM1503` | `VM0101` | `VM4002` |
+| `VM0032` | `VM1504` | `VM0102` | `VM4003` |
+| `VM0033` | `VM1403` | `VM0103` | `VM4004` |
+| `VM0040` | `VM5001` | `VM0104` | `VM4005` |
+| `VM0051` | `VM1008` | `VM0105` | `VM4006` |
+| `VM0060` | `VM2002` | `VM0106` | `VM1502` |
+| `VM0061` | `VM2003` | `VM0107` | `VM5002` |
+| `VM0063` | `VM2004` | `VM0108` | `VM5003` |
+| `VM0064` | `VM2005` |  | |
+
+`VM6001` was added in 1.1.0 and has no earlier id.

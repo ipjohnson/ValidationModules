@@ -7,8 +7,9 @@ nothing to compile at run time.
 ## How this is checked
 
 - `ValidationModules.Runtime`, `ValidationModules.AspNetCore` and `ValidationModules.Options` are
-  built with `IsAotCompatible` set. Their builds treat the trim and AOT analysis warnings as errors,
-  so none of their code can use reflection that the trimmer cannot follow.
+  built with `IsAotCompatible` set. Their builds treat the main trim and AOT analysis warnings as
+  errors, so none of their code can use reflection that the trimmer cannot follow. In continuous
+  integration every warning is an error.
 - Every build of the repository publishes test applications with `PublishAot` and runs them. They
   exercise generated validators, the registration method, runners, list validation, and an
   ASP.NET Core application that uses the endpoint filter and the exception handler. A publish that
@@ -62,7 +63,7 @@ Two properties remove code that a size-sensitive application may not need:
 
 | Property | Removes |
 | --- | --- |
-| `ValidationModules_FailFast` set to `false` | The early return after each check. A fail-fast pass then runs every check, though it still records one error. |
+| `ValidationModules_FailFast` set to `false` | The early return after each check. A `StopOnFirstError` pass then runs every check, though it still records one error. |
 | `ValidationModules_CaptureValues` set to `false` | The capture of the failed value into `ValidationError.Value`. |
 
 The [MSBuild reference](../reference/msbuild) lists every property.

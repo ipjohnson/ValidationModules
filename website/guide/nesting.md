@@ -29,7 +29,9 @@ An order whose address has no postcode reports the field `shipTo.postcode` with 
 `postcode is required.` The message names the last segment of the path, and `Field` holds the
 whole path.
 
-A `null` property is skipped. Add `[Required]` to the property when the object must be present.
+A `null` property is skipped. Add `[Required]` to the property when the object must be present. The
+nested type can also be a struct, and a property of a nullable struct type is skipped when it has no
+value.
 
 The nested type needs rules of its own: constraint attributes, a rules class, or
 `[GenerateValidator]`. When it has none, the generator reports `VM1501` and drops the descent.
@@ -81,7 +83,8 @@ public Dictionary<string, Address> Addresses { get; init; } = [];
 ```
 
 A value under the key `work` with no postcode reports `addresses[work].postcode`. Keys are not
-validated.
+validated. A key is written into the path as its `ToString()` text, unchanged, so a key that comes
+from user input appears in the error's `Field` as it was sent.
 
 ## Subtypes
 
@@ -156,7 +159,9 @@ public AutoDetail? Auto { get; init; }
 A type can contain itself, directly or through other types, as in a tree of categories. The
 generator handles the cycle in the type graph. An object graph that contains a cycle at run time,
 such as a node that is its own child, stops at the depth limit of 64 levels with an
-`InvalidOperationException` rather than a stack overflow.
+`InvalidOperationException` rather than a stack overflow. The limit cannot be raised. Data that is
+legitimately deeper than 64 levels has to be validated in parts, without `[ValidateNested]` on the
+recursive property.
 
 ## Hand-written validators for nested types
 

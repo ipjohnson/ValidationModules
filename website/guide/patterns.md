@@ -98,7 +98,13 @@ public sealed class Account
 }
 ```
 
-`RegexOptions.Compiled` is reported as `VM1302`. Leave it out.
+When the timeout expires, `IsMatch` throws a `RegexMatchTimeoutException`. The validator does not
+catch it, so it leaves `Validate` and `IsValid` as an exception, and an ASP.NET Core endpoint
+answers `500`. Catch it where you validate if a slow input should become a validation error.
+
+`RegexOptions.Compiled` is reported as `VM1302`. Leave it out. In a Native AOT binary, an inline
+pattern with `Options` or a timeout also keeps code that an inline pattern without them lets the
+trimmer remove.
 
 ## In a rules class
 

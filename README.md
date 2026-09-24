@@ -101,8 +101,8 @@ method itself is never called.
 
 ## Compared with DataAnnotations
 
-- The attributes have the names you know from `System.ComponentModel.DataAnnotations`:
-  `[Required]`, `[StringLength]`, `[Range]`, `[EmailAddress]` and the rest.
+- Most attributes share their names with `System.ComponentModel.DataAnnotations`, such as
+  `[Required]`, `[StringLength]`, `[Range]` and `[EmailAddress]`.
 - DataAnnotations finds and runs the attributes with reflection when you validate. Here the checks
   are compiled into the validator.
 - An attribute on the wrong kind of member is a build error. `[Range]` on a member whose type has
@@ -129,6 +129,11 @@ method itself is never called.
 - [Rules classes](https://ipjohnson.github.io/ValidationModules/guide/rule-classes)
 - [ASP.NET Core](https://ipjohnson.github.io/ValidationModules/guide/aspnetcore)
 - [Diagnostics reference](https://ipjohnson.github.io/ValidationModules/reference/diagnostics)
+
+## Contributing
+
+[AGENTS.md](https://github.com/ipjohnson/ValidationModules/blob/main/AGENTS.md) describes how to
+build and test the repository, and the conventions the code follows.
 
 ## License
 

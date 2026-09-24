@@ -15,8 +15,8 @@ public sealed class Product
     [Range(0.01, 10_000)]
     public decimal Price { get; init; }
 
-    [Pattern("^[A-Z]{3}-[0-9]{4}$")]
-    public string? Sku { get; init; }
+    [Url]
+    public string? ImageUrl { get; init; }
 
     [AllowedValues("draft", "active", "retired")]
     public string? Status { get; init; }
@@ -79,7 +79,7 @@ true` to reject only `null`. On a collection, `[Required]` rejects only `null`, 
 passes. Use `[ItemCount(min: 1)]` to require at least one item.
 
 When `[Required]` fails, the other constraints on the same property are skipped. The property then
-reports one error.
+reports one error. `[Required]` is checked first, whatever the order of the attributes.
 
 `[Required]` on a property whose type is a non-nullable value type, such as `int` or `Guid`, can
 never fail. The generator reports `VM1201` and drops it. Make the property nullable, or constrain
@@ -114,7 +114,9 @@ bound exclusive, and the named `Min` and `Max` properties set one bound alone:
 
 String bounds are parsed at build time as the property's own type, so they work for `DateTime`,
 `DateOnly`, `TimeOnly`, `TimeSpan`, `DateTimeOffset` and `decimal`. A bound that does not parse is
-reported as `VM1103`.
+reported as `VM1103`. Write `DateTime` and `DateOnly` bounds without a time zone. Give a
+`DateTimeOffset` bound an explicit offset, as in `2024-01-01T00:00:00+00:00`, because a bound
+without one takes the offset of the machine that builds the project.
 
 ## Codes and messages
 
@@ -141,11 +143,12 @@ public sealed class Parcel
 
 `Message` is literal text. The one placeholder is `{field}`, which becomes the property's field
 name, here `contactEmail`. Other placeholders, such as `{0}`, are printed as written. A language
-pack never replaces a `Message` you set. The default messages are listed in
+pack does not replace a `Message` set on a built-in attribute or on a `CustomConstraintAttribute`.
+The default messages are listed in
 [Messages and languages](./messages#default-messages).
 
-Constraint attributes always report `Error` severity. For a warning, use `Ensure` with `severity:`
-in a [rules class](./rule-classes#ensure).
+The built-in constraint attributes always report `Error` severity. For a warning, use `Ensure`
+with `severity:` in a [rules class](./rule-classes#ensure).
 
 ## Conditions
 
@@ -175,7 +178,8 @@ public sealed class Shipment
 The member can be a `bool` property, a parameterless method that returns `bool`, or a static method
 that takes the model and returns `bool`. A name that does not exist is reported as `VM1401`, a
 member of another shape as `VM1402`, and a constraint that sets both `When` and `Unless` as
-`VM1403`. Conditions that involve more than one member are easier to write in a rules class.
+`VM1403`. Each condition is evaluated once for each validation. Conditions that involve more than
+one member are easier to write in a rules class.
 
 ## Where attributes go
 
@@ -199,9 +203,11 @@ public sealed record Customer(
 Without `property:`, the generator reports `VM1008` and the attribute has no effect.
 
 A type inherits the constraints on the properties of its base classes and on the interfaces it
-implements. The base class's properties are checked first. A property that hides a base property
-with `new` replaces the base property's constraints. The generator reports `VM1009` when the new
-property declares constraints of its own.
+implements. The base class's properties are checked first. An `override` keeps the base property's
+constraints and adds its own. A property that hides a base property with `new` replaces the base
+property's constraints. The generator reports `VM1009` when the new property declares constraints
+of its own. It does not read explicit interface implementations, or base properties the validator
+cannot reach, such as `protected` properties or `internal` properties in another assembly.
 
 A generic type cannot carry constraints, because its validator could not be registered without
 `MakeGenericType`. The generator reports `VM1010`. Put the constraints on a closed type instead.

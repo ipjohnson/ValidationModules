@@ -10,7 +10,8 @@ dotnet add package ValidationModules.Runtime
 dotnet add package ValidationModules.SourceGenerator
 ```
 
-`ValidationModules.Runtime` contains the attributes and the types your code calls.
+`ValidationModules.Runtime` contains the attributes and the types your code calls. Its only
+dependency is `Microsoft.Extensions.DependencyInjection.Abstractions`.
 `ValidationModules.SourceGenerator` contains the source generator. It is a development dependency,
 so it does not flow to projects that reference yours. Add it to every project that declares
 validated types.
@@ -101,7 +102,9 @@ if (!result.IsValid)
 }
 ```
 
-`Validate` is an extension method in the `ValidationModules` namespace. The program prints:
+`Validate` is an extension method in the `ValidationModules` namespace. Without
+`using ValidationModules;`, the call fails with error `CS7036`, because the compiler finds only the
+validator's own `Validate` method, which takes a context. The program prints:
 
 ```text
 email: email: email is not a valid email address.
