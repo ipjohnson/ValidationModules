@@ -75,6 +75,106 @@ public class HintNameCollisionTests
     }
 
     /// <summary>
+    /// A partial type reaches the generator once per declaration. Building it once per declaration
+    /// added its validator twice, and the second <c>AddSource</c> threw on the duplicate hint name.
+    /// </summary>
+    [Fact]
+    public void Generate_PartialTypeDeclaredInTwoParts_EmitsOneValidatorCheckingBoth()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public partial record Pet {
+                [Required] public string? Name { get; init; }
+            }
+
+            public partial record Pet {
+                [Required] public string? Tag { get; init; }
+            }
+            """
+        );
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM5002");
+        Assert.Empty(result.CompilationErrors);
+
+        var validator = result.Sources["Sample.PetValidator.g.cs"];
+
+        Assert.Contains("\"name\"", validator);
+        Assert.Contains("\"tag\"", validator);
+    }
+
+    /// <summary>
+    /// A partial rules class was read once per declaration, so its companion declared the same
+    /// <c>Describe</c> overload twice and the validator's call to it was ambiguous.
+    /// </summary>
+    [Fact]
+    public void Generate_PartialRulesClassDeclaredInTwoParts_EmitsOneRegion()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules;
+
+            namespace Sample;
+
+            public record Pet {
+                public string? Name { get; init; }
+            }
+
+            public sealed partial class PetRules : IValidationRulesFor<Pet> {
+                public static void Describe(ValidationRules<Pet> rules, Pet x) => rules.Require(x.Name);
+            }
+
+            public sealed partial class PetRules { }
+            """
+        );
+
+        Assert.Empty(result.CompilationErrors);
+        Assert.Equal(
+            1,
+            result
+                .Sources["Sample.PetRules_Rules.g.cs"]
+                .Split("public static global::ValidationModules.ValidationFlow Describe(")
+                .Length - 1
+        );
+    }
+
+    /// <summary>
+    /// A partial subtype was indexed under its base once per declaration, so a compile-time
+    /// dispatch over the base matched it in two switch arms.
+    /// </summary>
+    [Fact]
+    public void Generate_PartialSubtypeDeclaredInTwoParts_IsDispatchedOnce()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public class Item {
+                [Required] public string? Sku { get; init; }
+            }
+
+            public sealed partial class Bundle : Item {
+                [Required] public string? Name { get; init; }
+            }
+
+            public sealed partial class Bundle { }
+
+            public sealed class Order {
+                [ValidateNested(Polymorphism.CompileTime)] public Item? Line { get; init; }
+            }
+            """
+        );
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM5002");
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    /// <summary>
     /// The global namespace has no prefix to qualify with, so its validators keep the bare file name
     /// - and a global-namespace type must still not collide with a namespaced one of the same name.
     /// </summary>
