@@ -41,7 +41,10 @@ public enum PropertyShape
 /// shape as <see cref="ConstraintModel.Condition"/>: a complete boolean expression in terms of
 /// <c>value</c>, negation already baked in, null when the descent is unconditional.
 /// </param>
-/// <param name="Polymorphism">How the descent treats subtypes of the nested type.</param>
+/// <param name="Polymorphism">
+/// How the <c>[ValidateNested]</c> descent treats subtypes of the nested type. A rules-class
+/// descent states its mode in <see cref="RegionCompileTime"/> and <see cref="RegionRuntime"/>.
+/// </param>
 /// <param name="Subtypes">
 /// The subtypes a <see cref="PolymorphismMode.CompileTime"/> descent dispatches to, already sorted
 /// most-derived first. Empty for every other mode.
@@ -68,6 +71,15 @@ public enum PropertyShape
 /// Whether a default value reads as missing, as a default <c>ImmutableArray&lt;T&gt;</c> does.
 /// Reads of it test <c>IsDefault</c> where a reference type's test null.
 /// </param>
+/// <param name="RegionCompileTime">
+/// A rules-class descent into this property passes <c>Polymorphism.CompileTime</c>. The validator
+/// writes the type switch a <c>[ValidateNested]</c> descent gets into a method of its own, and the
+/// region calls that method for each value it reaches.
+/// </param>
+/// <param name="RegionRuntime">
+/// A rules-class descent into this property passes <c>Polymorphism.Runtime</c>. The validator
+/// writes the runtime lookup into a method of its own, as for <see cref="RegionCompileTime"/>.
+/// </param>
 public sealed record ValidatedPropertyModel(
     string PropertyName,
     string FieldName,
@@ -88,5 +100,14 @@ public sealed record ValidatedPropertyModel(
     string? DisplayName = null,
     bool NestedWalkInRegion = false,
     string? Label = null,
-    bool MissingWhenDefault = false
-) : IEquatable<ValidatedPropertyModel>;
+    bool MissingWhenDefault = false,
+    bool RegionCompileTime = false,
+    bool RegionRuntime = false
+) : IEquatable<ValidatedPropertyModel>
+{
+    /// <summary>
+    /// Whether a descent into this property resolves its validators through the container, from
+    /// <c>[ValidateNested]</c> or from a rules class.
+    /// </summary>
+    public bool DispatchesAtRuntime => Polymorphism == PolymorphismMode.Runtime || RegionRuntime;
+}

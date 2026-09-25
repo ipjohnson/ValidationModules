@@ -40,8 +40,9 @@ namespace ValidationModules.SourceGenerator.Impl.Models;
 /// The rules-class regions this validator calls, ordered by rules-class name (ordinal). Each is a
 /// method in a companion file carrying the rules class's own using directives; the validator calls
 /// it after the attribute-declared checks, passing the injected validator arrays its descents
-/// need. A type with any region loses the straight-line <c>IsValid</c> - regions carry free-form
-/// computation and reporter calls a boolean path with no collector cannot always project.
+/// need, and itself when a descent dispatches on the value's type. A type with any region loses
+/// the straight-line <c>IsValid</c> - regions carry free-form computation and reporter calls a
+/// boolean path with no collector cannot always project.
 /// </param>
 /// <param name="ObjectRules">
 /// The class-level DataAnnotations rules, in the order <c>Validator.TryValidateObject</c> reads
@@ -84,8 +85,9 @@ public sealed record MemberFieldName(string MemberName, string FieldName)
     : IEquatable<MemberFieldName>;
 
 /// <summary>
-/// One transcribed rules-class region: where its method lives and which of the validator's
-/// injected sets it takes, in parameter order.
+/// One transcribed rules-class region: where its method lives and what the validator passes it
+/// after the value, in parameter order. That is each injected set a descent walks, and
+/// <c>this</c> when a descent dispatches on the value's type.
 /// </summary>
 public sealed record RegionModel(
     string CompanionQualifiedName,

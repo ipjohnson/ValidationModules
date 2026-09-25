@@ -232,9 +232,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                 // still means "this assembly never registered" rather than "this type had no rules".
                 var dispatchesDynamically = results.Any(result =>
                     result.Model is { } model
-                    && model.Properties.Any(property =>
-                        property.Polymorphism == PolymorphismMode.Runtime
-                    )
+                    && model.Properties.Any(property => property.DispatchesAtRuntime)
                 );
 
                 // Built over every model in the compilation, which this loop already has in hand - so
@@ -403,9 +401,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                     .ToArray();
 
                 var withAdapters = ordered.Any(model =>
-                    model.Properties.Any(property =>
-                        property.Polymorphism == PolymorphismMode.Runtime
-                    )
+                    model.Properties.Any(property => property.DispatchesAtRuntime)
                 );
 
                 // Distinct, because a partial type declared across three files reaches the syntax
@@ -928,7 +924,8 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                         dependency.Property,
                         null,
                         null,
-                        dependency.Elements ? Nesting.Elements : Nesting.Object
+                        dependency.Elements ? Nesting.Elements : Nesting.Object,
+                        Polymorphism: dependency.Polymorphism
                     ))
                 )
                 .ToArray(),
@@ -941,7 +938,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                     "Describe",
                     new EquatableArray<string>(
                         ImmutableArray.CreateRange(
-                            declaration.Dependencies.Select(static dependency =>
+                            declaration.Parameters.Select(static dependency =>
                                 dependency.AccessorName
                             )
                         )

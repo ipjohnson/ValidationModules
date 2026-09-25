@@ -103,7 +103,9 @@ rules.Require(x.Guest?.Trim(), field: "guest");
 | `Count(list, min, max)` | The number of items is within the bounds. | `array_bounds` |
 | `Unique(items)` | No item appears twice. | `unique_items` |
 | `Nested(value)` | Runs the validators for the member's type. | from those validators |
+| `Nested(value, polymorphism)` | Runs the validators that `polymorphism` chooses for the value's actual type. | from those validators |
 | `Each(list)` | Runs the rules that follow for every element. | from those rules |
+| `Each(list, polymorphism)` | Runs the validators that `polymorphism` chooses for each element's actual type. | from those validators |
 | `Ensure(condition)` | Any `bool` expression. | derived, see below |
 
 Every rule except `Require`, `RequireAllowingEmpty` and `Ensure` passes a `null` value, and a
@@ -403,9 +405,51 @@ are reported as `VM3001`. For a list of numbers or other value types, check the 
 and report through `rules.Context`. [Nested objects and
 collections](./nesting) describes how paths are built.
 
-`Nested` and `Each` run only the validators for the declared type, and a descent into a type that
-is not sealed is reported as `VM3111`. [Subtypes](./nesting#subtypes) describes how to run the
-validators for a more derived type.
+When a member can hold a more derived type, pass a `Polymorphism` to run the validators for the
+value's actual type. `Polymorphism` is in the `ValidationModules.Constraints` namespace:
+
+<!-- verify -->
+```csharp
+using ValidationModules;
+using ValidationModules.Constraints;
+
+public class Animal
+{
+    [Required]
+    public string? Name { get; init; }
+}
+
+public sealed class Dog : Animal
+{
+    [Required]
+    public string? Breed { get; init; }
+}
+
+public sealed class Household
+{
+    public Animal? Pet { get; init; }
+    public IReadOnlyList<Animal>? Pets { get; init; }
+}
+
+public sealed class HouseholdRules : IValidationRulesFor<Household>
+{
+    public static void Describe(ValidationRules<Household> rules, Household x)
+    {
+        rules.Nested(x.Pet, Polymorphism.CompileTime);
+        rules.Each(x.Pets, Polymorphism.CompileTime);
+    }
+}
+```
+
+A household whose pet is a `Dog` with no breed reports `pet.breed`, because `CompileTime` runs the
+`Dog` validator. A pet that is an `Animal` and not a `Dog` runs the `Animal` validator. Each element
+of `Pets` runs the validator for its own type. `Polymorphism.Runtime` looks the validators up in the
+container instead. [Subtypes](./nesting#subtypes) describes the modes, which work as they do on
+`[ValidateNested]`.
+
+Without the argument, `Nested` and `Each` run only the validators for the declared type, and a
+descent into a type that is not sealed is reported as `VM3111`. Pass `Polymorphism.DeclaredOnly` to
+keep that behaviour without the warning.
 
 ## Rules classes and attributes together
 

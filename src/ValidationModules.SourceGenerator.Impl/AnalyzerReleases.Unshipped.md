@@ -20,5 +20,5 @@ VM3106 | ValidationModules.Usage | Warning | A rules-class descent repeats [Vali
 VM3108 | ValidationModules.Usage | Error | A value given to AllowedValues in a rules class is not a compile-time constant.
 VM3109 | ValidationModules.Usage | Warning | An allowed-values set lists no values, so it validates nothing.
 VM3110 | ValidationModules.Usage | Error | As names the subject's own type, whose validator would call itself without end.
-VM3111 | ValidationModules.Usage | Warning | A rules-class descent reaches a type that is not sealed, and runs only the validators for the declared type.
+VM3111 | ValidationModules.Usage | Warning | A rules-class descent that passes no Polymorphism reaches a type that is not sealed, and runs only the validators for the declared type.
 VM5004 | ValidationModules.Usage | Warning | A ValidationModules_* MSBuild property holds a value it does not accept. The generator uses the default.

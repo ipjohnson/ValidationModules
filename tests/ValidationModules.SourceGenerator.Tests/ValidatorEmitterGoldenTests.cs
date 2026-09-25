@@ -575,6 +575,46 @@ public class ValidatorEmitterGoldenTests
     }
 
     [Fact]
+    public void RulesClassPolymorphicDescents_CallTheMethodsTheValidatorWrites()
+    {
+        // Nested and Each passing a Polymorphism: the region pushes the path and calls a method on
+        // the validator it is handed, and that method is the switch or the runtime lookup a
+        // [ValidateNested] descent gets. The Runtime descent is the assembly's only one, so it
+        // alone brings in the adapters and the registry.
+        Snapshot.Match(
+            Emit(
+                """
+                using System.Collections.Generic;
+                using ValidationModules;
+                using ValidationModules.Constraints;
+
+                namespace Sample;
+
+                public class Animal {
+                    [Required] public string? Name { get; init; }
+                }
+
+                public sealed class Dog : Animal {
+                    [Required] public string? Breed { get; init; }
+                }
+
+                public sealed record Owner {
+                    public Animal? Pet { get; init; }
+                    public IReadOnlyList<Animal>? Pets { get; init; }
+                }
+
+                public sealed class OwnerRules : IValidationRulesFor<Owner> {
+                    public static void Describe(ValidationRules<Owner> rules, Owner x) {
+                        rules.Nested(x.Pet, Polymorphism.CompileTime);
+                        rules.Each(x.Pets, Polymorphism.Runtime);
+                    }
+                }
+                """
+            )
+        );
+    }
+
+    [Fact]
     public void RulesClassComputation_TranscribesReporterNameofAndAutoWrap()
     {
         // The free half of the surface in one region: a local feeding an Ensure whose message

@@ -147,10 +147,11 @@ write or call any of these types yourself.
 `Runtime` on a sealed type or a value type is reported as `VM1504`, because the actual type can
 never differ from the declared type.
 
-`Nested` and `Each` in a [rules class](./rule-classes#nested-objects-and-collections) take no
-`Polymorphism`. They run only the validators for the declared type, like `DeclaredOnly`. The
-generator reports `VM3111` at the call when that type is not sealed. To run the validators for the
-actual type, use `[ValidateNested]` with `CompileTime` or `Runtime` on the property instead.
+`Nested` and `Each` in a [rules class](./rule-classes#nested-objects-and-collections) take the
+same argument, as in `rules.Nested(x.Payment, Polymorphism.CompileTime)`, so a rules class can
+choose the validators by the actual type without changing the model. Each mode works as it does on
+the attribute. Without the argument, `Nested` and `Each` run only the validators for the declared
+type, and the generator reports `VM3111` at the call when that type is not sealed.
 
 ## Conditions
 

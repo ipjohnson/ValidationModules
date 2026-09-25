@@ -86,10 +86,10 @@ validators. Call it once.
 ## The validation pass carries no services
 
 An `InvalidOperationException` that says the validation pass carries no services comes from a
-property with `[ValidateNested(Polymorphism.Runtime)]`. The validators for the value's actual type
-are looked up in the container during validation, and `validator.Validate(value)` has no container.
-Validate through `ValidationRunner<T>` resolved from a scope, or pass the provider to a
-`ValidationErrorCollector`.
+descent with `Polymorphism.Runtime`, on `[ValidateNested]` or on `Nested` or `Each` in a rules
+class. The validators for the value's actual type are looked up in the container during validation,
+and `validator.Validate(value)` has no container. Validate through `ValidationRunner<T>` resolved
+from a scope, or pass the provider to a `ValidationErrorCollector`.
 
 ## No IValidatorFor is registered, compose the validators from another assembly
 
