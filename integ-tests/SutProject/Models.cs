@@ -200,6 +200,81 @@ public sealed class PostRules : IValidationRulesFor<Post>
 }
 
 /// <summary>
+/// [Required] on an ImmutableArray, from either namespace and inside a nullable. A default array
+/// is missing, and an empty one is present, as an empty collection is.
+/// </summary>
+public sealed record Playlist
+{
+    [Required]
+    public ImmutableArray<string> Tracks { get; init; } = [];
+
+    [System.ComponentModel.DataAnnotations.Required]
+    public ImmutableArray<string> Genres { get; init; } = [];
+
+    [Required]
+    public ImmutableArray<string>? Moods { get; init; } = ImmutableArray<string>.Empty;
+}
+
+/// <summary>
+/// Require on an ImmutableArray, alone and with rules chained after it. A default array is
+/// reported once, as required, and the chained rules skip it.
+/// </summary>
+public sealed record Album
+{
+    public ImmutableArray<string> Artists { get; init; } = [];
+
+    public ImmutableArray<string> Credits { get; init; } = [];
+
+    public ImmutableArray<Song> Reviews { get; init; } = [];
+}
+
+public sealed class AlbumRules : IValidationRulesFor<Album>
+{
+    public static void Describe(ValidationRules<Album> rules, Album x)
+    {
+        rules.Require(x.Artists);
+        rules.Require(x.Credits).Count(1, 5);
+        rules.Require(x.Reviews).Each();
+    }
+}
+
+/// <summary>
+/// The collection rules on an ImmutableArray held in a nullable, from attributes and from a rules
+/// class. Null and a default array are missing, so both pass. A populated array is counted,
+/// checked and walked through the array it holds.
+/// </summary>
+public sealed record Setlist
+{
+    [ItemCount(1, 3)]
+    [UniqueItems]
+    public ImmutableArray<string>? Songs { get; init; }
+
+    [ValidateNested]
+    public ImmutableArray<Song>? Openers { get; init; }
+
+    public ImmutableArray<string>? Encores { get; init; }
+
+    public ImmutableArray<Song>? Covers { get; init; }
+}
+
+public sealed record Song
+{
+    [Required]
+    public string? Title { get; init; }
+}
+
+public sealed class SetlistRules : IValidationRulesFor<Setlist>
+{
+    public static void Describe(ValidationRules<Setlist> rules, Setlist x)
+    {
+        rules.Count<string>(x.Encores, 0, 2);
+        rules.Unique<string>(x.Encores);
+        rules.Each(x.Encores).Length(1, 5);
+        rules.Each<Song>(x.Covers);
+    }
+}
+
+/// <summary>
 /// A pattern that backtracks catastrophically, under a timeout the hostile input runs past. The
 /// timeout has to fail the pattern rather than throw out of Validate.
 /// </summary>

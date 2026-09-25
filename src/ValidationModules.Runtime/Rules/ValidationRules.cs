@@ -1,4 +1,6 @@
+using System.Collections.Immutable;
 using System.Text.RegularExpressions;
+using ValidationModules.Constraints;
 
 namespace ValidationModules;
 
@@ -63,12 +65,25 @@ public sealed class ValidationRules<T>
         where TValue : struct => throw Inert();
 
     /// <summary>
-    /// The catch-all that makes <c>Require</c> on a non-nullable value type bind, so VM3101 can
-    /// be the only error on the line.
+    /// Declares that an <see cref="ImmutableArray{T}"/> must not be default. An empty array passes.
     /// </summary>
     /// <remarks>
-    /// A non-nullable value type fits none of the overloads above - and cannot be given one of
-    /// its own, because the reference-type overload's <c>TValue?</c> is annotation-only, so a
+    /// A default array has no array behind it, so it reads as missing, as null does for a
+    /// reference-typed collection. The chain is anchored on the list, as <c>Count</c> and
+    /// <c>Each</c> anchor it, so either can follow, as in <c>rules.Require(x.Tags).Count(1, 5)</c>.
+    /// </remarks>
+    public PropertyRules<T, IReadOnlyList<TElement>?> Require<TElement>(
+        ImmutableArray<TElement> value,
+        string? field = null
+    ) => throw Inert();
+
+    /// <summary>
+    /// The catch-all that makes <c>Require</c> on any other non-nullable value type bind, so
+    /// VM3101 can be the only error on the line.
+    /// </summary>
+    /// <remarks>
+    /// Such a type fits none of the overloads above - and cannot be given a generic one of its
+    /// own, because the reference-type overload's <c>TValue?</c> is annotation-only, so a
     /// <c>TValue value</c> twin collides with it as CS0111. Without this, the call failed as a
     /// CS0452 blaming that reference overload. Typed arguments never land here: identity beats
     /// the boxing conversion everywhere an overload above applies, which is also why this is
@@ -184,8 +199,8 @@ public sealed class ValidationRules<T>
     /// </summary>
     /// <remarks>
     /// <see cref="IReadOnlyList{T}"/> rather than <see cref="IReadOnlyCollection{T}"/> so that this
-    /// and <see cref="Each{TElement}"/> take the same shape and chain. Arrays and
-    /// <see cref="List{T}"/> both qualify; a set does not, and wants an explicit
+    /// and <see cref="Each{TElement}(IReadOnlyList{TElement}, string)"/> take the same shape and
+    /// chain. Arrays and <see cref="List{T}"/> both qualify; a set does not, and wants an explicit
     /// <see cref="Ensure"/>.
     /// </remarks>
     public PropertyRules<T, IReadOnlyList<TElement>?> Count<TElement>(
@@ -236,9 +251,37 @@ public sealed class ValidationRules<T>
     public PropertyRules<T, TValue?> Nested<TValue>(TValue? value, string? field = null)
         where TValue : class => throw Inert();
 
+    /// <summary>
+    /// Descends into a nested object and chooses its validators by the value's type, the
+    /// equivalent of <c>[ValidateNested(polymorphism)]</c>.
+    /// </summary>
+    /// <remarks>
+    /// An overload rather than an optional parameter on the form above, so that every call written
+    /// before it binds as it did. <see cref="Polymorphism.DeclaredOnly"/> is what the form above
+    /// does. Passing it states that choice, as it does on the attribute, and VM3111 then does not
+    /// ask for one.
+    /// </remarks>
+    public PropertyRules<T, TValue?> Nested<TValue>(
+        TValue? value,
+        Polymorphism polymorphism,
+        string? field = null
+    )
+        where TValue : class => throw Inert();
+
     /// <summary>Descends into each element of a collection.</summary>
     public PropertyRules<T, IReadOnlyList<TElement>?> Each<TElement>(
         IReadOnlyList<TElement>? value,
+        string? field = null
+    )
+        where TElement : class => throw Inert();
+
+    /// <summary>
+    /// Descends into each element of a collection and chooses each element's validators by its
+    /// type. See <see cref="Nested{TValue}(TValue, Polymorphism, string)"/>.
+    /// </summary>
+    public PropertyRules<T, IReadOnlyList<TElement>?> Each<TElement>(
+        IReadOnlyList<TElement>? value,
+        Polymorphism polymorphism,
         string? field = null
     )
         where TElement : class => throw Inert();
@@ -293,9 +336,9 @@ public sealed class ValidationRules<T>
     /// <remarks>
     /// <para>
     /// The argument must be the subject parameter: a facet of a <i>child</i> is
-    /// <see cref="Nested{TValue}"/>'s territory, where the path pushes. Here the path does not
-    /// push - facet fields report at the current level - and suppression shares the collector as
-    /// everywhere.
+    /// <see cref="Nested{TValue}(TValue, string)"/>'s territory, where the path pushes. Here the
+    /// path does not push - facet fields report at the current level - and suppression shares the
+    /// collector as everywhere.
     /// </para>
     /// <para>
     /// One spelling, two bindings. A facet whose validator is generated in this compilation binds

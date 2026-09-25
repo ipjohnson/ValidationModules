@@ -301,42 +301,76 @@ public class RulesClassDescentTests
         Assert.Equal(1, Count(AllSources(result), push));
     }
 
+    private static string OrderWithAddresses(string call) =>
+        Source(
+            $$"""
+            public class Address {
+                [Required] public string? Street { get; init; }
+            }
+
+            public sealed record Order {
+                public Address? ShipTo { get; init; }
+                public IReadOnlyList<Address>? Stops { get; init; }
+            }
+
+            public sealed class OrderRules : IValidationRulesFor<Order> {
+                public static void Describe(ValidationRules<Order> rules, Order x) {
+                    {{call}};
+                }
+            }
+            """
+        );
+
     /// <summary>
-    /// A rules-class descent runs the validators for the declared type, and takes no
-    /// <c>Polymorphism</c>, so VM1503's advice does not apply to it. It is reported at the call,
-    /// with advice the author can follow.
+    /// A rules-class descent that passes no <c>Polymorphism</c> runs the validators for the
+    /// declared type. It is reported at the call, as VM1503 is at a <c>[ValidateNested]</c>
+    /// property, and the advice prints the call with the mode added.
     /// </summary>
     [Theory]
-    [InlineData("rules.Nested(x.ShipTo)", "rules.Nested", "ShipTo")]
-    [InlineData("rules.For(x.ShipTo).Nested()", "rules.Nested", "ShipTo")]
-    [InlineData("rules.Each(x.Stops)", "rules.Each", "Stops")]
-    [InlineData("rules.Count(x.Stops, 1, 5).Each()", "rules.Each", "Stops")]
+    [InlineData(
+        "rules.Nested(x.ShipTo)",
+        "rules.Nested",
+        "ShipTo",
+        "rules.Nested(x.ShipTo, Polymorphism.CompileTime)"
+    )]
+    [InlineData(
+        "rules.For(x.ShipTo).Nested()",
+        "rules.Nested",
+        "ShipTo",
+        "rules.For(x.ShipTo).Nested(Polymorphism.CompileTime)"
+    )]
+    [InlineData(
+        "rules.Each(x.Stops)",
+        "rules.Each",
+        "Stops",
+        "rules.Each(x.Stops, Polymorphism.CompileTime)"
+    )]
+    [InlineData(
+        "rules.Count(x.Stops, 1, 5).Each()",
+        "rules.Each",
+        "Stops",
+        "rules.Count(x.Stops, 1, 5).Each(Polymorphism.CompileTime)"
+    )]
+    [InlineData(
+        "rules.Nested(x.ShipTo, \"shipping\")",
+        "rules.Nested",
+        "ShipTo",
+        "rules.Nested(x.ShipTo, Polymorphism.CompileTime, \"shipping\")"
+    )]
+    [InlineData(
+        "rules.Nested(x.ShipTo, field: \"shipping\")",
+        "rules.Nested",
+        "ShipTo",
+        "rules.Nested(x.ShipTo, field: \"shipping\", polymorphism: Polymorphism.CompileTime)"
+    )]
     public void ADescentIntoATypeThatIsNotSealed_IsVM3111AtTheCall(
         string call,
         string construct,
-        string property
+        string property,
+        string replacement
     )
     {
-        var result = GeneratorHarness.Run(
-            Source(
-                $$"""
-                public class Address {
-                    [Required] public string? Street { get; init; }
-                }
-
-                public sealed record Order {
-                    public Address? ShipTo { get; init; }
-                    public IReadOnlyList<Address>? Stops { get; init; }
-                }
-
-                public sealed class OrderRules : IValidationRulesFor<Order> {
-                    public static void Describe(ValidationRules<Order> rules, Order x) {
-                        {{call}};
-                    }
-                }
-                """
-            )
-        );
+        var result = GeneratorHarness.Run(OrderWithAddresses(call));
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM3111");
 
@@ -344,9 +378,8 @@ public class RulesClassDescentTests
         Assert.Equal(
             $"'Address' is not sealed, so a value of a more derived type may reach '{property}'. "
                 + $"{construct} checks it against the rules for 'Address' only. Seal 'Address', "
-                + $"or replace {construct} with [ValidateNested(Polymorphism.CompileTime)] on "
-                + $"'{property}' to run the rules for its actual type. To keep checking 'Address' "
-                + "only, suppress this warning at the call",
+                + "or pass Polymorphism.CompileTime to run the rules for its actual type, as in "
+                + $"{replacement}. To keep checking 'Address' only, pass Polymorphism.DeclaredOnly",
             diagnostic.GetMessage()
         );
         Assert.Equal(
@@ -358,6 +391,13 @@ public class RulesClassDescentTests
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "VM1503");
         Assert.Empty(result.CompilationErrors);
         Assert.Contains("AddressValidator", AllSources(result));
+
+        // The printed call is the fix: written in place of the original, it compiles and answers
+        // the warning.
+        var fixedResult = GeneratorHarness.Run(OrderWithAddresses(replacement));
+
+        Assert.DoesNotContain(fixedResult.Diagnostics, d => d.Id == "VM3111");
+        Assert.Empty(fixedResult.CompilationErrors);
     }
 
     [Fact]
@@ -385,11 +425,33 @@ public class RulesClassDescentTests
         // An interface cannot be sealed, so that advice is left out.
         Assert.Equal(
             "'IStop' is not sealed, so a value of a more derived type may reach 'Stops'. rules.Each "
-                + "checks it against the rules for 'IStop' only. Replace rules.Each with "
-                + "[ValidateNested(Polymorphism.CompileTime)] on 'Stops' to run the rules for its "
-                + "actual type. To keep checking 'IStop' only, suppress this warning at the call",
+                + "checks it against the rules for 'IStop' only. Pass Polymorphism.CompileTime to "
+                + "run the rules for its actual type, as in rules.Each(x.Stops, "
+                + "Polymorphism.CompileTime). To keep checking 'IStop' only, pass "
+                + "Polymorphism.DeclaredOnly",
             Assert.Single(result.Diagnostics, d => d.Id == "VM3111").GetMessage()
         );
+        Assert.Empty(result.CompilationErrors);
+    }
+
+    /// <summary>
+    /// Any mode passed is an answer, <c>DeclaredOnly</c> included, as a mode stated on
+    /// <c>[ValidateNested]</c> silences VM1503.
+    /// </summary>
+    [Theory]
+    [InlineData("rules.Nested(x.ShipTo, Polymorphism.DeclaredOnly)")]
+    [InlineData("rules.Nested(x.ShipTo, Polymorphism.CompileTime)")]
+    [InlineData("rules.Nested(x.ShipTo, Polymorphism.Runtime)")]
+    [InlineData("rules.For(x.ShipTo).Nested(Polymorphism.DeclaredOnly)")]
+    [InlineData("rules.Each(x.Stops, Polymorphism.DeclaredOnly)")]
+    [InlineData("rules.Each(x.Stops, Polymorphism.CompileTime)")]
+    [InlineData("rules.Each(x.Stops, Polymorphism.Runtime)")]
+    [InlineData("rules.Count(x.Stops, 1, 5).Each(Polymorphism.Runtime)")]
+    public void APassedMode_SilencesVM3111(string call)
+    {
+        var result = GeneratorHarness.Run(OrderWithAddresses(call));
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Severity >= DiagnosticSeverity.Warning);
         Assert.Empty(result.CompilationErrors);
     }
 }

@@ -134,10 +134,14 @@ the constraint is never evaluated. Declare the member as an instance property, a
 Two types in one namespace would get generated classes with the same name. A class generated for a
 type declared inside another type carries the containing types' names, joined with underscores. A
 nested `Order.Item` and a top-level `Order_Item` therefore both get the validator
-`Order_ItemValidator`, and neither validator is generated. The body of a rules class is generated
-into a class named after the rules class with `_Rules` appended. A nested rules class
-`Order.ItemRules` and a top-level `Order_ItemRules` therefore both get `Order_ItemRules_Rules`, and
-neither rules class is compiled. Rename one of the two types, or move it to another namespace.
+`Order_ItemValidator`, and neither validator is generated. A validator that nests either type is not
+generated either. The body of a rules class is generated into a class named after the rules class
+with `_Rules` appended. A nested rules class `Order.ItemRules` and a top-level `Order_ItemRules`
+therefore both get `Order_ItemRules_Rules`, and neither rules class is compiled. The fragments a
+type declares are generated into a class named after the type with `_Fragments` appended. A nested
+`Order.Shared` and a top-level `Order_Shared` that both declare fragments therefore both get
+`Order_Shared_Fragments`. Neither is generated, and a rules class that calls a fragment in either is
+left out with its validator. Rename one of the two types, or move it to another namespace.
 
 ### VM1014
 
@@ -209,7 +213,8 @@ at a static `Regex` method, property or field that is `internal` or `public`.
 
 `[Required]` is on a non-nullable value type, such as `int` or `Guid`. The property always
 has a value, so the constraint can never fail and is dropped. Make the property nullable, or check
-its value with `[Range]` or `[EnumDefined]`.
+its value with `[Range]` or `[EnumDefined]`. `ImmutableArray<T>` is not reported, because a default
+array reads as missing.
 
 ### VM1202
 
@@ -233,12 +238,14 @@ to strings, so the values compare as they would without it. Remove `Comparison`.
 An inline `[Pattern("...")]`, or a DataAnnotations `[RegularExpression]`, is in a project whose
 pattern policy rejects it. By default that is a project with `PublishAot` or `IsAotCompatible` set
 to `true`, and the diagnostic is an error that drops the constraint. Both compile to an expression
-parsed at run time, which adds the regular expression interpreter to a Native AOT binary. Declare
-the expression with `[GeneratedRegex]` and point at it with `[Pattern(typeof(T), nameof(T.Member))]`,
-or set `ValidationModules_PatternPolicy` to `Allow`. For `[RegularExpression]`, the message prints
-the expression anchored and made optional, because that attribute matches the whole value and
-passes an empty string. It also prints the attribute's match timeout, which is 2000 milliseconds
-unless `MatchTimeoutInMilliseconds` sets another. See [Patterns](../guide/patterns).
+parsed at run time, which adds the regular expression parser and interpreter to a Native AOT
+binary, about 360 KB. `Options` or a match timeout adds about 490 KB more. The message gives that
+figure when the pattern has either. Declare the expression with `[GeneratedRegex]` and point at it
+with `[Pattern(typeof(T), nameof(T.Member))]`, or set `ValidationModules_PatternPolicy` to `Allow`.
+For `[RegularExpression]`, the message prints the expression anchored and made optional, because
+that attribute matches the whole value and passes an empty string. It also prints the attribute's
+match timeout, which is 2000 milliseconds unless `MatchTimeoutInMilliseconds` sets another. See
+[Patterns](../guide/patterns).
 
 ### VM1302
 
@@ -324,7 +331,8 @@ reach it, and no `Polymorphism` is given. Seal the type, or pass `Polymorphism.D
 **Severity:** Error
 
 `Polymorphism.Runtime` is on a sealed type or a value type, whose actual type can never differ
-from its declared type. Use `Polymorphism.DeclaredOnly`.
+from its declared type. Use `Polymorphism.DeclaredOnly`. The mode comes from `[ValidateNested]`, or
+from `Nested` or `Each` in a rules class, where the error is reported at the call.
 
 ### VM1505
 
@@ -545,7 +553,8 @@ type, such as a record, or make the type `internal`.
 **Severity:** Error
 
 `Require` is applied to a non-nullable value type, which can never be missing. Use a range
-rule, or make the property nullable.
+rule, or make the property nullable. `ImmutableArray<T>` is not reported, because a default array
+reads as missing.
 
 ### VM3102
 
@@ -614,12 +623,13 @@ interface or base type of `x` instead.
 
 **Severity:** Warning
 
-`Nested` or `Each` in a rules class descends into a type that is not sealed, so a value of a more
-derived type may reach it. The descent runs only the validators for the declared type, so rules
-declared for the more derived type do not run. `Nested` and `Each` take no `Polymorphism`. To run
-the rules for the actual type, replace the descent with `[ValidateNested(Polymorphism.CompileTime)]`
-on the property. A class that nothing derives from can be sealed instead. To keep checking the
-declared type only, suppress the warning at the call. See [Subtypes](../guide/nesting#subtypes).
+`Nested` or `Each` in a rules class descends into a type that is not sealed, and passes no
+`Polymorphism`. A value of a more derived type may reach it, and the descent runs only the
+validators for the declared type, so rules declared for the more derived type do not run. To run
+the rules for the actual type, pass `Polymorphism.CompileTime` or `Polymorphism.Runtime`, as in
+`rules.Nested(x.Pet, Polymorphism.CompileTime)`. The message prints the call with the argument
+added. A class that nothing derives from can be sealed instead. To keep checking the declared type
+only, pass `Polymorphism.DeclaredOnly`. See [Subtypes](../guide/nesting#subtypes).
 
 ## Language packs
 
@@ -629,7 +639,9 @@ These diagnostics point at the JSON file.
 
 **Severity:** Error
 
-The language pack is not valid JSON, or it has no `culture`. The file is skipped.
+The language pack is not valid JSON, or its `culture` is missing or is not a culture name. A
+culture name is spelled as `CultureInfo.Name` spells it, in letters and digits joined by hyphens,
+such as `fr-CA`. The file is skipped.
 
 ### VM4002
 
@@ -680,13 +692,12 @@ one, so fix it first.
 
 **Severity:** Error
 
-The generator failed while writing code. The build fails so that a validator cannot go
-missing without notice. The message names the stage and the exception. Please
+The generator failed while writing code. The build fails so that a validator cannot go missing
+without notice. The message names the stage and the exception. A generated file that refers to the
+one that failed is left out too, so VM5002 is the only error. For example, a rules class that failed
+takes its type's validator with it, and the registration leaves that validator out. Please
 [report it](https://github.com/ipjohnson/ValidationModules/issues). Until it is fixed, change the
-construct the message names. One known cause is a language pack whose `culture` holds a character
-that a generated file name cannot contain, such as `:`. Another is a nested `Order.Shared` and a
-top-level `Order_Shared` that both declare fragments, because both fragment containers are named
-`Order_Shared_Fragments`.
+construct the message names.
 
 ### VM5003
 

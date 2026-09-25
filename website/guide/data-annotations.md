@@ -114,6 +114,8 @@ true`, with these differences:
   stop them, and neither does an error on the object that contains this one.
 - `[Range]` with its bounds in the wrong order fails the build with `VM1101`. DataAnnotations
   throws when it validates.
+- `[Required]` fails on a default `ImmutableArray<T>`, which has no array behind it.
+  DataAnnotations passes it, because the boxed value is not `null`.
 - A custom `ValidationAttribute` that calls `ValidationContext.GetService` gets the pass's services
   only when the pass has a service provider, as it does through `ValidationRunner<T>`.
 
@@ -180,8 +182,8 @@ it.
 
 The built-in DataAnnotations attributes are compiled into plain checks and need no reflection.
 `[RegularExpression]` is always compiled as an inline regular expression, which adds the regular
-expression interpreter to a Native AOT binary. It follows `ValidationModules_PatternPolicy` like an
-inline `[Pattern]`, so an AOT-facing project reports it as `VM1301`. The message prints the
-`[Pattern]` and `[GeneratedRegex]` that replace it. Unless `MatchTimeoutInMilliseconds` is `-1`, its
-timeout also keeps code that the trimmer removes from an inline pattern without one. See
-[Patterns](./patterns).
+expression parser and interpreter to a Native AOT binary, about 360 KB. It follows
+`ValidationModules_PatternPolicy` like an inline `[Pattern]`, so an AOT-facing project reports it as
+`VM1301`. The message prints the `[Pattern]` and `[GeneratedRegex]` that replace it. Unless
+`MatchTimeoutInMilliseconds` is `-1`, its timeout also keeps code that the trimmer removes from an
+inline pattern without one, about 490 KB more. See [Patterns](./patterns).

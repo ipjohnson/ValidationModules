@@ -192,6 +192,8 @@ public sealed class AttributeFrontEnd
             string? declaredNestedCondition = null;
             var attributeNesting = validateNested;
             var declaredNesting = false;
+            var regionCompileTime = false;
+            var regionRuntime = false;
 
             if (declared is not null)
             {
@@ -224,6 +226,11 @@ public sealed class AttributeFrontEnd
                         // A nesting rule has no constraint to carry its guard, so the descent's
                         // condition rides on the rule itself.
                         declaredNestedCondition = rule.Condition;
+
+                        // Each descent keeps its own mode, so two descents into one property can
+                        // pass different ones.
+                        regionCompileTime |= rule.Polymorphism == PolymorphismMode.CompileTime;
+                        regionRuntime |= rule.Polymorphism == PolymorphismMode.Runtime;
                     }
                 }
             }
@@ -295,8 +302,8 @@ public sealed class AttributeFrontEnd
                 ? NestedPolymorphism(sources)
                 : (PolymorphismMode.DeclaredOnly, false);
 
-            // Only the attribute states a mode. A rules-class descent takes none, and the rules
-            // front end reports an unsealed target at its call, as VM3111.
+            // The attribute's mode is judged here. A rules-class descent's is judged at its call,
+            // where VM3111 and VM1504 name the call rather than the property.
             if (attributeNesting && DescentTargetOf(property) is INamedTypeSymbol surviving)
             {
                 if (!CanHaveSubtypes(surviving))
@@ -335,7 +342,9 @@ public sealed class AttributeFrontEnd
                     polymorphism,
                     // The region's transcribed text owns a walk only the rules class declared; the
                     // injected machinery is still built here, which is what the entry is for.
-                    nestedWalkInRegion: declaredNesting && !attributeNesting
+                    nestedWalkInRegion: declaredNesting && !attributeNesting,
+                    regionCompileTime: regionCompileTime,
+                    regionRuntime: regionRuntime
                 )
             );
             order.Add(FirstMentionOf(property, declared));
@@ -856,7 +865,9 @@ public sealed class AttributeFrontEnd
         string? overriddenField = null,
         string? condition = null,
         PolymorphismMode polymorphism = PolymorphismMode.DeclaredOnly,
-        bool nestedWalkInRegion = false
+        bool nestedWalkInRegion = false,
+        bool regionCompileTime = false,
+        bool regionRuntime = false
     )
     {
         var type = property.Type;
@@ -932,7 +943,7 @@ public sealed class AttributeFrontEnd
         var subtypes = ImmutableArray<SubtypeModel>.Empty;
 
         if (
-            polymorphism == PolymorphismMode.CompileTime
+            (polymorphism == PolymorphismMode.CompileTime || regionCompileTime)
             && nestedTarget is not null
             && _subtypesOf is not null
         )
@@ -979,7 +990,9 @@ public sealed class AttributeFrontEnd
             DisplayNameFor(property),
             nestedWalkInRegion,
             DisplayLabelOf(property),
-            TypeFacts.IsMissingWhenDefault(type)
+            TypeFacts.IsMissingWhenDefault(type),
+            regionCompileTime,
+            regionRuntime
         );
     }
 
@@ -1719,9 +1732,12 @@ public sealed class AttributeFrontEnd
 
                 // Dropped as well as reported, and the two agree: the diagnostic says the check can
                 // never fail, and a check that can never fail is the same as no check. Emitting it
-                // asked whether an int was null, which does not compile.
+                // asked whether an int was null, which does not compile. A default ImmutableArray
+                // reads as missing, so [Required] on one can fail.
                 case ConstraintKind.Required
-                    when memberType.IsValueType && !TypeFacts.IsNullableValueType(memberType):
+                    when memberType.IsValueType
+                        && !TypeFacts.IsNullableValueType(memberType)
+                        && !TypeFacts.IsMissingWhenDefault(memberType):
                     Report(
                         ValidationDiagnostics.RequiredOnNonNullableValueType,
                         member,
@@ -2125,10 +2141,18 @@ public sealed class AttributeFrontEnd
             };
         }
 
+        var inline = CheckMatchTimeout(constraint, attribute, owner, regularExpression: false);
+
+        // RegexOptions.Compiled is 8. It is removed after this and reported as VM1302, so on its own
+        // it leaves the single-argument constructor.
         return ApplyPatternPolicy(
-            CheckMatchTimeout(constraint, attribute, owner, regularExpression: false),
+            inline,
             owner,
-            ValidationDiagnostics.InlinePatternFix(owner.Name, owner.ContainingType?.Name)
+            ValidationDiagnostics.InlinePatternFix(
+                owner.Name,
+                owner.ContainingType?.Name,
+                inline.MatchTimeoutMilliseconds > 0 || (inline.RegexOptions & ~8) != 0
+            )
         );
     }
 
@@ -2182,10 +2206,10 @@ public sealed class AttributeFrontEnd
     /// </summary>
     /// <remarks>
     /// The inline form is correct and AOT-clean, but it roots the regex parser and interpreter,
-    /// which is +448 KB on a published AOT binary. The policy decides whether that is acceptable
-    /// here. One implementation for both vocabularies: an inline <c>[Pattern]</c> and a
-    /// DataAnnotations <c>[RegularExpression]</c> compile to the same field and cost the same, so
-    /// only the fix the diagnostic prints differs between them.
+    /// which makes a published AOT binary 356 KB larger. Options or a timeout add 486 KB more. The
+    /// policy decides whether that is acceptable here. One implementation for both vocabularies:
+    /// an inline <c>[Pattern]</c> and a DataAnnotations <c>[RegularExpression]</c> compile to the
+    /// same field, so only the fix the diagnostic prints differs between them.
     /// </remarks>
     private ConstraintModel? ApplyPatternPolicy(
         ConstraintModel constraint,

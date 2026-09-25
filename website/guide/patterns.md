@@ -53,10 +53,11 @@ The generator stores a `new Regex(...)` in a static field of the validator, so t
 parsed once, when the validator type is first used. An expression that does not parse is reported
 as `VM1106` at build time.
 
-The inline form needs the regular expression parser and interpreter at run time, and they add to
-the size of a Native AOT binary. For that reason the generator treats the inline form according to
-`ValidationModules_PatternPolicy`. The DataAnnotations `[RegularExpression]` compiles to the same
-field, so the policy applies to it as well:
+The inline form needs the regular expression parser and interpreter at run time. They add about
+360 KB to a Native AOT binary, once, however many inline patterns it has. For that reason the
+generator treats the inline form according to `ValidationModules_PatternPolicy`. The
+DataAnnotations `[RegularExpression]` compiles to the same field, so the policy applies to it as
+well:
 
 | Policy | Effect on an inline pattern |
 | --- | --- |
@@ -114,7 +115,9 @@ timeout, as in DataAnnotations.
 expression would emit code at run time, so the inline form is always interpreted. Use the
 referenced form for a matcher compiled at build time. In a Native AOT binary, an inline pattern
 with `Options` or a timeout also keeps code that an inline pattern without them lets the trimmer
-remove. A `[RegularExpression]` has a timeout unless `MatchTimeoutInMilliseconds` is `-1`.
+remove. That adds about 490 KB more, also once. A `[RegularExpression]` has a timeout unless
+`MatchTimeoutInMilliseconds` is `-1`, so by default it adds about 840 KB in all. The referenced
+form adds neither, with or without a timeout on its `[GeneratedRegex]`.
 
 ## In a rules class
 

@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
 using ValidationModules;
 using Xunit;
@@ -122,6 +123,143 @@ public class GeneratedValidatorTests
             result
                 .Errors.Select(e => (e.Field, e.Code))
                 .OrderBy(e => e.Field, StringComparer.Ordinal)
+        );
+    }
+
+    /// <summary>
+    /// [Required] reads a default ImmutableArray as missing, from either namespace and inside a
+    /// nullable, and captures no value for it. An empty array is present, as an empty collection
+    /// is.
+    /// </summary>
+    [Fact]
+    public void Required_OnAnImmutableArray_FailsOnlyADefaultArray()
+    {
+        var validator = new PlaylistValidator();
+        var missing = new Playlist
+        {
+            Tracks = default,
+            Genres = default,
+            Moods = default(ImmutableArray<string>),
+        };
+        var errors = validator.Validate(missing).Errors;
+
+        Assert.Equal(
+            [
+                ("genres", ValidationCodes.Required),
+                ("moods", ValidationCodes.Required),
+                ("tracks", ValidationCodes.Required),
+            ],
+            errors.Select(e => (e.Field, e.Code)).OrderBy(e => e.Field, StringComparer.Ordinal)
+        );
+        Assert.All(errors, error => Assert.Null(error.Value));
+        Assert.False(validator.IsValid(missing));
+        Assert.False(validator.IsValid(new Playlist { Moods = null }));
+
+        var empty = new Playlist();
+        var populated = new Playlist
+        {
+            Tracks = ["a"],
+            Genres = ["b"],
+            Moods = ImmutableArray.Create("c"),
+        };
+
+        Assert.True(validator.Validate(empty).IsValid);
+        Assert.True(validator.IsValid(empty));
+        Assert.True(validator.Validate(populated).IsValid);
+        Assert.True(validator.IsValid(populated));
+    }
+
+    /// <summary>
+    /// The collection rules read an ImmutableArray held in a nullable through the array it holds.
+    /// Null and a default array are missing, so every rule passes them.
+    /// </summary>
+    [Fact]
+    public void CollectionRules_OnANullableImmutableArray_ReadTheArrayItHolds()
+    {
+        var validator = new SetlistValidator();
+        var defaults = new Setlist
+        {
+            Songs = default(ImmutableArray<string>),
+            Openers = default(ImmutableArray<Song>),
+            Encores = default(ImmutableArray<string>),
+            Covers = default(ImmutableArray<Song>),
+        };
+
+        Assert.True(validator.Validate(new Setlist()).IsValid);
+        Assert.True(validator.IsValid(new Setlist()));
+        Assert.True(validator.Validate(defaults).IsValid);
+        Assert.True(validator.IsValid(defaults));
+
+        var invalid = new Setlist
+        {
+            Songs = ImmutableArray.Create("a", "a", "b", "c"),
+            Openers = ImmutableArray.Create(new Song()),
+            Encores = ImmutableArray.Create("", "too long", "ok"),
+            Covers = ImmutableArray.Create(new Song { Title = "t" }, new Song()),
+        };
+
+        Assert.Equal(
+            [
+                ("covers[1].title", ValidationCodes.Required),
+                ("encores", ValidationCodes.ArrayBounds),
+                ("encores[0]", ValidationCodes.StringLength),
+                ("encores[1]", ValidationCodes.StringLength),
+                ("openers[0].title", ValidationCodes.Required),
+                ("songs", ValidationCodes.ArrayBounds),
+                ("songs", ValidationCodes.UniqueItems),
+            ],
+            validator
+                .Validate(invalid)
+                .Errors.Select(e => (e.Field, e.Code))
+                .OrderBy(e => e.Field, StringComparer.Ordinal)
+                .ThenBy(e => e.Code, StringComparer.Ordinal)
+        );
+        Assert.False(validator.IsValid(invalid));
+    }
+
+    /// <summary>
+    /// Require reads a default ImmutableArray as missing and reports it once, as required, so the
+    /// rules chained after it skip it. An empty array is present, so Require passes it and a
+    /// chained Count still reads it.
+    /// </summary>
+    [Fact]
+    public void Require_OnAnImmutableArray_FailsOnlyADefaultArray()
+    {
+        var validator = new AlbumValidator();
+        var missing = validator.Validate(
+            new Album
+            {
+                Artists = default,
+                Credits = default,
+                Reviews = default,
+            }
+        );
+
+        Assert.Equal(
+            [
+                ("artists", ValidationCodes.Required),
+                ("credits", ValidationCodes.Required),
+                ("reviews", ValidationCodes.Required),
+            ],
+            missing
+                .Errors.Select(e => (e.Field, e.Code))
+                .OrderBy(e => e.Field, StringComparer.Ordinal)
+        );
+
+        var empty = Assert.Single(validator.Validate(new Album()).Errors);
+
+        Assert.Equal(("credits", ValidationCodes.ArrayBounds), (empty.Field, empty.Code));
+        Assert.True(
+            validator
+                .Validate(
+                    new Album
+                    {
+                        Artists = ["a"],
+                        Credits = ["b"],
+                        Reviews = [new Song { Title = "a" }],
+                    }
+                )
+                .IsValid
         );
     }
 

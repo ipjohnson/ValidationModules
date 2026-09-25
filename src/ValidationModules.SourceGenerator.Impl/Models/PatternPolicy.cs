@@ -5,9 +5,9 @@ namespace ValidationModules.SourceGenerator.Impl.Models;
 /// </summary>
 /// <remarks>
 /// The inline form is correct and AOT-clean, but constructing a Regex from a pattern string roots
-/// the regex parser and interpreter, which costs +448 KB on a published AOT binary against +16 KB
-/// for the same pattern reached through a consumer-declared [GeneratedRegex]. So this is not a
-/// correctness gate; it is a size one, and the message says so.
+/// the regex parser and interpreter, which makes a published AOT binary 356 KB larger than the
+/// same pattern reached through a consumer-declared [GeneratedRegex]. Options or a timeout add
+/// 486 KB more. So this is not a correctness gate; it is a size one, and the message says so.
 /// </remarks>
 public enum PatternPolicy
 {

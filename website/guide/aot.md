@@ -23,7 +23,8 @@ Most models need nothing. Four areas need attention.
 
 Declare patterns with `[GeneratedRegex]` and point `[Pattern]` at them. The inline form,
 `[Pattern("...")]`, needs the regular expression parser and interpreter at run time, which adds
-several hundred kilobytes to the binary.
+about 360 KB to the binary however many inline patterns it has. `Options` or a match timeout on an
+inline pattern adds about 490 KB more.
 
 By default, a project that sets `PublishAot` or `IsAotCompatible` to `true` treats an inline pattern
 as an error, `VM1301`. The message shows the referenced form to use instead.
@@ -35,7 +36,8 @@ fail in the library's own build rather than in an application's publish.
 
 The DataAnnotations `[RegularExpression]` attribute always compiles to an inline pattern, so the
 policy applies to it too. `VM1301` then prints the `[Pattern]` and `[GeneratedRegex]` to use in its
-place.
+place. The attribute has a 2000 millisecond match timeout unless `MatchTimeoutInMilliseconds` is
+`-1`, so by default it adds about 840 KB.
 
 ### JSON in ASP.NET Core
 

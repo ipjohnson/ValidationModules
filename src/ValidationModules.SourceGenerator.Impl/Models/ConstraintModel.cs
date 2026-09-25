@@ -117,11 +117,12 @@ public enum ConstraintKind
 /// </param>
 /// <param name="MatchTimeoutMilliseconds">
 /// Pattern only, inline form only: the per-match timeout, flowed to the emitted Regex as its third
-/// constructor argument. Zero or -1 means none, and emits the single-argument constructor - which
-/// is load-bearing, because it is what lets ILC prove RegexOptions.Compiled is never set and trim
-/// the RegexCompiler path. A value the Regex constructor rejects never reaches the emitter, because
-/// the front end replaces it and reports VM1304. The reference form has nowhere to put this: the
-/// consumer owns the [GeneratedRegex] and sets MatchTimeoutMilliseconds on it directly.
+/// constructor argument. Zero or -1 means none, and with no RegexOptions emits the single-argument
+/// constructor - which is load-bearing, because it is the only one that lets ILC remove the
+/// RegexOptions.NonBacktracking engine. A value the Regex constructor rejects never reaches the
+/// emitter, because the front end replaces it and reports VM1304. The reference form has nowhere
+/// to put this: the consumer owns the [GeneratedRegex] and sets MatchTimeoutMilliseconds on it
+/// directly.
 /// </param>
 /// <param name="RegexAccessor">
 /// Pattern only. The already-resolved expression that yields the Regex in the reference form -

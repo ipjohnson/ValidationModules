@@ -1,5 +1,6 @@
 using System.Numerics;
 using System.Text.RegularExpressions;
+using ValidationModules.Constraints;
 
 namespace ValidationModules;
 
@@ -198,6 +199,16 @@ public static class PropertyRulesExtensions
         where TElement : class => throw ValidationRules<T>.Inert();
 
     /// <summary>
+    /// Descends into each element of the anchored collection and chooses each element's validators
+    /// by its type.
+    /// </summary>
+    public static PropertyRules<T, IReadOnlyList<TElement>?> Each<T, TElement>(
+        this PropertyRules<T, IReadOnlyList<TElement>?> rules,
+        Polymorphism polymorphism
+    )
+        where TElement : class => throw ValidationRules<T>.Inert();
+
+    /// <summary>
     /// Anchors each string element of the anchored collection, so the rules that follow apply per
     /// element with indexed paths - <c>rules.Count(x.Steps, 1, 30).Each().Length(5, 500)</c>.
     /// </summary>
@@ -207,5 +218,14 @@ public static class PropertyRulesExtensions
 
     /// <summary>Descends into the anchored object.</summary>
     public static PropertyRules<T, TValue?> Nested<T, TValue>(this PropertyRules<T, TValue?> rules)
+        where TValue : class => throw ValidationRules<T>.Inert();
+
+    /// <summary>
+    /// Descends into the anchored object and chooses its validators by the value's type.
+    /// </summary>
+    public static PropertyRules<T, TValue?> Nested<T, TValue>(
+        this PropertyRules<T, TValue?> rules,
+        Polymorphism polymorphism
+    )
         where TValue : class => throw ValidationRules<T>.Inert();
 }

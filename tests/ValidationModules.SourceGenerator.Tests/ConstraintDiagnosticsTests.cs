@@ -156,12 +156,62 @@ public class ConstraintDiagnosticsTests
         "[System.ComponentModel.DataAnnotations.MaxLength(3)] public System.Collections.Immutable.ImmutableArray<string> Tags { get; init; }",
         "!value.Tags.IsDefault && (value.Tags.Length > 3)"
     )]
+    [InlineData(
+        "[ItemCount(1, 3)] public System.Collections.Immutable.ImmutableArray<string>? Tags { get; init; }",
+        "value.Tags is { IsDefault: false } && (value.Tags.Value.Length < 1 || value.Tags.Value.Length > 3)"
+    )]
+    [InlineData(
+        "[UniqueItems] public System.Collections.Immutable.ImmutableArray<string>? Tags { get; init; }",
+        "value.Tags is { IsDefault: false } && !global::ValidationModules.ConstraintChecks.AllUnique(value.Tags.Value)"
+    )]
+    [InlineData(
+        "[System.ComponentModel.DataAnnotations.MinLength(1)] public System.Collections.Immutable.ImmutableArray<string>? Tags { get; init; }",
+        "value.Tags is { IsDefault: false } && (value.Tags.Value.Length < 1)"
+    )]
     public void ImmutableArray_DefaultValue_PassesAsMissing(string member, string expected)
     {
         var result = GeneratorHarness.Run(Model(member));
 
         Assert.Empty(result.CompilationErrors);
         Assert.Contains(expected, result.Sources["Sample.PetValidator.g.cs"]);
+    }
+
+    /// <summary>
+    /// For the same reason, <c>[Required]</c> fails on a default <c>ImmutableArray&lt;T&gt;</c>,
+    /// from either namespace, in Validate with and without the early returns and in IsValid. An
+    /// <c>ImmutableArray&lt;T&gt;?</c> is missing when it is null and when it holds a default array.
+    /// The report captures no value, as it captures null for a missing reference.
+    /// </summary>
+    [Theory]
+    [InlineData(
+        "[Required] public System.Collections.Immutable.ImmutableArray<string> Tags { get; init; }",
+        "value.Tags.IsDefault"
+    )]
+    [InlineData(
+        "[System.ComponentModel.DataAnnotations.Required] public System.Collections.Immutable.ImmutableArray<string> Tags { get; init; }",
+        "value.Tags.IsDefault"
+    )]
+    [InlineData(
+        "[Required] public System.Collections.Immutable.ImmutableArray<string>? Tags { get; init; }",
+        "value.Tags is not { IsDefault: false }"
+    )]
+    public void Required_OnAnImmutableArray_FailsADefaultArray(string member, string missing)
+    {
+        const string report =
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"tags\")";
+
+        var result = GeneratorHarness.Run(Model(member));
+        var emitted = result.Sources["Sample.PetValidator.g.cs"];
+        var fastPath = emitted.Substring(emitted.IndexOf("public bool IsValid"));
+        var withoutReturns = GeneratorHarness
+            .Run(Model(member), ("ValidationModules_FailFast", "false"))
+            .Sources["Sample.PetValidator.g.cs"];
+
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains($"if ({missing} && {report}.ShouldStop)", emitted);
+        Assert.Contains($"if ({missing})", fastPath);
+        Assert.Contains($"if ({missing})", withoutReturns);
+        Assert.Contains($"{report};", withoutReturns);
     }
 
     [Fact]
@@ -192,6 +242,39 @@ public class ConstraintDiagnosticsTests
         Assert.DoesNotContain("value.Toys is { } itemsToys", emitted);
     }
 
+    /// <summary>
+    /// An <c>ImmutableArray&lt;T&gt;?</c> is a collection of <c>T</c>. It was read as an object of
+    /// type <c>ImmutableArray&lt;T&gt;</c>, so <c>[ValidateNested]</c> was dropped with VM1502,
+    /// and <c>[ItemCount]</c> and <c>[UniqueItems]</c> were refused.
+    /// </summary>
+    [Fact]
+    public void ValidateNested_OnANullableImmutableArray_WalksTheArrayItHolds()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using System.Collections.Immutable;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public sealed record Toy {
+                [Required] public string? Name { get; init; }
+            }
+
+            public record Pet {
+                [ValidateNested] public ImmutableArray<Toy>? Toys { get; init; }
+            }
+            """
+        );
+
+        var emitted = result.Sources["Sample.PetValidator.g.cs"];
+
+        Assert.Empty(result.Diagnostics);
+        Assert.Empty(result.CompilationErrors);
+        Assert.Equal(2, emitted.Split("value.Toys is { IsDefault: false } itemsToys").Length - 1);
+        Assert.Contains("iToys < itemsToys.Length", emitted);
+    }
+
     [Theory]
     [InlineData(
         "rules.Count(x.Skus, 1, 3);",
@@ -203,6 +286,19 @@ public class ConstraintDiagnosticsTests
     )]
     [InlineData("rules.Each(x.Skus).Length(1, 5);", "x.Skus is { IsDefault: false } items0")]
     [InlineData("rules.Each(x.Lines);", "x.Lines is { IsDefault: false } items0")]
+    [InlineData(
+        "rules.Count<string>(x.MaybeSkus, 1, 3);",
+        "x.MaybeSkus is { IsDefault: false } && (x.MaybeSkus.Value.Length < 1 || x.MaybeSkus.Value.Length > 3)"
+    )]
+    [InlineData(
+        "rules.Unique<string>(x.MaybeSkus);",
+        "x.MaybeSkus is { IsDefault: false } && !global::ValidationModules.ConstraintChecks.AllUnique(x.MaybeSkus.Value)"
+    )]
+    [InlineData(
+        "rules.Each(x.MaybeSkus).Length(1, 5);",
+        "x.MaybeSkus is { IsDefault: false } items0"
+    )]
+    [InlineData("rules.Each<Line>(x.MaybeLines);", "x.MaybeLines is { IsDefault: false } items0")]
     public void ImmutableArray_DefaultValue_PassesAsMissingInARulesClass(
         string statement,
         string expected
@@ -223,6 +319,8 @@ public class ConstraintDiagnosticsTests
             public sealed record Order {
                 public ImmutableArray<string> Skus { get; init; }
                 public ImmutableArray<Line> Lines { get; init; }
+                public ImmutableArray<string>? MaybeSkus { get; init; }
+                public ImmutableArray<Line>? MaybeLines { get; init; }
             }
 
             public sealed class OrderRules : IValidationRulesFor<Order> {
@@ -296,12 +394,14 @@ public class ConstraintDiagnosticsTests
 
     // VM1201 — [Required] that can never fail.
 
-    [Fact]
-    public void Required_OnNonNullableValueType_IsVM1201AndOnlyAWarning()
+    [Theory]
+    [InlineData("[Required] public int Age { get; init; }")]
+    [InlineData("[System.ComponentModel.DataAnnotations.Required] public int Age { get; init; }")]
+    public void Required_OnNonNullableValueType_IsVM1201AndOnlyAWarning(string member)
     {
         // A warning rather than an error: the declaration is harmless, just pointless. Making it an
         // error would break a build over a no-op.
-        var result = GeneratorHarness.Run(Model("[Required] public int Age { get; init; }"));
+        var result = GeneratorHarness.Run(Model(member));
 
         Assert.Equal(
             DiagnosticSeverity.Warning,
@@ -309,10 +409,23 @@ public class ConstraintDiagnosticsTests
         );
     }
 
+    /// <summary>
+    /// An <c>ImmutableArray&lt;T&gt;</c> is a non-nullable value type that can be missing, because
+    /// a default array reads as missing.
+    /// </summary>
     [Theory]
     [InlineData("[Required] public string? Name { get; init; }")]
     [InlineData("[Required] public int? Age { get; init; }")]
     [InlineData("[Required] public List<string>? Tags { get; init; }")]
+    [InlineData(
+        "[Required] public System.Collections.Immutable.ImmutableArray<string> Tags { get; init; }"
+    )]
+    [InlineData(
+        "[System.ComponentModel.DataAnnotations.Required] public System.Collections.Immutable.ImmutableArray<string> Tags { get; init; }"
+    )]
+    [InlineData(
+        "[Required] public System.Collections.Immutable.ImmutableArray<string>? Tags { get; init; }"
+    )]
     public void Required_OnSomethingThatCanBeMissing_IsSilent(string member)
     {
         var result = GeneratorHarness.Run(Model(member));

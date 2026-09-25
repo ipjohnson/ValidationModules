@@ -29,9 +29,17 @@ name derived from the value.
 | `Require(string? value)` | The string is not `null`, empty or whitespace. | `required` |
 | `RequireAllowingEmpty(string? value)` | The string is not `null`. | `required` |
 | `Require<TValue>(TValue? value)` | The reference or nullable value is not `null`. | `required` |
+| `Require<TElement>(ImmutableArray<TElement> value)` | The array is not default. An empty array passes. | `required` |
 
-`Require` on a property of a non-nullable value type can never fail, and the generator reports
-`VM3101`.
+A default `ImmutableArray<T>` has no array behind it, so `Require` reads it as missing. On an
+`ImmutableArray<T>?`, `Require` fails on `null` and on a default array. `Require` on an
+`ImmutableArray<TElement>` starts a chain on `IReadOnlyList<TElement>`, so `Count` and `Each` can
+follow it. `Count`, `Unique` and `Each` read an `ImmutableArray<T>?` through the array it holds.
+C# cannot infer the element type through the nullable, so `Count`, `Unique` and an `Each` over
+objects need it written, as in `rules.Count<string>(x.Tags, 1, 5)`.
+
+`Require` on a property of any other non-nullable value type can never fail, and the generator
+reports `VM3101`.
 
 ### Strings
 
@@ -80,7 +88,9 @@ Write `allowed` as an array or a collection expression of constants, such as
 | `Unique<TElement>(IEnumerable<TElement>? value)` | Passes when no item appears twice. | `unique_items` |
 | `Each(IReadOnlyList<string>? value)` | Applies the rules chained after it to every element. | from those rules |
 | `Each<TElement>(IReadOnlyList<TElement>? value)` | Runs the validators for `TElement` on every element. | from those validators |
+| `Each<TElement>(IReadOnlyList<TElement>? value, Polymorphism polymorphism)` | Runs the validators `polymorphism` chooses for each element's actual type. | from those validators |
 | `Nested<TValue>(TValue? value)` | Runs the validators for `TValue` on the value. | from those validators |
+| `Nested<TValue>(TValue? value, Polymorphism polymorphism)` | Runs the validators `polymorphism` chooses for the value's actual type. | from those validators |
 
 `Count` with constant bounds in the wrong order is reported as `VM1101`.
 
@@ -89,8 +99,12 @@ strings or of a reference type. For a list of numbers or other value types, chec
 loop and report through `Context`. `Nested` on a collection, and a second `Nested` or `Each` in the
 chain after a descent, are reported as `VM3001`. A descent into a type with no rules is dropped with
 `VM1501`, and one into a property that already has `[ValidateNested]` is dropped with `VM3106`.
-`Nested` and `Each` take no `Polymorphism` and run only the validators for the declared type. A
-descent into a type that is not sealed is reported as `VM3111`.
+
+`polymorphism` is a `Polymorphism` from `ValidationModules.Constraints`, and chooses the validators
+as it does on [`[ValidateNested]`](./attributes#validatenested). It has to be a constant, and any
+other expression is reported as `VM3001`. Without it, `Nested` and `Each` run only the validators
+for the declared type, and a descent into a type that is not sealed is reported as `VM3111`.
+`Polymorphism.Runtime` on a sealed type is reported as `VM1504`.
 
 ### Conditions
 
@@ -140,7 +154,8 @@ chain:
 | `Count(min, max)` | an `IReadOnlyList<T>` |
 | `Unique()` | an `IEnumerable<T>` |
 | `Each()` | an `IReadOnlyList<T>` |
-| `Nested()` | a reference type |
+| `Each(polymorphism)` | an `IReadOnlyList<T>` of a reference type |
+| `Nested()`, `Nested(polymorphism)` | a reference type |
 
 A chain is typed by the method that starts it. On an `int` property,
 `rules.Range(x.Quantity, 1, 100)` starts a chain on `int?`, and `rules.For(x.Quantity)` starts one

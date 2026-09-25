@@ -6,7 +6,7 @@
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
 VM1011 | ValidationModules.Usage | Warning | A constraint on a field or a static property is never evaluated.
-VM1013 | ValidationModules.Usage | Error | Two types would get generated classes with the same name in one namespace. A nested Order.Item and a top-level Order_Item both get Order_ItemValidator, and neither validator is generated. A nested rules class Order.ItemRules and a top-level Order_ItemRules both get the companion Order_ItemRules_Rules, and neither rules class is compiled.
+VM1013 | ValidationModules.Usage | Error | Two types would get generated classes with the same name in one namespace. A nested Order.Item and a top-level Order_Item both get Order_ItemValidator, and neither validator is generated. A nested rules class Order.ItemRules and a top-level Order_ItemRules both get the companion Order_ItemRules_Rules, and neither rules class is compiled. A nested Order.Shared and a top-level Order_Shared that both declare fragments both get Order_Shared_Fragments, and neither container is generated.
 VM1014 | ValidationModules.Usage | Warning | A constraint on an indexer is never evaluated.
 VM1203 | ValidationModules.Usage | Warning | [AllowedValues] sets Comparison on a member that is not a string, where it has no effect.
 VM1303 | ValidationModules.Usage | Warning | Options or MatchTimeoutMilliseconds is set on the reference form of [Pattern], which reads neither.
@@ -20,5 +20,5 @@ VM3106 | ValidationModules.Usage | Warning | A rules-class descent repeats [Vali
 VM3108 | ValidationModules.Usage | Error | A value given to AllowedValues in a rules class is not a compile-time constant.
 VM3109 | ValidationModules.Usage | Warning | An allowed-values set lists no values, so it validates nothing.
 VM3110 | ValidationModules.Usage | Error | As names the subject's own type, whose validator would call itself without end.
-VM3111 | ValidationModules.Usage | Warning | A rules-class descent reaches a type that is not sealed, and runs only the validators for the declared type.
+VM3111 | ValidationModules.Usage | Warning | A rules-class descent that passes no Polymorphism reaches a type that is not sealed, and runs only the validators for the declared type.
 VM5004 | ValidationModules.Usage | Warning | A ValidationModules_* MSBuild property holds a value it does not accept. The generator uses the default.

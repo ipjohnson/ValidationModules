@@ -7,11 +7,6 @@ namespace ValidationModules.SourceGenerator.Impl.FrontEnds;
 public static class TypeFacts
 {
     /// <summary>
-    /// The element type of a collection, or null if it is not one. Strings are deliberately not
-    /// collections here: <c>string</c> implements <c>IEnumerable&lt;char&gt;</c>, and treating one
-    /// as a collection would turn a length constraint into a per-character walk.
-    /// </summary>
-    /// <summary>
     /// The value type of a dictionary, or null if it is not one.
     /// </summary>
     /// <remarks>
@@ -22,7 +17,7 @@ public static class TypeFacts
     /// </remarks>
     public static (ITypeSymbol Key, ITypeSymbol Value)? DictionaryTypesOf(ITypeSymbol type)
     {
-        foreach (var candidate in Interfaces(type))
+        foreach (var candidate in Interfaces(Held(type)))
         {
             if (
                 candidate.ConstructedFrom.SpecialType is SpecialType.None
@@ -51,8 +46,15 @@ public static class TypeFacts
         }
     }
 
+    /// <summary>
+    /// The element type of a collection, or null if it is not one. Strings are deliberately not
+    /// collections here: <c>string</c> implements <c>IEnumerable&lt;char&gt;</c>, and treating one
+    /// as a collection would turn a length constraint into a per-character walk.
+    /// </summary>
     public static ITypeSymbol? ElementTypeOf(ITypeSymbol type)
     {
+        type = Held(type);
+
         if (type.SpecialType == SpecialType.System_String)
         {
             return null;
@@ -99,9 +101,9 @@ public static class TypeFacts
     /// implements <c>Count</c> only explicitly, so its count is read through <c>Length</c>.
     /// </remarks>
     public static string? CountAccessor(ITypeSymbol type) =>
-        type is IArrayTypeSymbol ? "Length"
-        : HasPublicProperty(type, "Count") ? "Count"
-        : HasPublicProperty(type, "Length") ? "Length"
+        Held(type) is var held && held is IArrayTypeSymbol ? "Length"
+        : HasPublicProperty(held, "Count") ? "Count"
+        : HasPublicProperty(held, "Length") ? "Length"
         : null;
 
     /// <summary>
@@ -151,6 +153,8 @@ public static class TypeFacts
     /// </remarks>
     public static bool IsIndexable(ITypeSymbol type)
     {
+        type = Held(type);
+
         if (type is IArrayTypeSymbol)
         {
             return true;
@@ -177,12 +181,22 @@ public static class TypeFacts
         type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T };
 
     /// <summary>
+    /// The type a nullable value type holds, or the type itself. The collection facts answer for
+    /// the held type, so an <c>ImmutableArray&lt;T&gt;?</c> is a collection of <c>T</c>, counted by
+    /// <c>Length</c>. The emitter reads it through <c>.Value</c>, or through a pattern that binds
+    /// the value held.
+    /// </summary>
+    private static ITypeSymbol Held(ITypeSymbol type) =>
+        IsNullableValueType(type) ? ((INamedTypeSymbol)type).TypeArguments[0] : type;
+
+    /// <summary>
     /// Whether a default value of the type reads as missing, the way null does for a reference
     /// type. True for <c>ImmutableArray&lt;T&gt;</c>, whose default has no array behind it, so its
-    /// <c>Length</c>, its enumerator and its interface views all throw.
+    /// <c>Length</c>, its enumerator and its interface views all throw. True for
+    /// <c>ImmutableArray&lt;T&gt;?</c> as well, which can hold that default as its value.
     /// </summary>
     public static bool IsMissingWhenDefault(ITypeSymbol type) =>
-        type is INamedTypeSymbol { IsValueType: true, IsGenericType: true } named
+        Held(type) is INamedTypeSymbol { IsValueType: true, IsGenericType: true } named
         && named.ConstructedFrom.ToDisplayString()
             == "System.Collections.Immutable.ImmutableArray<T>";
 

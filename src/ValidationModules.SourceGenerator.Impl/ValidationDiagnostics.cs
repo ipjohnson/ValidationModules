@@ -171,7 +171,9 @@ public static class ValidationDiagnostics
     /// Two types would get generated classes with one name in one namespace. A nested
     /// <c>Order.Item</c> and a top-level <c>Order_Item</c> both get <c>Order_ItemValidator</c>. A
     /// nested rules class <c>Order.ItemRules</c> and a top-level <c>Order_ItemRules</c> both get
-    /// the companion <c>Order_ItemRules_Rules</c>.
+    /// the companion <c>Order_ItemRules_Rules</c>. A nested <c>Order.Shared</c> and a top-level
+    /// <c>Order_Shared</c> that both declare fragments both get the fragment container
+    /// <c>Order_Shared_Fragments</c>.
     /// </summary>
     public static readonly DiagnosticDescriptor GeneratedNameCollision = Descriptor(
         "VM1013",
@@ -186,6 +188,11 @@ public static class ValidationDiagnostics
 
     /// <summary>VM1013's consequence when the two classes are rules-class companions.</summary>
     public const string NeitherRulesClassCompiled = "neither rules class is compiled";
+
+    /// <summary>VM1013's consequence when the two classes are fragment containers.</summary>
+    public const string NeitherFragmentContainerGenerated =
+        "neither type's fragments are generated, and a rules class that calls one is left out "
+        + "with its validator";
 
     /// <summary>
     /// A constraint on an indexer. The attribute usage admits a property, and an indexer is one,
@@ -340,30 +347,50 @@ public static class ValidationDiagnostics
     /// build error for an AOT-facing project and unremarkable for a JIT one.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The fix is an argument rather than part of the format, because the two attributes that
     /// reach this need different ones. An inline <c>[Pattern]</c> keeps its attribute and changes
     /// its arguments. A DataAnnotations <c>[RegularExpression]</c> is replaced by <c>[Pattern]</c>,
     /// and its expression has to change on the way, because it matched the whole value and passed
     /// an empty one. See <see cref="InlinePatternFix"/> and <see cref="RegularExpressionFix"/>.
+    /// </para>
+    /// <para>
+    /// The figures are from osx-arm64 Native AOT publishes on .NET 10.0.12 that differ only in the
+    /// attribute. The inline form is 356 KB larger than the same pattern through a
+    /// <c>[GeneratedRegex]</c>. Options or a timeout add 486 KB more, because every <c>Regex</c>
+    /// constructor that takes them keeps the <c>RegexOptions.NonBacktracking</c> engine. The fix
+    /// argument opens with that cost when the site has either. Neither figure grows with a second
+    /// pattern.
+    /// </para>
     /// </remarks>
     public static readonly DiagnosticDescriptor InlinePatternUnderAot = Descriptor(
         "VM1301",
         "Inline pattern roots the regex engine",
         "The pattern on '{0}' is built from a string at run time, which roots the regex parser and "
-            + "interpreter. That costs about 450 KB on an AOT-published binary, once, however many "
+            + "interpreter. That costs about 360 KB on an AOT-published binary, once, however many "
             + "patterns follow. {1}. Set ValidationModules_PatternPolicy to Allow to keep the "
             + "inline form",
         DiagnosticSeverity.Warning
     );
 
     /// <summary>VM1301's fix for an inline <c>[Pattern]</c>.</summary>
-    public static string InlinePatternFix(string member, string? type) =>
-        "Declare it as a [GeneratedRegex] and point at it: "
+    /// <param name="passesOptions">
+    /// Whether the emitted <c>Regex</c> constructor takes <c>RegexOptions</c>, which it does when
+    /// the attribute sets <c>Options</c> or a timeout.
+    /// </param>
+    public static string InlinePatternFix(string member, string? type, bool passesOptions) =>
+        (
+            passesOptions
+                ? "Setting Options or MatchTimeoutMilliseconds adds about 490 KB more, also once. "
+                : ""
+        )
+        + "Declare it as a [GeneratedRegex] and point at it: "
         + $"[Pattern(typeof({type}Patterns), nameof({type}Patterns.{member}))]";
 
     /// <summary>
     /// VM1301's fix for a DataAnnotations <c>[RegularExpression]</c>, with its expression and its
-    /// timeout written out the way <c>[Pattern]</c> needs them to keep the same meaning.
+    /// timeout written out the way <c>[Pattern]</c> needs them to keep the same meaning. It opens
+    /// with what the timeout costs, because the attribute has one unless it sets -1.
     /// </summary>
     /// <param name="matchTimeoutMilliseconds">
     /// The timeout the attribute compiles with, or null for none.
@@ -374,7 +401,13 @@ public static class ValidationDiagnostics
         string pattern,
         int? matchTimeoutMilliseconds
     ) =>
-        "Declare it as "
+        (
+            matchTimeoutMilliseconds is { } timeout
+                ? $"Its match timeout of {timeout} milliseconds adds about 490 KB more, also once. "
+                    + "MatchTimeoutInMilliseconds = -1 removes the timeout and that cost. "
+                : ""
+        )
+        + "Declare it as "
         + GeneratedRegexDeclaration(@"\A(?:" + pattern + @")?\z", 0, matchTimeoutMilliseconds, null)
         + ", anchored because [RegularExpression] matches the whole value and optional because it "
         + "passes an empty one. Then replace [RegularExpression] with "
@@ -654,7 +687,9 @@ public static class ValidationDiagnostics
     /// </summary>
     /// <remarks>
     /// An error rather than a warning because it also fails at run time without a container, and a
-    /// mode that can never differ from DeclaredOnly is never what was meant.
+    /// mode that can never differ from DeclaredOnly is never what was meant. Reported at the
+    /// property for <c>[ValidateNested]</c>, and at the call for <c>Nested</c> and <c>Each</c> in a
+    /// rules class.
     /// </remarks>
     public static readonly DiagnosticDescriptor RuntimePolymorphismOnClosedType = Descriptor(
         "VM1504",
@@ -1162,8 +1197,8 @@ public static class ValidationDiagnostics
     /// <remarks>
     /// Attributes and a rules class merge onto one validator, so both descents would run and every
     /// error inside the nested object would be reported twice. The rules-class descent is the one
-    /// dropped, because only the attribute can carry a <c>Polymorphism</c> mode. Warning rather
-    /// than error: the property is still validated, once.
+    /// dropped, and the message says how to keep it instead. Warning rather than error: the
+    /// property is still validated, once.
     /// </remarks>
     public static readonly DiagnosticDescriptor RulesDescentRepeatsValidateNested = Descriptor(
         "VM3106",
@@ -1238,16 +1273,16 @@ public static class ValidationDiagnostics
     );
 
     /// <summary>
-    /// A rules-class descent into a type that is not sealed. The region walks the validators for
-    /// the declared type, so the rules declared for a more derived type do not run.
+    /// A rules-class descent into a type that is not sealed, with no <c>Polymorphism</c> passed.
+    /// The descent runs the validators for the declared type, so the rules declared for a more
+    /// derived type do not run.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// VM1503 asks the same question of <c>[ValidateNested]</c>, and its answer is a
-    /// <c>Polymorphism</c> argument, which <c>Nested</c> and <c>Each</c> do not take. So this one
-    /// is reported at the call instead. Its advice is what the author of a rules class can do:
-    /// seal the type, move the descent to the attribute, or keep the declared type's rules and
-    /// suppress the warning.
+    /// VM1503 asks the same question of <c>[ValidateNested]</c>, and this one asks it of
+    /// <c>Nested</c> and <c>Each</c>, at the call. Its advice is what the author of a rules class
+    /// can do without changing the model: pass a mode, or seal the type when it is theirs to seal.
+    /// A passed mode silences it, <c>DeclaredOnly</c> included, as a stated mode silences VM1503.
     /// </para>
     /// <para>
     /// Warning, as VM1503 is, and keyed on the same local fact: whether the target is sealed, never
@@ -1258,24 +1293,22 @@ public static class ValidationDiagnostics
         "VM3111",
         "Rules-class descent reaches a type that is not sealed",
         "'{0}' is not sealed, so a value of a more derived type may reach '{1}'. {2} checks it "
-            + "against the rules for '{0}' only. {3}. To keep checking '{0}' only, suppress this "
-            + "warning at the call",
+            + "against the rules for '{0}' only. {3}. To keep checking '{0}' only, pass "
+            + "Polymorphism.DeclaredOnly",
         DiagnosticSeverity.Warning
     );
 
     /// <summary>
-    /// VM3111's fix. Sealing is offered only for a class that can be sealed, which an abstract
-    /// class and an interface cannot.
+    /// VM3111's fix, printing the call with the mode added. Sealing is offered only for a class
+    /// that can be sealed, which an abstract class and an interface cannot.
     /// </summary>
     public static string RulesDescentIntoUnsealedTypeFix(
         bool sealable,
         string type,
-        string member,
-        string construct
+        string replacement
     ) =>
-        (sealable ? $"Seal '{type}', or replace" : "Replace")
-        + $" {construct} with [ValidateNested(Polymorphism.CompileTime)] on '{member}' to run the "
-        + "rules for its actual type";
+        (sealable ? $"Seal '{type}', or pass" : "Pass")
+        + $" Polymorphism.CompileTime to run the rules for its actual type, as in {replacement}";
 
     public static readonly DiagnosticDescriptor LanguagePackUnreadable = Descriptor(
         "VM4001",

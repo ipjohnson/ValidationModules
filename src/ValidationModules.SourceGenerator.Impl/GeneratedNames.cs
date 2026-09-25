@@ -26,6 +26,12 @@ internal static class GeneratedNames
 
     public static string Validator(INamedTypeSymbol type) => $"{Flattened(type)}Validator";
 
+    /// <summary>The validator's name qualified by its type's namespace, as generated code names it.</summary>
+    public static string QualifiedValidator(INamedTypeSymbol type) =>
+        type.ContainingNamespace.IsGlobalNamespace
+            ? $"global::{Validator(type)}"
+            : $"global::{type.ContainingNamespace.ToDisplayString()}.{Validator(type)}";
+
     /// <summary>The class a rules class's transcribed regions are emitted into.</summary>
     public static string Companion(INamedTypeSymbol rulesClass) => $"{Flattened(rulesClass)}_Rules";
 

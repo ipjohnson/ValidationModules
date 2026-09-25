@@ -294,6 +294,8 @@ public sealed class ValidatorEmitter
         // order. Each is a method in a companion file carrying the author's usings; the arguments
         // beyond the value are the injected validator sets the region's descents use, so a
         // separately registered validator composes in a region exactly as on an attribute descent.
+        // A descent that dispatches on the value's type is handed this validator instead, and
+        // calls the method EmitRegionDescent writes.
         foreach (var region in model.Regions)
         {
             var arguments = string.Join(
@@ -394,10 +396,11 @@ public sealed class ValidatorEmitter
             // Reflection.Emit and the result stays AOT-clean. The cost is an interpreted match
             // rather than a source-generated one.
             // The options argument is omitted entirely when there is nothing to say, rather than
-            // passed as RegexOptions.None. It is not cosmetic: the single-argument constructor lets
-            // ILC prove RegexOptions.Compiled is never set and trim the RegexCompiler path with it,
-            // and passing the enum defeats that. Measured at 713 KB on a published AOT binary -
-            // more than the regex engine itself costs.
+            // passed as RegexOptions.None. It is not cosmetic: every constructor that takes
+            // RegexOptions keeps the RegexOptions.NonBacktracking engine, and the single-argument
+            // constructor is the only one that lets ILC remove it. Measured at 486 KB on a
+            // published AOT binary, more than the 356 KB the parser and interpreter cost. The
+            // RegexCompiler path is removed under AOT whichever constructor is called.
             // A timeout is the attribute's only ReDoS mitigation, and it needs the three-argument
             // constructor - so it has to pass options too, giving up the trim above. It is paid
             // only where a timeout applies: where [Pattern] sets one, and on a [RegularExpression]
@@ -485,15 +488,6 @@ public sealed class ValidatorEmitter
             info.InitializeValue = new CodeOutputComponent(initializer) { Indented = false };
         }
 
-        for (var i = 0; i < dispatchers.Count; i++)
-        {
-            // Lazily created: eager construction would allocate on every branch that is never
-            // taken, and a validator costs 2.4 ns / 24 B to build. The race on first use is benign -
-            // two threads build equivalent validators and one wins - which is the same reasoning
-            // the nested-validator arrays already rely on.
-            validator.AddField(TypeRef(dispatchers[i]).MakeNullable(), $"_dispatch{i}");
-        }
-
         var validate = validator.AddMethod("Validate");
 
         validate.SetReturnType(TypeDefinition.Get("ValidationModules", "ValidationFlow"));
@@ -528,9 +522,7 @@ public sealed class ValidatorEmitter
         // context - so a type carrying one falls back to IValidatorFor<T>.IsValid, which walks
         // Validate properly. Correct, just not free, and the same trade an applied rule already
         // makes.
-        var dispatchesDynamically = model.Properties.Any(p =>
-            p.Polymorphism == PolymorphismMode.Runtime
-        );
+        var dispatchesDynamically = model.Properties.Any(p => p.DispatchesAtRuntime);
 
         // A type that nests itself falls back for a third reason, and a worse one than being slow.
         // The straight-line form calls the nested validator's IsValid directly, and nothing on that
@@ -588,6 +580,42 @@ public sealed class ValidatorEmitter
             isValid.Return("true");
         }
 
+        foreach (var property in model.Properties)
+        {
+            if (property.RegionCompileTime)
+            {
+                EmitRegionDescent(
+                    validator,
+                    property,
+                    PolymorphismMode.CompileTime,
+                    DisplayName(model),
+                    dispatchers,
+                    failFast
+                );
+            }
+
+            if (property.RegionRuntime)
+            {
+                EmitRegionDescent(
+                    validator,
+                    property,
+                    PolymorphismMode.Runtime,
+                    DisplayName(model),
+                    dispatchers,
+                    failFast
+                );
+            }
+        }
+
+        for (var i = 0; i < dispatchers.Count; i++)
+        {
+            // Lazily created: eager construction would allocate on every branch that is never
+            // taken, and a validator costs 2.4 ns / 24 B to build. The race on first use is benign -
+            // two threads build equivalent validators and one wins - which is the same reasoning
+            // the nested-validator arrays already rely on.
+            validator.AddField(TypeRef(dispatchers[i]).MakeNullable(), $"_dispatch{i}");
+        }
+
         if (withDynamicAdapter)
         {
             EmitDynamicAdapter(file, model);
@@ -595,6 +623,58 @@ public sealed class ValidatorEmitter
 
         return Render(file, style);
     }
+
+    /// <summary>
+    /// The method a rules-class descent calls when it passes <c>CompileTime</c> or <c>Runtime</c>.
+    /// The region pushes the path and hands over each value, and this chooses its validators.
+    /// </summary>
+    /// <remarks>
+    /// The body is the one <see cref="EmitDescent"/> writes for <c>[ValidateNested]</c>, so a
+    /// rules-class descent gets the same switch, the same fields and the same runtime lookup, and
+    /// each mode has one implementation. The region is a static method in another class, so it
+    /// reaches this through the validator it is passed, which is why the method is internal.
+    /// </remarks>
+    private static void EmitRegionDescent(
+        ClassDefinition validator,
+        ValidatedPropertyModel property,
+        PolymorphismMode polymorphism,
+        string owner,
+        List<string> dispatchers,
+        bool failFast
+    )
+    {
+        var method = validator.AddMethod(DescentMethod(property.PropertyName, polymorphism));
+
+        method.Modifiers = ComponentModifier.Internal;
+        method.SetReturnType(TypeDefinition.Get("ValidationModules", "ValidationFlow"));
+        method
+            .AddParameter(TypeDefinition.Get("ValidationModules", "ValidationContext"), "context")
+            .Modifier = ParameterModifier.Ref;
+        method.AddParameter(ElementTypeRef(property), "value");
+
+        EmitDescent(
+            method,
+            property with
+            {
+                Polymorphism = polymorphism,
+            },
+            "value",
+            "context",
+            "validators",
+            owner,
+            dispatchers,
+            boolean: false,
+            failFast
+        );
+        BlankLine(method);
+        method.Return($"{Flow}.Continue");
+    }
+
+    /// <summary>
+    /// The name of the method <see cref="EmitRegionDescent"/> writes, which the region calls.
+    /// </summary>
+    internal static string DescentMethod(string propertyName, PolymorphismMode polymorphism) =>
+        $"Descend{propertyName}{polymorphism}";
 
     /// <summary>
     /// The <c>IDynamicValidator</c> adapter for this type: how a Runtime descent reaches it.
@@ -1094,10 +1174,19 @@ public sealed class ValidatorEmitter
                 guard = missing;
             }
 
+            // A failed Required on a default ImmutableArray captures no value, as a missing
+            // reference captures null. Boxed, the default throws from any reader that enumerates
+            // ValidationError.Value.
             AddRule(
                 builder,
                 guard,
-                ReportFor(field, required, property, capture, messageInfos),
+                ReportFor(
+                    field,
+                    required,
+                    property,
+                    property.MissingWhenDefault ? null : capture,
+                    messageInfos
+                ),
                 failFast
             );
             fast.If(
@@ -1209,6 +1298,7 @@ public sealed class ValidatorEmitter
 
         // A descent declared only by a rules class is walked by the region's transcribed text, in
         // body order, through the same injected arrays this validator still constructs and passes.
+        // One that passes CompileTime or Runtime calls back into EmitRegionDescent's method.
         if (!property.NestedWalkInRegion)
         {
             EmitNested(
@@ -1581,7 +1671,14 @@ public sealed class ValidatorEmitter
                 : $"string.IsNullOrWhiteSpace({access})";
         }
 
-        return property.IsNullableValueType ? $"{access} is null" : $"{access} is null";
+        if (property.MissingWhenDefault)
+        {
+            return property.IsNullableValueType
+                ? $"{access} is not {PresentPattern(true)}"
+                : $"{access}.IsDefault";
+        }
+
+        return $"{access} is null";
     }
 
     /// <summary>
@@ -1719,11 +1816,14 @@ public sealed class ValidatorEmitter
     /// <summary>
     /// The test that a value is there to check, or null for a type that is never missing. A default
     /// <c>ImmutableArray&lt;T&gt;</c> is missing as null is, because reading its <c>Length</c>, its
-    /// enumerator or its <c>IReadOnlyList&lt;T&gt;</c> view throws.
+    /// enumerator or its <c>IReadOnlyList&lt;T&gt;</c> view throws. An
+    /// <c>ImmutableArray&lt;T&gt;?</c> is missing when it is null and when it holds a default array.
     /// </summary>
     internal static string? PresentTest(string access, ValidatedPropertyModel property) =>
-        property.IsReferenceType || property.IsNullableValueType ? $"{access} is not null"
+        property.MissingWhenDefault && property.IsNullableValueType
+            ? $"{access} is {PresentPattern(true)}"
         : property.MissingWhenDefault ? $"!{access}.IsDefault"
+        : property.IsReferenceType || property.IsNullableValueType ? $"{access} is not null"
         : null;
 
     /// <summary>
@@ -1805,7 +1905,7 @@ public sealed class ValidatorEmitter
                         bounds.Add($"> {above}");
                     }
 
-                    return $"{guard}(global::System.Linq.Enumerable.Count({access}) is "
+                    return $"{guard}(global::System.Linq.Enumerable.Count({value}) is "
                         + $"{string.Join(" or ", bounds)})";
                 }
 
@@ -1813,12 +1913,12 @@ public sealed class ValidatorEmitter
 
                 if (below is not null)
                 {
-                    tests.Add($"{access}.{property.CountAccessor} < {below}");
+                    tests.Add($"{value}.{property.CountAccessor} < {below}");
                 }
 
                 if (above is not null)
                 {
-                    tests.Add($"{access}.{property.CountAccessor} > {above}");
+                    tests.Add($"{value}.{property.CountAccessor} > {above}");
                 }
 
                 return $"{guard}({string.Join(" || ", tests)})";
@@ -1863,7 +1963,7 @@ public sealed class ValidatorEmitter
             // property with no Count needs no separate path - the fallback the count constraints
             // have does not arise.
             case ConstraintKind.UniqueItems:
-                return $"{guard}!global::ValidationModules.ConstraintChecks.AllUnique({access})";
+                return $"{guard}!global::ValidationModules.ConstraintChecks.AllUnique({value})";
 
             case ConstraintKind.Pattern:
             {

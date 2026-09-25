@@ -85,8 +85,11 @@ reports one error. `[Required]` is checked first, whatever the order of the attr
 never fail. The generator reports `VM1201` and drops it. Make the property nullable, or constrain
 its value with `[Range]`.
 
-A default `ImmutableArray<T>` has no array behind it, so every constraint passes it as it passes
-`null`, and `[ValidateNested]` skips it.
+`ImmutableArray<T>` is the exception. A default `ImmutableArray<T>` has no array behind it, so it
+reads as missing, as `null` does. `[Required]` fails on it and passes an empty array. Every other
+constraint passes it, and `[ValidateNested]` skips it. On an `ImmutableArray<T>?`, `[Required]`
+fails on `null` and on a default array. The other constraints and `[ValidateNested]` read an
+`ImmutableArray<T>?` through the array it holds, and pass `null` as they pass a default array.
 
 ## Bounds
 
