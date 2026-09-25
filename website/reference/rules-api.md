@@ -34,7 +34,9 @@ name derived from the value.
 A default `ImmutableArray<T>` has no array behind it, so `Require` reads it as missing. On an
 `ImmutableArray<T>?`, `Require` fails on `null` and on a default array. `Require` on an
 `ImmutableArray<TElement>` starts a chain on `IReadOnlyList<TElement>`, so `Count` and `Each` can
-follow it.
+follow it. `Count`, `Unique` and `Each` read an `ImmutableArray<T>?` through the array it holds.
+C# cannot infer the element type through the nullable, so `Count`, `Unique` and an `Each` over
+objects need it written, as in `rules.Count<string>(x.Tags, 1, 5)`.
 
 `Require` on a property of any other non-nullable value type can never fail, and the generator
 reports `VM3101`.
