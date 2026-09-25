@@ -81,4 +81,9 @@
         <AdditionalFiles Include="../ValidationModules.SourceGenerator.Impl/AnalyzerReleases.Unshipped.md"/>
     </ItemGroup>
 
+    <!-- For ValidationSourceGenerator.FailingEmit, which the tests drive VM5002 through. -->
+    <ItemGroup>
+        <InternalsVisibleTo Include="ValidationModules.SourceGenerator.Tests"/>
+    </ItemGroup>
+
 </Project>

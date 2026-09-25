@@ -133,6 +133,21 @@ public static class LanguagePackReader
             return new Outcome(null, diagnostics.ToImmutable());
         }
 
+        if (!IsCultureName(culture!))
+        {
+            diagnostics.Add(
+                Diagnostic.Create(
+                    ValidationDiagnostics.LanguagePackUnreadable,
+                    at,
+                    PackName(file.Path),
+                    $"its \"culture\" is \"{culture}\", which is not a culture name. Write it as "
+                        + "CultureInfo.Name does, in letters and digits joined by hyphens, as in \"fr-CA\""
+                )
+            );
+
+            return new Outcome(null, diagnostics.ToImmutable());
+        }
+
         // messages.fr.validation-messages.json says "fr" twice; when the two disagree, the body
         // wins and the name gets a warning - explicit over filename magic, but a mismatch is a
         // copy-paste story worth hearing.
@@ -237,6 +252,39 @@ public static class LanguagePackReader
         );
 
         return new Outcome(model, diagnostics.ToImmutable());
+    }
+
+    /// <summary>
+    /// Whether <paramref name="culture"/> is spelled as <c>CultureInfo.Name</c> spells a culture:
+    /// letters and digits in parts joined by <c>-</c>, or by <c>_</c> before a sort order, as in
+    /// <c>de-DE_phoneb</c>.
+    /// </summary>
+    /// <remarks>
+    /// The runtime chooses a pack by comparing its culture with <c>CultureInfo.Name</c>, so a pack
+    /// whose culture is not a name is never chosen. The culture is also part of the pack's hint
+    /// name, where a character such as <c>:</c> made <c>AddSource</c> throw.
+    /// </remarks>
+    private static bool IsCultureName(string culture)
+    {
+        var part = 0;
+
+        foreach (var character in culture)
+        {
+            if (character is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or (>= '0' and <= '9'))
+            {
+                part++;
+            }
+            else if (character is '-' or '_' && part > 0)
+            {
+                part = 0;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        return part > 0;
     }
 
     /// <summary>"fr" → Fr, "zh-Hans" → ZhHans: the culture as a class-name prefix.</summary>

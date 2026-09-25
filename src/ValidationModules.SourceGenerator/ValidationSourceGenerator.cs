@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using CSharpAuthor;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using ValidationModules.SourceGenerator.Impl;
 using ValidationModules.SourceGenerator.Impl.Emitters;
 using ValidationModules.SourceGenerator.Impl.FrontEnds;
@@ -30,8 +31,20 @@ namespace ValidationModules.SourceGenerator;
 [Generator]
 public sealed class ValidationSourceGenerator : IIncrementalGenerator
 {
+    /// <summary>
+    /// Makes the emit of each file whose hint name this accepts throw, as a defect in an emitter
+    /// would. Null outside the tests.
+    /// </summary>
+    /// <remarks>
+    /// The tests drive VM5002 through it, so that they do not depend on an input that a later fix
+    /// turns into a diagnostic of its own.
+    /// </remarks>
+    internal Func<string, bool>? FailingEmit { get; init; }
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
+        var failingEmit = FailingEmit;
+
         var options = context.AnalyzerConfigOptionsProvider.Select(
             static (provider, _) =>
             {
@@ -216,171 +229,66 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                 (option.EmitFailFast, option.CodeStyle, option.Naming, option.CaptureValues)
         );
 
-        context.RegisterSourceOutput(
-            models.Combine(emitterSettings),
-            static (production, input) =>
-            {
-                var (results, (emitFailFast, codeStyle, naming, captureValues)) = (
-                    input.Left,
-                    input.Right
-                );
-
-                // An IDynamicValidator adapter is only worth emitting for an assembly that actually
-                // dispatches dynamically. Registering one per validated type roots every adapter, so
-                // ILC cannot trim them - which would charge every consumer for a mode most never use.
-                // Emitted for all of this assembly's types once any of them needs it, so that a miss
-                // still means "this assembly never registered" rather than "this type had no rules".
-                var dispatchesDynamically = results.Any(result =>
-                    result.Model is { } model
-                    && model.Properties.Any(property => property.DispatchesAtRuntime)
-                );
-
-                // Built over every model in the compilation, which this loop already has in hand - so
-                // knowing which nested descents come back round costs nothing in incrementality. A
-                // validator on a cycle cannot take its nested validator as a constructor dependency
-                // without making the container refuse to build, and cannot carry the straight-line
-                // IsValid without risking the process on cyclic data.
-                var nesting = NestingGraph.Build(
-                    results
-                        .Select(result => result.Model)
-                        .Where(model => model is not null)
-                        .Select(model => model!)
-                );
-
-                var hintNames = UniqueHintNames(
-                    results
-                        .Select(result => result.Model is { } model ? HintNameFor(model) : null)
-                        .Concat(results.Select(result => result.PredicateHintName))
-                        .Where(hint => hint is not null)
-                        .Select(hint => hint!)
-                );
-
-                foreach (var result in results)
-                {
-                    foreach (var diagnostic in result.Diagnostics)
-                    {
-                        production.ReportDiagnostic(diagnostic);
-                    }
-
-                    if (result.Model is { } model)
-                    {
-                        // Per model, so one model that cannot be emitted fails the build with VM5002
-                        // naming it, while every other validator in the compilation is still generated.
-                        try
-                        {
-                            production.AddSource(
-                                hintNames[HintNameFor(model)],
-                                new ValidatorEmitter().Emit(
-                                    model,
-                                    dispatchesDynamically,
-                                    emitFailFast,
-                                    nesting,
-                                    codeStyle,
-                                    naming,
-                                    captureValues
-                                )
-                            );
-                        }
-                        catch (Exception exception)
-                        {
-                            ReportEmitFailure(
-                                production,
-                                $"the validator for '{model.QualifiedTypeName}'",
-                                exception
-                            );
-                        }
-                    }
-
-                    if (result.Predicates is { } predicates)
-                    {
-                        // A throw that leaves this callback makes Roslyn drop every file the
-                        // generator added, not only this one.
-                        try
-                        {
-                            production.AddSource(hintNames[result.PredicateHintName!], predicates);
-                        }
-                        catch (Exception exception)
-                        {
-                            ReportEmitFailure(
-                                production,
-                                $"the file '{result.PredicateHintName}'",
-                                exception
-                            );
-                        }
-                    }
-                }
-            }
-        );
-
-        context.RegisterSourceOutput(
-            languagePackFiles.Combine(assemblyNamespace).Combine(emitterSettings),
-            static (production, input) =>
-            {
-                var ((files, ns), settings) = input;
-
-                for (var i = 0; i < files.Length; i++)
+        // Each file is emitted and checked before any output adds it. Roslyn runs each output in
+        // its own callback, so a file that one output failed to add was still named by files that
+        // other outputs added. Planning first lets every output, the registration's included, read
+        // which files are added.
+        var validatorFiles = models
+            .Combine(emitterSettings)
+            .Select(
+                (input, _) =>
                 {
                     try
                     {
-                        var outcome = LanguagePackReader.Read(files[i], i);
-
-                        foreach (var diagnostic in outcome.Diagnostics)
-                        {
-                            production.ReportDiagnostic(diagnostic);
-                        }
-
-                        if (outcome.Model is { } pack)
-                        {
-                            production.AddSource(
-                                pack.HintName,
-                                new LanguagePackEmitter().Emit(pack, ns, settings.CodeStyle)
-                            );
-                        }
+                        return PlanValidatorFiles(input.Left, input.Right, failingEmit);
                     }
                     catch (Exception exception)
                     {
-                        ReportEmitFailure(
-                            production,
-                            $"the language pack '{files[i].Path}'",
-                            exception
+                        return FilePlan<ValidatedTypeModel>.Failed(
+                            input
+                                .Left.SelectMany(static result => result.Diagnostics)
+                                .Append(FailureDiagnostic("the validator files", exception))
                         );
                     }
                 }
-            }
+            );
+
+        context.RegisterSourceOutput(
+            validatorFiles,
+            static (production, plan) => Add(production, plan)
         );
 
-        var registrationInput = models
-            .SelectMany(
-                static (results, _) =>
-                    results
-                        .Select(result => result.Model)
-                        .Where(model => model is not null)
-                        .Select(model => model!)
-            )
-            .Collect()
+        var languagePacks = languagePackFiles
+            .Combine(assemblyNamespace)
+            .Combine(emitterSettings)
+            .Select(
+                (input, _) =>
+                    PlanLanguagePacks(
+                        input.Left.Left,
+                        input.Left.Right,
+                        input.Right.CodeStyle,
+                        failingEmit
+                    )
+            );
+
+        context.RegisterSourceOutput(
+            languagePacks,
+            static (production, plan) => Add(production, plan)
+        );
+
+        var registrationInput = validatorFiles
+            .Select(static (plan, _) => plan.Added)
             .Combine(hasDependencyModules)
             .Combine(options)
             .Combine(assemblyNamespace)
-            .Combine(languagePackFiles)
+            .Combine(languagePacks.Select(static (plan, _) => plan.Added))
             .Combine(entryPoints);
 
         context.RegisterSourceOutput(
             registrationInput,
             static (production, input) =>
             {
-                var (((((collected, hasDm), generatorOptions), ns), packFiles), modules) = input;
-
-                // Re-read rather than re-plumbed: the read is deterministic and cheap, and carrying
-                // the models through a second provider would double-report their diagnostics.
-                var languagePacks = new List<LanguagePackModel>(packFiles.Length);
-
-                for (var i = 0; i < packFiles.Length; i++)
-                {
-                    if (LanguagePackReader.Read(packFiles[i], i).Model is { } pack)
-                    {
-                        languagePacks.Add(pack);
-                    }
-                }
+                var (((((collected, hasDm), generatorOptions), ns), packs), modules) = input;
 
                 var mode = generatorOptions.Registration switch
                 {
@@ -441,7 +349,7 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                             generatorOptions.Naming,
                             withAdapters,
                             generatorOptions.CodeStyle,
-                            languagePacks,
+                            packs.ToList(),
                             registrationTargets
                         ) is
                         { } source
@@ -526,6 +434,312 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
 
         return unique;
     }
+
+    /// <summary>
+    /// Emits every validator, and decides which of them, and of the companions and fragment
+    /// containers <see cref="BuildModels"/> emitted, the output adds.
+    /// </summary>
+    private static FilePlan<ValidatedTypeModel> PlanValidatorFiles(
+        ImmutableArray<ModelResult> results,
+        (bool EmitFailFast, BraceStyle CodeStyle, string? Naming, bool CaptureValues) settings,
+        Func<string, bool>? failingEmit
+    )
+    {
+        // An IDynamicValidator adapter is only worth emitting for an assembly that actually
+        // dispatches dynamically. Registering one per validated type roots every adapter, so ILC
+        // cannot trim them - which would charge every consumer for a mode most never use. Emitted
+        // for all of this assembly's types once any of them needs it, so that a miss still means
+        // "this assembly never registered" rather than "this type had no rules".
+        var dispatchesDynamically = results.Any(result =>
+            result.Model is { } model
+            && model.Properties.Any(property => property.DispatchesAtRuntime)
+        );
+
+        // Built over every model in the compilation, which the plan already has in hand - so
+        // knowing which nested descents come back round costs nothing in incrementality. A
+        // validator on a cycle cannot take its nested validator as a constructor dependency without
+        // making the container refuse to build, and cannot carry the straight-line IsValid without
+        // risking the process on cyclic data.
+        var nesting = NestingGraph.Build(
+            results
+                .Select(result => result.Model)
+                .Where(model => model is not null)
+                .Select(model => model!)
+        );
+
+        var hintNames = UniqueHintNames(
+            results
+                .Select(result => result.Model is { } model ? HintNameFor(model) : null)
+                .Concat(results.Select(result => result.PredicateHintName))
+                .Where(hint => hint is not null)
+                .Select(hint => hint!)
+        );
+
+        var diagnostics = ImmutableArray.CreateBuilder<Diagnostic>();
+        var files = new List<PlannedFile<ValidatedTypeModel>>();
+        var missing = new List<string>();
+
+        foreach (var result in results)
+        {
+            diagnostics.AddRange(result.Diagnostics);
+
+            if (result.Model is { } model)
+            {
+                files.Add(
+                    new PlannedFile<ValidatedTypeModel>(
+                        $"the validator for '{model.QualifiedTypeName}'",
+                        hintNames[HintNameFor(model)],
+                        GlobalName(model.Namespace, model.ValidatorName),
+                        () =>
+                            new ValidatorEmitter().Emit(
+                                model,
+                                dispatchesDynamically,
+                                settings.EmitFailFast,
+                                nesting,
+                                settings.CodeStyle,
+                                settings.Naming,
+                                settings.CaptureValues
+                            ),
+                        model
+                    )
+                );
+            }
+
+            if (result.Predicates is { } predicates)
+            {
+                files.Add(
+                    new PlannedFile<ValidatedTypeModel>(
+                        $"the file '{result.PredicateHintName}'",
+                        hintNames[result.PredicateHintName!],
+                        result.ClassName!,
+                        () => predicates,
+                        null
+                    )
+                );
+            }
+            else if (result.Model is null && result.ClassName is { } failed)
+            {
+                missing.Add(failed);
+            }
+        }
+
+        return Plan(files, missing, diagnostics, failingEmit);
+    }
+
+    /// <summary>
+    /// Reads and emits every language pack, and decides which of them the output adds.
+    /// </summary>
+    private static FilePlan<LanguagePackModel> PlanLanguagePacks(
+        ImmutableArray<LanguagePackFile> packFiles,
+        string ns,
+        BraceStyle style,
+        Func<string, bool>? failingEmit
+    )
+    {
+        var diagnostics = ImmutableArray.CreateBuilder<Diagnostic>();
+        var files = new List<PlannedFile<LanguagePackModel>>();
+
+        for (var i = 0; i < packFiles.Length; i++)
+        {
+            var what = $"the language pack '{packFiles[i].Path}'";
+
+            try
+            {
+                var outcome = LanguagePackReader.Read(packFiles[i], i);
+
+                diagnostics.AddRange(outcome.Diagnostics);
+
+                if (outcome.Model is { } pack)
+                {
+                    files.Add(
+                        new PlannedFile<LanguagePackModel>(
+                            what,
+                            pack.HintName,
+                            GlobalName(ns, pack.ClassName),
+                            () => new LanguagePackEmitter().Emit(pack, ns, style),
+                            pack
+                        )
+                    );
+                }
+            }
+            catch (Exception exception)
+            {
+                diagnostics.Add(FailureDiagnostic(what, exception));
+            }
+        }
+
+        return Plan(files, Array.Empty<string>(), diagnostics, failingEmit);
+    }
+
+    /// <summary>
+    /// Emits each file and decides which of them are added. A file is left out when its emit
+    /// throws, when <c>AddSource</c> would refuse its hint name, or when it names the class of a
+    /// file that is left out. Each file that fails is reported as VM5002. A file left out only
+    /// because it names one is not reported, because the VM5002 already fails the build.
+    /// </summary>
+    /// <param name="missing">
+    /// The classes that failed before the plan, such as a companion whose region threw. Their
+    /// VM5002 is already among the diagnostics.
+    /// </param>
+    /// <remarks>
+    /// A generated file names another generated class by its <c>global::</c> name, as every
+    /// emitter writes the reference. That name is what the search for a missing class looks for.
+    /// </remarks>
+    private static FilePlan<TModel> Plan<TModel>(
+        List<PlannedFile<TModel>> files,
+        IEnumerable<string> missing,
+        ImmutableArray<Diagnostic>.Builder diagnostics,
+        Func<string, bool>? failingEmit
+    )
+        where TModel : class, IEquatable<TModel>
+    {
+        var texts = new string?[files.Count];
+        var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var left = new Queue<string>(missing);
+
+        for (var i = 0; i < files.Count; i++)
+        {
+            try
+            {
+                if (failingEmit?.Invoke(files[i].HintName) == true)
+                {
+                    throw new InvalidOperationException("The emit was made to fail.");
+                }
+
+                texts[i] = files[i].Emit();
+                CheckHintName(files[i].HintName, taken);
+            }
+            catch (Exception exception)
+            {
+                texts[i] = null;
+                diagnostics.Add(FailureDiagnostic(files[i].What, exception));
+                left.Enqueue(files[i].ClassName);
+            }
+        }
+
+        while (left.Count > 0)
+        {
+            var className = left.Dequeue();
+
+            for (var i = 0; i < files.Count; i++)
+            {
+                if (texts[i] is { } text && Names(text, className))
+                {
+                    texts[i] = null;
+                    left.Enqueue(files[i].ClassName);
+                }
+            }
+        }
+
+        var added = ImmutableArray.CreateBuilder<(string HintName, string Text)>();
+        var models = ImmutableArray.CreateBuilder<TModel>();
+
+        for (var i = 0; i < files.Count; i++)
+        {
+            if (texts[i] is { } text)
+            {
+                added.Add((files[i].HintName, text));
+
+                if (files[i].Model is { } model)
+                {
+                    models.Add(model);
+                }
+            }
+        }
+
+        return new FilePlan<TModel>(
+            added.ToImmutable(),
+            diagnostics.ToImmutable(),
+            new EquatableArray<TModel>(models.ToImmutable())
+        );
+    }
+
+    /// <summary>
+    /// Throws what <c>AddSource</c> throws for a hint name it refuses. It refuses a character that
+    /// is neither an identifier character nor one of <see cref="HintNamePunctuation"/>, and a name
+    /// another file already has without regard to case.
+    /// </summary>
+    private static void CheckHintName(string hintName, HashSet<string> taken)
+    {
+        for (var i = 0; i < hintName.Length; i++)
+        {
+            if (
+                !SyntaxFacts.IsIdentifierPartCharacter(hintName[i])
+                && HintNamePunctuation.IndexOf(hintName[i]) < 0
+            )
+            {
+                throw new ArgumentException(
+                    $"The hintName '{hintName}' contains an invalid character '{hintName[i]}' at position {i}.",
+                    nameof(hintName)
+                );
+            }
+        }
+
+        if (!taken.Add(hintName))
+        {
+            throw new ArgumentException(
+                $"The hintName '{hintName}' of the added source file must be unique within a generator.",
+                nameof(hintName)
+            );
+        }
+    }
+
+    /// <summary>
+    /// The characters besides identifier characters that <c>AddSource</c> accepts in a hint name,
+    /// as of Microsoft.CodeAnalysis 4.10, the oldest compiler this generator loads into.
+    /// </summary>
+    private const string HintNamePunctuation = ".,-_ ()[]{}+`/\\";
+
+    /// <summary>
+    /// Whether <paramref name="text"/> names <paramref name="className"/>, rather than only a
+    /// longer name that starts with it.
+    /// </summary>
+    private static bool Names(string text, string className)
+    {
+        for (
+            var at = text.IndexOf(className, StringComparison.Ordinal);
+            at >= 0;
+            at = text.IndexOf(className, at + className.Length, StringComparison.Ordinal)
+        )
+        {
+            var end = at + className.Length;
+
+            if (end == text.Length || !SyntaxFacts.IsIdentifierPartCharacter(text[end]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void Add<TModel>(SourceProductionContext production, FilePlan<TModel> plan)
+        where TModel : class, IEquatable<TModel>
+    {
+        foreach (var diagnostic in plan.Diagnostics)
+        {
+            production.ReportDiagnostic(diagnostic);
+        }
+
+        foreach (var (hintName, text) in plan.Files)
+        {
+            // The plan refused every hint name AddSource refuses, so this is not expected to
+            // throw. A throw that left this callback would make Roslyn drop every file the
+            // generator added, not only this one.
+            try
+            {
+                production.AddSource(hintName, text);
+            }
+            catch (Exception exception)
+            {
+                ReportEmitFailure(production, $"the file '{hintName}'", exception);
+            }
+        }
+    }
+
+    /// <summary>The name a generated file uses for a generated class it refers to.</summary>
+    private static string GlobalName(string ns, string className) =>
+        ns.Length == 0 ? $"global::{className}" : $"global::{ns}.{className}";
 
     /// <summary>
     /// Reads every candidate, folds each rules class into its target's model, and emits one model per
@@ -650,22 +864,37 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                         null,
                         ImmutableArray<Diagnostic>.Empty,
                         new RegionEmitter().EmitRegion(companion.ToList(), options.CodeStyle),
-                        HintSafe($"{CompanionName(rulesClass)}.g.cs")
+                        HintSafe($"{CompanionName(rulesClass)}.g.cs"),
+                        CompanionQualifiedName(rulesClass)
                     )
                 );
             }
             catch (Exception exception)
             {
                 results.Add(
-                    FailureResult($"the region for '{QualifiedName(rulesClass)}'", exception)
+                    FailureResult(
+                        $"the region for '{QualifiedName(rulesClass)}'",
+                        exception,
+                        CompanionQualifiedName(rulesClass)
+                    )
                 );
             }
         }
 
         // Fragment containers are shared across every rules class that called into them, so they
         // are emitted once per pass, after every candidate has been read.
+        var collidingContainers = DropCollidingContainers(
+            rulesFrontEnd.FragmentContainers,
+            results
+        );
+
         foreach (var container in rulesFrontEnd.FragmentContainers)
         {
+            if (collidingContainers.Contains(container))
+            {
+                continue;
+            }
+
             try
             {
                 if (
@@ -678,13 +907,25 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                             : HintSafe($"{container.Namespace}.{container.Name}.g.cs");
 
                     results.Add(
-                        new ModelResult(null, ImmutableArray<Diagnostic>.Empty, fragments, hint)
+                        new ModelResult(
+                            null,
+                            ImmutableArray<Diagnostic>.Empty,
+                            fragments,
+                            hint,
+                            GlobalName(container.Namespace, container.Name)
+                        )
                     );
                 }
             }
             catch (Exception exception)
             {
-                results.Add(FailureResult($"the fragments of '{container.Name}'", exception));
+                results.Add(
+                    FailureResult(
+                        $"the fragments of '{container.Name}'",
+                        exception,
+                        GlobalName(container.Namespace, container.Name)
+                    )
+                );
             }
         }
 
@@ -727,7 +968,11 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
             catch (Exception exception)
             {
                 results.Add(
-                    FailureResult($"the model for '{QualifiedName(candidate)}'", exception)
+                    FailureResult(
+                        $"the model for '{QualifiedName(candidate)}'",
+                        exception,
+                        ValidatorGlobalName(candidate)
+                    )
                 );
             }
         }
@@ -750,7 +995,13 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
             }
             catch (Exception exception)
             {
-                results.Add(FailureResult($"the model for '{QualifiedName(target)}'", exception));
+                results.Add(
+                    FailureResult(
+                        $"the model for '{QualifiedName(target)}'",
+                        exception,
+                        ValidatorGlobalName(target)
+                    )
+                );
             }
         }
 
@@ -776,7 +1027,8 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
     /// <para>
     /// Emitting both made the second <c>AddSource</c> throw, and VM5002 reported that as a
     /// generator failure. Neither is emitted, because which of the two keeps the name is the
-    /// author's choice. The diagnostic names both.
+    /// author's choice. The diagnostic names both. A validator that names the class, such as one
+    /// that nests either type, is not emitted either.
     /// </para>
     /// <para>
     /// Names are compared by exact case. Two names that differ only in case are two classes, and
@@ -807,7 +1059,11 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
 
             foreach (var entry in group)
             {
-                results[entry.Index] = results[entry.Index] with { Model = null };
+                results[entry.Index] = results[entry.Index] with
+                {
+                    Model = null,
+                    ClassName = GlobalName(group.Key.Namespace, group.Key.ValidatorName),
+                };
             }
 
             ReportNameCollision(
@@ -858,6 +1114,62 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
                 ValidationDiagnostics.NeitherRulesClassCompiled
             );
         }
+    }
+
+    /// <summary>
+    /// Reports VM1013 for two types whose fragment containers would have one name in one
+    /// namespace, and emits neither container.
+    /// </summary>
+    /// <remarks>
+    /// Adding both containers made the second <c>AddSource</c> refuse its hint name, which VM5002
+    /// reported as a generator failure. The container's name is recorded as a class that is not
+    /// emitted, so the plan leaves out every file that names it: each companion that calls a
+    /// fragment in either type, and the validator that calls that companion.
+    /// </remarks>
+    private static HashSet<FragmentContainer> DropCollidingContainers(
+        IReadOnlyList<FragmentContainer> containers,
+        ImmutableArray<ModelResult>.Builder results
+    )
+    {
+        var dropped = new HashSet<FragmentContainer>();
+
+        foreach (
+            var group in containers.GroupBy(static container =>
+                (container.Namespace, container.Name)
+            )
+        )
+        {
+            var types = group
+                .Select(static container => container.DeclaringType)
+                .Distinct<INamedTypeSymbol>(SymbolEqualityComparer.Default)
+                .OrderBy(static type => type.ToDisplayString(), StringComparer.Ordinal)
+                .ToList();
+
+            if (types.Count < 2)
+            {
+                continue;
+            }
+
+            dropped.UnionWith(group);
+            results.Add(
+                new ModelResult(
+                    null,
+                    ImmutableArray<Diagnostic>.Empty,
+                    null,
+                    null,
+                    GlobalName(group.Key.Namespace, group.Key.Name)
+                )
+            );
+
+            ReportNameCollision(
+                results,
+                types,
+                group.Key.Name,
+                ValidationDiagnostics.NeitherFragmentContainerGenerated
+            );
+        }
+
+        return dropped;
     }
 
     /// <summary>VM1013 at each type after the first, naming it and the first.</summary>
@@ -964,6 +1276,15 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
     private static string CompanionQualifiedName(INamedTypeSymbol rulesClass) =>
         $"global::{CompanionName(rulesClass)}";
 
+    /// <summary>The name other generated files use for the type's validator.</summary>
+    private static string ValidatorGlobalName(INamedTypeSymbol type) =>
+        GlobalName(
+            type.ContainingNamespace.IsGlobalNamespace
+                ? string.Empty
+                : type.ContainingNamespace.ToDisplayString(),
+            GeneratedNames.Validator(type)
+        );
+
     /// <summary>
     /// Indexes each candidate against every ancestor it has, so that "the subtypes of X" is
     /// answerable without ever enumerating types in a referenced assembly.
@@ -1044,12 +1365,52 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
             ? type.Name
             : $"{type.ContainingNamespace.ToDisplayString()}.{type.Name}";
 
+    /// <param name="Predicates">A companion's or a fragment container's text.</param>
+    /// <param name="ClassName">
+    /// The <c>global::</c> name of the class <paramref name="Predicates"/> declares. Without
+    /// <paramref name="Predicates"/> or <paramref name="Model"/>, the class that failed to build.
+    /// </param>
     private sealed record ModelResult(
         ValidatedTypeModel? Model,
         ImmutableArray<Diagnostic> Diagnostics,
         string? Predicates,
-        string? PredicateHintName
+        string? PredicateHintName,
+        string? ClassName = null
     );
+
+    /// <summary>A file an output may add, before the plan decides.</summary>
+    /// <param name="What">What VM5002 calls the file.</param>
+    /// <param name="ClassName">The <c>global::</c> name of the class the file declares.</param>
+    /// <param name="Emit">The file's text. The plan calls it once.</param>
+    /// <param name="Model">What the registration registers when the file is added.</param>
+    private sealed record PlannedFile<TModel>(
+        string What,
+        string HintName,
+        string ClassName,
+        Func<string> Emit,
+        TModel? Model
+    )
+        where TModel : class, IEquatable<TModel>;
+
+    /// <summary>
+    /// The files one output adds and the diagnostics it reports, decided before any output runs.
+    /// <paramref name="Added"/> holds the models whose files are added, for the registration.
+    /// </summary>
+    private sealed record FilePlan<TModel>(
+        ImmutableArray<(string HintName, string Text)> Files,
+        ImmutableArray<Diagnostic> Diagnostics,
+        EquatableArray<TModel> Added
+    )
+        where TModel : class, IEquatable<TModel>
+    {
+        /// <summary>A plan that adds nothing, for a stage that threw before it could decide.</summary>
+        public static FilePlan<TModel> Failed(IEnumerable<Diagnostic> diagnostics) =>
+            new(
+                ImmutableArray<(string, string)>.Empty,
+                diagnostics.ToImmutableArray(),
+                EquatableArray<TModel>.Empty
+            );
+    }
 
     /// <summary>
     /// An unhandled exception in a stage, reported as VM5002 at Error severity.
@@ -1067,8 +1428,16 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
         Exception exception
     ) => production.ReportDiagnostic(FailureDiagnostic(what, exception));
 
-    private static ModelResult FailureResult(string what, Exception exception) =>
-        new(null, ImmutableArray.Create(FailureDiagnostic(what, exception)), null, null);
+    /// <param name="className">
+    /// The <c>global::</c> name of the class that failed to build, so that no file naming it is
+    /// added.
+    /// </param>
+    private static ModelResult FailureResult(
+        string what,
+        Exception exception,
+        string? className = null
+    ) =>
+        new(null, ImmutableArray.Create(FailureDiagnostic(what, exception)), null, null, className);
 
     private static Diagnostic FailureDiagnostic(string what, Exception exception) =>
         Diagnostic.Create(

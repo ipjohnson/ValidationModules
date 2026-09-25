@@ -112,6 +112,64 @@ public class LanguagePackGenerationTests
         );
     }
 
+    /// <summary>
+    /// The culture is part of the pack's file name, and a ':' in it failed the build as VM5002 in
+    /// the generator rather than as a diagnostic about the pack. The runtime chooses a pack by
+    /// <c>CultureInfo.Name</c>, so a culture that is not a name could never be chosen anyway.
+    /// </summary>
+    [Theory]
+    [InlineData("fr:CA")]
+    [InlineData("fr CA")]
+    [InlineData("fr/CA")]
+    [InlineData(" fr")]
+    [InlineData("fr-")]
+    [InlineData("fr--CA")]
+    [InlineData("français")]
+    public void ACultureThatIsNotACultureName_IsVM4001_AndThePackIsSkipped(string culture)
+    {
+        var result = GeneratorHarness.RunWithFiles(
+            Model,
+            [
+                (
+                    "messages.validation-messages.json",
+                    $$"""{ "culture": "{{culture}}", "templates": { "required": "{field} est obligatoire." } }"""
+                ),
+            ]
+        );
+
+        var diagnostic = Assert.Single(
+            result.Diagnostics,
+            d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error
+        );
+
+        Assert.Equal("VM4001", diagnostic.Id);
+        Assert.Contains($"\"{culture}\"", diagnostic.GetMessage());
+        Assert.Contains("\"fr-CA\"", diagnostic.GetMessage());
+        Assert.Empty(result.CompilationErrors);
+        Assert.DoesNotContain(result.Sources.Keys, name => name.StartsWith("LanguagePack."));
+    }
+
+    [Theory]
+    [InlineData("zh-Hans", "ZhHansLanguagePack0")]
+    [InlineData("sr-Latn-RS", "SrLatnRSLanguagePack0")]
+    [InlineData("de-DE_phoneb", "DeDEPhonebLanguagePack0")]
+    public void ACultureNameWithSeveralParts_IsAccepted(string culture, string className)
+    {
+        var result = GeneratorHarness.RunWithFiles(
+            Model,
+            [
+                (
+                    "messages.validation-messages.json",
+                    $$"""{ "culture": "{{culture}}", "templates": { "required": "{field} est obligatoire." } }"""
+                ),
+            ]
+        );
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id is "VM4001" or "VM5002");
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains(className, result.Sources["GeneratedValidatorRegistration.g.cs"]);
+    }
+
     [Fact]
     public void AMisspelledShapeKey_IsVM4002_WithTheNearestMatch()
     {
