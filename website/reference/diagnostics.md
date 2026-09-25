@@ -769,4 +769,6 @@ uses an old id has no effect now. Replace it with the new id:
 | `VM0063` | `VM2004` | `VM0108` | `VM5003` |
 | `VM0064` | `VM2005` |  | |
 
-`VM6001` was added in 1.1.0 and has no earlier id.
+`VM6001` was added in 1.1.0, and `VM1011`, `VM1013`, `VM1014`, `VM1203`, `VM1303`, `VM1304`,
+`VM1505`, `VM2010`, `VM2011`, `VM3008`, `VM3009`, `VM3106`, `VM3108`, `VM3109`, `VM3110`, `VM3111`
+and `VM5004` were added in 1.2.0. None of them has an earlier id.
