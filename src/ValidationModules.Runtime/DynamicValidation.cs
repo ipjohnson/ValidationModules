@@ -50,7 +50,7 @@ public static class DynamicValidation
         if (services is null)
         {
             throw new InvalidOperationException(
-                $"'{property}' on {owner} is declared [ValidateNested(Polymorphism.Runtime)], which resolves a "
+                $"'{property}' on {owner} descends with Polymorphism.Runtime, which resolves a "
                     + "validator for the value's runtime type from the container - but this validation pass carries no "
                     + "services. Validate through ValidationRunner<T> resolved from the container, or construct the "
                     + "ValidationErrorCollector with an IServiceProvider. Polymorphism.CompileTime needs no container."

@@ -143,7 +143,8 @@ public sealed class RulesFrontEnd
                 describe.Parameters[0],
                 describe.Parameters[1],
                 fieldSeed: fieldSeed,
-                infoSeed: infoSeed
+                infoSeed: infoSeed,
+                validatorParameter: UnusedIdentifier(syntax, "validator")
             );
 
             if (syntax.Body is { } block)
@@ -191,6 +192,33 @@ public sealed class RulesFrontEnd
 
     private void Report(DiagnosticDescriptor descriptor, SyntaxNode node, params object?[] args) =>
         _diagnostics.Add(Diagnostic.Create(descriptor, node.GetLocation(), args));
+
+    /// <summary>
+    /// <paramref name="name"/>, or it with the lowest number appended that no identifier in
+    /// <paramref name="method"/> spells.
+    /// </summary>
+    /// <remarks>
+    /// For a parameter the generator adds to the region. The region transcribes the method's own
+    /// parameters and locals, and one of the same name would be CS0100 or CS0136 in generated code.
+    /// </remarks>
+    private static string UnusedIdentifier(SyntaxNode method, string name)
+    {
+        var spelled = new HashSet<string>(
+            method
+                .DescendantTokens()
+                .Where(static token => token.IsKind(SyntaxKind.IdentifierToken))
+                .Select(static token => token.ValueText),
+            StringComparer.Ordinal
+        );
+        var unused = name;
+
+        for (var n = 1; spelled.Contains(unused); n++)
+        {
+            unused = $"{name}{n}";
+        }
+
+        return unused;
+    }
 
     /// <summary>
     /// Whether anything reported since <paramref name="before"/> leaves the body unusable, which
@@ -501,6 +529,12 @@ public sealed class RulesFrontEnd
         private readonly int _fieldSeed;
 
         /// <summary>
+        /// The region parameter holding the validator, for a descent that dispatches on the value's
+        /// type.
+        /// </summary>
+        private readonly string _validatorParameter;
+
+        /// <summary>
         /// The message infos this region hoists onto its companion, for the rules on a property
         /// with a <c>[Display(Name)]</c> label.
         /// </summary>
@@ -542,11 +576,13 @@ public sealed class RulesFrontEnd
             int fieldSeed = 0,
             string infoPrefix = "_message",
             int infoSeed = 0,
-            IReadOnlyDictionary<ITypeParameterSymbol, ITypeSymbol>? typeArguments = null
+            IReadOnlyDictionary<ITypeParameterSymbol, ITypeSymbol>? typeArguments = null,
+            string validatorParameter = "validator"
         )
         {
             _fieldPrefix = fieldPrefix;
             _fieldSeed = fieldSeed;
+            _validatorParameter = validatorParameter;
             _infos = new ValidatorEmitter.MessageInfoPool(infoPrefix, infoSeed);
             _owner = owner;
             _compilation = compilation;
@@ -2022,7 +2058,9 @@ public sealed class RulesFrontEnd
                 bool Elements,
                 ExpressionSyntax Value,
                 string? Field,
-                SyntaxNode Site
+                InvocationExpressionSyntax Site,
+                PolymorphismMode Polymorphism,
+                bool Stated
             )> _descents = new();
 
             /// <summary>
@@ -2536,7 +2574,35 @@ public sealed class RulesFrontEnd
                     }
                 }
 
-                _descents.Add((elements, value, FieldLiteral(arguments), call));
+                var stated = arguments.TryGetValue("polymorphism", out var mode);
+                var polymorphism = PolymorphismMode.DeclaredOnly;
+
+                if (mode is not null)
+                {
+                    // The mode decides which code is written, so it has to be known at build time,
+                    // as an attribute argument always is.
+                    if (
+                        _writer._model.GetConstantValue(mode)
+                        is not { HasValue: true, Value: int ordinal }
+                    )
+                    {
+                        _writer._owner.Report(
+                            ValidationDiagnostics.NotTranscribable,
+                            call,
+                            _writer._declaringClass.Name,
+                            $"a Polymorphism argument that is not a constant, '{mode}' (pass "
+                                + "Polymorphism.CompileTime, Polymorphism.Runtime or "
+                                + "Polymorphism.DeclaredOnly)"
+                        );
+                        return false;
+                    }
+
+                    polymorphism = (PolymorphismMode)ordinal;
+                }
+
+                _descents.Add(
+                    (elements, value, FieldLiteral(arguments), call, polymorphism, stated)
+                );
 
                 return true;
             }
@@ -2737,9 +2803,9 @@ public sealed class RulesFrontEnd
                     EmitElementRules(collection, collectionFacts, missing);
                 }
 
-                foreach (var (elements, value, field, site) in _descents)
+                foreach (var (elements, value, field, site, polymorphism, stated) in _descents)
                 {
-                    EmitDescent(elements, value, field, missing, site);
+                    EmitDescent(elements, value, field, missing, site, polymorphism, stated);
                 }
             }
 
@@ -2824,7 +2890,9 @@ public sealed class RulesFrontEnd
                 ExpressionSyntax value,
                 string? explicitField,
                 string? missing,
-                SyntaxNode site
+                InvocationExpressionSyntax site,
+                PolymorphismMode polymorphism,
+                bool stated
             )
             {
                 var path = _writer.PathOf(value);
@@ -2856,34 +2924,54 @@ public sealed class RulesFrontEnd
                 }
 
                 var field = explicitField ?? _writer._owner.WireNameOf(property);
-                var dependency = _writer.DependencyFor(property, elements, value, site, construct);
+                var dependency = _writer.DependencyFor(
+                    property,
+                    elements,
+                    value,
+                    site,
+                    construct,
+                    polymorphism
+                );
 
                 if (dependency is null)
                 {
                     return;
                 }
 
-                // The walk below runs the validators for the declared type only, and a rules-class
-                // descent has no Polymorphism to ask for more.
+                // Judged as the attribute's mode is, on whether the target is sealed. VM3111 asks
+                // for a mode only when none was passed, because DeclaredOnly is also an answer.
                 if (
-                    (elements ? TypeFacts.ElementTypeOf(property.Type) : Unwrap(property.Type))
-                        is { } target
-                    && AttributeFrontEnd.CanHaveSubtypes(target)
+                    (elements ? TypeFacts.ElementTypeOf(property.Type) : Unwrap(property.Type)) is
+                    { } target
                 )
                 {
-                    _writer._owner.Report(
-                        ValidationDiagnostics.RulesDescentIntoUnsealedType,
-                        site,
-                        target.Name,
-                        property.Name,
-                        construct,
-                        ValidationDiagnostics.RulesDescentIntoUnsealedTypeFix(
-                            target is { TypeKind: TypeKind.Class, IsAbstract: false },
+                    if (!AttributeFrontEnd.CanHaveSubtypes(target))
+                    {
+                        if (polymorphism == PolymorphismMode.Runtime)
+                        {
+                            _writer._owner.Report(
+                                ValidationDiagnostics.RuntimePolymorphismOnClosedType,
+                                site,
+                                target.Name,
+                                target.IsValueType ? "a value type" : "sealed"
+                            );
+                        }
+                    }
+                    else if (!stated)
+                    {
+                        _writer._owner.Report(
+                            ValidationDiagnostics.RulesDescentIntoUnsealedType,
+                            site,
                             target.Name,
                             property.Name,
-                            construct
-                        )
-                    );
+                            construct,
+                            ValidationDiagnostics.RulesDescentIntoUnsealedTypeFix(
+                                target is { TypeKind: TypeKind.Class, IsAbstract: false },
+                                target.Name,
+                                WithCompileTime(site)
+                            )
+                        );
+                    }
                 }
 
                 var n = _writer._locals++;
@@ -2907,13 +2995,7 @@ public sealed class RulesFrontEnd
                     _writer.Statement(
                         $"var elementCtx{n} = ctx.PushIndex({Quote(field)}, {index});"
                     );
-                    _writer.Open(
-                        $"for (var vi{n} = 0; vi{n} < {dependency.ParameterName}.Length; vi{n}++)"
-                    );
-                    _writer.StopIf(
-                        $"{dependency.ParameterName}[vi{n}].Validate(ref elementCtx{n}, element{n}).ShouldStop"
-                    );
-                    _writer.Close();
+                    Descend(dependency, n, $"elementCtx{n}", $"element{n}");
                     _writer.Close();
                     _writer.Close();
                     _writer.Close();
@@ -2922,15 +3004,69 @@ public sealed class RulesFrontEnd
                 {
                     _writer.Open($"if ({guard}{access} is {{ }} nested{n})");
                     _writer.Statement($"var ctx{n} = ctx.Push({Quote(field)});");
-                    _writer.Open(
-                        $"for (var vi{n} = 0; vi{n} < {dependency.ParameterName}.Length; vi{n}++)"
-                    );
-                    _writer.StopIf(
-                        $"{dependency.ParameterName}[vi{n}].Validate(ref ctx{n}, nested{n}).ShouldStop"
-                    );
-                    _writer.Close();
+                    Descend(dependency, n, $"ctx{n}", $"nested{n}");
                     _writer.Close();
                 }
+            }
+
+            /// <summary>
+            /// The descent into one value, in a context already pushed to its path.
+            /// </summary>
+            /// <remarks>
+            /// A <c>DeclaredOnly</c> descent walks the injected array here. Any other mode calls
+            /// the method the validator writes for it, which holds the switch or the runtime lookup
+            /// a <c>[ValidateNested]</c> descent gets.
+            /// </remarks>
+            private void Descend(RegionDependency dependency, int n, string context, string item)
+            {
+                var parameter = dependency.ParameterName;
+
+                if (dependency.Polymorphism == PolymorphismMode.DeclaredOnly)
+                {
+                    _writer.Open($"for (var vi{n} = 0; vi{n} < {parameter}.Length; vi{n}++)");
+                    _writer.StopIf(
+                        $"{parameter}[vi{n}].Validate(ref {context}, {item}).ShouldStop"
+                    );
+                    _writer.Close();
+                    return;
+                }
+
+                var method = ValidatorEmitter.DescentMethod(
+                    dependency.Property.Name,
+                    dependency.Polymorphism
+                );
+
+                _writer.StopIf($"{parameter}.{method}(ref {context}, {item}).ShouldStop");
+            }
+
+            /// <summary>
+            /// The call as written, passing <c>Polymorphism.CompileTime</c>, for VM3111 to print.
+            /// </summary>
+            private static string WithCompileTime(InvocationExpressionSyntax call)
+            {
+                const string mode = "Polymorphism.CompileTime";
+
+                var arguments = call
+                    .ArgumentList.Arguments.Select(static argument =>
+                        argument.NormalizeWhitespace().ToFullString()
+                    )
+                    .ToList();
+
+                if (
+                    call.ArgumentList.Arguments.Any(static argument =>
+                        argument.NameColon is not null
+                    )
+                )
+                {
+                    arguments.Add($"polymorphism: {mode}");
+                }
+                else
+                {
+                    // After the value, or first in the chained form, which takes no value.
+                    arguments.Insert(Math.Min(1, arguments.Count), mode);
+                }
+
+                return $"{call.Expression.NormalizeWhitespace().ToFullString()}({string.Join(", ", arguments)})";
             }
 
             /// <param name="labelled">
@@ -3676,7 +3812,8 @@ public sealed class RulesFrontEnd
             bool elements,
             ExpressionSyntax value,
             SyntaxNode call,
-            string construct
+            string construct,
+            PolymorphismMode polymorphism
         )
         {
             foreach (var existing in _dependencies)
@@ -3684,6 +3821,7 @@ public sealed class RulesFrontEnd
                 if (
                     SymbolEqualityComparer.Default.Equals(existing.Property, property)
                     && existing.Elements == elements
+                    && existing.Polymorphism == polymorphism
                 )
                 {
                     return existing;
@@ -3724,13 +3862,15 @@ public sealed class RulesFrontEnd
                     ? property.Name
                     : char.ToLowerInvariant(property.Name[0]) + property.Name.Substring(1);
 
+            var dispatches = polymorphism != PolymorphismMode.DeclaredOnly;
             var dependency = new RegionDependency(
                 property,
                 elements,
-                $"{camel}Validators",
-                $"{property.Name}Validators",
+                dispatches ? _validatorParameter : $"{camel}Validators",
+                dispatches ? "this" : $"{property.Name}Validators",
                 named.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                TypeFacts.CountAccessor(property.Type) ?? "Count"
+                TypeFacts.CountAccessor(property.Type) ?? "Count",
+                polymorphism
             );
 
             _dependencies.Add(dependency);
@@ -3965,13 +4105,22 @@ public enum Nesting
 /// set - so a separately registered validator for the nested type composes in a region exactly as
 /// it does on an attribute descent.
 /// </summary>
+/// <remarks>
+/// A descent that passes <c>Polymorphism.CompileTime</c> or <c>Polymorphism.Runtime</c> reads the
+/// validator itself, and calls the method the validator writes for it. That method's body is the
+/// one a <c>[ValidateNested]</c> descent gets, so each mode has one implementation. Every such
+/// descent in a region reads the same parameter.
+/// </remarks>
+/// <param name="ParameterName">The region parameter the walk reads.</param>
+/// <param name="AccessorName">What the validator passes for that parameter.</param>
 public sealed record RegionDependency(
     IPropertySymbol Property,
     bool Elements,
     string ParameterName,
     string AccessorName,
     string ElementQualifiedType,
-    string CountAccessor
+    string CountAccessor,
+    PolymorphismMode Polymorphism = PolymorphismMode.DeclaredOnly
 );
 
 /// <summary>Everything one rules class transcribed to, before the model merge.</summary>
@@ -3985,7 +4134,24 @@ public sealed record RulesDeclaration(
     IReadOnlyList<CompanionField> Fields,
     IReadOnlyList<(string Field, string Initializer)> MessageInfos,
     IReadOnlyList<INamedTypeSymbol> Facets
-);
+)
+{
+    /// <summary>
+    /// The region method's parameters after the subject, in order: the injected set each
+    /// <c>DeclaredOnly</c> descent walks, then the validator when any descent dispatches on the
+    /// value's type. The region emitter declares them and the validator's call passes them.
+    /// </summary>
+    public IEnumerable<RegionDependency> Parameters =>
+        Dependencies
+            .Where(static dependency => dependency.Polymorphism == PolymorphismMode.DeclaredOnly)
+            .Concat(
+                Dependencies
+                    .Where(static dependency =>
+                        dependency.Polymorphism != PolymorphismMode.DeclaredOnly
+                    )
+                    .Take(1)
+            );
+}
 
 /// <summary>A lazily-built facet validator a region caches, emitted as a nullable static field on
 /// the companion class. The race on first use is benign - two threads build equivalent validators
@@ -4046,12 +4212,14 @@ public sealed class FragmentMethod
 /// grow the injected-validator machinery for the property, with the walk itself owned by the
 /// region. Constraints never travel this way any more - they expand in the region's own text.
 /// </summary>
+/// <param name="Polymorphism">The mode the descent passes, which the validator dispatches with.</param>
 public sealed record DeclaredRule(
     IPropertySymbol? Property,
     string? Field,
     Models.ConstraintModel? Constraint,
     Nesting Nesting,
-    string? Condition = null
+    string? Condition = null,
+    PolymorphismMode Polymorphism = PolymorphismMode.DeclaredOnly
 );
 
 /// <summary>The fragment methods of one declaring type, emitted with that type's file usings.</summary>

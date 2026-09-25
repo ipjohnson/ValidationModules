@@ -107,6 +107,8 @@ namespace ValidationModules
         public static ValidationModules.PropertyRules<T, string?> Each<T>(this ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<string>?> rules) { }
         public static ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Each<T, TElement>(this ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> rules)
             where TElement :  class { }
+        public static ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Each<T, TElement>(this ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> rules, ValidationModules.Constraints.Polymorphism polymorphism)
+            where TElement :  class { }
         public static ValidationModules.PropertyRules<T, string?> Length<T>(this ValidationModules.PropertyRules<T, string?> rules, int min = 0, int max = 2147483647) { }
         public static ValidationModules.PropertyRules<T, decimal?> MultipleOf<T>(this ValidationModules.PropertyRules<T, decimal?> rules, decimal divisor) { }
         public static ValidationModules.PropertyRules<T, double?> MultipleOf<T>(this ValidationModules.PropertyRules<T, double?> rules, double divisor) { }
@@ -116,6 +118,8 @@ namespace ValidationModules
         public static ValidationModules.PropertyRules<T, TValue?> MultipleOf<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules, TValue divisor)
             where TValue :  struct, System.Numerics.INumber<TValue> { }
         public static ValidationModules.PropertyRules<T, TValue?> Nested<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules)
+            where TValue :  class { }
+        public static ValidationModules.PropertyRules<T, TValue?> Nested<T, TValue>(this ValidationModules.PropertyRules<T, TValue?> rules, ValidationModules.Constraints.Polymorphism polymorphism)
             where TValue :  class { }
         public static ValidationModules.PropertyRules<T, string?> Pattern<T>(this ValidationModules.PropertyRules<T, string?> rules, System.Func<System.Text.RegularExpressions.Regex> pattern) { }
         public static ValidationModules.PropertyRules<T, TValue> Range<T, TValue>(this ValidationModules.PropertyRules<T, TValue> rules, TValue min, TValue max)
@@ -369,6 +373,8 @@ namespace ValidationModules
         public ValidationModules.PropertyRules<T, string?> Each(System.Collections.Generic.IReadOnlyList<string>? value, string? field = null) { }
         public ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Each<TElement>(System.Collections.Generic.IReadOnlyList<TElement>? value, string? field = null)
             where TElement :  class { }
+        public ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Each<TElement>(System.Collections.Generic.IReadOnlyList<TElement>? value, ValidationModules.Constraints.Polymorphism polymorphism, string? field = null)
+            where TElement :  class { }
         public ValidationModules.ValidationRules<T> Ensure(bool condition, string? field = null, string? code = null, string? message = null, ValidationModules.ValidationSeverity severity = 0) { }
         public ValidationModules.PropertyRules<T, TValue> For<TValue>(TValue value, string? field = null) { }
         public ValidationModules.PropertyRules<T, string?> Length(string? value, int min = 0, int max = 2147483647, string? field = null) { }
@@ -376,6 +382,8 @@ namespace ValidationModules
         public ValidationModules.PropertyRules<T, double?> MultipleOf(double? value, double divisor, string? field = null) { }
         public ValidationModules.PropertyRules<T, long?> MultipleOf(long? value, long divisor, string? field = null) { }
         public ValidationModules.PropertyRules<T, TValue?> Nested<TValue>(TValue? value, string? field = null)
+            where TValue :  class { }
+        public ValidationModules.PropertyRules<T, TValue?> Nested<TValue>(TValue? value, ValidationModules.Constraints.Polymorphism polymorphism, string? field = null)
             where TValue :  class { }
         public ValidationModules.PropertyRules<T, string?> Pattern(string? value, System.Func<System.Text.RegularExpressions.Regex> pattern, string? field = null) { }
         public ValidationModules.PropertyRules<T, TValue?> Range<TValue>(TValue value, TValue min, TValue max, string? field = null)

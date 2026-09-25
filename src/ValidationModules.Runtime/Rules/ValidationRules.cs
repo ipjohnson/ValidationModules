@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using ValidationModules.Constraints;
 
 namespace ValidationModules;
 
@@ -184,8 +185,8 @@ public sealed class ValidationRules<T>
     /// </summary>
     /// <remarks>
     /// <see cref="IReadOnlyList{T}"/> rather than <see cref="IReadOnlyCollection{T}"/> so that this
-    /// and <see cref="Each{TElement}"/> take the same shape and chain. Arrays and
-    /// <see cref="List{T}"/> both qualify; a set does not, and wants an explicit
+    /// and <see cref="Each{TElement}(IReadOnlyList{TElement}, string)"/> take the same shape and
+    /// chain. Arrays and <see cref="List{T}"/> both qualify; a set does not, and wants an explicit
     /// <see cref="Ensure"/>.
     /// </remarks>
     public PropertyRules<T, IReadOnlyList<TElement>?> Count<TElement>(
@@ -236,9 +237,37 @@ public sealed class ValidationRules<T>
     public PropertyRules<T, TValue?> Nested<TValue>(TValue? value, string? field = null)
         where TValue : class => throw Inert();
 
+    /// <summary>
+    /// Descends into a nested object and chooses its validators by the value's type, the
+    /// equivalent of <c>[ValidateNested(polymorphism)]</c>.
+    /// </summary>
+    /// <remarks>
+    /// An overload rather than an optional parameter on the form above, so that every call written
+    /// before it binds as it did. <see cref="Polymorphism.DeclaredOnly"/> is what the form above
+    /// does. Passing it states that choice, as it does on the attribute, and VM3111 then does not
+    /// ask for one.
+    /// </remarks>
+    public PropertyRules<T, TValue?> Nested<TValue>(
+        TValue? value,
+        Polymorphism polymorphism,
+        string? field = null
+    )
+        where TValue : class => throw Inert();
+
     /// <summary>Descends into each element of a collection.</summary>
     public PropertyRules<T, IReadOnlyList<TElement>?> Each<TElement>(
         IReadOnlyList<TElement>? value,
+        string? field = null
+    )
+        where TElement : class => throw Inert();
+
+    /// <summary>
+    /// Descends into each element of a collection and chooses each element's validators by its
+    /// type. See <see cref="Nested{TValue}(TValue, Polymorphism, string)"/>.
+    /// </summary>
+    public PropertyRules<T, IReadOnlyList<TElement>?> Each<TElement>(
+        IReadOnlyList<TElement>? value,
+        Polymorphism polymorphism,
         string? field = null
     )
         where TElement : class => throw Inert();
@@ -293,9 +322,9 @@ public sealed class ValidationRules<T>
     /// <remarks>
     /// <para>
     /// The argument must be the subject parameter: a facet of a <i>child</i> is
-    /// <see cref="Nested{TValue}"/>'s territory, where the path pushes. Here the path does not
-    /// push - facet fields report at the current level - and suppression shares the collector as
-    /// everywhere.
+    /// <see cref="Nested{TValue}(TValue, string)"/>'s territory, where the path pushes. Here the
+    /// path does not push - facet fields report at the current level - and suppression shares the
+    /// collector as everywhere.
     /// </para>
     /// <para>
     /// One spelling, two bindings. A facet whose validator is generated in this compilation binds

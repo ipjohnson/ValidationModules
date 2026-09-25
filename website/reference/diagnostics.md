@@ -324,7 +324,8 @@ reach it, and no `Polymorphism` is given. Seal the type, or pass `Polymorphism.D
 **Severity:** Error
 
 `Polymorphism.Runtime` is on a sealed type or a value type, whose actual type can never differ
-from its declared type. Use `Polymorphism.DeclaredOnly`.
+from its declared type. Use `Polymorphism.DeclaredOnly`. The mode comes from `[ValidateNested]`, or
+from `Nested` or `Each` in a rules class, where the error is reported at the call.
 
 ### VM1505
 
@@ -614,12 +615,13 @@ interface or base type of `x` instead.
 
 **Severity:** Warning
 
-`Nested` or `Each` in a rules class descends into a type that is not sealed, so a value of a more
-derived type may reach it. The descent runs only the validators for the declared type, so rules
-declared for the more derived type do not run. `Nested` and `Each` take no `Polymorphism`. To run
-the rules for the actual type, replace the descent with `[ValidateNested(Polymorphism.CompileTime)]`
-on the property. A class that nothing derives from can be sealed instead. To keep checking the
-declared type only, suppress the warning at the call. See [Subtypes](../guide/nesting#subtypes).
+`Nested` or `Each` in a rules class descends into a type that is not sealed, and passes no
+`Polymorphism`. A value of a more derived type may reach it, and the descent runs only the
+validators for the declared type, so rules declared for the more derived type do not run. To run
+the rules for the actual type, pass `Polymorphism.CompileTime` or `Polymorphism.Runtime`, as in
+`rules.Nested(x.Pet, Polymorphism.CompileTime)`. The message prints the call with the argument
+added. A class that nothing derives from can be sealed instead. To keep checking the declared type
+only, pass `Polymorphism.DeclaredOnly`. See [Subtypes](../guide/nesting#subtypes).
 
 ## Language packs
 

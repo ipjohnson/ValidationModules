@@ -69,6 +69,7 @@ details.
 | `.Must(value => ...)`, `.Must((model, value) => ...)` | `rules.Ensure(condition)` |
 | `.Custom((value, context) => ...)` | `rules.Context.Report(...)`, or `rules.Apply(method)` |
 | `.SetValidator(new AddressValidator())`, `ChildRules` | `rules.Nested(x.Address)` or `[ValidateNested]` |
+| `.SetInheritanceValidator(...)` | `rules.Nested(x.Payment, Polymorphism.CompileTime)` or `[ValidateNested(Polymorphism.CompileTime)]` |
 | `RuleForEach(x => x.Lines)` | `rules.Each(x.Lines)` |
 | `.When(p)`, `.Unless(p)` | `if (p) { ... }` in `Describe`, or `When =` and `Unless =` on an attribute |
 | `Include(otherValidator)` | A fragment, or `rules.As<TFacet>(x)` |

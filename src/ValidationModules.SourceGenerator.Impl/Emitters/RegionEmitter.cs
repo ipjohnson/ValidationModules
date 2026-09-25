@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using ValidationModules.SourceGenerator.Impl.FrontEnds;
+using ValidationModules.SourceGenerator.Impl.Models;
 using static ValidationModules.SourceGenerator.Impl.Emitters.EmitterOutput;
 
 namespace ValidationModules.SourceGenerator.Impl.Emitters;
@@ -78,10 +79,12 @@ public sealed class RegionEmitter
                 .Modifier = ParameterModifier.Ref;
             method.AddParameter(SymbolType(declaration.Target), declaration.SubjectParameterName);
 
-            foreach (var dependency in declaration.Dependencies)
+            foreach (var dependency in declaration.Parameters)
             {
                 method.AddParameter(
-                    ValidatorFor(TypeRef(dependency.ElementQualifiedType)).MakeArray(),
+                    dependency.Polymorphism == PolymorphismMode.DeclaredOnly
+                        ? ValidatorFor(TypeRef(dependency.ElementQualifiedType)).MakeArray()
+                        : TypeRef(GeneratedNames.QualifiedValidator(declaration.Target)),
                     dependency.ParameterName
                 );
             }

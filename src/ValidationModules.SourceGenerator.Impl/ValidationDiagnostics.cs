@@ -654,7 +654,9 @@ public static class ValidationDiagnostics
     /// </summary>
     /// <remarks>
     /// An error rather than a warning because it also fails at run time without a container, and a
-    /// mode that can never differ from DeclaredOnly is never what was meant.
+    /// mode that can never differ from DeclaredOnly is never what was meant. Reported at the
+    /// property for <c>[ValidateNested]</c>, and at the call for <c>Nested</c> and <c>Each</c> in a
+    /// rules class.
     /// </remarks>
     public static readonly DiagnosticDescriptor RuntimePolymorphismOnClosedType = Descriptor(
         "VM1504",
@@ -1162,8 +1164,8 @@ public static class ValidationDiagnostics
     /// <remarks>
     /// Attributes and a rules class merge onto one validator, so both descents would run and every
     /// error inside the nested object would be reported twice. The rules-class descent is the one
-    /// dropped, because only the attribute can carry a <c>Polymorphism</c> mode. Warning rather
-    /// than error: the property is still validated, once.
+    /// dropped, and the message says how to keep it instead. Warning rather than error: the
+    /// property is still validated, once.
     /// </remarks>
     public static readonly DiagnosticDescriptor RulesDescentRepeatsValidateNested = Descriptor(
         "VM3106",
@@ -1238,16 +1240,16 @@ public static class ValidationDiagnostics
     );
 
     /// <summary>
-    /// A rules-class descent into a type that is not sealed. The region walks the validators for
-    /// the declared type, so the rules declared for a more derived type do not run.
+    /// A rules-class descent into a type that is not sealed, with no <c>Polymorphism</c> passed.
+    /// The descent runs the validators for the declared type, so the rules declared for a more
+    /// derived type do not run.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// VM1503 asks the same question of <c>[ValidateNested]</c>, and its answer is a
-    /// <c>Polymorphism</c> argument, which <c>Nested</c> and <c>Each</c> do not take. So this one
-    /// is reported at the call instead. Its advice is what the author of a rules class can do:
-    /// seal the type, move the descent to the attribute, or keep the declared type's rules and
-    /// suppress the warning.
+    /// VM1503 asks the same question of <c>[ValidateNested]</c>, and this one asks it of
+    /// <c>Nested</c> and <c>Each</c>, at the call. Its advice is what the author of a rules class
+    /// can do without changing the model: pass a mode, or seal the type when it is theirs to seal.
+    /// A passed mode silences it, <c>DeclaredOnly</c> included, as a stated mode silences VM1503.
     /// </para>
     /// <para>
     /// Warning, as VM1503 is, and keyed on the same local fact: whether the target is sealed, never
@@ -1258,24 +1260,22 @@ public static class ValidationDiagnostics
         "VM3111",
         "Rules-class descent reaches a type that is not sealed",
         "'{0}' is not sealed, so a value of a more derived type may reach '{1}'. {2} checks it "
-            + "against the rules for '{0}' only. {3}. To keep checking '{0}' only, suppress this "
-            + "warning at the call",
+            + "against the rules for '{0}' only. {3}. To keep checking '{0}' only, pass "
+            + "Polymorphism.DeclaredOnly",
         DiagnosticSeverity.Warning
     );
 
     /// <summary>
-    /// VM3111's fix. Sealing is offered only for a class that can be sealed, which an abstract
-    /// class and an interface cannot.
+    /// VM3111's fix, printing the call with the mode added. Sealing is offered only for a class
+    /// that can be sealed, which an abstract class and an interface cannot.
     /// </summary>
     public static string RulesDescentIntoUnsealedTypeFix(
         bool sealable,
         string type,
-        string member,
-        string construct
+        string replacement
     ) =>
-        (sealable ? $"Seal '{type}', or replace" : "Replace")
-        + $" {construct} with [ValidateNested(Polymorphism.CompileTime)] on '{member}' to run the "
-        + "rules for its actual type";
+        (sealable ? $"Seal '{type}', or pass" : "Pass")
+        + $" Polymorphism.CompileTime to run the rules for its actual type, as in {replacement}";
 
     public static readonly DiagnosticDescriptor LanguagePackUnreadable = Descriptor(
         "VM4001",
