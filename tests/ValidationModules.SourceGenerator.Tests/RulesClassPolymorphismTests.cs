@@ -494,4 +494,82 @@ public class RulesClassPolymorphismTests
         );
         Assert.Empty(result.CompilationErrors);
     }
+
+    // -- a target with no validator -------------------------------------------------------------
+
+    /// <summary>
+    /// A polymorphic descent passes the target's validator into the region, so the region names
+    /// that validator's class. When the validator is not generated, the region is left out with
+    /// it, and the diagnostic that dropped the validator is the only error.
+    /// </summary>
+    [Fact]
+    public void ATargetWithNoValidator_LeavesTheRegionOut_WhenItIsGeneric()
+    {
+        var result = GeneratorHarness.Run(
+            $$"""
+            using System.Collections.Generic;
+            using ValidationModules;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            {{Animals}}
+
+            public sealed class Envelope<T> {
+                public Animal? Pet { get; init; }
+            }
+
+            public sealed class EnvelopeRules : IValidationRulesFor<Envelope<Owner>> {
+                public static void Describe(ValidationRules<Envelope<Owner>> rules, Envelope<Owner> x) {
+                    rules.Nested(x.Pet, Polymorphism.CompileTime);
+                }
+            }
+            """
+        );
+
+        var error = Assert.Single(result.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+
+        Assert.Equal("VM1010", error.Id);
+        Assert.Empty(result.CompilationErrors);
+        Assert.DoesNotContain("Sample.EnvelopeRules_Rules.g.cs", result.Sources.Keys);
+    }
+
+    [Fact]
+    public void ATargetWithNoValidator_LeavesTheRegionOut_WhenItsNameCollides()
+    {
+        var result = GeneratorHarness.Run(
+            $$"""
+            using System.Collections.Generic;
+            using ValidationModules;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            {{Animals}}
+
+            public class Order {
+                public sealed class Item {
+                    [Required] public string? Sku { get; init; }
+                }
+            }
+
+            public sealed class Order_Item {
+                [Required] public string? Sku { get; init; }
+                public Animal? Pet { get; init; }
+            }
+
+            public sealed class ItemRules : IValidationRulesFor<Order_Item> {
+                public static void Describe(ValidationRules<Order_Item> rules, Order_Item x) {
+                    rules.Nested(x.Pet, Polymorphism.CompileTime);
+                }
+            }
+            """
+        );
+
+        var error = Assert.Single(result.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+
+        Assert.Equal("VM1013", error.Id);
+        Assert.Empty(result.CompilationErrors);
+        Assert.DoesNotContain("Sample.ItemRules_Rules.g.cs", result.Sources.Keys);
+    }
 }

@@ -940,69 +940,62 @@ public sealed class ValidationSourceGenerator : IIncrementalGenerator
 
         var validated = new List<(int Index, INamedTypeSymbol Type, ValidatedTypeModel Model)>();
 
-        void AddBuilt(INamedTypeSymbol type, ModelResult result)
+        // A region names its target's validator when it descends polymorphically. So a target that
+        // a rules class describes but that gets no validator, such as a generic one (VM1010), is
+        // recorded as a class that is not emitted, and the plan leaves the region out with it.
+        void BuildTarget(INamedTypeSymbol type, List<RulesDeclaration>? declared)
         {
-            if (result.Model is { } model)
+            try
             {
-                validated.Add((results.Count, type, model));
-            }
+                var result = Build(type, declared, compilation, options, HasRulesClass, SubtypesOf);
 
-            results.Add(result);
+                if (result?.Model is { } model)
+                {
+                    validated.Add((results.Count, type, model));
+                }
+
+                if (result is not null)
+                {
+                    results.Add(result);
+                }
+
+                if (declared is { Count: > 0 } && result?.Model is null)
+                {
+                    results.Add(
+                        new ModelResult(
+                            null,
+                            ImmutableArray<Diagnostic>.Empty,
+                            null,
+                            null,
+                            ValidatorGlobalName(type)
+                        )
+                    );
+                }
+            }
+            catch (Exception exception)
+            {
+                results.Add(
+                    FailureResult(
+                        $"the model for '{QualifiedName(type)}'",
+                        exception,
+                        ValidatorGlobalName(type)
+                    )
+                );
+            }
         }
 
         foreach (var candidate in plain)
         {
             byTarget.TryGetValue(candidate, out var declared);
             byTarget.Remove(candidate);
-
-            try
-            {
-                if (
-                    Build(candidate, declared, compilation, options, HasRulesClass, SubtypesOf) is
-                    { } result
-                )
-                {
-                    AddBuilt(candidate, result);
-                }
-            }
-            catch (Exception exception)
-            {
-                results.Add(
-                    FailureResult(
-                        $"the model for '{QualifiedName(candidate)}'",
-                        exception,
-                        ValidatorGlobalName(candidate)
-                    )
-                );
-            }
+            BuildTarget(candidate, declared);
         }
 
         // Whatever is left targets a type this compilation does not declare - the case the feature
         // exists for. Its model has no attributes to merge with, only the rules class's own.
         foreach (var pair in byTarget)
         {
-            var target = (INamedTypeSymbol)pair.Key;
-
-            try
-            {
-                if (
-                    Build(target, pair.Value, compilation, options, HasRulesClass, SubtypesOf) is
-                    { } result
-                )
-                {
-                    AddBuilt(target, result);
-                }
-            }
-            catch (Exception exception)
-            {
-                results.Add(
-                    FailureResult(
-                        $"the model for '{QualifiedName(target)}'",
-                        exception,
-                        ValidatorGlobalName(target)
-                    )
-                );
-            }
+            BuildTarget((INamedTypeSymbol)pair.Key, pair.Value);
         }
 
         DropCollidingValidators(results, validated);
