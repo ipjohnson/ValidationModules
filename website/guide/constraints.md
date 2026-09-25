@@ -88,7 +88,8 @@ its value with `[Range]`.
 `ImmutableArray<T>` is the exception. A default `ImmutableArray<T>` has no array behind it, so it
 reads as missing, as `null` does. `[Required]` fails on it and passes an empty array. Every other
 constraint passes it, and `[ValidateNested]` skips it. On an `ImmutableArray<T>?`, `[Required]`
-fails on `null` and on a default array.
+fails on `null` and on a default array. The other constraints and `[ValidateNested]` read an
+`ImmutableArray<T>?` through the array it holds, and pass `null` as they pass a default array.
 
 ## Bounds
 

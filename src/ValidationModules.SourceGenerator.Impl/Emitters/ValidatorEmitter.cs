@@ -1824,7 +1824,7 @@ public sealed class ValidatorEmitter
                         bounds.Add($"> {above}");
                     }
 
-                    return $"{guard}(global::System.Linq.Enumerable.Count({access}) is "
+                    return $"{guard}(global::System.Linq.Enumerable.Count({value}) is "
                         + $"{string.Join(" or ", bounds)})";
                 }
 
@@ -1832,12 +1832,12 @@ public sealed class ValidatorEmitter
 
                 if (below is not null)
                 {
-                    tests.Add($"{access}.{property.CountAccessor} < {below}");
+                    tests.Add($"{value}.{property.CountAccessor} < {below}");
                 }
 
                 if (above is not null)
                 {
-                    tests.Add($"{access}.{property.CountAccessor} > {above}");
+                    tests.Add($"{value}.{property.CountAccessor} > {above}");
                 }
 
                 return $"{guard}({string.Join(" || ", tests)})";
@@ -1882,7 +1882,7 @@ public sealed class ValidatorEmitter
             // property with no Count needs no separate path - the fallback the count constraints
             // have does not arise.
             case ConstraintKind.UniqueItems:
-                return $"{guard}!global::ValidationModules.ConstraintChecks.AllUnique({access})";
+                return $"{guard}!global::ValidationModules.ConstraintChecks.AllUnique({value})";
 
             case ConstraintKind.Pattern:
             {

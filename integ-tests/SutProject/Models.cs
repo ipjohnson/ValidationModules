@@ -239,6 +239,42 @@ public sealed class AlbumRules : IValidationRulesFor<Album>
 }
 
 /// <summary>
+/// The collection rules on an ImmutableArray held in a nullable, from attributes and from a rules
+/// class. Null and a default array are missing, so both pass. A populated array is counted,
+/// checked and walked through the array it holds.
+/// </summary>
+public sealed record Setlist
+{
+    [ItemCount(1, 3)]
+    [UniqueItems]
+    public ImmutableArray<string>? Songs { get; init; }
+
+    [ValidateNested]
+    public ImmutableArray<Song>? Openers { get; init; }
+
+    public ImmutableArray<string>? Encores { get; init; }
+
+    public ImmutableArray<Song>? Covers { get; init; }
+}
+
+public sealed record Song
+{
+    [Required]
+    public string? Title { get; init; }
+}
+
+public sealed class SetlistRules : IValidationRulesFor<Setlist>
+{
+    public static void Describe(ValidationRules<Setlist> rules, Setlist x)
+    {
+        rules.Count<string>(x.Encores, 0, 2);
+        rules.Unique<string>(x.Encores);
+        rules.Each(x.Encores).Length(1, 5);
+        rules.Each<Song>(x.Covers);
+    }
+}
+
+/// <summary>
 /// A pattern that backtracks catastrophically, under a timeout the hostile input runs past. The
 /// timeout has to fail the pattern rather than throw out of Validate.
 /// </summary>
