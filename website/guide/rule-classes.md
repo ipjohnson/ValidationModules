@@ -434,9 +434,11 @@ They take no `code:`, `message:` or `severity:` argument. To change any of these
 ## What the body can reference
 
 The generator copies the body of `Describe` into a separate generated class. That class can reach
-`internal` and `public` members, but not `private` ones. A `private const` is fine, because the
-generator copies its value. Any other `private` member of the rules class that the body uses is
-reported as `VM3004`. Make it `internal`.
+`internal` and `public` members, but not `private` ones. A name the body writes bare, such as a
+static method, a generic method, a nested type, or a member of a type that encloses the rules
+class, is written through the type that declares it. A `private const` is fine, because the
+generator copies its value. Any other `private` member that the body uses is reported as `VM3004`.
+Make it `internal`.
 
 The body cannot store the `rules` object, pass it to a method that is not a fragment, or capture it
 in a lambda. Those uses are reported as `VM3002`. A `try`, `lock`, `using` or `goto` statement, or
