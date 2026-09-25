@@ -256,7 +256,7 @@ public class GeneratedValidatorTests
                     {
                         Artists = ["a"],
                         Credits = ["b"],
-                        Reviews = [new Comment { Text = "a" }],
+                        Reviews = [new Song { Title = "a" }],
                     }
                 )
                 .IsValid

@@ -225,7 +225,7 @@ public sealed record Album
 
     public ImmutableArray<string> Credits { get; init; } = [];
 
-    public ImmutableArray<Comment> Reviews { get; init; } = [];
+    public ImmutableArray<Song> Reviews { get; init; } = [];
 }
 
 public sealed class AlbumRules : IValidationRulesFor<Album>
