@@ -3853,9 +3853,7 @@ public sealed class RulesFrontEnd
 
             public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node)
             {
-                // The right-hand side of a member access is anchored by whatever precedes it; only
-                // a bare name has lost its scope.
-                if (node.Parent is MemberAccessExpressionSyntax access && access.Name == node)
+                if (IsAnchored(node))
                 {
                     return base.VisitIdentifierName(node);
                 }
@@ -3871,10 +3869,22 @@ public sealed class RulesFrontEnd
                     return SyntaxFactory.ParseTypeName(written).WithTriviaFrom(node);
                 }
 
+                var bound = _writer._model.GetSymbolInfo(node).Symbol;
+
+                if (
+                    bound is INamedTypeSymbol { ContainingType: { } outer }
+                    && ScopeOf(outer) is { } owner
+                )
+                {
+                    return SyntaxFactory
+                        .ParseTypeName($"{Written(owner)}.{node.Identifier.Text}")
+                        .WithTriviaFrom(node);
+                }
+
                 // A static local function names the rules class as its containing type but is not a
                 // member of it. It is transcribed with the body, so its call is left as written.
                 if (
-                    _writer._model.GetSymbolInfo(node).Symbol is not { IsStatic: true } symbol
+                    bound is not { IsStatic: true } symbol
                     || symbol
                         is not (
                             IFieldSymbol
@@ -3882,7 +3892,7 @@ public sealed class RulesFrontEnd
                             or IMethodSymbol { MethodKind: MethodKind.Ordinary }
                         )
                     || symbol.ContainingType is not { } declaring
-                    || !DeclaredByTheClass(declaring)
+                    || ScopeOf(declaring) is not { } scope
                 )
                 {
                     return base.VisitIdentifierName(node);
@@ -3903,10 +3913,55 @@ public sealed class RulesFrontEnd
                     return SyntaxFactory.ParseExpression(literal);
                 }
 
-                return SyntaxFactory.ParseExpression(
-                    $"{_writer._declaringClass.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{node.Identifier.Text}"
-                );
+                return SyntaxFactory.ParseExpression($"{Written(scope)}.{node.Identifier.Text}");
             }
+
+            /// <summary>
+            /// A generic method or a generic nested type, qualified as a bare name is in
+            /// <see cref="VisitIdentifierName"/>. Its type arguments are rewritten first.
+            /// </summary>
+            public override SyntaxNode? VisitGenericName(GenericNameSyntax node)
+            {
+                var visited = (GenericNameSyntax)base.VisitGenericName(node)!;
+
+                if (IsAnchored(node))
+                {
+                    return visited;
+                }
+
+                return _writer._model.GetSymbolInfo(node).Symbol switch
+                {
+                    INamedTypeSymbol { ContainingType: { } outer }
+                        when ScopeOf(outer) is { } owner => SyntaxFactory
+                        .ParseTypeName($"{Written(owner)}.{visited}")
+                        .WithTriviaFrom(node),
+                    IMethodSymbol
+                    {
+                        IsStatic: true,
+                        MethodKind: MethodKind.Ordinary,
+                        ContainingType: { } declaring,
+                    } when ScopeOf(declaring) is { } scope => SyntaxFactory
+                        .ParseExpression($"{Written(scope)}.{visited}")
+                        .WithTriviaFrom(node),
+                    _ => visited,
+                };
+            }
+
+            /// <summary>
+            /// Whether a name is the right-hand side of a member access or a qualified name. What
+            /// precedes it anchors it. Only a bare name has lost its scope in the companion.
+            /// </summary>
+            private static bool IsAnchored(SimpleNameSyntax name) =>
+                name.Parent switch
+                {
+                    MemberAccessExpressionSyntax access => access.Name == name,
+                    QualifiedNameSyntax qualified => qualified.Right == name,
+                    AliasQualifiedNameSyntax alias => alias.Name == name,
+                    _ => false,
+                };
+
+            private static string Written(INamedTypeSymbol type) =>
+                type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
             /// <summary>
             /// Whether the type written in place of <paramref name="name"/> has to be plain, where
@@ -3931,21 +3986,34 @@ public sealed class RulesFrontEnd
                     _ => false,
                 };
 
-            private bool DeclaredByTheClass(INamedTypeSymbol declaring)
+            /// <summary>
+            /// The type a bare name bound to a member of <paramref name="declaring"/> is written
+            /// through, or null when the name needs no qualifier. That is the rules class when it
+            /// declares or inherits the member, or a type that encloses the rules class and declares
+            /// or inherits it. The companion is declared inside neither.
+            /// </summary>
+            private INamedTypeSymbol? ScopeOf(INamedTypeSymbol declaring)
             {
                 for (
-                    INamedTypeSymbol? current = _writer._declaringClass;
-                    current is not null;
-                    current = current.BaseType
+                    INamedTypeSymbol? scope = _writer._declaringClass;
+                    scope is not null;
+                    scope = scope.ContainingType
                 )
                 {
-                    if (SymbolEqualityComparer.Default.Equals(current, declaring))
+                    for (
+                        INamedTypeSymbol? current = scope;
+                        current is not null;
+                        current = current.BaseType
+                    )
                     {
-                        return true;
+                        if (SymbolEqualityComparer.Default.Equals(current, declaring))
+                        {
+                            return scope;
+                        }
                     }
                 }
 
-                return false;
+                return null;
             }
         }
     }
