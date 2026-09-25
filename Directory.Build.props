@@ -6,14 +6,16 @@
         an rc from the run number, or takes a stable version typed into the dispatch); local and CI
         builds fall back to the values below.
 
-        On the 1.1.0 line. 1.0.0 shipped stable, and 1.1.0 adds VM6001 and changes where the
-        DependencyModules branch registers - additive to the API surface and to what a consumer
-        calls, which is what makes it a minor rather than a major.
-        RuntimeContract is what versions the emitted surface, rather than this number. It stays at
-        11: the new registration calls nothing the runtime did not already offer.
+        On the 1.2.0 line. 1.2.0 fixes the defects found since 1.1.0 and adds seventeen
+        diagnostics. One change is not additive: [StringLength]'s positional argument is now the
+        maximum, as in DataAnnotations, and the (min, max) constructor is removed. It ships as a
+        minor anyway, as the correction of an attribute that disagreed with DataAnnotations, because
+        the package has few users.
+        RuntimeContract is what versions the emitted surface, rather than this number. It is 12 on
+        this line, so a 1.2.0 generator refuses a 1.1.0 runtime as VM5001.
     -->
     <PropertyGroup>
-        <VersionPrefix>1.1.0</VersionPrefix>
+        <VersionPrefix>1.2.0</VersionPrefix>
         <!--
             rc0 for a local build, so it sorts below every published rc(1000+n). A release supplies
             its own version, so this default never reaches nuget.org.
@@ -30,8 +32,8 @@
             suppressed.
         -->
         <VersionSuffix Condition="'$(VersionSuffix)' == ''">rc0</VersionSuffix>
-        <AssemblyVersion>1.1.0.0</AssemblyVersion>
-        <FileVersion>1.1.0.0</FileVersion>
+        <AssemblyVersion>1.2.0.0</AssemblyVersion>
+        <FileVersion>1.2.0.0</FileVersion>
     </PropertyGroup>
 
     <!--
