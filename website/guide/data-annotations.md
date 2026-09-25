@@ -114,6 +114,8 @@ true`, with these differences:
   stop them, and neither does an error on the object that contains this one.
 - `[Range]` with its bounds in the wrong order fails the build with `VM1101`. DataAnnotations
   throws when it validates.
+- `[Required]` fails on a default `ImmutableArray<T>`, which has no array behind it.
+  DataAnnotations passes it, because the boxed value is not `null`.
 - A custom `ValidationAttribute` that calls `ValidationContext.GetService` gets the pass's services
   only when the pass has a service provider, as it does through `ValidationRunner<T>`.
 

@@ -69,7 +69,9 @@ public enum PropertyShape
 /// </param>
 /// <param name="MissingWhenDefault">
 /// Whether a default value reads as missing, as a default <c>ImmutableArray&lt;T&gt;</c> does.
-/// Reads of it test <c>IsDefault</c> where a reference type's test null.
+/// Reads of it test <c>IsDefault</c> where a reference type's test null. On an
+/// <c>ImmutableArray&lt;T&gt;?</c>, where <see cref="IsNullableValueType"/> is also set, they test
+/// both.
 /// </param>
 /// <param name="RegionCompileTime">
 /// A rules-class descent into this property passes <c>Polymorphism.CompileTime</c>. The validator

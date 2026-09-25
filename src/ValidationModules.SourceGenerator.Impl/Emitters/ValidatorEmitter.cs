@@ -1173,10 +1173,19 @@ public sealed class ValidatorEmitter
                 guard = missing;
             }
 
+            // A failed Required on a default ImmutableArray captures no value, as a missing
+            // reference captures null. Boxed, the default throws from any reader that enumerates
+            // ValidationError.Value.
             AddRule(
                 builder,
                 guard,
-                ReportFor(field, required, property, capture, messageInfos),
+                ReportFor(
+                    field,
+                    required,
+                    property,
+                    property.MissingWhenDefault ? null : capture,
+                    messageInfos
+                ),
                 failFast
             );
             fast.If(
@@ -1661,7 +1670,14 @@ public sealed class ValidatorEmitter
                 : $"string.IsNullOrWhiteSpace({access})";
         }
 
-        return property.IsNullableValueType ? $"{access} is null" : $"{access} is null";
+        if (property.MissingWhenDefault)
+        {
+            return property.IsNullableValueType
+                ? $"{access} is not {PresentPattern(true)}"
+                : $"{access}.IsDefault";
+        }
+
+        return $"{access} is null";
     }
 
     /// <summary>
@@ -1799,11 +1815,14 @@ public sealed class ValidatorEmitter
     /// <summary>
     /// The test that a value is there to check, or null for a type that is never missing. A default
     /// <c>ImmutableArray&lt;T&gt;</c> is missing as null is, because reading its <c>Length</c>, its
-    /// enumerator or its <c>IReadOnlyList&lt;T&gt;</c> view throws.
+    /// enumerator or its <c>IReadOnlyList&lt;T&gt;</c> view throws. An
+    /// <c>ImmutableArray&lt;T&gt;?</c> is missing when it is null and when it holds a default array.
     /// </summary>
     internal static string? PresentTest(string access, ValidatedPropertyModel property) =>
-        property.IsReferenceType || property.IsNullableValueType ? $"{access} is not null"
+        property.MissingWhenDefault && property.IsNullableValueType
+            ? $"{access} is {PresentPattern(true)}"
         : property.MissingWhenDefault ? $"!{access}.IsDefault"
+        : property.IsReferenceType || property.IsNullableValueType ? $"{access} is not null"
         : null;
 
     /// <summary>

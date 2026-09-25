@@ -400,6 +400,7 @@ namespace ValidationModules
             where TValue :  struct, System.IComparable<TValue>, System.IFormattable { }
         public ValidationModules.PropertyRules<T, object?> Require(object? value, string? field = null) { }
         public ValidationModules.PropertyRules<T, string?> Require(string? value, string? field = null) { }
+        public ValidationModules.PropertyRules<T, System.Collections.Generic.IReadOnlyList<TElement>?> Require<TElement>(System.Collections.Immutable.ImmutableArray<TElement> value, string? field = null) { }
         public ValidationModules.PropertyRules<T, TValue?> Require<TValue>(TValue? value, string? field = null)
             where TValue :  class { }
         public ValidationModules.PropertyRules<T, TValue?> Require<TValue>(TValue? value, string? field = null)

@@ -164,6 +164,44 @@ public class ConstraintDiagnosticsTests
         Assert.Contains(expected, result.Sources["Sample.PetValidator.g.cs"]);
     }
 
+    /// <summary>
+    /// For the same reason, <c>[Required]</c> fails on a default <c>ImmutableArray&lt;T&gt;</c>,
+    /// from either namespace, in Validate with and without the early returns and in IsValid. An
+    /// <c>ImmutableArray&lt;T&gt;?</c> is missing when it is null and when it holds a default array.
+    /// The report captures no value, as it captures null for a missing reference.
+    /// </summary>
+    [Theory]
+    [InlineData(
+        "[Required] public System.Collections.Immutable.ImmutableArray<string> Tags { get; init; }",
+        "value.Tags.IsDefault"
+    )]
+    [InlineData(
+        "[System.ComponentModel.DataAnnotations.Required] public System.Collections.Immutable.ImmutableArray<string> Tags { get; init; }",
+        "value.Tags.IsDefault"
+    )]
+    [InlineData(
+        "[Required] public System.Collections.Immutable.ImmutableArray<string>? Tags { get; init; }",
+        "value.Tags is not { IsDefault: false }"
+    )]
+    public void Required_OnAnImmutableArray_FailsADefaultArray(string member, string missing)
+    {
+        const string report =
+            "global::ValidationModules.ValidationContextExtensions.ReportRequired(ctx, \"tags\")";
+
+        var result = GeneratorHarness.Run(Model(member));
+        var emitted = result.Sources["Sample.PetValidator.g.cs"];
+        var fastPath = emitted.Substring(emitted.IndexOf("public bool IsValid"));
+        var withoutReturns = GeneratorHarness
+            .Run(Model(member), ("ValidationModules_FailFast", "false"))
+            .Sources["Sample.PetValidator.g.cs"];
+
+        Assert.Empty(result.CompilationErrors);
+        Assert.Contains($"if ({missing} && {report}.ShouldStop)", emitted);
+        Assert.Contains($"if ({missing})", fastPath);
+        Assert.Contains($"if ({missing})", withoutReturns);
+        Assert.Contains($"{report};", withoutReturns);
+    }
+
     [Fact]
     public void ValidateNested_OnADefaultImmutableArray_SkipsTheWalk()
     {
@@ -296,12 +334,14 @@ public class ConstraintDiagnosticsTests
 
     // VM1201 — [Required] that can never fail.
 
-    [Fact]
-    public void Required_OnNonNullableValueType_IsVM1201AndOnlyAWarning()
+    [Theory]
+    [InlineData("[Required] public int Age { get; init; }")]
+    [InlineData("[System.ComponentModel.DataAnnotations.Required] public int Age { get; init; }")]
+    public void Required_OnNonNullableValueType_IsVM1201AndOnlyAWarning(string member)
     {
         // A warning rather than an error: the declaration is harmless, just pointless. Making it an
         // error would break a build over a no-op.
-        var result = GeneratorHarness.Run(Model("[Required] public int Age { get; init; }"));
+        var result = GeneratorHarness.Run(Model(member));
 
         Assert.Equal(
             DiagnosticSeverity.Warning,
@@ -309,10 +349,23 @@ public class ConstraintDiagnosticsTests
         );
     }
 
+    /// <summary>
+    /// An <c>ImmutableArray&lt;T&gt;</c> is a non-nullable value type that can be missing, because
+    /// a default array reads as missing.
+    /// </summary>
     [Theory]
     [InlineData("[Required] public string? Name { get; init; }")]
     [InlineData("[Required] public int? Age { get; init; }")]
     [InlineData("[Required] public List<string>? Tags { get; init; }")]
+    [InlineData(
+        "[Required] public System.Collections.Immutable.ImmutableArray<string> Tags { get; init; }"
+    )]
+    [InlineData(
+        "[System.ComponentModel.DataAnnotations.Required] public System.Collections.Immutable.ImmutableArray<string> Tags { get; init; }"
+    )]
+    [InlineData(
+        "[Required] public System.Collections.Immutable.ImmutableArray<string>? Tags { get; init; }"
+    )]
     public void Required_OnSomethingThatCanBeMissing_IsSilent(string member)
     {
         var result = GeneratorHarness.Run(Model(member));

@@ -91,7 +91,7 @@ rules.Require(x.Guest?.Trim(), field: "guest");
 
 | Method | Checks | Code |
 | --- | --- | --- |
-| `Require(value)` | The value is not `null`. A string must also not be empty or whitespace. | `required` |
+| `Require(value)` | The value is not `null` or a default `ImmutableArray<T>`. A string must also not be empty or whitespace. | `required` |
 | `RequireAllowingEmpty(value)` | The string is not `null`. | `required` |
 | `Length(value, min, max)` | The string's length is within the bounds. | `string_length` |
 | `Range(value, min, max)` | The value is within the bounds, inclusive. | `range` |

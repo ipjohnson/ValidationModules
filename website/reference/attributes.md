@@ -40,13 +40,15 @@ public bool AllowEmptyStrings { get; init; }
 ```
 
 `[Required]` passes when the value is not `null`. On a `string`, the value must also not be empty or
-whitespace, unless `AllowEmptyStrings` is `true`. On a collection only `null` fails.
+whitespace, unless `AllowEmptyStrings` is `true`. On a collection only `null` fails. On an
+`ImmutableArray<T>`, a default array fails and an empty one passes. On an `ImmutableArray<T>?`,
+`null` and a default array fail.
 
 | Code | Message |
 | --- | --- |
 | `required` | `{field} is required.` |
 
-On a property of a non-nullable value type, such as `int`, `[Required]` can never fail. The
+On a property of any other non-nullable value type, such as `int`, `[Required]` can never fail. The
 generator reports `VM1201` and drops it.
 
 ## Strings

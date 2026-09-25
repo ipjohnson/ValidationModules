@@ -200,6 +200,45 @@ public sealed class PostRules : IValidationRulesFor<Post>
 }
 
 /// <summary>
+/// [Required] on an ImmutableArray, from either namespace and inside a nullable. A default array
+/// is missing, and an empty one is present, as an empty collection is.
+/// </summary>
+public sealed record Playlist
+{
+    [Required]
+    public ImmutableArray<string> Tracks { get; init; } = [];
+
+    [System.ComponentModel.DataAnnotations.Required]
+    public ImmutableArray<string> Genres { get; init; } = [];
+
+    [Required]
+    public ImmutableArray<string>? Moods { get; init; } = ImmutableArray<string>.Empty;
+}
+
+/// <summary>
+/// Require on an ImmutableArray, alone and with rules chained after it. A default array is
+/// reported once, as required, and the chained rules skip it.
+/// </summary>
+public sealed record Album
+{
+    public ImmutableArray<string> Artists { get; init; } = [];
+
+    public ImmutableArray<string> Credits { get; init; } = [];
+
+    public ImmutableArray<Comment> Reviews { get; init; } = [];
+}
+
+public sealed class AlbumRules : IValidationRulesFor<Album>
+{
+    public static void Describe(ValidationRules<Album> rules, Album x)
+    {
+        rules.Require(x.Artists);
+        rules.Require(x.Credits).Count(1, 5);
+        rules.Require(x.Reviews).Each();
+    }
+}
+
+/// <summary>
 /// A pattern that backtracks catastrophically, under a timeout the hostile input runs past. The
 /// timeout has to fail the pattern rather than throw out of Validate.
 /// </summary>

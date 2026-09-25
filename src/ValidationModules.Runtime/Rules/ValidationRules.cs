@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Text.RegularExpressions;
 using ValidationModules.Constraints;
 
@@ -64,12 +65,25 @@ public sealed class ValidationRules<T>
         where TValue : struct => throw Inert();
 
     /// <summary>
-    /// The catch-all that makes <c>Require</c> on a non-nullable value type bind, so VM3101 can
-    /// be the only error on the line.
+    /// Declares that an <see cref="ImmutableArray{T}"/> must not be default. An empty array passes.
     /// </summary>
     /// <remarks>
-    /// A non-nullable value type fits none of the overloads above - and cannot be given one of
-    /// its own, because the reference-type overload's <c>TValue?</c> is annotation-only, so a
+    /// A default array has no array behind it, so it reads as missing, as null does for a
+    /// reference-typed collection. The chain is anchored on the list, as <c>Count</c> and
+    /// <c>Each</c> anchor it, so either can follow, as in <c>rules.Require(x.Tags).Count(1, 5)</c>.
+    /// </remarks>
+    public PropertyRules<T, IReadOnlyList<TElement>?> Require<TElement>(
+        ImmutableArray<TElement> value,
+        string? field = null
+    ) => throw Inert();
+
+    /// <summary>
+    /// The catch-all that makes <c>Require</c> on any other non-nullable value type bind, so
+    /// VM3101 can be the only error on the line.
+    /// </summary>
+    /// <remarks>
+    /// Such a type fits none of the overloads above - and cannot be given a generic one of its
+    /// own, because the reference-type overload's <c>TValue?</c> is annotation-only, so a
     /// <c>TValue value</c> twin collides with it as CS0111. Without this, the call failed as a
     /// CS0452 blaming that reference overload. Typed arguments never land here: identity beats
     /// the boxing conversion everywhere an overload above applies, which is also why this is
