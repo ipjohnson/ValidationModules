@@ -124,6 +124,81 @@ public class RegionScopeTests
         Assert.Contains("global::Sample.ModelRules.Max", region);
     }
 
+    [Fact]
+    public void AGenericMethod_IsQualified()
+    {
+        var region = Region(
+            "    internal static bool Positive<T>(T value) where T : System.IComparable<T> => value.CompareTo(default!) > 0;",
+            "rules.Ensure(Positive<int>(x.Count), message: \"The count must be positive.\");"
+        );
+
+        Assert.Contains("global::Sample.ModelRules.Positive<int>(x.Count)", region);
+    }
+
+    [Fact]
+    public void ANestedType_IsQualified()
+    {
+        var region = Region(
+            "    internal static class Limits { public const int Max = 10; }",
+            "rules.Ensure(x.Count <= Limits.Max);"
+        );
+
+        Assert.Contains("global::Sample.ModelRules.Limits.Max", region);
+    }
+
+    /// <summary>
+    /// A rules class declared inside another type reaches that type's members by their bare
+    /// names, and the companion is not declared inside it.
+    /// </summary>
+    [Fact]
+    public void AMemberOfTheTypeThatEnclosesTheRulesClass_IsQualifiedWithThatType()
+    {
+        var result = GeneratorHarness.Run(
+            """
+            using ValidationModules;
+
+            namespace Sample;
+
+            public sealed record Model { public int Count { get; init; } }
+
+            public static class Catalog {
+                internal const int Max = 10;
+                private const int Min = 1;
+                internal static bool Ok(Model model) => true;
+                internal enum Size { Small = 1 }
+
+                public sealed class ModelRules : IValidationRulesFor<Model> {
+                    public static void Describe(ValidationRules<Model> rules, Model x) {
+                        rules.Ensure(x.Count <= Max && x.Count >= Min && Ok(x) && x.Count != (int)Size.Small);
+                    }
+                }
+            }
+            """
+        );
+
+        Assert.Empty(result.CompilationErrors);
+
+        var region = result.Sources.Single(source => source.Key.Contains("_Rules")).Value;
+
+        Assert.Contains("global::Sample.Catalog.Max", region);
+        Assert.Contains("x.Count >= 1", region);
+        Assert.Contains("global::Sample.Catalog.Ok(x)", region);
+        Assert.Contains("(int)global::Sample.Catalog.Size.Small", region);
+    }
+
+    [Fact]
+    public void APrivateNestedType_IsVM3004()
+    {
+        var result = Run(
+            "    private static class Limits { public const int Max = 10; }",
+            "rules.Ensure(x.Count <= Limits.Max);"
+        );
+
+        var reported = Assert.Single(result.Diagnostics, d => d.Id == "VM3004");
+
+        Assert.Contains("Limits", reported.GetMessage());
+    }
+
     // -- what is left alone ---------------------------------------------------------------------
 
     [Fact]
