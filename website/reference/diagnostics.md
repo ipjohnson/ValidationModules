@@ -238,12 +238,14 @@ to strings, so the values compare as they would without it. Remove `Comparison`.
 An inline `[Pattern("...")]`, or a DataAnnotations `[RegularExpression]`, is in a project whose
 pattern policy rejects it. By default that is a project with `PublishAot` or `IsAotCompatible` set
 to `true`, and the diagnostic is an error that drops the constraint. Both compile to an expression
-parsed at run time, which adds the regular expression interpreter to a Native AOT binary. Declare
-the expression with `[GeneratedRegex]` and point at it with `[Pattern(typeof(T), nameof(T.Member))]`,
-or set `ValidationModules_PatternPolicy` to `Allow`. For `[RegularExpression]`, the message prints
-the expression anchored and made optional, because that attribute matches the whole value and
-passes an empty string. It also prints the attribute's match timeout, which is 2000 milliseconds
-unless `MatchTimeoutInMilliseconds` sets another. See [Patterns](../guide/patterns).
+parsed at run time, which adds the regular expression parser and interpreter to a Native AOT
+binary, about 360 KB. `Options` or a match timeout adds about 490 KB more. The message gives that
+figure when the pattern has either. Declare the expression with `[GeneratedRegex]` and point at it
+with `[Pattern(typeof(T), nameof(T.Member))]`, or set `ValidationModules_PatternPolicy` to `Allow`.
+For `[RegularExpression]`, the message prints the expression anchored and made optional, because
+that attribute matches the whole value and passes an empty string. It also prints the attribute's
+match timeout, which is 2000 milliseconds unless `MatchTimeoutInMilliseconds` sets another. See
+[Patterns](../guide/patterns).
 
 ### VM1302
 

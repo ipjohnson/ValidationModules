@@ -182,8 +182,8 @@ it.
 
 The built-in DataAnnotations attributes are compiled into plain checks and need no reflection.
 `[RegularExpression]` is always compiled as an inline regular expression, which adds the regular
-expression interpreter to a Native AOT binary. It follows `ValidationModules_PatternPolicy` like an
-inline `[Pattern]`, so an AOT-facing project reports it as `VM1301`. The message prints the
-`[Pattern]` and `[GeneratedRegex]` that replace it. Unless `MatchTimeoutInMilliseconds` is `-1`, its
-timeout also keeps code that the trimmer removes from an inline pattern without one. See
-[Patterns](./patterns).
+expression parser and interpreter to a Native AOT binary, about 360 KB. It follows
+`ValidationModules_PatternPolicy` like an inline `[Pattern]`, so an AOT-facing project reports it as
+`VM1301`. The message prints the `[Pattern]` and `[GeneratedRegex]` that replace it. Unless
+`MatchTimeoutInMilliseconds` is `-1`, its timeout also keeps code that the trimmer removes from an
+inline pattern without one, about 490 KB more. See [Patterns](./patterns).

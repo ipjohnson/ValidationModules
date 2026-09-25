@@ -14,9 +14,10 @@ namespace ValidationModules.Constraints;
 /// <c>static readonly Regex</c> built once at type initialization. The generator removes
 /// <c>RegexOptions.Compiled</c> from <see cref="Options"/> and reports VM1302, so nothing reaches
 /// <c>Reflection.Emit</c> and it publishes AOT-clean. What it costs is size: constructing a
-/// <see cref="Regex"/> from a pattern string roots the regex parser and interpreter, which measures
-/// at <b>+448 KB</b> on a published AOT binary against +16 KB for the same pattern through
-/// <c>[GeneratedRegex]</c>. A project that is AOT-facing therefore rejects this form by default -
+/// <see cref="Regex"/> from a pattern string roots the regex parser and interpreter, which makes a
+/// published AOT binary <b>about 360 KB</b> larger than the same pattern through
+/// <c>[GeneratedRegex]</c>. Setting <see cref="Options"/> or <see cref="MatchTimeoutMilliseconds"/>
+/// adds about 490 KB more. A project that is AOT-facing therefore rejects this form by default -
 /// see VM1301.
 /// </para>
 /// <para>

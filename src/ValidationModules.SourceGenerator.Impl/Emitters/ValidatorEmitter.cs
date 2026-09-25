@@ -396,10 +396,11 @@ public sealed class ValidatorEmitter
             // Reflection.Emit and the result stays AOT-clean. The cost is an interpreted match
             // rather than a source-generated one.
             // The options argument is omitted entirely when there is nothing to say, rather than
-            // passed as RegexOptions.None. It is not cosmetic: the single-argument constructor lets
-            // ILC prove RegexOptions.Compiled is never set and trim the RegexCompiler path with it,
-            // and passing the enum defeats that. Measured at 713 KB on a published AOT binary -
-            // more than the regex engine itself costs.
+            // passed as RegexOptions.None. It is not cosmetic: every constructor that takes
+            // RegexOptions keeps the RegexOptions.NonBacktracking engine, and the single-argument
+            // constructor is the only one that lets ILC remove it. Measured at 486 KB on a
+            // published AOT binary, more than the 356 KB the parser and interpreter cost. The
+            // RegexCompiler path is removed under AOT whichever constructor is called.
             // A timeout is the attribute's only ReDoS mitigation, and it needs the three-argument
             // constructor - so it has to pass options too, giving up the trim above. It is paid
             // only where a timeout applies: where [Pattern] sets one, and on a [RegularExpression]

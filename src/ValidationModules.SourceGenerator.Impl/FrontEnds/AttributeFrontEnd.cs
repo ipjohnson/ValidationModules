@@ -2141,10 +2141,18 @@ public sealed class AttributeFrontEnd
             };
         }
 
+        var inline = CheckMatchTimeout(constraint, attribute, owner, regularExpression: false);
+
+        // RegexOptions.Compiled is 8. It is removed after this and reported as VM1302, so on its own
+        // it leaves the single-argument constructor.
         return ApplyPatternPolicy(
-            CheckMatchTimeout(constraint, attribute, owner, regularExpression: false),
+            inline,
             owner,
-            ValidationDiagnostics.InlinePatternFix(owner.Name, owner.ContainingType?.Name)
+            ValidationDiagnostics.InlinePatternFix(
+                owner.Name,
+                owner.ContainingType?.Name,
+                inline.MatchTimeoutMilliseconds > 0 || (inline.RegexOptions & ~8) != 0
+            )
         );
     }
 
@@ -2198,10 +2206,10 @@ public sealed class AttributeFrontEnd
     /// </summary>
     /// <remarks>
     /// The inline form is correct and AOT-clean, but it roots the regex parser and interpreter,
-    /// which is +448 KB on a published AOT binary. The policy decides whether that is acceptable
-    /// here. One implementation for both vocabularies: an inline <c>[Pattern]</c> and a
-    /// DataAnnotations <c>[RegularExpression]</c> compile to the same field and cost the same, so
-    /// only the fix the diagnostic prints differs between them.
+    /// which makes a published AOT binary 356 KB larger. Options or a timeout add 486 KB more. The
+    /// policy decides whether that is acceptable here. One implementation for both vocabularies:
+    /// an inline <c>[Pattern]</c> and a DataAnnotations <c>[RegularExpression]</c> compile to the
+    /// same field, so only the fix the diagnostic prints differs between them.
     /// </remarks>
     private ConstraintModel? ApplyPatternPolicy(
         ConstraintModel constraint,

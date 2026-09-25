@@ -8,10 +8,11 @@ namespace ValidationModules.SourceGenerator.Tests;
 /// </summary>
 /// <remarks>
 /// The inline form is correct and publishes AOT-clean; what it costs is size. Constructing a Regex
-/// from a pattern string roots the regex parser and interpreter, measured at +448 KB on a
-/// published AOT binary against +16 KB for the same pattern reached through a consumer-declared
-/// [GeneratedRegex]. So the diagnostic is about a binary roughly 40% larger, not a broken build,
-/// and it only fires where that matters.
+/// from a pattern string roots the regex parser and interpreter, measured at 356 KB on a
+/// published AOT binary over the same pattern reached through a consumer-declared
+/// [GeneratedRegex]. Options or a timeout add 486 KB more. So the diagnostic is about a binary
+/// roughly 25% larger, or 60% with a timeout, not a broken build, and it only fires where that
+/// matters.
 /// </remarks>
 public class PatternPolicyTests
 {
@@ -178,8 +179,8 @@ public class PatternPolicyTests
     public void RegularExpression_PublishAot_IsAnErrorAndIsDropped()
     {
         // It compiles to the inline form's field and roots the same parser and interpreter, so an
-        // AOT-facing project pays the same 448 KB for it. Dropped like the inline [Pattern], with
-        // the rest of the type still emitted.
+        // AOT-facing project pays the same 356 KB for it, and 486 KB more for its default timeout.
+        // Dropped like the inline [Pattern], with the rest of the type still emitted.
         var result = GeneratorHarness.Run(RegularExpressionModel, ("PublishAot", "true"));
 
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "VM1301");
@@ -245,6 +246,65 @@ public class PatternPolicyTests
 
         Assert.Contains(
             "point at it: [Pattern(typeof(PetPatterns), nameof(PetPatterns.Sku))]",
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1301").GetMessage()
+        );
+    }
+
+    [Fact]
+    public void RegularExpression_VM1301_GivesTheTimeoutItsCost()
+    {
+        // A timeout needs a Regex constructor that takes RegexOptions, and every one of those keeps
+        // the NonBacktracking engine in an AOT binary. [RegularExpression] has a timeout unless it
+        // sets -1, so a model moved from DataAnnotations pays for one it never wrote.
+        var result = GeneratorHarness.Run(RegularExpressionModel, ("PublishAot", "true"));
+
+        Assert.Contains(
+            "Its match timeout of 2000 milliseconds adds about 490 KB more, also once. "
+                + "MatchTimeoutInMilliseconds = -1 removes the timeout and that cost. "
+                + "Declare it as",
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1301").GetMessage()
+        );
+    }
+
+    [Fact]
+    public void RegularExpression_MinusOneTimeout_VM1301_GivesNoTimeoutCost()
+    {
+        var result = GeneratorHarness.Run(
+            RegularExpressionWith("MatchTimeoutInMilliseconds = -1"),
+            ("PublishAot", "true")
+        );
+
+        var message = Assert.Single(result.Diagnostics, d => d.Id == "VM1301").GetMessage();
+
+        Assert.Contains("That costs about 360 KB", message);
+        Assert.DoesNotContain("490 KB", message);
+    }
+
+    [Theory]
+    [InlineData("MatchTimeoutMilliseconds = 100")]
+    [InlineData("Options = RegexOptions.IgnoreCase")]
+    public void InlinePattern_WithOptionsOrATimeout_VM1301_GivesTheirCost(string setting)
+    {
+        var result = GeneratorHarness.Run(InlinePatternWith(setting), ("PublishAot", "true"));
+
+        Assert.Contains(
+            "Setting Options or MatchTimeoutMilliseconds adds about 490 KB more, also once. "
+                + "Declare it as",
+            Assert.Single(result.Diagnostics, d => d.Id == "VM1301").GetMessage()
+        );
+    }
+
+    [Theory]
+    [InlineData("Options = RegexOptions.Compiled")]
+    [InlineData("MatchTimeoutMilliseconds = -1")]
+    public void InlinePattern_PassingNoOptions_VM1301_GivesNoOptionsCost(string setting)
+    {
+        // Compiled is removed and reported as VM1302, and -1 is no timeout, so both leave the
+        // single-argument constructor.
+        var result = GeneratorHarness.Run(InlinePatternWith(setting), ("PublishAot", "true"));
+
+        Assert.DoesNotContain(
+            "490 KB",
             Assert.Single(result.Diagnostics, d => d.Id == "VM1301").GetMessage()
         );
     }
@@ -665,9 +725,9 @@ public class PatternPolicyTests
     [Fact]
     public void NoMatchTimeout_KeepsTheSingleArgumentConstructor()
     {
-        // An unset timeout means none, and the single-argument form is load-bearing: it lets ILC
-        // prove RegexOptions.Compiled is never set and trim the RegexCompiler path with it,
-        // measured at 713 KB. Honouring the timeout must not cost that where nobody asked for one.
+        // An unset timeout means none, and the single-argument form is load-bearing: it is the only
+        // constructor that lets ILC remove the RegexOptions.NonBacktracking engine, measured at
+        // 486 KB. Honouring the timeout must not cost that where nobody asked for one.
         var result = GeneratorHarness.Run(InlinePattern);
 
         var emitted = result.Sources["Sample.PetValidator.g.cs"];
@@ -778,6 +838,19 @@ public class PatternPolicyTests
 
             public record Pet {
                 [Pattern("^[A-Z]{3}$", MatchTimeoutMilliseconds = {{timeout}})]
+                public string? Sku { get; init; }
+            }
+            """;
+
+    private static string InlinePatternWith(string setting) =>
+        $$"""
+            using System.Text.RegularExpressions;
+            using ValidationModules.Constraints;
+
+            namespace Sample;
+
+            public record Pet {
+                [Pattern("^[A-Z]{3}$", {{setting}})]
                 public string? Sku { get; init; }
             }
             """;
